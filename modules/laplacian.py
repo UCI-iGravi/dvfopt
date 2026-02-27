@@ -205,7 +205,7 @@ def compute3DLaplacianFromShape(shape, mpoints, fpoints):
         [A0, A.todense()]
     ])
     b_ = np.concatenate([Xd, Yd])
-    phi_xy = lgmres(A_, b_, tol = 1e-2)[0]
+    phi_xy = lgmres(A_, b_, rtol = 1e-2)[0]
     
     return phi_xy, A_, b_
 
@@ -252,15 +252,15 @@ def compute3DLaplacianFromShape(shape, mpoints, fpoints):
     #np.save("Yd.npy", Yd)
     #np.save("Zd.npy", Zd)
     #print("Computing dz")
-    dz = lgmres(A, Zd, tol = 1e-2)[0]
+    dz = lgmres(A, Zd, rtol = 1e-2)[0]
     #print("dz calculated in {}s".format(time.time() - start))
     
     #print("Computing dy")
-    dy = lgmres(A, Yd , tol = 1e-2)[0]
+    dy = lgmres(A, Yd , rtol = 1e-2)[0]
     #print("dy calculated in {}s".format(time.time() - start))
 
     #print("Computing dx")
-    dx = lgmres(A, Xd, tol = 1e-2)[0]
+    dx = lgmres(A, Xd, rtol = 1e-2)[0]
     #print("dx calculated in {}s".format(time.time() - start))
 
     # changed deformationField[0] to get displacement of z-coordinates
@@ -310,15 +310,15 @@ def sliceToSlice3DLaplacian(fixedImage, mpoints, fpoints):
     #np.save("Yd.npy", Yd)
     #np.save("Zd.npy", Zd)
     #print("Computing dz")
-    dx = lgmres(A, Xd, tol = 1e-2)[0]
+    dx = lgmres(A, Xd, rtol = 1e-2)[0]
     #print("dz calculated in {}s".format(time.time() - start))
     
     #print("Computing dy")
-    dy = lgmres(A, Yd , tol = 1e-2)[0]
-    #print("dy calculated in {}s".format(time.time() - start))
+    dy = lgmres(A, Yd , rtol = 1e-2)[0]
+    #print("dz calculated in {}s".format(time.time() - start))
 
-    #print("Computing dx")
-    dz = lgmres(A, Zd, tol = 1e-2)[0]
+    #print("Computing dy")
+    dz = lgmres(A, Zd, rtol = 1e-2)[0]
     #print("dx calculated in {}s".format(time.time() - start))
 
     deformationField[0] = np.zeros(fdata.shape)
