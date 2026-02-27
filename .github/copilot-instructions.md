@@ -30,6 +30,8 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 
 ## Shared Modules (`modules/`)
 
+- **`dvfopt.py`** — Core iterative SLSQP optimisation. Key entry point: `iterative_with_jacobians2(deformation, method, ...)`. Also exports `jacobian_det2D()`, objective/constraint helpers, and windowed sub-optimisation utilities. No matplotlib or pandas dependency.
+- **`dvfviz.py`** — All visualisation and convenience orchestration. `plot_deformations()`: 2×2 initial-vs-corrected panel. `plot_jacobians_iteratively()`: grid of Jacobian snapshots. `run_lapl_and_correction()`: end-to-end Laplacian → correction → plot pipeline. `plot_step_snapshot()`: single-panel per-iteration heatmap (called lazily from `dvfopt` when `plot_every` is set).
 - **`jacobian.py`** — `sitk_jacobian_determinant(deformation)`: wraps SimpleITK Jacobian computation. `surrounding_points()`: debug utility.
 - **`laplacian.py`** — `laplacianA3D()`: builds sparse Laplacian matrix with Dirichlet BCs. `compute3DLaplacianFromShape()`: solves Laplacian system via LGMRES. `sliceToSlice3DLaplacian()`: end-to-end pipeline from NIfTI.
 - **`correspondences.py`** — `remove_duplicates()`, `do_lines_intersect()`, `swap_correspondences()`, `downsample_points()`: handle point correspondences and detect/resolve crossing displacement vectors.

@@ -2,22 +2,28 @@
 Iterative SLSQP optimisation for correcting negative Jacobian determinants
 in 2D deformation (displacement) fields.
 
-Usage:
-    from modules.dvfopt import iterative_with_jacobians2, plot_deformations, run_lapl_and_correction
+This module contains only the core algorithm and helpers — no matplotlib or
+pandas dependency.  Visualisation lives in ``modules.dvfviz``.
+
+Usage::
+
+    from modules.dvfopt import iterative_with_jacobians2, jacobian_det2D
+
+Verbosity levels (``verbose`` parameter):
+
+* ``0`` — silent, no output
+* ``1`` — one-line progress per outer iteration + final summary
+* ``2`` — full debug output (edge masks, constraints, sub-matrices)
 """
 
+import os
 import time
 from collections import defaultdict
-from pprint import pprint
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
 
 import modules.jacobian as jacobian
-import modules.laplacian as laplacian
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +37,15 @@ DEFAULT_PARAMS = {
     "max_minimize_iter": 1000,
     "starting_window_size": 7,
 }
+
+
+# ---------------------------------------------------------------------------
+# Internal logging helpers
+# ---------------------------------------------------------------------------
+def _log(verbose, level, msg):
+    """Print *msg* if *verbose* >= *level*."""
+    if verbose >= level:
+        print(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +175,9 @@ def get_phi_sub_flat(phi, cz, cy, cx, shape, d):
 def iterative_with_jacobians2(
     deformation_i,
     methodName="SLSQP",
-    print_results=True,
+    verbose=1,
     save_path=None,
+    plot_every=0,
     plot_callback=None,
     threshold=None,
     err_tol=None,
@@ -170,7 +186,7 @@ def iterative_with_jacobians2(
     max_minimize_iter=None,
     starting_window_size=None,
 ):
-    """Perform SLSQP on submatrices iteratively to fix negative Jacobian determinants.
+    """Iterative SLSQP correction of negative Jacobian determinants.
 
     Parameters
     ----------
@@ -178,12 +194,18 @@ def iterative_with_jacobians2(
         Input deformation field with channels ``[dz, dy, dx]``.
     methodName : str
         Optimiser method passed to ``scipy.optimize.minimize``.
-    print_results : bool
-        Print progress to stdout.
+    verbose : int
+        Verbosity level. ``0`` = silent, ``1`` = per-iteration progress
+        line + final summary, ``2`` = full debug output (edge masks,
+        constraints, sub-Jacobian matrices).  Accepts ``True``/``False``
+        for backward compatibility (mapped to 1/0).
     save_path : str or None
         Directory to save results. ``None`` disables saving.
+    plot_every : int
+        Show a Jacobian heatmap snapshot every *plot_every* outer
+        iterations.  ``0`` disables (default).
     plot_callback : callable or None
-        Optional callback receiving ``(msample, fsample, deformation_i, phi)``
+        Optional callback receiving ``(deformation_i, phi)``
         after each sub-optimisation.
     threshold, err_tol, max_iterations, max_per_index_iter,
     max_minimize_iter, starting_window_size :
@@ -213,6 +235,12 @@ def iterative_with_jacobians2(
     max_minimize_iter = p["max_minimize_iter"]
     starting_window_size = p["starting_window_size"]
 
+    # Normalise verbose: bool → int for backward compatibility
+    if verbose is True:
+        verbose = 1
+    elif verbose is False:
+        verbose = 0
+
     # Accumulators
     error_list = []
     num_neg_jac = []
@@ -221,21 +249,27 @@ def iterative_with_jacobians2(
     window_counts = defaultdict(int)
 
     start_time = time.time()
-    slice_shape = (1, *deformation_i.shape[-2:])
+    H, W = deformation_i.shape[-2:]
+    slice_shape = (1, H, W)
     near_cent_dict = {}
 
     # Working phi – updated iteratively
-    phi = np.zeros((2, *deformation_i.shape[-2:]))
+    phi = np.zeros((2, H, W))
     phi[1] = deformation_i[-1]
     phi[0] = deformation_i[-2]
-    if print_results:
-        print(f"deformation_i shape: {deformation_i.shape}, phi_init shape: {phi.shape}")
     phi_init = phi.copy()
+
+    _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={methodName}")
+    _log(verbose, 2, f"[init] deformation_i shape: {deformation_i.shape}, phi shape: {phi.shape}")
 
     # Initial Jacobian
     jacobian_matrix = jacobian_det2D(phi)
-    min_jdet_list.append(jacobian_matrix.min())
-    num_neg_jac.append((jacobian_matrix <= 0).sum())
+    init_neg = int((jacobian_matrix <= 0).sum())
+    init_min = float(jacobian_matrix.min())
+    min_jdet_list.append(init_min)
+    num_neg_jac.append(init_neg)
+
+    _log(verbose, 1, f"[init] Neg-Jdet pixels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
     while iteration < max_iterations and (jacobian_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any():
@@ -243,8 +277,6 @@ def iterative_with_jacobians2(
         window_reached_max = False
 
         neg_index_tuple = argmin_excluding_edges(jacobian_matrix)
-        if print_results:
-            print(f"\n\n\nIter {iteration}: Fixing index {neg_index_tuple}")
 
         submatrix_size = starting_window_size
         per_index_iter = 0
@@ -270,8 +302,8 @@ def iterative_with_jacobians2(
                 phi_init_sub_flat = get_phi_sub_flat(phi_init, cz, cy, cx, slice_shape, submatrix_size // 2)
                 phi_sub_flat = get_phi_sub_flat(phi, cz, cy, cx, slice_shape, submatrix_size // 2)
 
-                if submatrix_size > starting_window_size and print_results:
-                    print(f"Iter {iteration}: For index {neg_index_tuple}, window size increased to {submatrix_size} at iter {per_index_iter}")
+                if submatrix_size > starting_window_size:
+                    _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {submatrix_size}x{submatrix_size} (sub-iter {per_index_iter})")
 
             # Build constraints
             if submatrix_size >= min(slice_shape[1:]) - 1:
@@ -288,28 +320,20 @@ def iterative_with_jacobians2(
                 max_y, max_x = slice_shape[1:]
 
                 is_at_edge = start_y == 0 or end_y >= max_y - 1 or start_x == 0 or end_x >= max_x - 1
-                if print_results:
-                    print(f"Is at edge: {is_at_edge}, start_y: {start_y}, end_y: {end_y}, start_x: {start_x}, end_x: {end_x}, max_y: {max_y - 1}, max_x: {max_x - 1}")
+                _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  y=[{start_y},{end_y}]  x=[{start_x},{end_x}]  grid=[{max_y-1},{max_x-1}]")
 
                 nonlinear_constraints = NonlinearConstraint(
                     lambda phi1: jacobian_constraint(phi1, submatrix_size, not is_at_edge), threshold, np.inf
                 )
 
                 edge_mask = np.zeros((submatrix_size, submatrix_size), dtype=bool)
-                edge_mask[[0, -1], :] = True
-                edge_mask[:, [0, -1]] = True
+                if not is_at_edge:
+                    edge_mask[[0, -1], :] = True
+                    edge_mask[:, [0, -1]] = True
 
-                if is_at_edge:
-                    if print_results:
-                        print("AT EDGE")
-                    edge_mask = np.zeros((submatrix_size, submatrix_size), dtype=bool)
-
-                if print_results:
-                    print(f"Edge mask for submatrix size {submatrix_size}:\n{edge_mask}")
+                _log(verbose, 2, f"  [edge] Edge mask ({submatrix_size}x{submatrix_size}):\n{edge_mask}")
 
                 if not is_at_edge:
-                    if print_results:
-                        print("NOT AT EDGE")
                     edge_indices = np.argwhere(edge_mask)
                     fixed_indices = []
                     y_offset_sub = submatrix_size * submatrix_size
@@ -317,9 +341,8 @@ def iterative_with_jacobians2(
                         idx = y * submatrix_size + x
                         fixed_indices.extend([idx, idx + y_offset_sub])
 
-                    if print_results:
-                        print("Fixed indices")
-                        print(phi_sub_flat.shape, fixed_indices)
+                    _log(verbose, 2, f"  [edge] Freezing {len(fixed_indices)} boundary DOFs")
+
                     fixed_values = phi_sub_flat[fixed_indices]
 
                     A_eq = np.zeros((len(fixed_indices), phi_sub_flat.size))
@@ -331,16 +354,13 @@ def iterative_with_jacobians2(
                 else:
                     constraints = [nonlinear_constraints]
 
-                if print_results:
-                    print(f"Constraints: {constraints}")
-
             # Run optimisation
             iter_start = time.time()
             result = minimize(
                 lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
                 phi_sub_flat,
                 constraints=constraints,
-                options={"maxiter": max_minimize_iter, "disp": True},
+                options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
                 method=methodName,
             )
             iter_end = time.time()
@@ -356,57 +376,70 @@ def iterative_with_jacobians2(
             phi[0, cy - center_distance:cy + center_distance + 1, cx - center_distance:cx + center_distance + 1] = phi_y_res
 
             jacobian_matrix = jacobian_det2D(phi)
-            num_neg_jac.append((jacobian_matrix <= 0).sum())
-            min_jdet_list.append(jacobian_matrix.min())
+            cur_neg = int((jacobian_matrix <= 0).sum())
+            cur_min = float(jacobian_matrix.min())
+            num_neg_jac.append(cur_neg)
+            min_jdet_list.append(cur_min)
 
-            if print_results:
-                pprint(jacobian_matrix[0, cy - center_distance:cy + center_distance + 1,
-                                       cx - center_distance:cx + center_distance + 1])
+            _log(verbose, 2, f"  [sub-Jdet] centre ({cy},{cx}) window {submatrix_size}x{submatrix_size}:\n"
+                 + np.array2string(
+                     jacobian_matrix[0, cy - center_distance:cy + center_distance + 1,
+                                     cx - center_distance:cx + center_distance + 1],
+                     precision=4, suppress_small=True))
 
             if plot_callback is not None:
                 plot_callback(deformation_i, phi)
 
-            continue_flag = submatrix_size == 3 or (
-                (not window_reached_max)
-                and per_index_iter < max_per_index_iter
-                and (jacobian_matrix < threshold - 1e-5).any()
-            )
-            if print_results:
-                print("\nContinue flags:")
-                print(continue_flag)
-                print(f"y_start: {cy - center_distance}, y_end: {cy + center_distance + 1}, x_start: {cx - center_distance}, x_end: {cx + center_distance + 1}")
-                print(f"submatrix_size==3: {submatrix_size == 3} OR\nnot window_reached_max: {not window_reached_max}\nper_index_iter < max_per_index_iter: {per_index_iter < max_per_index_iter}\njacobian_submatrix < threshold - 1e-5: {(jacobian_matrix < threshold - 1e-5).any()}")
-                print(f"Min jacobian value in full image: {jacobian_matrix.min()}")
-                print(f"Number of total -ve jacobians: {(jacobian_matrix <= 0).sum()}")
-                print()
-
             error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
 
-            if jacobian_matrix.min() > threshold - err_tol:
-                if print_results:
-                    print(f"All jacobians are positive, stopping at iter {iteration}")
+            if cur_min > threshold - err_tol:
+                _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
                 break
 
-        if print_results:
-            print(f"Iter {iteration} with {(jacobian_matrix <= 0).sum()} -ve jacs")
+        # One-line progress per outer iteration
+        cur_neg = int((jacobian_matrix <= 0).sum())
+        cur_min = float(jacobian_matrix.min())
+        cur_err = error_list[-1] if error_list else 0.0
+        _log(verbose, 1,
+             f"[iter {iteration:4d}]  fix ({neg_index_tuple[0]:3d},{neg_index_tuple[1]:3d})  "
+             f"win {submatrix_size:3d}  neg_jdet {cur_neg:5d}  "
+             f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
+             f"sub-iters {per_index_iter}")
 
-        if jacobian_matrix.min() > threshold - err_tol:
-            if print_results:
-                print(f"All jacobians are positive, stopping at iter {iteration}")
+        # Per-step snapshot
+        if plot_every and iteration % plot_every == 0:
+            from modules.dvfviz import plot_step_snapshot
+            plot_step_snapshot(jacobian_matrix, iteration, cur_neg, cur_min)
+
+        if cur_min > threshold - err_tol:
+            _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
             break
 
     end_time = time.time()
+    elapsed = end_time - start_time
 
     final_err = np.sqrt(np.sum((phi - phi_init) ** 2))
-    if print_results:
-        print(f"Final L2 error = {final_err}")
-        print(f"Changed number of -ve jacobians from {num_neg_jac[0]} to {(jacobian_matrix <= 0).sum()}")
-        print(f"Time taken for iter SLSQP optimisation: {end_time - start_time} seconds")
+    final_neg = int((jacobian_matrix <= 0).sum())
+    final_min = float(jacobian_matrix.min())
 
-    num_neg_jac.append((jacobian_matrix <= 0).sum())
+    _log(verbose, 1, "")
+    _log(verbose, 1, "=" * 60)
+    _log(verbose, 1, f"  SUMMARY  ({methodName})")
+    _log(verbose, 1, "-" * 60)
+    _log(verbose, 1, f"  Grid size        : {H} x {W}")
+    _log(verbose, 1, f"  Iterations       : {iteration}")
+    _log(verbose, 1, f"  Neg-Jdet  {init_neg:>5d} -> {final_neg:>5d}")
+    _log(verbose, 1, f"  Min Jdet  {init_min:+.6f} -> {final_min:+.6f}")
+    _log(verbose, 1, f"  L2 error         : {final_err:.6f}")
+    _log(verbose, 1, f"  Time             : {elapsed:.2f}s")
+    _log(verbose, 1, "=" * 60)
+
+    num_neg_jac.append(final_neg)
 
     # Save results
     if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+
         output_text = "Settings:\n"
         output_text += f"\tMethod: {methodName}\n"
         output_text += f"\tThreshold: {threshold}\n"
@@ -417,13 +450,13 @@ def iterative_with_jacobians2(
         output_text += f"\tStarting window size: {starting_window_size + 2}\n\n"
 
         output_text += "Results:\n"
-        output_text += f"\tInput deformation field resolution (height x width): {deformation_i.shape[2]} x {deformation_i.shape[3]}\n"
-        output_text += f"\tTotal run-time: {end_time - start_time} seconds\n"
+        output_text += f"\tInput deformation field resolution (height x width): {H} x {W}\n"
+        output_text += f"\tTotal run-time: {elapsed} seconds\n"
         output_text += f"\tFinal L2 error: {final_err}\n"
-        output_text += f"\tStarting number of non-positive Jacobian determinants: {num_neg_jac[0]}\n"
-        output_text += f"\tFinal number of non-positive Jacobian determinants: {(jacobian_matrix <= 0).sum()}\n"
-        output_text += f"\tStarting Jacobian determinant minimum value: {min_jdet_list[0]}\n"
-        output_text += f"\tFinal Jacobian determinant minimum value: {jacobian_matrix.min()}\n"
+        output_text += f"\tStarting number of non-positive Jacobian determinants: {init_neg}\n"
+        output_text += f"\tFinal number of non-positive Jacobian determinants: {final_neg}\n"
+        output_text += f"\tStarting Jacobian determinant minimum value: {init_min}\n"
+        output_text += f"\tFinal Jacobian determinant minimum value: {final_min}\n"
         output_text += f"\tNumber of index iterations: {iteration}"
 
         with open(save_path + "/results.txt", "w") as f:
@@ -435,115 +468,10 @@ def iterative_with_jacobians2(
         np.save(save_path + "/iter_times.npy", iter_times)
         np.save(save_path + "/min_jdet_list.npy", min_jdet_list)
 
-        window_counts_df = pd.DataFrame.from_dict(window_counts, orient="index", columns=["count"])
-        window_counts_df.index.name = "window_size"
-        window_counts_df.to_csv(save_path + "/window_counts.csv")
+        # Write window_counts CSV without pandas
+        with open(save_path + "/window_counts.csv", "w") as f:
+            f.write("window_size,count\n")
+            for ws in sorted(window_counts):
+                f.write(f"{ws},{window_counts[ws]}\n")
 
     return phi
-
-
-# ---------------------------------------------------------------------------
-# Plotting helpers
-# ---------------------------------------------------------------------------
-def plot_deformations(
-    msample, fsample, deformation_i, phi_corrected,
-    figsize=(10, 10), save_path=None, title="", quiver_scale=1,
-):
-    """Plot initial vs corrected Jacobian determinants and deformation quiver fields."""
-    jacobian_initial = jacobian_det2D(deformation_i[1:])
-    jacobian_final = jacobian_det2D(phi_corrected)
-
-    data = {
-        ("x-def", "min"): [np.min(deformation_i[2, 0]), np.min(phi_corrected[1])],
-        ("x-def", "max"): [np.max(deformation_i[2, 0]), np.max(phi_corrected[1])],
-        ("y-def", "min"): [np.min(deformation_i[1, 0]), np.min(phi_corrected[0])],
-        ("y-def", "max"): [np.max(deformation_i[1, 0]), np.max(phi_corrected[0])],
-        ("jacobian", "min"): [np.min(jacobian_initial), np.min(jacobian_final)],
-        ("jacobian", "max"): [np.max(jacobian_initial), np.max(jacobian_final)],
-    }
-    row_names = ["initial", "final"]
-    df = pd.DataFrame(data, index=row_names)
-    print(df)
-
-    norm = mcolors.TwoSlopeNorm(
-        vmin=min(jacobian_initial.min(), jacobian_final.min(), -1),
-        vcenter=0,
-        vmax=max(jacobian_initial.max(), jacobian_final.max(), 1),
-    )
-
-    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=figsize)
-
-    im0 = axs[0, 0].imshow(jacobian_initial[0], cmap="seismic", norm=norm, interpolation="nearest")
-    im1 = axs[0, 1].imshow(jacobian_final[0], cmap="seismic", norm=norm, interpolation="nearest")
-
-    x, y = np.meshgrid(range(deformation_i.shape[3]), range(deformation_i.shape[2]), indexing="xy")
-
-    axs[0, 0].set_title("Initial J det")
-    axs[0, 1].set_title("Final J det")
-
-    axs[1, 0].set_title("Initial deformation")
-    axs[1, 0].quiver(x, y, deformation_i[2, 0], -deformation_i[1, 0], scale=quiver_scale, scale_units="xy")
-
-    axs[1, 1].set_title("Final deformation")
-    axs[1, 1].quiver(x, y, phi_corrected[1], -phi_corrected[0], scale=quiver_scale, scale_units="xy")
-
-    for i in range(2):
-        axs[1, i].invert_yaxis()
-
-    cax = fig.add_axes([0.95, 0.5, 0.02, 0.4])
-    fig.colorbar(im1, cax=cax)
-
-    if save_path is not None:
-        plt.savefig(save_path + "/plot_final.png", bbox_inches="tight")
-    plt.suptitle(title, fontsize=16)
-    plt.show()
-
-
-def plot_jacobians_iteratively(jacobians, msample, fsample, methodName="SLSQP"):
-    """Plot a sequence of Jacobian determinant maps side-by-side."""
-    num_jacobians = len(jacobians)
-    ncols = min(2, num_jacobians)
-    nrows = (num_jacobians + ncols - 1) // ncols
-
-    all_vals = [j[0] for j in jacobians]
-    vmin = min(j.min() for j in all_vals)
-    vmax = max(j.max() for j in all_vals)
-    norm = mcolors.TwoSlopeNorm(vmin=min(vmin, -1), vcenter=0, vmax=max(vmax, 1))
-
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(4 * ncols, 4 * nrows))
-    axs = axs.flatten()
-
-    for i, jac in enumerate(jacobians):
-        im = axs[i].imshow(jac[0], cmap="seismic", norm=norm, interpolation="nearest")
-        num_negs = np.sum(jac <= 0)
-        axs[i].set_title(f"Jacobian #{i}, {num_negs} -ves" if i > 0 else f"Initial J det: {num_negs} -ves")
-        if i == 0:
-            axs[i].scatter(msample[:, 2], msample[:, 1], c="g", label="Moving", s=10)
-            axs[i].scatter(fsample[:, 2], fsample[:, 1], c="violet", label="Fixed", s=10)
-            axs[i].legend()
-
-    for i in range(len(msample)):
-        axs[0].annotate(
-            "",
-            xy=(fsample[i][2], fsample[i][1]),
-            xytext=(msample[i][2], msample[i][1]),
-            arrowprops=dict(facecolor="black", shrink=0.1, headwidth=3, headlength=5, width=1),
-        )
-
-    for j in range(len(jacobians), len(axs)):
-        axs[j].axis("off")
-
-    fig.colorbar(im, ax=axs, orientation="vertical", fraction=0.046, pad=0.04)
-    plt.tight_layout(rect=[0, 0, 0.9, 1])
-    plt.show()
-
-
-def run_lapl_and_correction(fixed_sample, msample, fsample, methodName="SLSQP", save_path=None, title="", **kwargs):
-    """End-to-end: Laplacian interpolation → iterative SLSQP correction → plot.
-
-    Extra ``**kwargs`` are forwarded to :func:`iterative_with_jacobians2`.
-    """
-    deformation_i, A, Zd, Yd, Xd = laplacian.sliceToSlice3DLaplacian(fixed_sample, msample, fsample)
-    print(f"deformation shape: {deformation_i.shape}")
-    phi_corrected = iterative_with_jacobians2(deformation_i, methodName, save_path=save_path, **kwargs)
-    plot_deformations(msample, fsample, deformation_i, phi_corrected, figsize=(10, 10), save_path=save_path, title=title)
