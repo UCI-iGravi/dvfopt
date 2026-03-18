@@ -21,9 +21,57 @@ import time
 from collections import defaultdict
 
 import numpy as np
+from scipy.ndimage import zoom
 from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
 
 import modules.jacobian as jacobian
+
+
+# ---------------------------------------------------------------------------
+# DVF generation utilities
+# ---------------------------------------------------------------------------
+def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
+    """Generate a random 2D deformation vector field (DVF).
+
+    Parameters
+    ----------
+    shape : tuple
+        ``(3, 1, H, W)`` — standard deformation field shape.
+    max_magnitude : float
+        Max displacement in pixels (uniform in ``[-mag, +mag]``).
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    ndarray of shape ``(3, 1, H, W)``
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    C, _, H, W = shape
+    assert C == 3, "DVF must have 3 channels (dz, dy, dx)"
+    return np.random.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float32)
+
+
+def scale_dvf(dvf, new_size):
+    """Rescale a ``(3, 1, H, W)`` deformation field to *new_size* ``(new_H, new_W)``.
+
+    Spatial interpolation is bilinear (``order=1``) and displacement
+    magnitudes are scaled proportionally.
+    """
+    C, _, H, W = dvf.shape
+    new_H, new_W = new_size
+    scale_y = new_H / H
+    scale_x = new_W / W
+
+    dvf_resized = np.zeros((C, 1, new_H, new_W), dtype=dvf.dtype)
+    for c in range(C):
+        dvf_resized[c, 0] = zoom(dvf[c, 0], (scale_y, scale_x), order=1)
+
+    dvf_resized[2, 0] *= scale_x  # dx
+    dvf_resized[1, 0] *= scale_y  # dy
+    return dvf_resized
 
 
 # ---------------------------------------------------------------------------

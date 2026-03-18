@@ -23,9 +23,13 @@ import os
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+from matplotlib.cm import ScalarMappable
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
 from modules.dvfopt import iterative_with_jacobians2, jacobian_det2D
+import modules.jacobian as jacobian
 import modules.laplacian as laplacian
 
 
@@ -424,3 +428,214 @@ def run_lapl_and_correction(fixed_sample, msample, fsample, methodName="SLSQP",
     phi_corrected = iterative_with_jacobians2(deformation_i, methodName, save_path=save_path, **kwargs)
     plot_deformations(msample, fsample, deformation_i, phi_corrected,
                       figsize=(14, 12), save_path=save_path, title=title)
+
+
+# ---------------------------------------------------------------------------
+# Single-field deformation preview (Jacobian heatmap + quiver)
+# ---------------------------------------------------------------------------
+def plot_deformation_field(deformation, msample=None, fsample=None,
+                           title="", figsize=(20, 10), show_values=False,
+                           show_points=True, save_path=None, quiver_scale=None):
+    """Plot a single deformation field: Jacobian heatmap + displacement quiver.
+
+    Intended for previewing test-case data before running corrections.
+
+    Parameters
+    ----------
+    deformation : ndarray, shape ``(3, 1, H, W)``
+    msample, fsample : ndarray ``(N, 3)`` or None
+    title : str
+    save_path : str or None
+        If given, saves ``.png`` next to this path.
+    quiver_scale : float or None
+    """
+    fig, axs = plt.subplots(1, 2, figsize=figsize)
+
+    J = np.squeeze(jacobian.sitk_jacobian_determinant(deformation))
+    neg = int(np.sum(J <= 0))
+    norm = mcolors.TwoSlopeNorm(
+        vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3)
+    )
+
+    # Left: Jacobian heatmap with arrows
+    if msample is not None and fsample is not None:
+        for i in range(len(msample)):
+            axs[0].annotate(
+                "", xy=(fsample[i][2], fsample[i][1]),
+                xytext=(msample[i][2], msample[i][1]),
+                arrowprops=dict(facecolor="black", shrink=0.045,
+                                headwidth=8, headlength=10, width=3),
+            )
+
+    im = axs[0].imshow(J, cmap=CMAP, norm=norm)
+    axs[0].set_title(f"Jacobian determinant ({neg} negative)")
+
+    if show_values:
+        _annotate_jdet_values(axs[0], J)
+        _annotate_jdet_values(axs[1], J)
+
+    # Right: quiver plot
+    x, y = np.meshgrid(range(deformation.shape[3]), range(deformation.shape[2]), indexing="xy")
+    axs[1].set_title("Deformation vector field")
+    axs[1].imshow(J, cmap=CMAP, norm=norm)
+    if quiver_scale is None:
+        axs[1].quiver(x, y, deformation[2, 0], -deformation[1, 0])
+    else:
+        axs[1].quiver(x, y, deformation[2, 0], -deformation[1, 0],
+                       scale=quiver_scale, scale_units="xy")
+
+    if show_points and msample is not None and fsample is not None:
+        for ax in axs:
+            ax.scatter(msample[:, 2], msample[:, 1], c="g", label="Moving")
+            ax.scatter(fsample[:, 2], fsample[:, 1], c="violet", label="Fixed")
+            ax.legend()
+
+    fig.suptitle(title, fontsize=16)
+    divider = make_axes_locatable(axs[1])
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(im, cax=cax, label="Jacobian determinant")
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path.replace(".npy", ".png"), bbox_inches="tight")
+    plt.show()
+
+
+# ---------------------------------------------------------------------------
+# Deformed-grid visualisations
+# ---------------------------------------------------------------------------
+def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
+                             title="2D Deformation Grid", highlight_point=None):
+    """Visualise a ``(3, 1, Y, X)`` deformation as a deformed grid.
+
+    Parameters
+    ----------
+    deformation : ndarray, shape ``(3, 1, Y, X)``
+    spacing : int
+        Grid line spacing (pixels).
+    highlight_point : tuple ``(y, x)`` or None
+        If given, draws deformed neighbours as a closed polygon.
+    """
+    _, _, H, W = deformation.shape
+    dy = deformation[1, 0]
+    dx = deformation[2, 0]
+
+    y_coords, x_coords = np.meshgrid(
+        np.arange(0, H, spacing), np.arange(0, W, spacing), indexing="ij"
+    )
+    new_y = y_coords + dy[y_coords, x_coords]
+    new_x = x_coords + dx[y_coords, x_coords]
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    for i in range(y_coords.shape[0]):
+        ax.plot(new_x[i, :], new_y[i, :], "r-")
+    for j in range(x_coords.shape[1]):
+        ax.plot(new_x[:, j], new_y[:, j], "r-")
+
+    if highlight_point:
+        cy, cx = highlight_point
+        offsets = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+        pts = []
+        for dy_off, dx_off in offsets:
+            ny, nx = cy + dy_off, cx + dx_off
+            if 0 <= ny < H and 0 <= nx < W:
+                pts.append((nx + dx[ny, nx], ny + dy[ny, nx]))
+                ax.scatter(pts[-1][0], pts[-1][1], color="green", zorder=5)
+        ax.scatter(cx + dx[cy, cx], cy + dy[cy, cx], color="blue", zorder=5)
+        if len(pts) == 4:
+            xs, ys = zip(*pts)
+            ax.plot(xs + (xs[0],), ys + (ys[0],), color="black", linewidth=1.5)
+
+    ax.invert_yaxis()
+    ax.set_aspect("equal")
+    ax.set_title(title)
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_deformed_quads(deformation, center_y, center_x, spacing=1,
+                        patch_size=20, title="Deformed Quadrilateral Mesh"):
+    """Plot a zoomed-in deformed quadrilateral mesh.
+
+    Parameters
+    ----------
+    deformation : ndarray ``(3, 1, Y, X)``
+    center_y, center_x : int
+        Centre of the zoom window.
+    spacing : int
+    patch_size : int
+        Width/height of the zoom window in pixels.
+    """
+    _, _, H, W = deformation.shape
+    dy = deformation[1, 0]
+    dx = deformation[2, 0]
+
+    y0 = max(center_y - patch_size // 2, 0)
+    y1 = min(center_y + patch_size // 2, H - spacing - 1)
+    x0 = max(center_x - patch_size // 2, 0)
+    x1 = min(center_x + patch_size // 2, W - spacing - 1)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for i in range(y0, y1, spacing):
+        for j in range(x0, x1, spacing):
+            corners = [(j, i), (j + spacing, i),
+                       (j + spacing, i + spacing), (j, i + spacing)]
+            deformed = [(x + dx[y, x], y + dy[y, x]) for x, y in corners]
+            poly = Polygon(deformed, closed=True, edgecolor="red",
+                           facecolor="lightgray", linewidth=0.8)
+            ax.add_patch(poly)
+
+    ax.set_xlim(x0, x1 + spacing)
+    ax.set_ylim(y1 + spacing, y0)
+    ax.set_aspect("equal")
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
+                                patch_size=20, cmap="bwr"):
+    """Plot a zoomed quad mesh coloured by Jacobian determinant.
+
+    Negative-Jdet quads are outlined in yellow.
+    """
+    _, _, H, W = deformation.shape
+    dy = deformation[1, 0]
+    dx = deformation[2, 0]
+
+    J = np.squeeze(jacobian.sitk_jacobian_determinant(deformation))
+    norm = mcolors.TwoSlopeNorm(
+        vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3)
+    )
+    colormap = plt.get_cmap(cmap)
+
+    y0 = max(center_y - patch_size // 2, 0)
+    y1 = min(center_y + patch_size // 2, H - spacing - 1)
+    x0 = max(center_x - patch_size // 2, 0)
+    x1 = min(center_x + patch_size // 2, W - spacing - 1)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for i in range(y0, y1, spacing):
+        for j in range(x0, x1, spacing):
+            corners = [(j, i), (j + spacing, i),
+                       (j + spacing, i + spacing), (j, i + spacing)]
+            deformed = [(x + dx[y, x], y + dy[y, x]) for x, y in corners]
+
+            ec = "yellow" if J[i, j] < 0 else "black"
+            lw = 2.0 if J[i, j] < 0 else 0.5
+            poly = Polygon(deformed, closed=True, edgecolor=ec,
+                           facecolor=colormap(norm(J[i, j])), linewidth=lw)
+            ax.add_patch(poly)
+
+    ax.set_xlim(x0, x1 + spacing)
+    ax.set_ylim(y1 + spacing, y0)
+    ax.set_title("Deformed Mesh (coloured by Jacobian)")
+    sm = ScalarMappable(cmap=colormap, norm=norm)
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, label="Jacobian Determinant")
+    plt.tight_layout()
+    plt.show()

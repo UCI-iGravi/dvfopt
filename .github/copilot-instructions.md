@@ -30,17 +30,19 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 
 ## Shared Modules (`modules/`)
 
-- **`dvfopt.py`** — Core iterative SLSQP optimisation. Key entry point: `iterative_with_jacobians2(deformation, method, ...)`. Also exports `jacobian_det2D()`, objective/constraint helpers, and windowed sub-optimisation utilities. No matplotlib or pandas dependency.
-- **`dvfviz.py`** — All visualisation and convenience orchestration. `plot_deformations()`: 2×2 initial-vs-corrected panel. `plot_jacobians_iteratively()`: grid of Jacobian snapshots. `run_lapl_and_correction()`: end-to-end Laplacian → correction → plot pipeline. `plot_step_snapshot()`: single-panel per-iteration heatmap (called lazily from `dvfopt` when `plot_every` is set).
+- **`dvfopt.py`** — Core iterative SLSQP optimisation. Key entry point: `iterative_with_jacobians2(deformation, method, ...)`. Also exports `jacobian_det2D()`, objective/constraint helpers, windowed sub-optimisation utilities, `generate_random_dvf()`, and `scale_dvf()`. No matplotlib or pandas dependency.
+- **`dvfviz.py`** — All visualisation and convenience orchestration. `plot_deformations()`: 2×2 initial-vs-corrected panel. `plot_jacobians_iteratively()`: grid of Jacobian snapshots. `run_lapl_and_correction()`: end-to-end Laplacian → correction → plot pipeline. `plot_step_snapshot()`: single-panel per-iteration heatmap (called lazily from `dvfopt` when `plot_every` is set). `plot_deformation_field()`: single-field Jacobian + quiver preview. `plot_2d_deformation_grid()`: deformed grid lines. `plot_deformed_quads()` / `plot_deformed_quads_colored()`: quad mesh visualisation colored by Jacobian determinant.
+- **`testcases.py`** — Test case registry and data-loading utilities. `SYNTHETIC_CASES`: dict of 8 correspondence-based test cases. `RANDOM_DVF_CASES`: dict of 4 random DVF configs. `REAL_DATA_SLICES`: dict of 8 real-data slice configs. `make_deformation(case_key)`: builds a `(3,1,H,W)` deformation from correspondences via Laplacian. `make_random_dvf(case_key)`: generates a random DVF. `load_slice(slice_idx, ...)`: loads a real `.npy` slice with optional downscaling. `save_and_summarize(deformation, save_path)`: saves deformation + prints neg-Jdet summary.
+- **`checkerboard.py`** — Checkerboard image creation. `create_checkerboard()`: generates a binary checkerboard array.
 - **`jacobian.py`** — `sitk_jacobian_determinant(deformation)`: wraps SimpleITK Jacobian computation. `surrounding_points()`: debug utility.
 - **`laplacian.py`** — `laplacianA3D()`: builds sparse Laplacian matrix with Dirichlet BCs. `compute3DLaplacianFromShape()`: solves Laplacian system via LGMRES. `sliceToSlice3DLaplacian()`: end-to-end pipeline from NIfTI.
 - **`correspondences.py`** — `remove_duplicates()`, `do_lines_intersect()`, `swap_correspondences()`, `downsample_points()`: handle point correspondences and detect/resolve crossing displacement vectors.
 
 ## Test Cases & Data
 
-- **Synthetic grids:** Defined inline as `msample`/`fsample` point arrays. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
-- **Real data:** `.npy` files in `experiments/` (e.g., `02b_320x456_slice200.npy`). Downscaled versions at 64×91.
-- **Random DVFs:** Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)`.
+- **Synthetic grids:** Defined in `modules/testcases.py` as `SYNTHETIC_CASES` dict mapping case keys to `(msample, fsample, grid_size)` tuples. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
+- **Random DVFs:** Defined in `modules/testcases.py` as `RANDOM_DVF_CASES` dict. Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)` from `dvfopt.py`.
+- **Real data:** `.npy` files in `experiments/` (e.g., `02b_320x456_slice200.npy`). Configured in `REAL_DATA_SLICES` dict. Downscaled versions at 64×91 via `scale_dvf()`.
 
 ## Output Structure
 
