@@ -12,6 +12,7 @@ Usage::
 
     from modules.dvfviz import (
         plot_deformations,
+        plot_grid_before_after,
         plot_initial_deformation,
         plot_jacobians_iteratively,
         plot_step_snapshot,
@@ -428,6 +429,8 @@ def run_lapl_and_correction(fixed_sample, msample, fsample, methodName="SLSQP",
     phi_corrected = iterative_with_jacobians2(deformation_i, methodName, save_path=save_path, **kwargs)
     plot_deformations(msample, fsample, deformation_i, phi_corrected,
                       figsize=(14, 12), save_path=save_path, title=title)
+    plot_grid_before_after(deformation_i, phi_corrected, title=title)
+    return deformation_i, phi_corrected
 
 
 # ---------------------------------------------------------------------------
@@ -638,4 +641,95 @@ def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
     sm.set_array([])
     plt.colorbar(sm, ax=ax, label="Jacobian Determinant")
     plt.tight_layout()
+    plt.show()
+
+
+# ---------------------------------------------------------------------------
+# Before / after deformation grid comparison
+# ---------------------------------------------------------------------------
+def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
+                           title="", spacing=1, linewidth=0.5):
+    """Side-by-side deformation grids coloured by Jacobian determinant.
+
+    Left panel: grid deformed by the *initial* field.
+    Right panel: grid after correction.  Negative-Jdet cells are outlined
+    in yellow.
+
+    Parameters
+    ----------
+    deformation_i : ndarray, shape ``(3, 1, H, W)``
+        Original deformation field with channels ``[dz, dy, dx]``.
+    phi_corrected : ndarray, shape ``(2, H, W)``
+        Corrected displacement field ``[dy, dx]``.
+    figsize : tuple
+        Figure size.
+    title : str
+        Optional suptitle.
+    spacing : int
+        Grid cell size in pixels (1 = every pixel).
+    linewidth : float
+        Edge line width for each quad cell.
+    """
+    _, _, H, W = deformation_i.shape
+
+    phi_init = np.stack([deformation_i[1, 0], deformation_i[2, 0]])  # [dy, dx]
+
+    jac_init = np.squeeze(jacobian_det2D(phi_init))
+    jac_corr = np.squeeze(jacobian_det2D(phi_corrected))
+
+    # Shared colour normalisation across both panels
+    J_all = np.concatenate([jac_init.ravel(), jac_corr.ravel()])
+    vmin = min(float(J_all.min()), -0.5)
+    vmax = max(float(J_all.max()), 1.5)
+    norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+    cmap = plt.get_cmap("bwr")
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    init_neg = int((jac_init <= 0).sum())
+    corr_neg = int((jac_corr <= 0).sum())
+
+    for ax, phi, jac, label in [
+        (axes[0], phi_init,      jac_init, f"Initial (neg Jdet = {init_neg})"),
+        (axes[1], phi_corrected, jac_corr, f"Corrected (neg Jdet = {corr_neg})"),
+    ]:
+        dy = phi[0]
+        dx = phi[1]
+
+        for i in range(0, H - spacing, spacing):
+            for j in range(0, W - spacing, spacing):
+                # Four corners of the pixel quad (row, col)
+                corners_rc = [
+                    (i,           j),
+                    (i,           j + spacing),
+                    (i + spacing, j + spacing),
+                    (i + spacing, j),
+                ]
+                # Deform: add displacement at each corner → (x, y) for Polygon
+                deformed = []
+                for r, c in corners_rc:
+                    r_c = np.clip(r, 0, H - 1)
+                    c_c = np.clip(c, 0, W - 1)
+                    deformed.append((c + dx[r_c, c_c], r + dy[r_c, c_c]))
+
+                jval = jac[i, j]
+                ec = "yellow" if jval <= 0 else "black"
+                lw = max(linewidth, 1.5) if jval <= 0 else linewidth
+                poly = Polygon(deformed, closed=True, edgecolor=ec,
+                               facecolor=cmap(norm(jval)), linewidth=lw)
+                ax.add_patch(poly)
+
+        ax.set_xlim(-1, W)
+        ax.set_ylim(H, -1)
+        ax.set_aspect("equal")
+        ax.set_title(label, fontsize=11)
+
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=axes.tolist(), label="Jacobian determinant",
+                 fraction=0.03, pad=0.04, shrink=0.85)
+
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=1.02)
+    fig.tight_layout(rect=[0, 0, 0.92, 1])
     plt.show()

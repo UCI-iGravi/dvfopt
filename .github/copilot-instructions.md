@@ -9,6 +9,7 @@ Research codebase for correcting **negative Jacobian determinants** in 2D deform
 - **Deformation fields:** `(3, 1, H, W)` numpy arrays — channels are `[dz, dy, dx]`. For 2D slice work, the z-slice dimension is 1.
 - **Points/coordinates:** Always `[z, y, x]` ordering. Correspondences are `(N, 3)` arrays.
 - **SimpleITK interop:** Displacement arrays are transposed `(3,1,H,W)` → `(1,H,W,3)` and axis-reordered `[2,1,0]` (zyx→xyz) before calling SimpleITK. See `modules/jacobian.py:sitk_jacobian_determinant()`.
+- **Jacobian computation (optimiser):** `dvfopt.py` uses a pure-numpy 2D Jacobian determinant (`_numpy_jdet_2d`) via `np.gradient` central differences. This matches SimpleITK for interior pixels and avoids the ~3 ms/call SimpleITK overhead that made SLSQP numerical gradients infeasible. `modules/jacobian.py` still provides the SimpleITK wrapper for other uses.
 - **Jacobian threshold:** `0.01` (strictly positive, not ≥0). Error tolerance `1e-5`.
 - **Plotting:** Uses `indexing='xy'` for meshgrid; y-axis is inverted (`invert_yaxis()`) to match image convention.
 
@@ -24,14 +25,15 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 
 ### Iterative SLSQP specifics (primary method)
 1. Finds pixel with lowest Jdet (excluding edges via `argmin_excluding_edges()`).
-2. Extracts a submatrix window (starting 9×9, grows by 2 if needed up to grid size).
-3. Runs `scipy.optimize.minimize(method='SLSQP')` on the submatrix with frozen edge constraints.
-4. Repeats for next-worst pixel. Tracks `window_counts` per size.
+2. Computes the bounding box of the connected negative-Jdet region around it via `neg_jdet_bounding_window()`, adds a +1 pixel positive-Jdet border (floor: `min_window_size`, default 5). Both even and odd window sizes are supported.
+3. Extracts a submatrix window of that size (grows by 2 if needed up to grid size).
+4. Runs `scipy.optimize.minimize(method='SLSQP')` on the submatrix with frozen edge constraints.
+5. Repeats for next-worst pixel. Tracks `window_counts` per size.
 
 ## Shared Modules (`modules/`)
 
-- **`dvfopt.py`** — Core iterative SLSQP optimisation. Key entry point: `iterative_with_jacobians2(deformation, method, ...)`. Also exports `jacobian_det2D()`, objective/constraint helpers, windowed sub-optimisation utilities, `generate_random_dvf()`, and `scale_dvf()`. No matplotlib or pandas dependency.
-- **`dvfviz.py`** — All visualisation and convenience orchestration. `plot_deformations()`: 2×2 initial-vs-corrected panel. `plot_jacobians_iteratively()`: grid of Jacobian snapshots. `run_lapl_and_correction()`: end-to-end Laplacian → correction → plot pipeline. `plot_step_snapshot()`: single-panel per-iteration heatmap (called lazily from `dvfopt` when `plot_every` is set). `plot_deformation_field()`: single-field Jacobian + quiver preview. `plot_2d_deformation_grid()`: deformed grid lines. `plot_deformed_quads()` / `plot_deformed_quads_colored()`: quad mesh visualisation colored by Jacobian determinant.
+- **`dvfopt.py`** — Core optimisation module containing both serial and hybrid-parallel iterative SLSQP algorithms. Key entry points: `iterative_with_jacobians2(deformation, method, ...)` (serial) and `iterative_parallel(deformation, method, ..., max_workers=None)` (hybrid parallel). Also exports `jacobian_det2D()`, objective/constraint helpers, windowed sub-optimisation utilities, `generate_random_dvf()`, `scale_dvf()`, and `neg_jdet_bounding_window()`. No matplotlib or pandas dependency.
+- **`dvfviz.py`** — All visualisation and convenience orchestration. `plot_deformations()`: 2×2 initial-vs-corrected panel. `plot_jacobians_iteratively()`: grid of Jacobian snapshots. `run_lapl_and_correction()`: end-to-end Laplacian → correction → plot pipeline (also calls `plot_grid_before_after`). `plot_step_snapshot()`: single-panel per-iteration heatmap (called lazily from `dvfopt` when `plot_every` is set). `plot_deformation_field()`: single-field Jacobian + quiver preview. `plot_2d_deformation_grid()`: deformed grid lines. `plot_deformed_quads()` / `plot_deformed_quads_colored()`: quad mesh visualisation colored by Jacobian determinant. `plot_grid_before_after()`: side-by-side initial-vs-corrected deformation grids coloured by Jacobian determinant, with yellow outlines on negative-Jdet cells.
 - **`testcases.py`** — Test case registry and data-loading utilities. `SYNTHETIC_CASES`: dict of 8 correspondence-based test cases. `RANDOM_DVF_CASES`: dict of 4 random DVF configs. `REAL_DATA_SLICES`: dict of 8 real-data slice configs. `make_deformation(case_key)`: builds a `(3,1,H,W)` deformation from correspondences via Laplacian. `make_random_dvf(case_key)`: generates a random DVF. `load_slice(slice_idx, ...)`: loads a real `.npy` slice with optional downscaling. `save_and_summarize(deformation, save_path)`: saves deformation + prints neg-Jdet summary.
 - **`checkerboard.py`** — Checkerboard image creation. `create_checkerboard()`: generates a binary checkerboard array.
 - **`jacobian.py`** — `sitk_jacobian_determinant(deformation)`: wraps SimpleITK Jacobian computation. `surrounding_points()`: debug utility.
