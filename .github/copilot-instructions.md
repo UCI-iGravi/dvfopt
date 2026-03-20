@@ -25,7 +25,7 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 
 ### Iterative SLSQP specifics (primary method)
 1. Finds pixel with lowest Jdet (excluding edges via `argmin_excluding_edges()`).
-2. Computes the bounding box of the connected negative-Jdet region around it via `neg_jdet_bounding_window()`, adds a +1 pixel positive-Jdet border (floor: `min_window_size`, default 5). Both even and odd window sizes are supported.
+2. Computes the bounding box of the connected negative-Jdet region around it via `neg_jdet_bounding_window()`, adds a +1 pixel positive-Jdet border (minimum 3×3). Both even and odd window sizes are supported.
 3. Extracts a submatrix window of that size (grows by 2 if needed up to grid size).
 4. Runs `scipy.optimize.minimize(method='SLSQP')` on the submatrix with frozen edge constraints.
 5. Repeats for next-worst pixel. Tracks `window_counts` per size.

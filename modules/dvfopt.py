@@ -84,7 +84,6 @@ DEFAULT_PARAMS = {
     "max_iterations": 10000,
     "max_per_index_iter": 50,
     "max_minimize_iter": 1000,
-    "min_window_size": 9,
 }
 
 
@@ -95,6 +94,19 @@ def _log(verbose, level, msg):
     """Print *msg* if *verbose* >= *level*."""
     if verbose >= level:
         print(msg)
+
+
+# ---------------------------------------------------------------------------
+# Window size helper
+# ---------------------------------------------------------------------------
+def _unpack_size(submatrix_size):
+    """Normalize *submatrix_size* to a ``(sy, sx)`` tuple.
+
+    Accepts a single int (square) or a 2-tuple/list (rectangular).
+    """
+    if isinstance(submatrix_size, (tuple, list)):
+        return int(submatrix_size[0]), int(submatrix_size[1])
+    return int(submatrix_size), int(submatrix_size)
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +155,10 @@ def jacobian_det2D(phi_xy):
 
 def jacobian_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     """Return flattened Jacobian determinant values for optimiser constraints."""
-    pixels = submatrix_size * submatrix_size
-    dx = phi_xy[:pixels].reshape((submatrix_size, submatrix_size))
-    dy = phi_xy[pixels:].reshape((submatrix_size, submatrix_size))
+    sy, sx = _unpack_size(submatrix_size)
+    pixels = sy * sx
+    dx = phi_xy[:pixels].reshape((sy, sx))
+    dy = phi_xy[pixels:].reshape((sy, sx))
     jdet = _numpy_jdet_2d(dy, dx)
     if exclude_boundaries:
         return jdet[1:-1, 1:-1].flatten()
@@ -200,9 +213,10 @@ def shoelace_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     Analogous to ``jacobian_constraint`` but checks geometric cell areas
     instead of gradient-based Jacobian determinants.
     """
-    pixels = submatrix_size * submatrix_size
-    dx = phi_xy[:pixels].reshape((submatrix_size, submatrix_size))
-    dy = phi_xy[pixels:].reshape((submatrix_size, submatrix_size))
+    sy, sx = _unpack_size(submatrix_size)
+    pixels = sy * sx
+    dx = phi_xy[:pixels].reshape((sy, sx))
+    dy = phi_xy[pixels:].reshape((sy, sx))
     areas = _shoelace_areas_2d(dy, dx)
     if exclude_boundaries:
         return areas[1:-1, 1:-1].flatten()
@@ -237,9 +251,10 @@ def injectivity_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     All returned values must be > threshold for montonicity (and hence
     global injectivity on the structured grid) to hold.
     """
-    pixels = submatrix_size * submatrix_size
-    dx = phi_xy[:pixels].reshape((submatrix_size, submatrix_size))
-    dy = phi_xy[pixels:].reshape((submatrix_size, submatrix_size))
+    sy, sx = _unpack_size(submatrix_size)
+    pixels = sy * sx
+    dx = phi_xy[:pixels].reshape((sy, sx))
+    dy = phi_xy[pixels:].reshape((sy, sx))
     h_mono, v_mono = _monotonicity_diffs_2d(dy, dx)
     if exclude_boundaries:
         h_vals = h_mono[1:-1, 1:-1].flatten()
@@ -297,25 +312,27 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False):
 # ---------------------------------------------------------------------------
 def nearest_center(shape, submatrix_size):
     """Build a dict mapping every (z,y,x) to the nearest valid sub-window centre."""
-    d = submatrix_size // 2
-    max_y = shape[1] - submatrix_size + d
-    max_x = shape[2] - submatrix_size + d
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    max_y = shape[1] - sy + hy
+    max_x = shape[2] - sx + hx
     near_cent = {}
     for z in range(shape[0]):
         for y in range(shape[1]):
             for x in range(shape[2]):
-                near_cent[(z, y, x)] = [z, max(d, min(y, max_y)),
-                                           max(d, min(x, max_x))]
+                near_cent[(z, y, x)] = [z, max(hy, min(y, max_y)),
+                                           max(hx, min(x, max_x))]
     return near_cent
 
 
 def get_nearest_center(neg_index, slice_shape, submatrix_size, near_cent_dict):
     """Look up (or compute) the nearest valid centre for *neg_index*."""
-    if submatrix_size in near_cent_dict:
-        return near_cent_dict[submatrix_size][(0, *neg_index)]
+    key = _unpack_size(submatrix_size)  # normalise to tuple for caching
+    if key in near_cent_dict:
+        return near_cent_dict[key][(0, *neg_index)]
     else:
-        near_cent = nearest_center(slice_shape, submatrix_size)
-        near_cent_dict[submatrix_size] = near_cent
+        near_cent = nearest_center(slice_shape, key)
+        near_cent_dict[key] = near_cent
         return near_cent[(0, *neg_index)]
 
 
@@ -327,18 +344,19 @@ def argmin_excluding_edges(jacobian_matrix):
     return (inner_idx[0] + 1, inner_idx[1] + 1)
 
 
-def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
-                             min_window_size=5):
+def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
 
     The window is the bounding box of all pixels with Jdet <= *threshold* - *err_tol*
     that are **connected** (8-connectivity) to *center_yx*, expanded by 1 pixel on
     each side so the frozen edges sit on positive-Jdet pixels.
 
-    The size is computed so that a window centred on *center_yx* (via
-    ``nearest_center``) is guaranteed to cover the entire bounding box,
-    regardless of how off-centre the worst pixel is within the negative
-    region.  The result is always odd and at least *min_window_size*.
+    The window dimensions match the bounding box — the height and width
+    can differ, producing a rectangular window.  The bbox centre is returned
+    so callers can position the window on the region's centre (via
+    ``nearest_center``) rather than on the worst pixel, avoiding an
+    oversized window when the worst pixel is off-centre.  Each dimension
+    is at least 3.
 
     Parameters
     ----------
@@ -346,13 +364,13 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     center_yx : tuple of int
         ``(y, x)`` of the worst pixel.
     threshold, err_tol : float
-    min_window_size : int
-        Absolute minimum window size (>= 5).
 
     Returns
     -------
-    int
-        Window side length (always odd).
+    size : tuple of int
+        ``(height, width)`` — each >= 3.
+    bbox_center : tuple of int
+        ``(y, x)`` centre of the bounding box.
     """
     from scipy.ndimage import label
 
@@ -362,7 +380,7 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
 
     if region_label == 0:
         # Pixel is not negative (shouldn't happen, but be safe)
-        return min_window_size
+        return (3, 3), center_yx
 
     region_ys, region_xs = np.where(labeled == region_label)
     # Bounding box of the connected negative region + 1 pixel border,
@@ -373,36 +391,30 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     x_min = max(int(region_xs.min()) - 1, 0)
     x_max = min(int(region_xs.max()) + 1, W - 1)
 
-    # Compute the maximum distance from the worst pixel to any bbox edge.
-    # A window of size 2*d_needed+1 centred on center_yx is guaranteed to
-    # cover [y_min..y_max] × [x_min..x_max] because d >= d_needed on each
-    # side.
-    d_needed = max(
-        center_yx[0] - y_min,
-        y_max - center_yx[0],
-        center_yx[1] - x_min,
-        x_max - center_yx[1],
-    )
-    side = 2 * d_needed + 1
-    side = max(side, min_window_size)
-    if side % 2 == 0:
-        side += 1
+    # Rectangular window matching the bounding box (floor 3 per dim).
+    height = max(y_max - y_min + 1, 3)
+    width = max(x_max - x_min + 1, 3)
 
-    return side
+    # Round centre UP so that the window [cy - hy, cy + hy_hi) aligns with the
+    # bbox.  hy = height // 2 rounds down, so the window extends further in the
+    # +y / +x direction.  Rounding the centre up compensates for this.
+    bbox_center = ((y_min + y_max + 1) // 2, (x_min + x_max + 1) // 2)
+    return (height, width), bbox_center
 
 
 def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_tol):
     """Return True if the frozen edges of the window have positive Jdet.
 
-    Checks the outer ring of the ``submatrix_size`` window centred at
-    ``(cy, cx)``.  If any edge pixel has Jdet <= threshold - err_tol,
-    the optimiser's frozen-edge constraint would be infeasible, so the
-    caller should grow the window instead of running the optimiser.
+    Checks the outer ring of the window centred at ``(cy, cx)``.
+    If any edge pixel has Jdet <= threshold - err_tol, the optimiser's
+    frozen-edge constraint would be infeasible, so the caller should
+    grow the window instead of running the optimiser.
     """
-    d = submatrix_size // 2
-    d_hi = submatrix_size - d
-    y0, y1 = cy - d, cy + d_hi - 1
-    x0, x1 = cx - d, cx + d_hi - 1
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    y0, y1 = cy - hy, cy + hy_hi - 1
+    x0, x1 = cx - hx, cx + hx_hi - 1
     edge_vals = np.concatenate([
         jacobian_matrix[0, y0, x0:x1 + 1].ravel(),
         jacobian_matrix[0, y1, x0:x1 + 1].ravel(),
@@ -413,11 +425,12 @@ def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_
 
 
 def get_phi_sub_flat(phi, cz, cy, cx, shape, submatrix_size):
-    """Extract and flatten a square sub-window of *phi* around (cy, cx)."""
-    d = submatrix_size // 2
-    d_hi = submatrix_size - d
-    phix = phi[1, cy - d:cy + d_hi, cx - d:cx + d_hi]
-    phiy = phi[0, cy - d:cy + d_hi, cx - d:cx + d_hi]
+    """Extract and flatten a rectangular sub-window of *phi* around (cy, cx)."""
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    phix = phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
+    phiy = phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
     return np.concatenate([phix.flatten(), phiy.flatten()])
 
 
@@ -461,15 +474,16 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
         ))
 
     if exclude_bounds:
-        edge_mask = np.zeros((submatrix_size, submatrix_size), dtype=bool)
+        sy, sx = _unpack_size(submatrix_size)
+        edge_mask = np.zeros((sy, sx), dtype=bool)
         edge_mask[[0, -1], :] = True
         edge_mask[:, [0, -1]] = True
 
         edge_indices = np.argwhere(edge_mask)
         fixed_indices = []
-        y_offset_sub = submatrix_size * submatrix_size
+        y_offset_sub = sy * sx
         for y, x in edge_indices:
-            idx = y * submatrix_size + x
+            idx = y * sx + x
             fixed_indices.extend([idx, idx + y_offset_sub])
 
         fixed_values = phi_sub_flat[fixed_indices]
@@ -507,8 +521,33 @@ def _init_phi(deformation_i):
     return phi, phi_init, H, W
 
 
+def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
+                    num_neg_jac, min_jdet_list, error_list=None):
+    """Recompute Jacobian/quality matrices and append to accumulator lists.
+
+    Parameters
+    ----------
+    error_list : list or None
+        When not ``None``, the L2 error is appended.
+
+    Returns
+    -------
+    jacobian_matrix, quality_matrix, cur_neg, cur_min
+    """
+    jac = jacobian_det2D(phi)
+    use_q = enforce_shoelace or enforce_injectivity
+    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity) if use_q else jac
+    cur_neg = int((jac <= 0).sum())
+    cur_min = float(jac.min())
+    num_neg_jac.append(cur_neg)
+    min_jdet_list.append(cur_min)
+    if error_list is not None:
+        error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
+    return jac, qm, cur_neg, cur_min
+
+
 def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
-                  max_per_index_iter, max_minimize_iter, min_window_size,
+                  max_per_index_iter, max_minimize_iter,
                   H, W, elapsed, final_err, init_neg, final_neg, init_min,
                   final_min, iteration, phi, error_list, num_neg_jac,
                   iter_times, min_jdet_list, window_counts,
@@ -523,7 +562,6 @@ def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
     output_text += f"\tMax iterations: {max_iterations}\n"
     output_text += f"\tMax per index iterations: {max_per_index_iter}\n"
     output_text += f"\tMax minimize iterations: {max_minimize_iter}\n"
-    output_text += f"\tMin window size: {min_window_size}\n"
     if extra_settings:
         output_text += extra_settings
     output_text += "\nResults:\n"
@@ -548,9 +586,64 @@ def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
     np.save(save_path + "/min_jdet_list.npy", min_jdet_list)
 
     with open(save_path + "/window_counts.csv", "w") as f:
-        f.write("window_size,count\n")
+        f.write("window_height,window_width,count\n")
         for ws in sorted(window_counts):
-            f.write(f"{ws},{window_counts[ws]}\n")
+            sy, sx = _unpack_size(ws)
+            f.write(f"{sy},{sx},{window_counts[ws]}\n")
+
+
+# ---------------------------------------------------------------------------
+# Full-grid optimisation fallback (non-square grids)
+# ---------------------------------------------------------------------------
+def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
+                    methodName, verbose, enforce_shoelace, enforce_injectivity):
+    """Optimize the entire H×W grid at once.
+
+    Used as a fallback when the square sub-window (capped at
+    ``min(H, W)``) cannot cover the full grid.  Constraints are applied
+    to **all** pixels (including boundary), matching the behaviour of
+    windowed optimisations whose windows touch the grid edge.
+    """
+    pixels = H * W
+    phi_flat = np.concatenate([phi[1].flatten(), phi[0].flatten()])
+    phi_init_flat = np.concatenate([phi_init[1].flatten(), phi_init[0].flatten()])
+
+    def jac_con(phi_xy):
+        dx = phi_xy[:pixels].reshape(H, W)
+        dy = phi_xy[pixels:].reshape(H, W)
+        return _numpy_jdet_2d(dy, dx).flatten()
+
+    constraints = [NonlinearConstraint(jac_con, threshold, np.inf)]
+
+    if enforce_shoelace:
+        def shoe_con(phi_xy):
+            dx = phi_xy[:pixels].reshape(H, W)
+            dy = phi_xy[pixels:].reshape(H, W)
+            return _shoelace_areas_2d(dy, dx).flatten()
+        constraints.append(NonlinearConstraint(shoe_con, threshold, np.inf))
+
+    if enforce_injectivity:
+        def inject_con(phi_xy):
+            dx = phi_xy[:pixels].reshape(H, W)
+            dy = phi_xy[pixels:].reshape(H, W)
+            h_mono, v_mono = _monotonicity_diffs_2d(dy, dx)
+            return np.concatenate([h_mono.flatten(), v_mono.flatten()])
+        constraints.append(NonlinearConstraint(inject_con, threshold, np.inf))
+
+    _log(verbose, 1,
+         f"  [full-grid] Optimizing entire {H}x{W} grid "
+         f"({2 * pixels} variables)")
+
+    result = minimize(
+        lambda phi1: objectiveEuc(phi1, phi_init_flat),
+        phi_flat,
+        constraints=constraints,
+        options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
+        method=methodName,
+    )
+
+    phi[1] = result.x[:pixels].reshape(H, W)
+    phi[0] = result.x[pixels:].reshape(H, W)
 
 
 # ---------------------------------------------------------------------------
@@ -568,7 +661,6 @@ def iterative_with_jacobians2(
     max_iterations=None,
     max_per_index_iter=None,
     max_minimize_iter=None,
-    min_window_size=None,
     enforce_shoelace=False,
     enforce_injectivity=False,
 ):
@@ -594,7 +686,7 @@ def iterative_with_jacobians2(
         Optional callback receiving ``(deformation_i, phi)``
         after each sub-optimisation.
     threshold, err_tol, max_iterations, max_per_index_iter,
-    max_minimize_iter, min_window_size :
+    max_minimize_iter :
         Override the corresponding default parameters.
     enforce_shoelace : bool
         When ``True``, the optimiser also enforces positive shoelace
@@ -615,14 +707,12 @@ def iterative_with_jacobians2(
     p = _resolve_params(threshold=threshold, err_tol=err_tol,
                         max_iterations=max_iterations,
                         max_per_index_iter=max_per_index_iter,
-                        max_minimize_iter=max_minimize_iter,
-                        min_window_size=min_window_size)
+                        max_minimize_iter=max_minimize_iter)
     threshold = p["threshold"]
     err_tol = p["err_tol"]
     max_iterations = p["max_iterations"]
     max_per_index_iter = p["max_per_index_iter"]
     max_minimize_iter = p["max_minimize_iter"]
-    min_window_size = p["min_window_size"]
 
     if verbose is True:
         verbose = 1
@@ -639,135 +729,87 @@ def iterative_with_jacobians2(
     start_time = time.time()
     phi, phi_init, H, W = _init_phi(deformation_i)
     slice_shape = (1, H, W)
-    max_window = min(H, W) - 1
+    max_window = (H, W)
     near_cent_dict = {}
 
-    _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={methodName}  |  min_window={min_window_size}")
+    _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={methodName}")
     _log(verbose, 2, f"[init] deformation_i shape: {deformation_i.shape}, phi shape: {phi.shape}")
 
-    _use_quality = enforce_shoelace or enforce_injectivity
-
     # Initial Jacobian
-    jacobian_matrix = jacobian_det2D(phi)
-    quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
-    init_neg = int((jacobian_matrix <= 0).sum())
-    init_min = float(jacobian_matrix.min())
-    min_jdet_list.append(init_min)
-    num_neg_jac.append(init_neg)
+    jacobian_matrix, quality_matrix, init_neg, init_min = _update_metrics(
+        phi, phi_init, enforce_shoelace, enforce_injectivity,
+        num_neg_jac, min_jdet_list)
 
     _log(verbose, 1, f"[init] Neg-Jdet pixels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
     while iteration < max_iterations and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any():
         iteration += 1
-        window_reached_max = False
 
         neg_index_tuple = argmin_excluding_edges(quality_matrix)
 
-        submatrix_size = min_window_size
+        # Snapshot bookkeeping — capture pre-step state and initial window.
+        _show_snap = plot_every and iteration % plot_every == 0
+        if _show_snap:
+            _snap_before = jacobian_matrix.copy()
+            _init_size, _init_center = neg_jdet_bounding_window(
+                quality_matrix, neg_index_tuple, threshold, err_tol)
+            _init_size = (min(_init_size[0], H), min(_init_size[1], W))
+            cz0, cy0, cx0 = get_nearest_center(
+                _init_center, slice_shape, _init_size, near_cent_dict)
+            edge0, _ = _edge_flags(cy0, cx0, _init_size,
+                                   slice_shape, max_window)
+            _snap_windows = [(cy0, cx0, _init_size, edge0)]
 
-        per_index_iter = 0
-
-        while (
-            per_index_iter == 0
-            or (
-                (not window_reached_max)
-                and per_index_iter < max_per_index_iter
-                and (quality_matrix[0, cy - d:cy + d_hi,
-                                     cx - d:cx + d_hi] < threshold - err_tol).any()
-            )
-        ):
-            per_index_iter += 1
-
-            window_counts[submatrix_size] += 1
-
-            cz, cy, cx = get_nearest_center(neg_index_tuple, slice_shape, submatrix_size, near_cent_dict)
-            d = submatrix_size // 2
-            d_hi = submatrix_size - d
-
-            phi_init_sub_flat = get_phi_sub_flat(phi_init, cz, cy, cx, slice_shape, submatrix_size)
-            phi_sub_flat = get_phi_sub_flat(phi, cz, cy, cx, slice_shape, submatrix_size)
-
-            if per_index_iter > 1:
-                _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {submatrix_size}x{submatrix_size} (sub-iter {per_index_iter})")
-
-            # Build constraints and edge flags
-            is_at_edge, w_max = _edge_flags(cy, cx, submatrix_size, slice_shape, max_window)
-            window_reached_max = window_reached_max or w_max
-
-            _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}")
-
-            # If frozen edges contain negative Jdet the constraint is likely
-            # infeasible — skip the expensive optimizer and grow immediately.
-            if (not is_at_edge and not window_reached_max
-                    and not _frozen_edges_clean(quality_matrix, cy, cx,
-                                               submatrix_size, threshold, err_tol)):
-                _log(verbose, 2, f"  [skip] Frozen edges have neg Jdet at win {submatrix_size} — growing")
-                if submatrix_size < max_window:
-                    submatrix_size += 2
-                    submatrix_size = min(submatrix_size, max_window)
-                continue
-
-            constraints = _build_constraints(
-                phi_sub_flat, submatrix_size, is_at_edge, window_reached_max, threshold,
+        # Delegate to shared serial inner loop
+        jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx) = \
+            _serial_fix_pixel(
+                neg_index_tuple, phi, phi_init, jacobian_matrix,
+                slice_shape, near_cent_dict, window_counts,
+                max_per_index_iter, max_minimize_iter,
+                max_window, threshold, err_tol, methodName, verbose,
+                error_list, num_neg_jac, min_jdet_list, iter_times,
                 enforce_shoelace=enforce_shoelace,
                 enforce_injectivity=enforce_injectivity,
+                plot_callback=plot_callback,
+                deformation_i=deformation_i,
             )
 
-            # Run optimisation
+        # Side-by-side before/after snapshot for this iteration.
+        if _show_snap:
+            from modules.dvfviz import plot_step_snapshot
+            plot_step_snapshot(jacobian_matrix, iteration,
+                               int((jacobian_matrix <= 0).sum()),
+                               float(jacobian_matrix.min()),
+                               windows=_snap_windows,
+                               jacobian_before=_snap_before)
+
+        # Full-grid fallback for non-square grids where the window
+        # can't cover the entire grid.
+        _sub_sy, _sub_sx = _unpack_size(submatrix_size)
+        if (_sub_sy >= H and _sub_sx >= W
+                and H != W
+                and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
             iter_start = time.time()
-            result = minimize(
-                lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
-                phi_sub_flat,
-                constraints=constraints,
-                options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
-                method=methodName,
-            )
-            iter_end = time.time()
-            iter_times.append(iter_end - iter_start)
+            _full_grid_step(phi, phi_init, H, W, threshold,
+                            max_minimize_iter, methodName, verbose,
+                            enforce_shoelace, enforce_injectivity)
+            iter_times.append(time.time() - iter_start)
 
-            _apply_result(phi, result.x, cy, cx, submatrix_size)
-
-            jacobian_matrix = jacobian_det2D(phi)
-            quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
-            cur_neg = int((jacobian_matrix <= 0).sum())
-            cur_min = float(jacobian_matrix.min())
-            num_neg_jac.append(cur_neg)
-            min_jdet_list.append(cur_min)
-
-            _log(verbose, 2, f"  [sub-Jdet] centre ({cy},{cx}) window {submatrix_size}x{submatrix_size}:\n"
-                 + np.array2string(
-                     jacobian_matrix[0, cy - d:cy + d_hi, cx - d:cx + d_hi],
-                     precision=4, suppress_small=True))
-
-            if plot_callback is not None:
-                plot_callback(deformation_i, phi)
-
-            error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
-
-            if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
-                _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
-                break
-
-            # Grow window for next sub-iteration
-            if submatrix_size < max_window:
-                submatrix_size += 2
-                submatrix_size = min(submatrix_size, max_window)
+            jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
+                phi, phi_init, enforce_shoelace, enforce_injectivity,
+                num_neg_jac, min_jdet_list, error_list)
 
         # One-line progress per outer iteration
         cur_neg = int((jacobian_matrix <= 0).sum())
         cur_min = float(jacobian_matrix.min())
         cur_err = error_list[-1] if error_list else 0.0
+        _sy, _sx = _unpack_size(submatrix_size)
         _log(verbose, 1,
              f"[iter {iteration:4d}]  fix ({neg_index_tuple[0]:3d},{neg_index_tuple[1]:3d})  "
-             f"win {submatrix_size:3d}  neg_jdet {cur_neg:5d}  "
+             f"win {_sy}x{_sx}  neg_jdet {cur_neg:5d}  "
              f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
              f"sub-iters {per_index_iter}")
-
-        # Per-step snapshot
-        if plot_every and iteration % plot_every == 0:
-            from modules.dvfviz import plot_step_snapshot
-            plot_step_snapshot(jacobian_matrix, iteration, cur_neg, cur_min)
 
         if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
             _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
@@ -798,7 +840,7 @@ def iterative_with_jacobians2(
         _save_results(
             save_path, method=methodName, threshold=threshold, err_tol=err_tol,
             max_iterations=max_iterations, max_per_index_iter=max_per_index_iter,
-            max_minimize_iter=max_minimize_iter, min_window_size=min_window_size,
+            max_minimize_iter=max_minimize_iter,
             H=H, W=W, elapsed=elapsed, final_err=final_err,
             init_neg=init_neg, final_neg=final_neg, init_min=init_min,
             final_min=final_min, iteration=iteration, phi=phi,
@@ -862,9 +904,10 @@ def _find_negative_pixels(jacobian_matrix, threshold, err_tol):
 
 
 def _window_bounds(cy, cx, submatrix_size):
-    d = submatrix_size // 2
-    d_hi = submatrix_size - d
-    return (cy - d, cy + d_hi - 1, cx - d, cx + d_hi - 1)
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    return (cy - hy, cy + hy_hi - 1, cx - hx, cx + hx_hi - 1)
 
 
 def _windows_overlap(b1, b2):
@@ -872,14 +915,15 @@ def _windows_overlap(b1, b2):
 
 
 def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
-                             near_cent_dict):
+                             near_cent_dict, pixel_bbox_centers=None):
     """Greedily select non-overlapping windows (each pixel has its own size)."""
     selected = []
     used_bounds = []
 
     for neg_idx in neg_pixels:
         ws = pixel_window_sizes[neg_idx]
-        cz, cy, cx = get_nearest_center(neg_idx, slice_shape, ws, near_cent_dict)
+        center_key = (pixel_bbox_centers or {}).get(neg_idx, neg_idx)
+        cz, cy, cx = get_nearest_center(center_key, slice_shape, ws, near_cent_dict)
         bounds = _window_bounds(cy, cx, ws)
 
         overlaps = False
@@ -897,27 +941,30 @@ def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
 
 def _apply_result(phi, result_x, cy, cx, sub_size):
     """Write optimised sub-window back into *phi*."""
-    d = sub_size // 2
-    d_hi = sub_size - d
-    pixels = sub_size * sub_size
-    phi[1, cy - d:cy + d_hi, cx - d:cx + d_hi] = \
-        result_x[:pixels].reshape(sub_size, sub_size)
-    phi[0, cy - d:cy + d_hi, cx - d:cx + d_hi] = \
-        result_x[pixels:].reshape(sub_size, sub_size)
+    sy, sx = _unpack_size(sub_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    pixels = sy * sx
+    phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+        result_x[:pixels].reshape(sy, sx)
+    phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+        result_x[pixels:].reshape(sy, sx)
 
 
 def _edge_flags(cy, cx, submatrix_size, slice_shape, max_window):
     """Return (is_at_edge, window_reached_max) for a window."""
-    d = submatrix_size // 2
-    d_hi = submatrix_size - d
-    start_y = cy - d
-    end_y = cy + d_hi - 1          # inclusive last pixel
-    start_x = cx - d
-    end_x = cx + d_hi - 1
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    start_y = cy - hy
+    end_y = cy + hy_hi - 1          # inclusive last pixel
+    start_x = cx - hx
+    end_x = cx + hx_hi - 1
     max_y, max_x = slice_shape[1:]
     is_at_edge = (start_y == 0 or end_y >= max_y - 1
                   or start_x == 0 or end_x >= max_x - 1)
-    window_reached_max = submatrix_size >= max_window
+    max_sy, max_sx = _unpack_size(max_window)
+    window_reached_max = sy >= max_sy and sx >= max_sx
     return is_at_edge, window_reached_max
 
 
@@ -927,27 +974,34 @@ def _edge_flags(cy, cx, submatrix_size, slice_shape, max_window):
 def _serial_fix_pixel(
     neg_index_tuple, phi, phi_init, jacobian_matrix,
     slice_shape, near_cent_dict, window_counts,
-    min_window_size, max_per_index_iter, max_minimize_iter,
+    max_per_index_iter, max_minimize_iter,
     max_window, threshold, err_tol, methodName, verbose,
     error_list, num_neg_jac, min_jdet_list, iter_times,
     enforce_shoelace=False,
     enforce_injectivity=False,
+    plot_callback=None,
+    deformation_i=None,
 ):
     """Fix a single pixel using the serial adaptive-window inner loop.
 
-    Mirrors the inner ``while`` loop of ``iterative_with_jacobians2``
-    exactly: start from the bounding-box-derived window, then grow by 2
-    each sub-iteration until the local region is clean or the window
-    hits the grid boundary.
+    Start from the bounding-box-derived window, then grow by 2 each
+    sub-iteration until the local region is clean or the window hits the
+    grid boundary.
 
-    Mutates *phi*, *jacobian_matrix*, and the accumulator lists in-place,
-    returns the updated (quality_matrix, submatrix_size, per_index_iter).
+    Mutates *phi* and the accumulator lists in-place.
+
+    Returns
+    -------
+    jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
     """
-    # Adaptive starting size from negative-Jdet bounding box
-    submatrix_size = min_window_size
-
     _use_quality = enforce_shoelace or enforce_injectivity
     quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
+
+    # Adaptive starting size from negative-Jdet bounding box
+    submatrix_size, bbox_center = neg_jdet_bounding_window(
+        quality_matrix, neg_index_tuple, threshold, err_tol)
+    max_sy, max_sx = _unpack_size(max_window)
+    submatrix_size = (min(submatrix_size[0], max_sy), min(submatrix_size[1], max_sx))
 
     per_index_iter = 0
     window_reached_max = False
@@ -958,33 +1012,40 @@ def _serial_fix_pixel(
             (not window_reached_max)
             and per_index_iter < max_per_index_iter
             and (quality_matrix[0,
-                    cy - d:cy + d_hi,
-                    cx - d:cx + d_hi]
+                    cy - hy:cy + hy_hi,
+                    cx - hx:cx + hx_hi]
                  < threshold - err_tol).any()
         )
     ):
         per_index_iter += 1
 
-        window_counts[submatrix_size] += 1
+        window_counts[_unpack_size(submatrix_size)] += 1
 
         cz, cy, cx = get_nearest_center(
-            neg_index_tuple, slice_shape, submatrix_size, near_cent_dict)
-        d = submatrix_size // 2
-        d_hi = submatrix_size - d
+            bbox_center, slice_shape, submatrix_size, near_cent_dict)
+        sy, sx = _unpack_size(submatrix_size)
+        hy, hx = sy // 2, sx // 2
+        hy_hi, hx_hi = sy - hy, sx - hx
 
         phi_init_sub_flat = get_phi_sub_flat(phi_init, cz, cy, cx, slice_shape, submatrix_size)
         phi_sub_flat = get_phi_sub_flat(phi, cz, cy, cx, slice_shape, submatrix_size)
 
+        if per_index_iter > 1:
+            _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (sub-iter {per_index_iter})")
+
         is_at_edge, w_max = _edge_flags(cy, cx, submatrix_size, slice_shape, max_window)
         window_reached_max = window_reached_max or w_max
+
+        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}")
 
         # Skip optimizer if frozen edges have negative Jdet (likely infeasible)
         if (not is_at_edge and not window_reached_max
                 and not _frozen_edges_clean(quality_matrix, cy, cx,
                                            submatrix_size, threshold, err_tol)):
-            if submatrix_size < max_window:
-                submatrix_size += 2
-                submatrix_size = min(submatrix_size, max_window)
+            _log(verbose, 2, f"  [skip] Frozen edges have neg Jdet at win {sy}x{sx} — growing")
+            sy, sx = _unpack_size(submatrix_size)
+            if sy < max_sy or sx < max_sx:
+                submatrix_size = (min(sy + 2, max_sy), min(sx + 2, max_sx))
             continue
 
         # Run optimisation directly — no process pool
@@ -999,25 +1060,29 @@ def _serial_fix_pixel(
 
         _apply_result(phi, result_x, cy, cx, submatrix_size)
 
-        jacobian_matrix = jacobian_det2D(phi)
-        quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
-        cur_neg = int((jacobian_matrix <= 0).sum())
-        cur_min = float(jacobian_matrix.min())
-        num_neg_jac.append(cur_neg)
-        min_jdet_list.append(cur_min)
-        error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
+        jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
+            phi, phi_init, enforce_shoelace, enforce_injectivity,
+            num_neg_jac, min_jdet_list, error_list)
+
+        _log(verbose, 2, f"  [sub-Jdet] centre ({cy},{cx}) window {sy}x{sx}:\n"
+             + np.array2string(
+                 jacobian_matrix[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi],
+                 precision=4, suppress_small=True))
+
+        if plot_callback is not None:
+            plot_callback(deformation_i, phi)
 
         if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
             break
 
         # Grow window for next sub-iteration
-        if submatrix_size < max_window:
-            submatrix_size += 2
-            submatrix_size = min(submatrix_size, max_window)
+        sy, sx = _unpack_size(submatrix_size)
+        if sy < max_sy or sx < max_sx:
+            submatrix_size = (min(sy + 2, max_sy), min(sx + 2, max_sx))
         else:
             window_reached_max = True
 
-    return quality_matrix, submatrix_size, per_index_iter
+    return jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
 
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1099,6 @@ def iterative_parallel(
     max_iterations=None,
     max_per_index_iter=None,
     max_minimize_iter=None,
-    min_window_size=None,
     max_workers=None,
     enforce_shoelace=False,
     enforce_injectivity=False,
@@ -1064,14 +1128,12 @@ def iterative_parallel(
     p = _resolve_params(threshold=threshold, err_tol=err_tol,
                         max_iterations=max_iterations,
                         max_per_index_iter=max_per_index_iter,
-                        max_minimize_iter=max_minimize_iter,
-                        min_window_size=min_window_size)
+                        max_minimize_iter=max_minimize_iter)
     threshold = p["threshold"]
     err_tol = p["err_tol"]
     max_iterations = p["max_iterations"]
     max_per_index_iter = p["max_per_index_iter"]
     max_minimize_iter = p["max_minimize_iter"]
-    min_window_size = p["min_window_size"]
 
     if verbose is True:
         verbose = 1
@@ -1091,31 +1153,30 @@ def iterative_parallel(
     start_time = time.time()
     phi, phi_init, H, W = _init_phi(deformation_i)
     slice_shape = (1, H, W)
-    max_window = min(H, W) - 1
+    max_window = (H, W)
     near_cent_dict = {}
 
     _log(verbose, 1,
          f"[init] Grid {H}x{W}  |  threshold={threshold}  "
-         f"|  method={methodName}  |  workers={max_workers}  |  min_window={min_window_size}")
+         f"|  method={methodName}  |  workers={max_workers}")
 
-    _use_quality = enforce_shoelace or enforce_injectivity
-
-    jacobian_matrix = jacobian_det2D(phi)
-    quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
-    init_neg = int((jacobian_matrix <= 0).sum())
-    init_min = float(jacobian_matrix.min())
-    min_jdet_list.append(init_min)
-    num_neg_jac.append(init_neg)
+    jacobian_matrix, quality_matrix, init_neg, init_min = _update_metrics(
+        phi, phi_init, enforce_shoelace, enforce_injectivity,
+        num_neg_jac, min_jdet_list)
 
     _log(verbose, 1,
          f"[init] Neg-Jdet pixels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     # Per-pixel window size tracker for parallel batches
     pixel_window_sizes = {}
+    pixel_bbox_centers = {}
 
     iteration = 0
     serial_iters = 0
     parallel_iters = 0
+    global_min_window = (3, 3)
+    prev_neg = init_neg
+    attempted_pixels = set()  # pixels attempted in the last batch
     executor = None  # lazy — only created if we actually need parallelism
 
     try:
@@ -1129,26 +1190,50 @@ def iterative_parallel(
 
             # Assign / grow window sizes for batching decision
             current_neg_set = set(neg_pixels)
-            pixel_window_sizes = {
-                k: v for k, v in pixel_window_sizes.items()
-                if k in current_neg_set
-            }
+            new_window_sizes = {}
+            new_bbox_centers = {}
             for px in neg_pixels:
-                if px in pixel_window_sizes:
-                    if pixel_window_sizes[px] < max_window:
-                        pixel_window_sizes[px] += 2
+                # Always recompute bounding box for current Jacobian state
+                bbox_size, bbox_center = neg_jdet_bounding_window(
+                    quality_matrix, px, threshold, err_tol
+                )
+                bsy, bsx = _unpack_size(bbox_size)
+                max_sy, max_sx = _unpack_size(max_window)
+                bsy = min(max(bsy, 3), max_sy)
+                bsx = min(max(bsx, 3), max_sx)
+                bbox_size = (bsy, bsx)
+                new_bbox_centers[px] = bbox_center
+
+                if px in attempted_pixels and px in pixel_window_sizes:
+                    # Was attempted last iteration but still negative → grow
+                    old_sy, old_sx = _unpack_size(pixel_window_sizes[px])
+                    new_sy = min(max(bsy, old_sy + 2), max_sy)
+                    new_sx = min(max(bsx, old_sx + 2), max_sx)
+                    new_window_sizes[px] = (new_sy, new_sx)
                 else:
-                    # Adaptive starting size from bounding box
-                    bbox_size = neg_jdet_bounding_window(
-                        quality_matrix, px, threshold, err_tol, min_window_size
-                    )
-                    pixel_window_sizes[px] = bbox_size
-                pixel_window_sizes[px] = min(pixel_window_sizes[px], max_window)
+                    new_window_sizes[px] = bbox_size
+
+                gsy, gsx = _unpack_size(global_min_window)
+                ws_sy, ws_sx = _unpack_size(new_window_sizes[px])
+                new_window_sizes[px] = (max(ws_sy, gsy), max(ws_sx, gsx))
+            pixel_window_sizes = new_window_sizes
+            pixel_bbox_centers = new_bbox_centers
 
             # Select non-overlapping batch
             batch = _select_non_overlapping(
-                neg_pixels, pixel_window_sizes, slice_shape, near_cent_dict
+                neg_pixels, pixel_window_sizes, slice_shape, near_cent_dict,
+                pixel_bbox_centers=pixel_bbox_centers,
             )
+
+            # Snapshot bookkeeping — save pre-step state for side-by-side.
+            _show_snap = plot_every and iteration % plot_every == 0
+            if _show_snap:
+                _snap_before = jacobian_matrix.copy()
+                _snap_windows = []
+                for _, (_, b_cy, b_cx), b_sz in batch:
+                    b_edge, _ = _edge_flags(b_cy, b_cx, b_sz,
+                                            slice_shape, max_window)
+                    _snap_windows.append((b_cy, b_cx, b_sz, b_edge))
 
             if len(batch) <= 1:
                 # ──────────────────────────────────────────────────────
@@ -1162,25 +1247,47 @@ def iterative_parallel(
                      f"fix ({neg_idx[0]:3d},{neg_idx[1]:3d})  "
                      f"neg_pixels={len(neg_pixels)}")
 
-                quality_matrix, sub_size, sub_iters = _serial_fix_pixel(
-                    neg_idx, phi, phi_init, jacobian_matrix,
-                    slice_shape, near_cent_dict, window_counts,
-                    min_window_size, max_per_index_iter,
-                    max_minimize_iter, max_window,
-                    threshold, err_tol, methodName, verbose,
-                    error_list, num_neg_jac, min_jdet_list, iter_times,
-                    enforce_shoelace=enforce_shoelace,
-                    enforce_injectivity=enforce_injectivity,
-                )
+                jacobian_matrix, quality_matrix, sub_size, sub_iters, _final_center = \
+                    _serial_fix_pixel(
+                        neg_idx, phi, phi_init, jacobian_matrix,
+                        slice_shape, near_cent_dict, window_counts,
+                        max_per_index_iter,
+                        max_minimize_iter, max_window,
+                        threshold, err_tol, methodName, verbose,
+                        error_list, num_neg_jac, min_jdet_list, iter_times,
+                        enforce_shoelace=enforce_shoelace,
+                        enforce_injectivity=enforce_injectivity,
+                    )
 
-                jacobian_matrix = jacobian_det2D(phi)
                 cur_neg = int((jacobian_matrix <= 0).sum())
                 cur_min = float(jacobian_matrix.min())
                 cur_err = error_list[-1] if error_list else 0.0
+                _ssy, _ssx = _unpack_size(sub_size)
                 _log(verbose, 1,
                      f"         -> neg_jdet {cur_neg:5d}  "
                      f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
-                     f"win {sub_size}  sub-iters {sub_iters}")
+                     f"win {_ssy}x{_ssx}  sub-iters {sub_iters}")
+
+                # Full-grid fallback for non-square grids
+                _sub_sy, _sub_sx = _unpack_size(sub_size)
+                if (_sub_sy >= H and _sub_sx >= W
+                        and H != W
+                        and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
+                    iter_start = time.time()
+                    _full_grid_step(phi, phi_init, H, W, threshold,
+                                    max_minimize_iter, methodName, verbose,
+                                    enforce_shoelace, enforce_injectivity)
+                    iter_times.append(time.time() - iter_start)
+
+                    jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
+                        phi, phi_init, enforce_shoelace, enforce_injectivity,
+                        num_neg_jac, min_jdet_list, error_list)
+                    _log(verbose, 1,
+                         f"         -> full-grid  neg_jdet {cur_neg:5d}  "
+                         f"min_jdet {cur_min:+.6f}  L2 {error_list[-1]:.4f}")
+
+                prev_neg = cur_neg
+                attempted_pixels = {neg_idx}
 
             else:
                 # ──────────────────────────────────────────────────────
@@ -1192,15 +1299,16 @@ def iterative_parallel(
                 if executor is None:
                     executor = ProcessPoolExecutor(max_workers=max_workers)
 
-                batch_sizes = [ws for _, _, ws in batch]
+                batch_sizes = [_unpack_size(ws) for _, _, ws in batch]
+                batch_strs = [f"{sy}x{sx}" for sy, sx in batch_sizes]
                 _log(verbose, 1,
                      f"[iter {iteration:4d}]  parallel  batch={len(batch)}  "
                      f"neg_pixels={len(neg_pixels)}  "
-                     f"windows={min(batch_sizes)}-{max(batch_sizes)}")
+                     f"windows={','.join(batch_strs)}")
 
                 futures = {}
                 for neg_idx, (cz, cy, cx), sub_size in batch:
-                    window_counts[sub_size] += 1
+                    window_counts[_unpack_size(sub_size)] += 1
 
                     phi_init_sub_flat = get_phi_sub_flat(
                         phi_init, cz, cy, cx, slice_shape, sub_size)
@@ -1229,25 +1337,35 @@ def iterative_parallel(
 
                 iter_times.append(batch_time)
 
-                jacobian_matrix = jacobian_det2D(phi)
-                quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
-                cur_neg = int((jacobian_matrix <= 0).sum())
-                cur_min = float(jacobian_matrix.min())
-                num_neg_jac.append(cur_neg)
-                min_jdet_list.append(cur_min)
-                error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
+                jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
+                    phi, phi_init, enforce_shoelace, enforce_injectivity,
+                    num_neg_jac, min_jdet_list, error_list)
 
                 cur_err = error_list[-1]
                 _log(verbose, 1,
                      f"         -> neg_jdet {cur_neg:5d}  "
                      f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}")
 
-            # Per-step snapshot
-            if plot_every and iteration % plot_every == 0:
+                # Escalate global min window when parallel doesn't
+                # improve — forces larger windows and eventually serial.
+                gsy, gsx = _unpack_size(global_min_window)
+                if cur_neg >= prev_neg and (gsy < H or gsx < W):
+                    global_min_window = (min(gsy + 2, H), min(gsx + 2, W))
+                    _log(verbose, 1,
+                         f"  [escalate] parallel didn't improve "
+                         f"({prev_neg}->{cur_neg}), "
+                         f"global min window -> {global_min_window[0]}x{global_min_window[1]}")
+                prev_neg = cur_neg
+                attempted_pixels = {item[0] for item in batch}
+
+            # Side-by-side before/after snapshot for this iteration.
+            if _show_snap:
                 from modules.dvfviz import plot_step_snapshot
-                cur_neg = int((jacobian_matrix <= 0).sum())
-                cur_min = float(jacobian_matrix.min())
-                plot_step_snapshot(jacobian_matrix, iteration, cur_neg, cur_min)
+                plot_step_snapshot(jacobian_matrix, iteration,
+                                   int((jacobian_matrix <= 0).sum()),
+                                   float(jacobian_matrix.min()),
+                                   windows=_snap_windows,
+                                   jacobian_before=_snap_before)
 
             if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
                 _log(verbose, 1,
@@ -1285,7 +1403,7 @@ def iterative_parallel(
             save_path, method=f"{methodName} (hybrid parallel)",
             threshold=threshold, err_tol=err_tol,
             max_iterations=max_iterations, max_per_index_iter=max_per_index_iter,
-            max_minimize_iter=max_minimize_iter, min_window_size=min_window_size,
+            max_minimize_iter=max_minimize_iter,
             H=H, W=W, elapsed=elapsed, final_err=final_err,
             init_neg=init_neg, final_neg=final_neg, init_min=init_min,
             final_min=final_min, iteration=iteration, phi=phi,
