@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ============================================================
-echo   Deformation Field Processing - Virtual Environment Setup  
+echo   Deformation Field Processing - Virtual Environment Setup
 echo ============================================================
 echo.
 
@@ -15,8 +15,7 @@ if exist .venv (
     set /p OVERWRITE="Delete it and start fresh? [y/N]: "
     if /i not "!OVERWRITE!"=="y" (
         echo Aborted.
-        pause
-        goto :eof
+        goto :done
     )
     echo Removing existing .venv ...
     rmdir /s /q .venv
@@ -24,10 +23,10 @@ if exist .venv (
 
 echo.
 echo Creating virtual environment ...
-python -m venv .venv || (
+python -m venv .venv
+if !ERRORLEVEL! neq 0 (
     echo ERROR: python -m venv failed. Make sure Python 3.10+ is on PATH.
-    pause
-    goto :eof
+    goto :done
 )
 
 echo Upgrading pip ...
@@ -35,7 +34,8 @@ echo Upgrading pip ...
 
 echo.
 echo Installing PyTorch with CUDA 12.8 support ...
-.venv\Scripts\python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 || (
+.venv\Scripts\python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+if !ERRORLEVEL! neq 0 (
     echo WARNING: GPU install failed - falling back to CPU-only PyTorch.
     .venv\Scripts\python -m pip install torch torchvision
 )
@@ -52,26 +52,26 @@ echo     2. "Python: Select Interpreter"
 echo     3. Choose  .\.venv\Scripts\python.exe
 echo   Then select the .venv kernel in any notebook.
 echo ============================================================
-pause
-goto :eof
+goto :done
 
 :: ---- Uninstall ----
 :uninstall
 if not exist .venv (
     echo No .venv found - nothing to remove.
-    pause
-    goto :eof
+    goto :done
 )
 
 echo This will permanently delete the .venv directory.
 set /p CONFIRM="Are you sure? [y/N]: "
-if /i not "%CONFIRM%"=="y" (
+if /i not "!CONFIRM!"=="y" (
     echo Aborted.
-    goto :eof
+    goto :done
 )
 
 echo Removing .venv ...
 rmdir /s /q .venv
 echo Done - virtual environment removed.
+
+:done
+echo.
 pause
-goto :eof

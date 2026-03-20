@@ -5,6 +5,7 @@ matplotlib
 pandas
 SimpleITK
 nibabel
+ipykernel
 
 # VoxelMorph (install from GitHub — PyPI version has Python 3.11+ bug)
 # neurite is pulled automatically by voxelmorph (dev branch)
