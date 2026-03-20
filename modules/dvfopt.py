@@ -24,7 +24,7 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
-from scipy.ndimage import label, zoom
+from scipy.ndimage import zoom
 from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
 
 
@@ -47,11 +47,12 @@ def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
     -------
     ndarray of shape ``(3, 1, H, W)``
     """
-    rng = np.random.default_rng(seed)
+    if seed is not None:
+        np.random.seed(seed)
 
     C, _, H, W = shape
     assert C == 3, "DVF must have 3 channels (dz, dy, dx)"
-    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float32)
+    return np.random.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float32)
 
 
 def scale_dvf(dvf, new_size):
@@ -152,20 +153,17 @@ def jacobian_det2D(phi_xy):
     return jdet[np.newaxis, :, :]  # (1, H, W) to match existing API
 
 
-def jacobian_constraint(phi_xy, submatrix_size, freeze_mask=None):
-    """Return flattened Jacobian determinant values for optimiser constraints.
-
-    When *freeze_mask* is given, only non-frozen pixels are returned.
-    When ``None``, all pixels are returned.
-    """
+def jacobian_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
+    """Return flattened Jacobian determinant values for optimiser constraints."""
     sy, sx = _unpack_size(submatrix_size)
     pixels = sy * sx
     dx = phi_xy[:pixels].reshape((sy, sx))
     dy = phi_xy[pixels:].reshape((sy, sx))
     jdet = _numpy_jdet_2d(dy, dx)
-    if freeze_mask is not None:
-        return jdet[~freeze_mask].flatten()
-    return jdet.flatten()
+    if exclude_boundaries:
+        return jdet[1:-1, 1:-1].flatten()
+    else:
+        return jdet.flatten()
 
 
 # ---------------------------------------------------------------------------
@@ -209,24 +207,21 @@ def shoelace_det2D(phi_xy):
     return _shoelace_areas_2d(dy, dx)[np.newaxis, :, :]
 
 
-def shoelace_constraint(phi_xy, submatrix_size, freeze_mask=None):
+def shoelace_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     """Return flattened shoelace quad areas for optimiser constraints.
 
     Analogous to ``jacobian_constraint`` but checks geometric cell areas
-    instead of gradient-based Jacobian determinants.  When *freeze_mask*
-    is given, only cells where at least one corner is not frozen are
-    returned.
+    instead of gradient-based Jacobian determinants.
     """
     sy, sx = _unpack_size(submatrix_size)
     pixels = sy * sx
     dx = phi_xy[:pixels].reshape((sy, sx))
     dy = phi_xy[pixels:].reshape((sy, sx))
     areas = _shoelace_areas_2d(dy, dx)
-    if freeze_mask is not None:
-        cell_frozen = (freeze_mask[:-1, :-1] & freeze_mask[:-1, 1:]
-                       & freeze_mask[1:, :-1] & freeze_mask[1:, 1:])
-        return areas[~cell_frozen].flatten()
-    return areas.flatten()
+    if exclude_boundaries:
+        return areas[1:-1, 1:-1].flatten()
+    else:
+        return areas.flatten()
 
 
 # ---------------------------------------------------------------------------
@@ -250,31 +245,27 @@ def _monotonicity_diffs_2d(dy, dx):
     return h_mono, v_mono
 
 
-def injectivity_constraint(phi_xy, submatrix_size, freeze_mask=None):
+def injectivity_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     """Return flattened monotonicity diffs for the SLSQP injectivity constraint.
 
-    All returned values must be > threshold for monotonicity (and hence
-    global injectivity on the structured grid) to hold.  When
-    *freeze_mask* is given, only edges where at least one endpoint is
-    not frozen are returned.
+    All returned values must be > threshold for montonicity (and hence
+    global injectivity on the structured grid) to hold.
     """
     sy, sx = _unpack_size(submatrix_size)
     pixels = sy * sx
     dx = phi_xy[:pixels].reshape((sy, sx))
     dy = phi_xy[pixels:].reshape((sy, sx))
     h_mono, v_mono = _monotonicity_diffs_2d(dy, dx)
-    if freeze_mask is not None:
-        h_frozen = freeze_mask[:, :-1] & freeze_mask[:, 1:]
-        v_frozen = freeze_mask[:-1, :] & freeze_mask[1:, :]
-        h_vals = h_mono[~h_frozen].flatten()
-        v_vals = v_mono[~v_frozen].flatten()
+    if exclude_boundaries:
+        h_vals = h_mono[1:-1, 1:-1].flatten()
+        v_vals = v_mono[1:-1, 1:-1].flatten()
     else:
         h_vals = h_mono.flatten()
         v_vals = v_mono.flatten()
     return np.concatenate([h_vals, v_vals])
 
 
-def _quality_map(phi, enforce_shoelace, enforce_injectivity=False, jdet=None):
+def _quality_map(phi, enforce_shoelace, enforce_injectivity=False):
     """Per-pixel quality metric combining gradient-Jdet and optional extras.
 
     When both *enforce_shoelace* and *enforce_injectivity* are ``False``,
@@ -284,8 +275,7 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False, jdet=None):
 
     Returns shape ``(1, H, W)`` — same as ``jacobian_det2D``.
     """
-    if jdet is None:
-        jdet = jacobian_det2D(phi)
+    jdet = jacobian_det2D(phi)
     if not enforce_shoelace and not enforce_injectivity:
         return jdet
     result = jdet.copy()
@@ -320,27 +310,41 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False, jdet=None):
 # ---------------------------------------------------------------------------
 # Spatial helpers
 # ---------------------------------------------------------------------------
-def get_nearest_center(neg_index, slice_shape, submatrix_size):
-    """Compute the nearest valid sub-window centre for *neg_index* (O(1) clamp)."""
+def nearest_center(shape, submatrix_size):
+    """Build a dict mapping every (z,y,x) to the nearest valid sub-window centre."""
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
-    max_y = slice_shape[1] - sy + hy
-    max_x = slice_shape[2] - sx + hx
-    cy = max(hy, min(neg_index[0], max_y))
-    cx = max(hx, min(neg_index[1], max_x))
-    return 0, cy, cx
+    max_y = shape[1] - sy + hy
+    max_x = shape[2] - sx + hx
+    near_cent = {}
+    for z in range(shape[0]):
+        for y in range(shape[1]):
+            for x in range(shape[2]):
+                near_cent[(z, y, x)] = [z, max(hy, min(y, max_y)),
+                                           max(hx, min(x, max_x))]
+    return near_cent
 
 
-def argmin_worst_pixel(jacobian_matrix):
-    """Index of the pixel with the lowest Jacobian determinant (full grid)."""
-    full = jacobian_matrix[0]
-    flat_index = np.argmin(full)
-    idx = np.unravel_index(flat_index, full.shape)
-    return (idx[0], idx[1])
+def get_nearest_center(neg_index, slice_shape, submatrix_size, near_cent_dict):
+    """Look up (or compute) the nearest valid centre for *neg_index*."""
+    key = _unpack_size(submatrix_size)  # normalise to tuple for caching
+    if key in near_cent_dict:
+        return near_cent_dict[key][(0, *neg_index)]
+    else:
+        near_cent = nearest_center(slice_shape, key)
+        near_cent_dict[key] = near_cent
+        return near_cent[(0, *neg_index)]
 
 
-def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
-                             labeled_array=None):
+def argmin_excluding_edges(jacobian_matrix):
+    """Index of the pixel with the lowest Jacobian determinant, excluding edges."""
+    inner = jacobian_matrix[0, 1:-1, 1:-1]
+    flat_index = np.argmin(inner)
+    inner_idx = np.unravel_index(flat_index, inner.shape)
+    return (inner_idx[0] + 1, inner_idx[1] + 1)
+
+
+def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
 
     The window is the bounding box of all pixels with Jdet <= *threshold* - *err_tol*
@@ -350,7 +354,7 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     The window dimensions match the bounding box — the height and width
     can differ, producing a rectangular window.  The bbox centre is returned
     so callers can position the window on the region's centre (via
-    ``get_nearest_center``) rather than on the worst pixel, avoiding an
+    ``nearest_center``) rather than on the worst pixel, avoiding an
     oversized window when the worst pixel is off-centre.  Each dimension
     is at least 3.
 
@@ -360,9 +364,6 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     center_yx : tuple of int
         ``(y, x)`` of the worst pixel.
     threshold, err_tol : float
-    labeled_array : ndarray or None
-        Pre-computed connected-component labels from ``scipy.ndimage.label``.
-        When ``None``, labels are computed from the negative mask.
 
     Returns
     -------
@@ -371,16 +372,17 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     bbox_center : tuple of int
         ``(y, x)`` centre of the bounding box.
     """
-    if labeled_array is None:
-        neg_mask = jacobian_matrix[0] <= threshold - err_tol
-        labeled_array, _ = label(neg_mask)
-    region_label = labeled_array[center_yx[0], center_yx[1]]
+    from scipy.ndimage import label
+
+    neg_mask = jacobian_matrix[0] <= threshold - err_tol
+    labeled, _ = label(neg_mask)  # 8-connectivity is the scipy default via structure
+    region_label = labeled[center_yx[0], center_yx[1]]
 
     if region_label == 0:
         # Pixel is not negative (shouldn't happen, but be safe)
         return (3, 3), center_yx
 
-    region_ys, region_xs = np.where(labeled_array == region_label)
+    region_ys, region_xs = np.where(labeled == region_label)
     # Bounding box of the connected negative region + 1 pixel border,
     # clamped to the grid so edge-touching regions don't go out of bounds.
     H, W = jacobian_matrix.shape[1:]
@@ -400,47 +402,26 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     return (height, width), bbox_center
 
 
-def _frozen_boundary_mask(cy, cx, submatrix_size, slice_shape):
-    """Boolean mask of submatrix boundary pixels that should be frozen.
+def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_tol):
+    """Return True if the frozen edges of the window have positive Jdet.
 
-    Boundary pixels on the *grid* edge are NOT frozen (they have no
-    neighbours outside the grid).  All other boundary pixels ARE frozen
-    so the optimiser cannot displace negativity outside the window.
+    Checks the outer ring of the window centred at ``(cy, cx)``.
+    If any edge pixel has Jdet <= threshold - err_tol, the optimiser's
+    frozen-edge constraint would be infeasible, so the caller should
+    grow the window instead of running the optimiser.
     """
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
     hy_hi, hx_hi = sy - hy, sx - hx
-    start_y, end_y = cy - hy, cy + hy_hi - 1
-    start_x, end_x = cx - hx, cx + hx_hi - 1
-    H, W = slice_shape[1:]
-
-    mask = np.zeros((sy, sx), dtype=bool)
-    if start_y > 0:
-        mask[0, :] = True
-    if end_y < H - 1:
-        mask[-1, :] = True
-    if start_x > 0:
-        mask[:, 0] = True
-    if end_x < W - 1:
-        mask[:, -1] = True
-    return mask
-
-
-def _frozen_edges_clean(quality_matrix, cy, cx, submatrix_size,
-                        threshold, err_tol, freeze_mask):
-    """Return True if frozen boundary pixels have positive Jdet.
-
-    Only checks pixels marked ``True`` in *freeze_mask*.
-    If no pixels are frozen, returns ``True``.
-    """
-    if not freeze_mask.any():
-        return True
-    sy, sx = _unpack_size(submatrix_size)
-    hy, hx = sy // 2, sx // 2
-    hy_hi, hx_hi = sy - hy, sx - hx
-    sub_jdet = quality_matrix[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
-    frozen_vals = sub_jdet[freeze_mask]
-    return frozen_vals.min() > threshold - err_tol
+    y0, y1 = cy - hy, cy + hy_hi - 1
+    x0, x1 = cx - hx, cx + hx_hi - 1
+    edge_vals = np.concatenate([
+        jacobian_matrix[0, y0, x0:x1 + 1].ravel(),
+        jacobian_matrix[0, y1, x0:x1 + 1].ravel(),
+        jacobian_matrix[0, y0:y1 + 1, x0].ravel(),
+        jacobian_matrix[0, y0:y1 + 1, x1].ravel(),
+    ])
+    return edge_vals.min() > threshold - err_tol
 
 
 def get_phi_sub_flat(phi, cz, cy, cx, shape, submatrix_size):
@@ -456,44 +437,49 @@ def get_phi_sub_flat(phi, cz, cy, cx, shape, submatrix_size):
 # ---------------------------------------------------------------------------
 # Shared constraint builder
 # ---------------------------------------------------------------------------
-def _build_constraints(phi_sub_flat, submatrix_size, freeze_mask,
-                       threshold, enforce_shoelace=False,
+def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
+                       window_reached_max, threshold, enforce_shoelace=False,
                        enforce_injectivity=False):
     """Build SLSQP constraints for a sub-window optimisation.
 
-    Parameters
-    ----------
-    freeze_mask : ndarray, shape ``(sy, sx)``, dtype bool
-        Boundary pixels to freeze (equality constraint).  Computed by
-        ``_frozen_boundary_mask``.
+    Returns a list of constraint objects suitable for
+    ``scipy.optimize.minimize``.
 
-    The Jacobian (and shoelace/injectivity) constraints exclude only
-    the frozen boundary pixels — their Jdet depends on neighbours
-    outside the window.  Grid-edge boundary pixels are NOT frozen and
-    ARE constrained, ensuring positive Jdet across the entire grid.
+    When *enforce_shoelace* is ``True``, an additional
+    ``NonlinearConstraint`` requires all shoelace quad-cell areas to
+    exceed *threshold* as well.
+
+    When *enforce_injectivity* is ``True``, an additional
+    ``NonlinearConstraint`` enforces monotonicity of deformed coordinates
+    (sufficient condition for global injectivity on structured grids).
     """
-    fm = freeze_mask  # capture for lambdas
+    exclude_bounds = not is_at_edge and not window_reached_max
+
     nlc = NonlinearConstraint(
-        lambda phi1: jacobian_constraint(phi1, submatrix_size, fm),
+        lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
         threshold, np.inf,
     )
     constraints = [nlc]
 
     if enforce_shoelace:
         constraints.append(NonlinearConstraint(
-            lambda phi1: shoelace_constraint(phi1, submatrix_size, fm),
+            lambda phi1: shoelace_constraint(phi1, submatrix_size, exclude_bounds),
             threshold, np.inf,
         ))
 
     if enforce_injectivity:
         constraints.append(NonlinearConstraint(
-            lambda phi1: injectivity_constraint(phi1, submatrix_size, fm),
+            lambda phi1: injectivity_constraint(phi1, submatrix_size, exclude_bounds),
             threshold, np.inf,
         ))
 
-    if freeze_mask.any():
+    if exclude_bounds:
         sy, sx = _unpack_size(submatrix_size)
-        edge_indices = np.argwhere(freeze_mask)
+        edge_mask = np.zeros((sy, sx), dtype=bool)
+        edge_mask[[0, -1], :] = True
+        edge_mask[:, [0, -1]] = True
+
+        edge_indices = np.argwhere(edge_mask)
         fixed_indices = []
         y_offset_sub = sy * sx
         for y, x in edge_indices:
@@ -550,7 +536,7 @@ def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
     """
     jac = jacobian_det2D(phi)
     use_q = enforce_shoelace or enforce_injectivity
-    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity, jdet=jac) if use_q else jac
+    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity) if use_q else jac
     cur_neg = int((jac <= 0).sum())
     cur_min = float(jac.min())
     num_neg_jac.append(cur_neg)
@@ -744,6 +730,7 @@ def iterative_with_jacobians2(
     phi, phi_init, H, W = _init_phi(deformation_i)
     slice_shape = (1, H, W)
     max_window = (H, W)
+    near_cent_dict = {}
 
     _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={methodName}")
     _log(verbose, 2, f"[init] deformation_i shape: {deformation_i.shape}, phi shape: {phi.shape}")
@@ -756,10 +743,10 @@ def iterative_with_jacobians2(
     _log(verbose, 1, f"[init] Neg-Jdet pixels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
-    while iteration < max_iterations and (quality_matrix[0] <= threshold - err_tol).any():
+    while iteration < max_iterations and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any():
         iteration += 1
 
-        neg_index_tuple = argmin_worst_pixel(quality_matrix)
+        neg_index_tuple = argmin_excluding_edges(quality_matrix)
 
         # Snapshot bookkeeping — capture pre-step state and initial window.
         _show_snap = plot_every and iteration % plot_every == 0
@@ -769,7 +756,7 @@ def iterative_with_jacobians2(
                 quality_matrix, neg_index_tuple, threshold, err_tol)
             _init_size = (min(_init_size[0], H), min(_init_size[1], W))
             cz0, cy0, cx0 = get_nearest_center(
-                _init_center, slice_shape, _init_size)
+                _init_center, slice_shape, _init_size, near_cent_dict)
             edge0, _ = _edge_flags(cy0, cx0, _init_size,
                                    slice_shape, max_window)
             _snap_windows = [(cy0, cx0, _init_size, edge0)]
@@ -778,7 +765,7 @@ def iterative_with_jacobians2(
         jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx) = \
             _serial_fix_pixel(
                 neg_index_tuple, phi, phi_init, jacobian_matrix,
-                slice_shape, window_counts,
+                slice_shape, near_cent_dict, window_counts,
                 max_per_index_iter, max_minimize_iter,
                 max_window, threshold, err_tol, methodName, verbose,
                 error_list, num_neg_jac, min_jdet_list, iter_times,
@@ -802,7 +789,7 @@ def iterative_with_jacobians2(
         _sub_sy, _sub_sx = _unpack_size(submatrix_size)
         if (_sub_sy >= H and _sub_sx >= W
                 and H != W
-                and (quality_matrix[0] <= threshold - err_tol).any()):
+                and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
             iter_start = time.time()
             _full_grid_step(phi, phi_init, H, W, threshold,
                             max_minimize_iter, methodName, verbose,
@@ -824,7 +811,7 @@ def iterative_with_jacobians2(
              f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
              f"sub-iters {per_index_iter}")
 
-        if float(quality_matrix[0].min()) > threshold - err_tol:
+        if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
             _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
             break
 
@@ -876,7 +863,8 @@ def _optimize_single_window(
     phi_sub_flat,
     phi_init_sub_flat,
     submatrix_size,
-    freeze_mask,
+    is_at_edge,
+    window_reached_max,
     threshold,
     max_minimize_iter,
     method_name,
@@ -886,7 +874,7 @@ def _optimize_single_window(
     """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed)``."""
 
     constraints = _build_constraints(
-        phi_sub_flat, submatrix_size, freeze_mask, threshold,
+        phi_sub_flat, submatrix_size, is_at_edge, window_reached_max, threshold,
         enforce_shoelace=enforce_shoelace,
         enforce_injectivity=enforce_injectivity,
     )
@@ -907,12 +895,12 @@ def _optimize_single_window(
 # Parallel helpers
 # ---------------------------------------------------------------------------
 def _find_negative_pixels(jacobian_matrix, threshold, err_tol):
-    """Return list of (y, x) for all pixels below threshold, worst first."""
-    full = jacobian_matrix[0]
-    ys, xs = np.where(full <= threshold - err_tol)
-    vals = full[ys, xs]
+    """Return list of (y, x) for inner pixels below threshold, worst first."""
+    inner = jacobian_matrix[0, 1:-1, 1:-1]
+    ys, xs = np.where(inner <= threshold - err_tol)
+    vals = inner[ys, xs]
     order = np.argsort(vals)
-    return [(int(ys[i]), int(xs[i])) for i in order]
+    return [(int(ys[i]) + 1, int(xs[i]) + 1) for i in order]
 
 
 def _window_bounds(cy, cx, submatrix_size):
@@ -927,7 +915,7 @@ def _windows_overlap(b1, b2):
 
 
 def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
-                             pixel_bbox_centers=None):
+                             near_cent_dict, pixel_bbox_centers=None):
     """Greedily select non-overlapping windows (each pixel has its own size)."""
     selected = []
     used_bounds = []
@@ -935,7 +923,7 @@ def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
     for neg_idx in neg_pixels:
         ws = pixel_window_sizes[neg_idx]
         center_key = (pixel_bbox_centers or {}).get(neg_idx, neg_idx)
-        cz, cy, cx = get_nearest_center(center_key, slice_shape, ws)
+        cz, cy, cx = get_nearest_center(center_key, slice_shape, ws, near_cent_dict)
         bounds = _window_bounds(cy, cx, ws)
 
         overlaps = False
@@ -985,7 +973,7 @@ def _edge_flags(cy, cx, submatrix_size, slice_shape, max_window):
 # ---------------------------------------------------------------------------
 def _serial_fix_pixel(
     neg_index_tuple, phi, phi_init, jacobian_matrix,
-    slice_shape, window_counts,
+    slice_shape, near_cent_dict, window_counts,
     max_per_index_iter, max_minimize_iter,
     max_window, threshold, err_tol, methodName, verbose,
     error_list, num_neg_jac, min_jdet_list, iter_times,
@@ -1018,11 +1006,23 @@ def _serial_fix_pixel(
     per_index_iter = 0
     window_reached_max = False
 
-    while per_index_iter < max_per_index_iter:
+    while (
+        per_index_iter == 0
+        or (
+            (not window_reached_max)
+            and per_index_iter < max_per_index_iter
+            and (quality_matrix[0,
+                    cy - hy:cy + hy_hi,
+                    cx - hx:cx + hx_hi]
+                 < threshold - err_tol).any()
+        )
+    ):
         per_index_iter += 1
 
+        window_counts[_unpack_size(submatrix_size)] += 1
+
         cz, cy, cx = get_nearest_center(
-            bbox_center, slice_shape, submatrix_size)
+            bbox_center, slice_shape, submatrix_size, near_cent_dict)
         sy, sx = _unpack_size(submatrix_size)
         hy, hx = sy // 2, sx // 2
         hy_hi, hx_hi = sy - hy, sx - hx
@@ -1035,26 +1035,23 @@ def _serial_fix_pixel(
 
         is_at_edge, w_max = _edge_flags(cy, cx, submatrix_size, slice_shape, max_window)
         window_reached_max = window_reached_max or w_max
-        freeze_mask = _frozen_boundary_mask(cy, cx, submatrix_size, slice_shape)
 
-        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}  frozen_pixels={int(freeze_mask.sum())}")
+        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}")
 
         # Skip optimizer if frozen edges have negative Jdet (likely infeasible)
-        if (freeze_mask.any()
+        if (not is_at_edge and not window_reached_max
                 and not _frozen_edges_clean(quality_matrix, cy, cx,
-                                           submatrix_size, threshold, err_tol,
-                                           freeze_mask)):
+                                           submatrix_size, threshold, err_tol)):
             _log(verbose, 2, f"  [skip] Frozen edges have neg Jdet at win {sy}x{sx} — growing")
+            sy, sx = _unpack_size(submatrix_size)
             if sy < max_sy or sx < max_sx:
                 submatrix_size = (min(sy + 2, max_sy), min(sx + 2, max_sx))
             continue
 
-        window_counts[_unpack_size(submatrix_size)] += 1
-
         # Run optimisation directly — no process pool
         result_x, elapsed = _optimize_single_window(
             phi_sub_flat, phi_init_sub_flat, submatrix_size,
-            freeze_mask,
+            is_at_edge, window_reached_max,
             threshold, max_minimize_iter, methodName,
             enforce_shoelace=enforce_shoelace,
             enforce_injectivity=enforce_injectivity,
@@ -1075,15 +1072,11 @@ def _serial_fix_pixel(
         if plot_callback is not None:
             plot_callback(deformation_i, phi)
 
-        if float(quality_matrix[0].min()) > threshold - err_tol:
+        if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
             break
 
-        # Check local window and grow for next sub-iteration
-        if window_reached_max:
-            break
-        if not (quality_matrix[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
-                < threshold - err_tol).any():
-            break
+        # Grow window for next sub-iteration
+        sy, sx = _unpack_size(submatrix_size)
         if sy < max_sy or sx < max_sx:
             submatrix_size = (min(sy + 2, max_sy), min(sx + 2, max_sx))
         else:
@@ -1161,6 +1154,7 @@ def iterative_parallel(
     phi, phi_init, H, W = _init_phi(deformation_i)
     slice_shape = (1, H, W)
     max_window = (H, W)
+    near_cent_dict = {}
 
     _log(verbose, 1,
          f"[init] Grid {H}x{W}  |  threshold={threshold}  "
@@ -1187,7 +1181,7 @@ def iterative_parallel(
 
     try:
         while (iteration < max_iterations
-               and (quality_matrix[0] <= threshold - err_tol).any()):
+               and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
             iteration += 1
 
             neg_pixels = _find_negative_pixels(quality_matrix, threshold, err_tol)
@@ -1198,13 +1192,10 @@ def iterative_parallel(
             current_neg_set = set(neg_pixels)
             new_window_sizes = {}
             new_bbox_centers = {}
-            neg_mask = quality_matrix[0] <= threshold - err_tol
-            labeled_array, _ = label(neg_mask)
             for px in neg_pixels:
                 # Always recompute bounding box for current Jacobian state
                 bbox_size, bbox_center = neg_jdet_bounding_window(
-                    quality_matrix, px, threshold, err_tol,
-                    labeled_array=labeled_array,
+                    quality_matrix, px, threshold, err_tol
                 )
                 bsy, bsx = _unpack_size(bbox_size)
                 max_sy, max_sx = _unpack_size(max_window)
@@ -1230,7 +1221,7 @@ def iterative_parallel(
 
             # Select non-overlapping batch
             batch = _select_non_overlapping(
-                neg_pixels, pixel_window_sizes, slice_shape,
+                neg_pixels, pixel_window_sizes, slice_shape, near_cent_dict,
                 pixel_bbox_centers=pixel_bbox_centers,
             )
 
@@ -1259,7 +1250,7 @@ def iterative_parallel(
                 jacobian_matrix, quality_matrix, sub_size, sub_iters, _final_center = \
                     _serial_fix_pixel(
                         neg_idx, phi, phi_init, jacobian_matrix,
-                        slice_shape, window_counts,
+                        slice_shape, near_cent_dict, window_counts,
                         max_per_index_iter,
                         max_minimize_iter, max_window,
                         threshold, err_tol, methodName, verbose,
@@ -1281,7 +1272,7 @@ def iterative_parallel(
                 _sub_sy, _sub_sx = _unpack_size(sub_size)
                 if (_sub_sy >= H and _sub_sx >= W
                         and H != W
-                        and (quality_matrix[0] <= threshold - err_tol).any()):
+                        and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
                     iter_start = time.time()
                     _full_grid_step(phi, phi_init, H, W, threshold,
                                     max_minimize_iter, methodName, verbose,
@@ -1324,13 +1315,13 @@ def iterative_parallel(
                     phi_sub_flat = get_phi_sub_flat(
                         phi, cz, cy, cx, slice_shape, sub_size)
 
-                    freeze_mask = _frozen_boundary_mask(
-                        cy, cx, sub_size, slice_shape)
+                    is_at_edge, window_reached_max = _edge_flags(
+                        cy, cx, sub_size, slice_shape, max_window)
 
                     fut = executor.submit(
                         _optimize_single_window,
                         phi_sub_flat, phi_init_sub_flat, sub_size,
-                        freeze_mask,
+                        is_at_edge, window_reached_max,
                         threshold, max_minimize_iter, methodName,
                         enforce_shoelace,
                         enforce_injectivity,
@@ -1376,7 +1367,7 @@ def iterative_parallel(
                                    windows=_snap_windows,
                                    jacobian_before=_snap_before)
 
-            if float(quality_matrix[0].min()) > threshold - err_tol:
+            if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
                 _log(verbose, 1,
                      f"[done] All Jdet > threshold after iter {iteration}")
                 break

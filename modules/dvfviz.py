@@ -40,7 +40,7 @@ import modules.laplacian as laplacian
 # ---------------------------------------------------------------------------
 # Shared styling constants
 # ---------------------------------------------------------------------------
-CMAP = "seismic"
+CMAP = "RdBu_r"
 INTERP = "nearest"
 QUIVER_COLOR = "#333333"
 NEG_CONTOUR_COLOR = "lime"
