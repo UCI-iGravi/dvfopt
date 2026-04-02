@@ -40,7 +40,25 @@ $$J_{\det}(\phi)(x, y) \geq \tau \quad \forall \; (x, y) \in \Omega$$
 
 where $\tau = 0.01$ is the Jacobian determinant threshold (strictly positive) and $\Omega$ is the spatial domain.
 
-The L2 norm objective ensures correction minimality — the optimizer finds the smallest displacement change that eliminates all folding.
+### Breaking it down
+
+**The objective** — $\|\phi - \phi_{\text{init}}\|_2$:
+
+- $\phi$ is the displacement field we are searching for (the corrected output).
+- $\phi_{\text{init}}$ is the original displacement field that came out of registration — the one with folding.
+- $\|\cdot\|_2$ is the L2 (Euclidean) norm: the straight-line distance between two vectors. Concretely, $\|\phi - \phi_{\text{init}}\|_2 = \sqrt{\sum_i (\phi_i - \phi_{\text{init},i})^2}$, summing over every displacement component at every pixel.
+- **Why L2?** We want the corrected field to stay as close as possible to the original. The L2 norm penalizes large deviations more than many small ones, so it favors spreading tiny adjustments across the field rather than making one big change somewhere.
+
+**The constraint** — $J_{\det}(\phi)(x, y) \geq \tau$:
+
+- $J_{\det}(\phi)(x, y)$ is the Jacobian determinant of the displacement field at pixel $(x, y)$. It measures how much the local area around that pixel stretches or shrinks (explained in the next section).
+- $\geq \tau$ means the Jacobian determinant must be at least $\tau = 0.01$ — strictly positive.
+- $\forall \; (x, y) \in \Omega$ means this must hold at **every** pixel in the domain.
+- **Why not $\geq 0$?** A threshold of exactly zero would leave the optimizer balanced on a knife-edge — any numerical rounding could push a pixel back to negative. The small positive margin ($0.01$) gives a safety buffer.
+
+**$\arg\min$:**
+
+- $\arg\min_\phi$ means "find the $\phi$ that makes the expression as small as possible." So the full statement reads: _find the displacement field $\phi$ that is closest to the original, subject to no pixel having a Jacobian determinant below 0.01._
 
 ## Jacobian Determinant
 
@@ -55,6 +73,26 @@ The Jacobian determinant is the determinant of $F$:
 $$J_{\det} = \left(1 + \frac{\partial u_x}{\partial x}\right)\left(1 + \frac{\partial u_y}{\partial y}\right) - \frac{\partial u_x}{\partial y} \cdot \frac{\partial u_y}{\partial x}$$
 
 Spatial derivatives are computed via `np.gradient` (central differences at interior pixels, one-sided at boundaries). This matches SimpleITK for interior pixels while avoiding the ~3 ms/call overhead that made SLSQP numerical gradients infeasible.
+
+#### What each piece means
+
+**$u_x$ and $u_y$** are the horizontal and vertical components of the displacement at each pixel. They say "move this pixel _this far_ in x and _this far_ in y."
+
+**$\frac{\partial u_x}{\partial x}$** is the rate of change of the x-displacement as you step one pixel to the right. If your neighbor's x-displacement is much larger than yours, this derivative is large — meaning the spacing between deformed pixels is stretching in the x-direction.
+
+**The $1 +$ terms.** With zero displacement, adjacent pixels are exactly 1 unit apart (pixel spacing). The deformation gradient captures the _total_ spacing after deformation: original spacing ($1$) plus the change from displacement ($\frac{\partial u}{\partial \cdot}$). So $1 + \frac{\partial u_x}{\partial x}$ is the deformed x-spacing in the x-direction.
+
+**Why a $2 \times 2$ matrix?** Each pixel's displacement has 2 components ($u_x, u_y$), and each can vary along 2 directions ($x, y$). The $2 \times 2$ deformation gradient $F$ captures all four combinations: how x-displacement changes in x, how x-displacement changes in y, how y-displacement changes in x, and how y-displacement changes in y.
+
+**The determinant formula** — $(1 + \frac{\partial u_x}{\partial x})(1 + \frac{\partial u_y}{\partial y}) - \frac{\partial u_x}{\partial y} \cdot \frac{\partial u_y}{\partial x}$:
+
+- The first product is the "diagonal" contribution — how much the grid stretches independently along x and y. If both are positive, the grid is locally expanding or compressing but not rotating.
+- The second product is the "off-diagonal" or shear contribution — how much each displacement component leans into the other axis. This captures rotation and skew.
+- Subtracting the shear from the diagonal gives the **signed area** of the deformed unit cell. Positive means the cell kept its orientation (no fold). Negative means it flipped — the grid crossed over itself.
+
+**Intuition:** Think of a small square of paper. Stretch it, compress it, or rotate it — $J_{\det}$ stays positive. But fold it over (flip it inside-out) and $J_{\det}$ goes negative. That fold is exactly what we need to fix.
+
+#### Interpreting the value
 
 - $J_{\det} = 1$: no deformation (identity)
 - $J_{\det} > 1$: local expansion
@@ -161,13 +199,23 @@ $$J_{\det}(\phi)(x, y) \geq 0.01 \quad \forall \; \text{interior pixels}$$
 
 Implemented as a `NonlinearConstraint` in SciPy's SLSQP. The threshold is strictly positive (not $\geq 0$) to provide a margin against numerical drift.
 
+**Why only interior pixels?** Edge pixels of the grid have one-sided finite differences (only one neighbor instead of two), making their Jacobian determinant less reliable. Constraining them would force the optimizer to satisfy a less accurate measurement. Interior pixels use symmetric central differences, giving a trustworthy value to constrain.
+
+**Why nonlinear?** The Jacobian determinant involves _products_ of displacement components (the $\frac{\partial u_x}{\partial x} \cdot \frac{\partial u_y}{\partial y}$ term), so it is a nonlinear function of the optimization variables. SLSQP handles this by locally linearizing the constraint at each iteration step.
+
 ### Frozen Edges (Linear)
 
 Edge pixels of each optimization window are fixed:
 
 $$\phi_k = \phi_{k}^{\text{init}} \quad \forall \; k \in \text{edge indices}$$
 
-Implemented as a `LinearConstraint` with a selection matrix $A$ that picks edge pixel entries from the flattened $\phi$ vector. This prevents the optimizer from shifting folding outside the window.
+Implemented as a `LinearConstraint` with a selection matrix $A$ that picks edge pixel entries from the flattened $\phi$ vector.
+
+**What this means in practice:** When we extract a small sub-window from the full field, the outermost ring of pixels in that window is "frozen" — the optimizer is not allowed to change them. Only the interior of the window is free to move.
+
+**Why freeze edges?** Without this, the optimizer could "solve" a local folding problem by pushing the bad displacement outward — making the window look clean while creating a new fold just outside it. Freezing the border forces the correction to be self-contained: the fix must happen _within_ the interior of the window.
+
+**Why linear?** Each frozen-edge constraint is just "this variable equals this constant" — that is a linear equation. Linear constraints are cheap for the optimizer to enforce (no iteration needed), and they never cause convergence issues.
 
 ### Optional: Shoelace Area
 
@@ -177,6 +225,10 @@ $$A_{\text{cell}} = \frac{1}{2}\left|(x_0 y_1 - x_1 y_0) + (x_1 y_2 - x_2 y_1) +
 
 where $(x_0, y_0), \ldots, (x_3, y_3)$ are the deformed quad vertices (TL, TR, BR, BL). Positive signed area means no geometric fold. Enabled via `enforce_shoelace=True`.
 
+**How this differs from the Jacobian constraint:** The Jacobian determinant is computed _per pixel_ using finite-difference derivatives — it is a continuous, differential measure. The shoelace area is computed _per cell_ (the quadrilateral formed by four neighboring pixels) using exact vertex positions — it is a discrete, geometric measure. A cell can have positive Jacobian at all four corners but still be geometrically folded if the quad self-intersects (a "bowtie" shape). The shoelace constraint catches these cases.
+
+**The shoelace formula itself:** Imagine walking around the four corners of the deformed cell in order (TL → TR → BR → BL). At each step, compute the cross product of consecutive vertex positions. Sum them up and divide by 2 — you get the signed area of the polygon. If the polygon is traced counterclockwise, the area is positive. If the quad folds over and you end up tracing clockwise, the area goes negative.
+
 ### Optional: Injectivity (Monotonicity)
 
 Forward-difference check ensuring the deformed grid remains monotonically ordered:
@@ -185,6 +237,14 @@ $$1 + u_x[i, j+1] - u_x[i, j] > 0 \quad \text{(horizontal)}$$
 $$1 + u_y[i+1, j] - u_y[i, j] > 0 \quad \text{(vertical)}$$
 
 This is a sufficient (but not necessary) condition for global injectivity on a structured grid with unit spacing. Enabled via `enforce_injectivity=True`.
+
+**Reading the formula:** On the original grid, adjacent pixels are 1 unit apart. After deformation, pixel $(i, j)$ moves to position $j + u_x[i, j]$ and its right neighbor moves to $j + 1 + u_x[i, j+1]$. The gap between them is:
+
+$$(j + 1 + u_x[i, j+1]) - (j + u_x[i, j]) = 1 + u_x[i, j+1] - u_x[i, j]$$
+
+If this gap is positive, the right neighbor is still to the right after deformation — no crossing. If it goes to zero or negative, the two pixels have swapped order — a fold.
+
+**Why "sufficient but not necessary"?** Monotonicity along grid rows and columns guarantees injectivity, but there exist injective (non-folding) deformations where a pixel briefly moves past a neighbor along one axis while being pulled back by displacement along the other axis. Such fields would fail the monotonicity check even though they don't actually fold. In practice this is rare, and the constraint is useful as a stronger-than-needed guarantee when desired.
 
 ## 3D Extension
 
