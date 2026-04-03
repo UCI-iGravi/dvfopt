@@ -14,6 +14,7 @@ Correct **negative Jacobian determinants** (folding) in 2D and 3D displacement f
   - [Hybrid Parallel](#hybrid-parallel-variant)
 - [Constraints](#constraints)
    - [Why Positive Jacobian Is Not Global Injectivity](#why-positive-jacobian-is-not-global-injectivity)
+   - [Optional: Injectivity — Axis-Aligned and Anti-Diagonal Monotonicity](#optional-injectivity-monotonicity)
 - [Convergence](#convergence)
   - [Constraint Convergence](#constraint-convergence)
 - [3D Extension](#3d-extension)
@@ -306,20 +307,46 @@ where $(x_0, y_0), \ldots, (x_3, y_3)$ are the deformed quad vertices (TL, TR, B
 
 ### Optional: Injectivity (Monotonicity)
 
-Forward-difference check ensuring the deformed grid remains monotonically ordered:
+Enabled via `enforce_injectivity=True`. Enforces four monotonicity conditions that together guarantee every deformed quad cell is **convex** with positive orientation — a discrete sufficient condition for global mesh injectivity.
 
-$$1 + u_x[i, j+1] - u_x[i, j] > 0 \quad \text{(horizontal)}$$
-$$1 + u_y[i+1, j] - u_y[i, j] > 0 \quad \text{(vertical)}$$
+#### Axis-aligned monotonicity (horizontal and vertical)
 
-This is a sufficient (but not necessary) condition for global injectivity on a structured grid with unit spacing. Enabled via `enforce_injectivity=True`.
+$$1 + u_x[i,\, j+1] - u_x[i,\, j] \;\geq\; \tau_{\text{inj}} \quad \text{(horizontal — same row)}$$
+$$1 + u_y[i+1,\, j] - u_y[i,\, j] \;\geq\; \tau_{\text{inj}} \quad \text{(vertical — same column)}$$
 
-**Reading the formula:** On the original grid, adjacent pixels are 1 unit apart. After deformation, pixel $(i, j)$ moves to position $j + u_x[i, j]$ and its right neighbor moves to $j + 1 + u_x[i, j+1]$. The gap between them is:
+On the original grid, adjacent pixels are 1 unit apart. After deformation, the gap between pixel $(i,j)$ and its right neighbor $(i, j+1)$ is $1 + u_x[i,j+1] - u_x[i,j]$. Requiring this to be positive keeps the neighbors in the same left-to-right order, preventing row crossings. The vertical condition does the same for columns.
 
-$$(j + 1 + u_x[i, j+1]) - (j + u_x[i, j]) = 1 + u_x[i, j+1] - u_x[i, j]$$
+#### Anti-diagonal monotonicity (per quad cell)
 
-If this gap is positive, the right neighbor is still to the right after deformation — no crossing. If it goes to zero or negative, the two pixels have swapped order — a fold.
+Axis-aligned monotonicity alone is **not sufficient** for global mesh injectivity. It constrains x-ordering within each row and y-ordering within each column independently, but it does not prevent cells from *different rows* converging into the same region under large shear — a cross-row pinch-point.
 
-**Why "sufficient but not necessary"?** Monotonicity along grid rows and columns guarantees injectivity, but there exist injective (non-folding) deformations where a pixel briefly moves past a neighbor along one axis while being pulled back by displacement along the other axis. Such fields would fail the monotonicity check even though they don't actually fold. In practice this is rare, and the constraint is useful as a stronger-than-needed guarantee when desired.
+To fix this, two additional **anti-diagonal** conditions are enforced for each quad cell $(r, c)$ with corners TL, TR, BR, BL:
+
+$$1 + u_x[r,\, c+1] - u_x[r+1,\, c] \;\geq\; \tau_{\text{inj}} \quad \text{(TR.x > BL.x)}$$
+$$1 + u_y[r+1,\, c] - u_y[r,\, c+1] \;\geq\; \tau_{\text{inj}} \quad \text{(BL.y > TR.y)}$$
+
+Reading the first condition: `TR.x = (c+1) + u_x[r, c+1]` and `BL.x = c + u_x[r+1, c]`, so `TR.x - BL.x = 1 + u_x[r,c+1] - u_x[r+1,c]`. Requiring this to be positive means the top-right corner of each deformed cell is always to the right of the bottom-left corner, keeping the quad from collapsing into a non-convex shape. Together, all four conditions guarantee each cell is a convex quadrilateral with the correct orientation.
+
+The anti-diagonal constraints also cover **sub-window boundary-adjacent cells** — cells where one vertex is a frozen boundary pixel and one vertex is a free interior pixel. Only cells where *both* vertices are frozen are excluded (two corner cells per sub-window), since those cannot be adjusted by the optimizer.
+
+#### The `injectivity_threshold` parameter
+
+The injectivity constraints use a separate lower bound $\tau_{\text{inj}}$ (controlled by `injectivity_threshold`) that can be set independently of the Jdet threshold $\tau$:
+
+```python
+phi_corr = iterative_with_jacobians2(
+    deformation,
+    enforce_injectivity=True,
+    injectivity_threshold=0.3,   # vertex-separation margin
+    threshold=0.01,              # Jdet lower bound (unchanged)
+)
+```
+
+**Why a separate threshold?** The Jdet threshold $\tau = 0.01$ is an engineering margin against numerical drift — it just needs to be small and positive. The injectivity threshold $\tau_{\text{inj}}$ controls the *minimum vertex separation* in deformed space. Each h/v/anti-diagonal condition requires adjacent deformed coordinates to be at least $\tau_{\text{inj}}$ apart. On a W-column grid, this guarantees the total deformed span across the row is at least $(W-1) \cdot \tau_{\text{inj}}$ units. With $\tau_{\text{inj}} = 0.01$, this margin is negligible and distant rows can still pinch toward the same region. Increasing $\tau_{\text{inj}}$ forces more separation and prevents distant cells from overlapping under large shear. **Recommended starting value: `injectivity_threshold=0.3`** for fields with large global displacement.
+
+When `injectivity_threshold=None` (default), it falls back to the value of `threshold`.
+
+**Why "sufficient but not necessary" for global injectivity?** All four conditions together prevent any deformed cell from becoming non-convex, which is the primary failure mode for grid self-intersection. However, they are local per-cell conditions — they do not formally prevent two cells from very distant parts of the grid from coincidentally occupying the same region under extreme global shear. The `injectivity_threshold` margin addresses this in practice. For a strict geometric ground-truth test, use the quad self-intersection check in `notebooks/test-global-folding.ipynb`.
 
 **Example result (Jacobian + Injectivity):** Top row shows Jacobian determinant before/after; bottom row shows the per-pixel worst monotonicity diff. Initially 48 pixels violate monotonicity (more than the 30 negative-Jdet pixels, since monotonicity is stricter). After correction, all diffs are positive:
 
@@ -329,12 +356,14 @@ If this gap is positive, the right neighbor is still to the right after deformat
 
 All constraint configurations applied to the same test case (`03d_20x20_crossing`, 24 crossing correspondences on a 20×20 grid):
 
-| Constraints | Neg Jdet | Neg Shoelace | Neg Mono | L2 Error | Time |
-|------------|---------|-------------|---------|---------|------|
-| Jacobian only | 30 → 0 | — | — | 7.53 | 1.2s |
-| + Shoelace | 30 → 0 | 72 → 0 | — | 6.91 | 4.2s |
-| + Injectivity | 30 → 0 | — | 48 → 0 | 7.56 | 1.5s |
-| All three | 30 → 0 | 72 → 0 | 48 → 0 | 7.56 | 3.8s |
+| Constraints | Neg Jdet | Neg Shoelace | Mono viol. | Self-intersect | L2 Error | Time |
+|------------|---------|-------------|---------|---------|---------|------|
+| Jacobian only | 30 → 0 | — | — | possible | 7.53 | 1.2s |
+| + Shoelace | 30 → 0 | 72 → 0 | — | possible | 6.91 | 4.2s |
+| + Injectivity | 30 → 0 | — | 48 → 0 | none† | 7.56 | 1.5s |
+| All three | 30 → 0 | 72 → 0 | 48 → 0 | none† | 7.56 | 3.8s |
+
+†With `injectivity_threshold=0.3`. See the [Injectivity](#optional-injectivity-monotonicity) section for details.
 
 With all constraints active, every metric is satisfied simultaneously. The L2 error varies because each constraint configuration steers the optimizer to a different feasible region:
 
@@ -435,32 +464,37 @@ Enabling `enforce_shoelace=True` adds a second `NonlinearConstraint` requiring a
 
 #### Injectivity (monotonicity): the strictest constraint
 
-Enabling `enforce_injectivity=True` adds constraints enforcing:
+Enabling `enforce_injectivity=True` adds four monotonicity conditions: horizontal (h), vertical (v), and two anti-diagonal (d1, d2) conditions per quad cell. All are linear functions of the displacement components.
 
-$$1 + u_x[i, j+1] - u_x[i, j] \geq \tau \quad \text{and} \quad 1 + u_y[i+1, j] - u_y[i, j] \geq \tau$$
+$$h:\; 1 + u_x[i,j+1] - u_x[i,j] \geq \tau_{\text{inj}}$$
+$$v:\; 1 + u_y[i+1,j] - u_y[i,j] \geq \tau_{\text{inj}}$$
+$$d_1:\; 1 + u_x[r,c+1] - u_x[r+1,c] \geq \tau_{\text{inj}} \quad \text{(TR.x > BL.x)}$$
+$$d_2:\; 1 + u_y[r+1,c] - u_y[r,c+1] \geq \tau_{\text{inj}} \quad \text{(BL.y > TR.y)}$$
 
-This is the tightest constraint available. Every injective field has positive Jacobian determinant and positive shoelace areas, but the reverse is not true — monotonicity is a strict subset. The feasible region is the smallest of all three.
+The threshold $\tau_{\text{inj}}$ is set via `injectivity_threshold` (separate from the Jdet `threshold`). This is the tightest constraint available — every globally injective field satisfies all four, but not vice versa. The feasible region is the smallest of all constraint configurations.
 
 **How it affects convergence:**
 
-- **More constraints, same smoothness.** The monotonicity differences are _linear_ functions of the displacement components (just a subtraction of neighboring values plus 1). Their gradients are constant and sparse (each constraint involves exactly two optimization variables). This means the constraint Jacobian is extremely well-conditioned — in fact, it is a constant matrix. SLSQP never struggles with these linearizations; they are exact.
-- **Tighter feasibility = harder satisfaction.** The optimizer has less room to maneuver. In fields with large displacement gradients (e.g., near sharp boundaries in medical images), monotonicity may require substantial corrections — moving multiple pixels to preserve ordering — which increases L2 error. On small windows, the correction may be infeasible entirely (there is no rearrangement of interior pixels that keeps edges frozen _and_ maintains monotonicity). Window growth handles this: with a larger window, there are more free pixels to distribute the deformation across.
-- **Infeasibility risk.** Unlike the Jacobian and shoelace constraints, monotonicity can conflict with frozen edges in tight spaces. Consider a 3×3 window where the center pixel needs to pass its neighbor — but the neighbor is frozen. No solution exists within the window. The SLSQP solver will report convergence failure for that sub-problem. The iterative algorithm handles this by growing the window (more free interior pixels) or, ultimately, falling back to full-grid optimization.
-- **Linear constraint interactions.** Since monotonicity constraints are linear and frozen-edge constraints are linear, their combined constraint set is a polyhedron (intersection of half-spaces). The Jacobian/shoelace constraints then carve out a nonlinear sub-region within that polyhedron. This layered structure is actually favorable for SLSQP: it can cheaply handle the linear constraints in the QP sub-problem and only needs to iterate on the nonlinear ones.
+- **All four conditions are linear.** Their gradients are constant sparse vectors (exactly 2 nonzero entries per constraint row). The constraint Jacobian is a constant matrix — SLSQP never needs to re-linearize it, and it is always well-conditioned. This is the most solver-friendly of the three constraint types.
+- **Boundary-adjacent coverage.** The d1/d2 constraints are enforced even at cells that touch the frozen sub-window boundary, as long as at least one vertex of the cell is free. This closes the interface gap where independently corrected sub-windows meet. Only the two corner cells with both vertices frozen are excluded per sub-window.
+- **`injectivity_threshold` governs the effective feasible region.** With `τ_inj = 0.01`, the vertex-separation margin is negligible and distant rows can still converge toward each other under large shear. With `τ_inj = 0.3`, each pair of anti-diagonal vertices must be at least 0.3 units apart in deformed space. This chains across the grid and prevents global overlap. The cost is a tighter feasible region — fields with extreme local compression may require larger windows or higher L2 error to satisfy.
+- **Infeasibility risk.** On very small windows with frozen edges, no interior rearrangement may simultaneously satisfy monotonicity in all four directions. The iterative algorithm handles this by growing the window (more free pixels) or falling back to the full-grid optimizer. Raising `injectivity_threshold` increases this risk slightly.
+- **Linear interaction with frozen edges.** Since both the monotonicity and frozen-edge constraints are linear, their combined feasible set is a polyhedron (intersection of half-spaces). SLSQP handles polyhedra exactly in the QP sub-problem. The nonlinear Jdet and shoelace constraints then carve out a nonlinear sub-region within that polyhedron — a layered structure that SLSQP handles efficiently.
 
-**In the quality map,** monotonicity diffs are spread to per-pixel values (each pixel gets the worst horizontal or vertical diff it participates in), then element-wise minimized with the Jacobian and shoelace values. This unified quality metric ensures all three types of violations are captured by the worst-first pixel targeting.
+**In the quality map,** all four monotonicity diffs (h, v, d1, d2) are spread to per-pixel values (each pixel receives the minimum diff from all cells it participates in as a vertex), then element-wise minimized with the Jacobian and shoelace values. This unified metric ensures worst-first targeting captures every violation type simultaneously.
 
 #### Combined constraints: summary
 
 | Constraint | Type | Feasible region | Impact on convergence | Failure mode |
 |-----------|------|----------------|----------------------|-------------|
-| Jacobian $\geq \tau$ | Nonlinear | Largest (no folds) | Mild — smooth, well-conditioned | Iteration limit on very large grids |
+| Jacobian $\geq \tau$ | Nonlinear | Largest (no local folds) | Mild — smooth, well-conditioned | Iteration limit on very large grids |
 | Frozen edges | Linear equality | Removes DOFs | Helps — smaller QP | None (always exact) |
 | + Shoelace $\geq \tau$ | Nonlinear | Tighter (no bowtie cells) | Moderate — may need more iterations | Rare, only at bowtie-only violations |
-| + Injectivity $\geq \tau$ | Linear | Tightest (strict ordering) | Stronger — may need larger windows | Infeasible small windows → window growth |
-| All three | Mixed | Smallest | Highest L2, slowest, most robust | Infeasible sub-windows → full-grid fallback |
+| + Injectivity h/v $\geq \tau_{\text{inj}}$ | Linear | Stricter (row/col ordering) | More iterations or larger windows | Infeasible small windows → window growth |
+| + Injectivity d1/d2 $\geq \tau_{\text{inj}}$ | Linear | Tightest (cell convexity) | Depends on `injectivity_threshold` | Large $\tau_{\text{inj}}$ → tighter, may need larger windows |
+| All three + $\tau_{\text{inj}}=0.3$ | Mixed | Smallest | Highest L2, slowest, most robust | Infeasible sub-windows → full-grid fallback |
 
-When all constraints are active, the optimizer converges to the minimum-L2 field that satisfies every condition simultaneously. Each added constraint only shrinks the feasible region, so the result is always at least as far from $\phi_{\text{init}}$ (higher L2 error) but geometrically more trustworthy.
+When all constraints are active, the optimizer converges to the minimum-L2 field satisfying every condition simultaneously. Each added constraint shrinks the feasible region, so the result is always at least as far from $\phi_{\text{init}}$ (higher L2 error) but geometrically more trustworthy. The `injectivity_threshold` parameter directly trades off L2 error against global overlap prevention: lower values (close to 0) permit tighter cell packing, higher values (up to ~0.3) prevent distant rows from pinching together at the cost of larger displacement corrections.
 
 ## 3D Extension
 

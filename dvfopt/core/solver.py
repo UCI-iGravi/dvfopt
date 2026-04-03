@@ -10,7 +10,7 @@ from scipy.optimize import minimize, NonlinearConstraint
 from dvfopt._defaults import _log, _unpack_size
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 from dvfopt.jacobian.shoelace import _shoelace_areas_2d
-from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d
+from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d, injectivity_constraint
 from dvfopt.core.objective import objectiveEuc
 from dvfopt.core.constraints import (
     _build_constraints,
@@ -215,7 +215,8 @@ def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
 # Full-grid optimisation fallback (non-square grids)
 # ---------------------------------------------------------------------------
 def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
-                    methodName, verbose, enforce_shoelace, enforce_injectivity):
+                    methodName, verbose, enforce_shoelace, enforce_injectivity,
+                    injectivity_threshold=None):
     """Optimize the entire H×W grid at once.
 
     Used as a fallback when the square sub-window (capped at
@@ -224,6 +225,7 @@ def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
     windowed optimisations whose windows touch the grid edge.
     """
     pixels = H * W
+    inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
     phi_flat = np.concatenate([phi[1].flatten(), phi[0].flatten()])
     phi_init_flat = np.concatenate([phi_init[1].flatten(), phi_init[0].flatten()])
 
@@ -242,12 +244,10 @@ def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
         constraints.append(NonlinearConstraint(shoe_con, threshold, np.inf))
 
     if enforce_injectivity:
-        def inject_con(phi_xy):
-            dx = phi_xy[:pixels].reshape(H, W)
-            dy = phi_xy[pixels:].reshape(H, W)
-            h_mono, v_mono = _monotonicity_diffs_2d(dy, dx)
-            return np.concatenate([h_mono.flatten(), v_mono.flatten()])
-        constraints.append(NonlinearConstraint(inject_con, threshold, np.inf))
+        constraints.append(NonlinearConstraint(
+            lambda phi_xy: injectivity_constraint(phi_xy, (H, W), exclude_boundaries=False),
+            inj_lb, np.inf,
+        ))
 
     _log(verbose, 1,
          f"  [full-grid] Optimizing entire {H}x{W} grid "
@@ -280,6 +280,7 @@ def _optimize_single_window(
     method_name,
     enforce_shoelace=False,
     enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed)``."""
 
@@ -287,6 +288,7 @@ def _optimize_single_window(
         phi_sub_flat, submatrix_size, is_at_edge, window_reached_max, threshold,
         enforce_shoelace=enforce_shoelace,
         enforce_injectivity=enforce_injectivity,
+        injectivity_threshold=injectivity_threshold,
     )
 
     t0 = time.time()
@@ -328,6 +330,7 @@ def _serial_fix_pixel(
     error_list, num_neg_jac, min_jdet_list, iter_times,
     enforce_shoelace=False,
     enforce_injectivity=False,
+    injectivity_threshold=None,
     plot_callback=None,
     deformation_i=None,
     min_window=(3, 3),
@@ -407,6 +410,7 @@ def _serial_fix_pixel(
             threshold, max_minimize_iter, methodName,
             enforce_shoelace=enforce_shoelace,
             enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
         iter_times.append(elapsed)
 

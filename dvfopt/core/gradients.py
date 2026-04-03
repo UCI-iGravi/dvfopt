@@ -234,9 +234,16 @@ def injectivity_constraint_jacobian_2d(phi_flat, submatrix_size, exclude_boundar
         v_i_range = range(1, sy - 2)
         v_j_range = range(1, sx - 1)
         n_v = (sy - 3) * (sx - 2)
-        d_r_range = range(1, sy - 2)
-        d_c_range = range(1, sx - 2)
-        n_d = (sy - 3) * (sx - 3)
+        # Diagonal: all cells except the two all-frozen corners.
+        # Must match the keep-mask ordering in injectivity_constraint.
+        n_diag = (sy - 1) * (sx - 1)
+        n_d = max(0, n_diag - 2)
+        d_iter = [
+            (r, c)
+            for r in range(sy - 1)
+            for c in range(sx - 1)
+            if not ((r == 0 and c == 0) or (r == sy - 2 and c == sx - 2))
+        ]
     else:
         h_i_range = range(sy)
         h_j_range = range(sx - 1)
@@ -244,9 +251,8 @@ def injectivity_constraint_jacobian_2d(phi_flat, submatrix_size, exclude_boundar
         v_i_range = range(sy - 1)
         v_j_range = range(sx)
         n_v = (sy - 1) * sx
-        d_r_range = range(sy - 1)
-        d_c_range = range(sx - 1)
         n_d = (sy - 1) * (sx - 1)
+        d_iter = [(r, c) for r in range(sy - 1) for c in range(sx - 1)]
 
     n_rows = n_h + n_v + 2 * n_d
     rows = []
@@ -269,20 +275,18 @@ def injectivity_constraint_jacobian_2d(phi_flat, submatrix_size, exclude_boundar
             row_idx += 1
 
     # d1[r,c] = 1 + dx[r, c+1] - dx[r+1, c]
-    for r in d_r_range:
-        for c in d_c_range:
-            rows.extend([row_idx, row_idx])
-            cols.extend([r * sx + (c + 1), (r + 1) * sx + c])
-            vals.extend([1.0, -1.0])
-            row_idx += 1
+    for r, c in d_iter:
+        rows.extend([row_idx, row_idx])
+        cols.extend([r * sx + (c + 1), (r + 1) * sx + c])
+        vals.extend([1.0, -1.0])
+        row_idx += 1
 
     # d2[r,c] = 1 + dy[r+1, c] - dy[r, c+1]
-    for r in d_r_range:
-        for c in d_c_range:
-            rows.extend([row_idx, row_idx])
-            cols.extend([pixels + (r + 1) * sx + c, pixels + r * sx + (c + 1)])
-            vals.extend([1.0, -1.0])
-            row_idx += 1
+    for r, c in d_iter:
+        rows.extend([row_idx, row_idx])
+        cols.extend([pixels + (r + 1) * sx + c, pixels + r * sx + (c + 1)])
+        vals.extend([1.0, -1.0])
+        row_idx += 1
 
     n_cols = 2 * pixels
     return scipy.sparse.csr_matrix(

@@ -32,6 +32,7 @@ def iterative_with_jacobians2(
     max_minimize_iter=None,
     enforce_shoelace=False,
     enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Iterative SLSQP correction of negative Jacobian determinants.
 
@@ -64,9 +65,15 @@ def iterative_with_jacobians2(
         selection use both metrics.
     enforce_injectivity : bool
         When ``True``, the optimiser enforces monotonicity of deformed
-        coordinates along grid axes — a sufficient condition for global
-        injectivity on structured grids.  This is more restrictive than
-        Jacobian-only or shoelace enforcement.
+        coordinates (horizontal, vertical, and anti-diagonal) — together
+        a sufficient condition for each quad cell to be convex and thus
+        non-self-intersecting.
+    injectivity_threshold : float or None
+        Lower bound for the injectivity constraint.  Defaults to the same
+        value as *threshold* when ``None``.  Increasing this (e.g. ``0.3``)
+        forces greater vertex separation in deformed space, preventing
+        distant cells from overlapping under large shear.  Recommended
+        range: ``0.05`` – ``0.3`` when ``enforce_injectivity=True``.
 
     Returns
     -------
@@ -138,6 +145,7 @@ def iterative_with_jacobians2(
                 error_list, num_neg_jac, min_jdet_list, iter_times,
                 enforce_shoelace=enforce_shoelace,
                 enforce_injectivity=enforce_injectivity,
+                injectivity_threshold=injectivity_threshold,
                 plot_callback=plot_callback,
                 deformation_i=deformation_i,
                 min_window=global_min_window,
@@ -172,7 +180,8 @@ def iterative_with_jacobians2(
             iter_start = time.time()
             _full_grid_step(phi, phi_init, H, W, threshold,
                             max_minimize_iter, methodName, verbose,
-                            enforce_shoelace, enforce_injectivity)
+                            enforce_shoelace, enforce_injectivity,
+                            injectivity_threshold=injectivity_threshold)
             iter_times.append(time.time() - iter_start)
 
             jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(

@@ -38,6 +38,12 @@ def injectivity_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
 
     Concatenates h_mono, v_mono, d1, and d2 (diagonal) diffs.  All four must
     be positive for the deformed grid to be globally injective and convex.
+
+    When *exclude_boundaries* is ``True``, h/v use the standard ``[1:-1,1:-1]``
+    interior slice.  Diagonal constraints are extended to all cells where at
+    least one vertex is free (i.e. not on the frozen sub-window boundary).
+    Only the two corners whose *both* vertices are frozen are excluded:
+    cell (0, 0) and cell (sy-2, sx-2).
     """
     sy, sx = _unpack_size(submatrix_size)
     pixels = sy * sx
@@ -48,8 +54,16 @@ def injectivity_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     if exclude_boundaries:
         h_vals = h_mono[1:-1, 1:-1].flatten()
         v_vals = v_mono[1:-1, 1:-1].flatten()
-        d1_vals = d1[1:-1, 1:-1].flatten()
-        d2_vals = d2[1:-1, 1:-1].flatten()
+        # Include all diagonal cells except the two all-frozen corners.
+        # (0,0):        d1 involves dx[0,1] and dx[1,0]  — both boundary
+        # (sy-2,sx-2):  d1 involves dx[sy-2,sx-1] and dx[sy-1,sx-2] — both boundary
+        n_diag = (sy - 1) * (sx - 1)
+        keep = np.ones(n_diag, dtype=bool)
+        keep[0] = False
+        if n_diag > 1:
+            keep[(sy - 2) * (sx - 1) + (sx - 2)] = False
+        d1_vals = d1.reshape(-1)[keep]
+        d2_vals = d2.reshape(-1)[keep]
     else:
         h_vals = h_mono.flatten()
         v_vals = v_mono.flatten()

@@ -50,6 +50,7 @@ def iterative_parallel(
     max_workers=None,
     enforce_shoelace=False,
     enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Hybrid serial/parallel iterative SLSQP correction.
 
@@ -200,6 +201,7 @@ def iterative_parallel(
                         error_list, num_neg_jac, min_jdet_list, iter_times,
                         enforce_shoelace=enforce_shoelace,
                         enforce_injectivity=enforce_injectivity,
+                        injectivity_threshold=injectivity_threshold,
                     )
 
                 cur_neg = int((jacobian_matrix <= 0).sum())
@@ -219,7 +221,8 @@ def iterative_parallel(
                     iter_start = time.time()
                     _full_grid_step(phi, phi_init, H, W, threshold,
                                     max_minimize_iter, methodName, verbose,
-                                    enforce_shoelace, enforce_injectivity)
+                                    enforce_shoelace, enforce_injectivity,
+                                    injectivity_threshold=injectivity_threshold)
                     iter_times.append(time.time() - iter_start)
 
                     jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
@@ -268,6 +271,7 @@ def iterative_parallel(
                         threshold, max_minimize_iter, methodName,
                         enforce_shoelace,
                         enforce_injectivity,
+                        injectivity_threshold,
                     )
                     futures[fut] = (neg_idx, cz, cy, cx, sub_size)
 

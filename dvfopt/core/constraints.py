@@ -93,7 +93,7 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
 
 def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
                        window_reached_max, threshold, enforce_shoelace=False,
-                       enforce_injectivity=False):
+                       enforce_injectivity=False, injectivity_threshold=None):
     """Build SLSQP constraints for a sub-window optimisation.
 
     Returns a list of constraint objects suitable for
@@ -105,9 +105,19 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
 
     When *enforce_injectivity* is ``True``, an additional
     ``NonlinearConstraint`` enforces monotonicity of deformed coordinates
-    (sufficient condition for global injectivity on structured grids).
+    (h, v, and anti-diagonal), which together guarantee each deformed quad
+    cell is convex — a sufficient condition for preventing self-intersections.
+
+    Parameters
+    ----------
+    injectivity_threshold : float or None
+        Lower bound used for the injectivity constraint.  When ``None``
+        (default), falls back to *threshold*.  Setting a value larger than
+        *threshold* (e.g. ``0.3``) forces more vertex separation in deformed
+        space, preventing distant cells from overlapping under large shear.
     """
     exclude_bounds = not is_at_edge and not window_reached_max
+    inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
 
     nlc = NonlinearConstraint(
         lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
@@ -126,7 +136,7 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
     if enforce_injectivity:
         constraints.append(NonlinearConstraint(
             lambda phi1: injectivity_constraint(phi1, submatrix_size, exclude_bounds),
-            threshold, np.inf,
+            inj_lb, np.inf,
             jac=lambda phi1: injectivity_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
         ))
 
