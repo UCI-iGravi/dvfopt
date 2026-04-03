@@ -32,12 +32,11 @@ def get_nearest_center(neg_index, slice_shape, submatrix_size, near_cent_dict):
         return near_cent[(0, *neg_index)]
 
 
-def argmin_excluding_edges(jacobian_matrix):
-    """Index of the pixel with the lowest Jacobian determinant, excluding edges."""
-    inner = jacobian_matrix[0, 1:-1, 1:-1]
-    flat_index = np.argmin(inner)
-    inner_idx = np.unravel_index(flat_index, inner.shape)
-    return (inner_idx[0] + 1, inner_idx[1] + 1)
+def argmin_quality(jacobian_matrix):
+    """Index of the pixel with the lowest Jacobian determinant."""
+    flat_index = np.argmin(jacobian_matrix[0])
+    idx = np.unravel_index(flat_index, jacobian_matrix.shape[1:])
+    return (int(idx[0]), int(idx[1]))
 
 
 def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
@@ -141,25 +140,26 @@ def _windows_overlap(b1, b2):
 
 def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
                              near_cent_dict, pixel_bbox_centers=None):
-    """Greedily select non-overlapping windows (each pixel has its own size)."""
+    """Greedily select non-overlapping windows using an occupancy grid.
+
+    Uses a 2D boolean grid for O(window_area) overlap checks instead of
+    O(k) pairwise comparisons per candidate.
+    """
+    H, W = slice_shape[1], slice_shape[2]
+    occupied = np.zeros((H, W), dtype=bool)
     selected = []
-    used_bounds = []
 
     for neg_idx in neg_pixels:
         ws = pixel_window_sizes[neg_idx]
         center_key = (pixel_bbox_centers or {}).get(neg_idx, neg_idx)
         cz, cy, cx = get_nearest_center(center_key, slice_shape, ws, near_cent_dict)
-        bounds = _window_bounds(cy, cx, ws)
+        y0, y1, x0, x1 = _window_bounds(cy, cx, ws)
 
-        overlaps = False
-        for ub in used_bounds:
-            if _windows_overlap(bounds, ub):
-                overlaps = True
-                break
+        if occupied[y0:y1 + 1, x0:x1 + 1].any():
+            continue
 
-        if not overlaps:
-            selected.append((neg_idx, (cz, cy, cx), ws))
-            used_bounds.append(bounds)
+        occupied[y0:y1 + 1, x0:x1 + 1] = True
+        selected.append((neg_idx, (cz, cy, cx), ws))
 
     return selected
 

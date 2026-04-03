@@ -29,6 +29,14 @@ from dvfopt.viz.closeups import (
     plot_neg_jdet_neighborhoods,
 )
 from dvfopt.viz.pipeline import run_lapl_and_correction
+from dvfopt.viz.fields3d import (
+    plot_jdet_slices,
+    plot_jdet_3d,
+    plot_jdet_3d_before_after,
+    plot_neg_voxels_before_after,
+    plot_deformation_grid_3d,
+    plot_grid_before_after_3d,
+)
 
 __all__ = [
     "CMAP",
@@ -47,4 +55,10 @@ __all__ = [
     "plot_checkerboard_before_after",
     "plot_neg_jdet_neighborhoods",
     "run_lapl_and_correction",
+    "plot_jdet_slices",
+    "plot_jdet_3d",
+    "plot_jdet_3d_before_after",
+    "plot_neg_voxels_before_after",
+    "plot_deformation_grid_3d",
+    "plot_grid_before_after_3d",
 ]

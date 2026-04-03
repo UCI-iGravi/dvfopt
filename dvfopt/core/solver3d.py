@@ -21,6 +21,7 @@ from dvfopt.core.constraints3d import (
     jacobian_constraint_3d,
     _build_constraints_3d,
 )
+from dvfopt.core.gradients3d import jdet_constraint_jacobian_3d
 
 
 # ---------------------------------------------------------------------------
@@ -38,12 +39,21 @@ def _init_phi_3d(deformation):
 
 
 def _update_metrics_3d(phi, phi_init, num_neg_jac, min_jdet_list,
-                       error_list=None):
+                       error_list=None, jacobian_matrix=None,
+                       patch_center=None, patch_size=None):
     """Recompute Jacobian and append to accumulator lists.
+
+    When *jacobian_matrix*, *patch_center*, and *patch_size* are provided,
+    only the affected sub-volume + 1-voxel border is recomputed.
 
     Returns ``(jacobian_matrix, cur_neg, cur_min)``.
     """
-    jac = jacobian_det3D(phi)  # (D, H, W)
+    if jacobian_matrix is not None and patch_center is not None and patch_size is not None:
+        jac = _patch_jacobian_3d(jacobian_matrix, phi, patch_center, patch_size)
+    elif jacobian_matrix is not None and patch_center is None:
+        jac = jacobian_matrix
+    else:
+        jac = jacobian_det3D(phi)  # (D, H, W)
     cur_neg = int((jac <= 0).sum())
     cur_min = float(jac.min())
     num_neg_jac.append(cur_neg)
@@ -51,6 +61,32 @@ def _update_metrics_3d(phi, phi_init, num_neg_jac, min_jdet_list,
     if error_list is not None:
         error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
     return jac, cur_neg, cur_min
+
+
+def _patch_jacobian_3d(jacobian_matrix, phi, center, sub_size):
+    """Recompute Jacobian only in the modified sub-volume + 1-voxel border.
+
+    Mutates *jacobian_matrix* in place and returns it.
+    """
+    cz, cy, cx = center
+    sz, sy, sx = _unpack_size_3d(sub_size)
+    hz, hy, hx = sz // 2, sy // 2, sx // 2
+    hz_hi, hy_hi, hx_hi = sz - hz, sy - hy, sx - hx
+    D, H, W = phi.shape[1], phi.shape[2], phi.shape[3]
+
+    z0 = max(cz - hz - 1, 0)
+    z1 = min(cz + hz_hi + 1, D)
+    y0 = max(cy - hy - 1, 0)
+    y1 = min(cy + hy_hi + 1, H)
+    x0 = max(cx - hx - 1, 0)
+    x1 = min(cx + hx_hi + 1, W)
+
+    dz_sub = phi[0, z0:z1, y0:y1, x0:x1]
+    dy_sub = phi[1, z0:z1, y0:y1, x0:x1]
+    dx_sub = phi[2, z0:z1, y0:y1, x0:x1]
+    jdet_sub = _numpy_jdet_3d(dz_sub, dy_sub, dx_sub)
+    jacobian_matrix[z0:z1, y0:y1, x0:x1] = jdet_sub
+    return jacobian_matrix
 
 
 def _apply_result_3d(phi, result_x, cz, cy, cx, sub_size):
@@ -90,6 +126,7 @@ def _optimize_single_window_3d(
     result = minimize(
         lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
         phi_sub_flat,
+        jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": False},
         method=method_name,
@@ -118,7 +155,11 @@ def _full_grid_step_3d(phi, phi_init, D, H, W, threshold,
         dz = pf[2 * voxels:].reshape(D, H, W)
         return _numpy_jdet_3d(dz, dy, dx).flatten()
 
-    constraints = [NonlinearConstraint(jac_con, threshold, np.inf)]
+    grid_size = (D, H, W)
+    constraints = [NonlinearConstraint(
+        jac_con, threshold, np.inf,
+        jac=lambda pf: jdet_constraint_jacobian_3d(pf, grid_size),
+    )]
 
     _log(verbose, 1,
          f"  [full-grid] Optimizing entire {D}x{H}x{W} grid "
@@ -127,6 +168,7 @@ def _full_grid_step_3d(phi, phi_init, D, H, W, threshold,
     result = minimize(
         lambda phi1: objectiveEuc(phi1, phi_init_flat),
         phi_flat,
+        jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
         method=methodName,
@@ -221,7 +263,9 @@ def _serial_fix_voxel(
         _apply_result_3d(phi, result_x, cz, cy, cx, subvolume_size)
 
         jacobian_matrix, cur_neg, cur_min = _update_metrics_3d(
-            phi, phi_init, num_neg_jac, min_jdet_list, error_list)
+            phi, phi_init, num_neg_jac, min_jdet_list, error_list,
+            jacobian_matrix=jacobian_matrix, patch_center=(cz, cy, cx),
+            patch_size=subvolume_size)
 
         _log(verbose, 2,
              f"  [sub-Jdet] centre ({cz},{cy},{cx}) "

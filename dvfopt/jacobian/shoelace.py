@@ -1,8 +1,16 @@
 """Shoelace (geometric quad-area) helpers for deformation fields."""
 
+import functools
+
 import numpy as np
 
 from dvfopt._defaults import _unpack_size
+
+
+@functools.lru_cache(maxsize=8)
+def _ref_grid(H, W):
+    """Cached reference coordinate grids for a given (H, W)."""
+    return np.mgrid[:H, :W]
 
 
 def _shoelace_areas_2d(dy, dx):
@@ -19,7 +27,7 @@ def _shoelace_areas_2d(dy, dx):
     ndarray, shape ``(H-1, W-1)``
     """
     H, W = dy.shape
-    ref_y, ref_x = np.mgrid[:H, :W]
+    ref_y, ref_x = _ref_grid(H, W)
     def_x = ref_x + dx
     def_y = ref_y + dy
 

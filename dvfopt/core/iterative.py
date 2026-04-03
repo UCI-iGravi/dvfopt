@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size
-from dvfopt.core.spatial import argmin_excluding_edges, neg_jdet_bounding_window, get_nearest_center, _edge_flags
+from dvfopt.core.spatial import argmin_quality, neg_jdet_bounding_window, get_nearest_center, _edge_flags
 from dvfopt.core.solver import (
     _setup_accumulators,
     _print_summary,
@@ -107,10 +107,13 @@ def iterative_with_jacobians2(
     _log(verbose, 1, f"[init] Neg-Jdet pixels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
-    while iteration < max_iterations and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any():
+    prev_neg = init_neg
+    global_min_window = (3, 3)
+
+    while iteration < max_iterations and (quality_matrix[0] <= threshold - err_tol).any():
         iteration += 1
 
-        neg_index_tuple = argmin_excluding_edges(quality_matrix)
+        neg_index_tuple = argmin_quality(quality_matrix)
 
         # Snapshot bookkeeping — capture pre-step state and initial window.
         _show_snap = plot_every and iteration % plot_every == 0
@@ -137,7 +140,19 @@ def iterative_with_jacobians2(
                 enforce_injectivity=enforce_injectivity,
                 plot_callback=plot_callback,
                 deformation_i=deformation_i,
+                min_window=global_min_window,
             )
+
+        # Escalate minimum window when no progress (avoids oscillation
+        # between neighbouring pixels with overlapping windows).
+        cur_neg = int((jacobian_matrix <= 0).sum())
+        gsy, gsx = global_min_window
+        if cur_neg >= prev_neg and (gsy < H or gsx < W):
+            global_min_window = (min(gsy + 2, H), min(gsx + 2, W))
+            _log(verbose, 1,
+                 f"  [escalate] no improvement ({prev_neg}->{cur_neg}), "
+                 f"min window -> {global_min_window[0]}x{global_min_window[1]}")
+        prev_neg = cur_neg
 
         # Side-by-side before/after snapshot for this iteration.
         if _show_snap:
@@ -153,7 +168,7 @@ def iterative_with_jacobians2(
         _sub_sy, _sub_sx = _unpack_size(submatrix_size)
         if (_sub_sy >= H and _sub_sx >= W
                 and H != W
-                and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
+                and (quality_matrix[0] <= threshold - err_tol).any()):
             iter_start = time.time()
             _full_grid_step(phi, phi_init, H, W, threshold,
                             max_minimize_iter, methodName, verbose,
@@ -175,7 +190,7 @@ def iterative_with_jacobians2(
              f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
              f"sub-iters {per_index_iter}")
 
-        if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
+        if float(quality_matrix[0].min()) > threshold - err_tol:
             _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
             break
 

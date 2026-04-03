@@ -28,12 +28,12 @@ from dvfopt.core.solver import (
 
 
 def _find_negative_pixels(jacobian_matrix, threshold, err_tol):
-    """Return list of (y, x) for inner pixels below threshold, worst first."""
-    inner = jacobian_matrix[0, 1:-1, 1:-1]
-    ys, xs = np.where(inner <= threshold - err_tol)
-    vals = inner[ys, xs]
+    """Return list of (y, x) for all pixels below threshold, worst first."""
+    full = jacobian_matrix[0]
+    ys, xs = np.where(full <= threshold - err_tol)
+    vals = full[ys, xs]
     order = np.argsort(vals)
-    return [(int(ys[i]) + 1, int(xs[i]) + 1) for i in order]
+    return [(int(ys[i]), int(xs[i])) for i in order]
 
 
 def iterative_parallel(
@@ -124,7 +124,7 @@ def iterative_parallel(
 
     try:
         while (iteration < max_iterations
-               and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
+               and (quality_matrix[0] <= threshold - err_tol).any()):
             iteration += 1
 
             neg_pixels = _find_negative_pixels(quality_matrix, threshold, err_tol)
@@ -215,7 +215,7 @@ def iterative_parallel(
                 _sub_sy, _sub_sx = _unpack_size(sub_size)
                 if (_sub_sy >= H and _sub_sx >= W
                         and H != W
-                        and (quality_matrix[0, 1:-1, 1:-1] <= threshold - err_tol).any()):
+                        and (quality_matrix[0] <= threshold - err_tol).any()):
                     iter_start = time.time()
                     _full_grid_step(phi, phi_init, H, W, threshold,
                                     max_minimize_iter, methodName, verbose,
@@ -272,17 +272,25 @@ def iterative_parallel(
                     futures[fut] = (neg_idx, cz, cy, cx, sub_size)
 
                 batch_time = 0.0
+                completed_windows = []
                 for fut in as_completed(futures):
                     neg_idx, cz, cy, cx, sub_size = futures[fut]
                     result_x, elapsed = fut.result()
                     batch_time = max(batch_time, elapsed)
                     _apply_result(phi, result_x, cy, cx, sub_size)
+                    completed_windows.append(((cy, cx), sub_size))
 
                 iter_times.append(batch_time)
 
+                # Patch Jacobian for each modified window
+                from dvfopt.core.solver import _patch_jacobian_2d
+                for patch_center, patch_size in completed_windows:
+                    _patch_jacobian_2d(jacobian_matrix, phi, patch_center, patch_size)
+
                 jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
                     phi, phi_init, enforce_shoelace, enforce_injectivity,
-                    num_neg_jac, min_jdet_list, error_list)
+                    num_neg_jac, min_jdet_list, error_list,
+                    jacobian_matrix=jacobian_matrix)
 
                 cur_err = error_list[-1]
                 _log(verbose, 1,
@@ -310,7 +318,7 @@ def iterative_parallel(
                                    windows=_snap_windows,
                                    jacobian_before=_snap_before)
 
-            if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
+            if float(quality_matrix[0].min()) > threshold - err_tol:
                 _log(verbose, 1,
                      f"[done] All Jdet > threshold after iter {iteration}")
                 break

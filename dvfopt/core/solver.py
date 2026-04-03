@@ -72,21 +72,36 @@ def _init_phi(deformation_i):
 
 
 def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
-                    num_neg_jac, min_jdet_list, error_list=None):
+                    num_neg_jac, min_jdet_list, error_list=None,
+                    jacobian_matrix=None, patch_center=None, patch_size=None):
     """Recompute Jacobian/quality matrices and append to accumulator lists.
 
     Parameters
     ----------
     error_list : list or None
         When not ``None``, the L2 error is appended.
+    jacobian_matrix : ndarray or None
+        When provided along with *patch_center* and *patch_size*, only the
+        affected sub-region (+ 1px gradient border) is recomputed, avoiding
+        a full-grid Jacobian computation.
+    patch_center : tuple or None
+        ``(cy, cx)`` center of the optimised sub-window.
+    patch_size : tuple or None
+        ``(sy, sx)`` size of the optimised sub-window.
 
     Returns
     -------
     jacobian_matrix, quality_matrix, cur_neg, cur_min
     """
-    jac = jacobian_det2D(phi)
+    if jacobian_matrix is not None and patch_center is not None and patch_size is not None:
+        jac = _patch_jacobian_2d(jacobian_matrix, phi, patch_center, patch_size)
+    elif jacobian_matrix is not None and patch_center is None:
+        # Jacobian already patched externally (e.g., parallel batch)
+        jac = jacobian_matrix
+    else:
+        jac = jacobian_det2D(phi)
     use_q = enforce_shoelace or enforce_injectivity
-    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity) if use_q else jac
+    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity, jacobian_matrix=jac) if use_q else jac
     cur_neg = int((jac <= 0).sum())
     cur_min = float(jac.min())
     num_neg_jac.append(cur_neg)
@@ -94,6 +109,44 @@ def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
     if error_list is not None:
         error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
     return jac, qm, cur_neg, cur_min
+
+
+def _patch_jacobian_2d(jacobian_matrix, phi, center, sub_size):
+    """Recompute Jacobian only in the modified sub-region + 1px border.
+
+    The computation region is expanded by an extra pixel beyond the
+    write-back region so that ``np.gradient`` uses central differences
+    at the write-back boundary (matching full-grid computation).
+
+    Mutates *jacobian_matrix* in place and returns it.
+    """
+    cy, cx = center
+    sy, sx = _unpack_size(sub_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    H, W = phi.shape[1], phi.shape[2]
+
+    # Write-back region: sub-window + 1px border, clamped to grid
+    wy0 = max(cy - hy - 1, 0)
+    wy1 = min(cy + hy_hi + 1, H)
+    wx0 = max(cx - hx - 1, 0)
+    wx1 = min(cx + hx_hi + 1, W)
+
+    # Computation region: 1 extra pixel for central-difference context
+    cy0 = max(wy0 - 1, 0)
+    cy1 = min(wy1 + 1, H)
+    cx0 = max(wx0 - 1, 0)
+    cx1 = min(wx1 + 1, W)
+
+    jdet_comp = _numpy_jdet_2d(phi[0, cy0:cy1, cx0:cx1],
+                                phi[1, cy0:cy1, cx0:cx1])
+
+    # Trim to write-back region
+    ty0 = wy0 - cy0
+    tx0 = wx0 - cx0
+    jacobian_matrix[0, wy0:wy1, wx0:wx1] = \
+        jdet_comp[ty0:ty0 + wy1 - wy0, tx0:tx0 + wx1 - wx0]
+    return jacobian_matrix
 
 
 def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
@@ -203,6 +256,7 @@ def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
     result = minimize(
         lambda phi1: objectiveEuc(phi1, phi_init_flat),
         phi_flat,
+        jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
         method=methodName,
@@ -239,6 +293,7 @@ def _optimize_single_window(
     result = minimize(
         lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
         phi_sub_flat,
+        jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": False},
         method=method_name,
@@ -275,6 +330,7 @@ def _serial_fix_pixel(
     enforce_injectivity=False,
     plot_callback=None,
     deformation_i=None,
+    min_window=(3, 3),
 ):
     """Fix a single pixel using the serial adaptive-window inner loop.
 
@@ -289,13 +345,15 @@ def _serial_fix_pixel(
     jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
     """
     _use_quality = enforce_shoelace or enforce_injectivity
-    quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity) if _use_quality else jacobian_matrix
+    quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity, jacobian_matrix=jacobian_matrix) if _use_quality else jacobian_matrix
 
     # Adaptive starting size from negative-Jdet bounding box
     submatrix_size, bbox_center = neg_jdet_bounding_window(
         quality_matrix, neg_index_tuple, threshold, err_tol)
     max_sy, max_sx = _unpack_size(max_window)
-    submatrix_size = (min(submatrix_size[0], max_sy), min(submatrix_size[1], max_sx))
+    min_sy, min_sx = _unpack_size(min_window)
+    submatrix_size = (max(min(submatrix_size[0], max_sy), min_sy),
+                      max(min(submatrix_size[1], max_sx), min_sx))
 
     per_index_iter = 0
     window_reached_max = False
@@ -356,7 +414,9 @@ def _serial_fix_pixel(
 
         jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
             phi, phi_init, enforce_shoelace, enforce_injectivity,
-            num_neg_jac, min_jdet_list, error_list)
+            num_neg_jac, min_jdet_list, error_list,
+            jacobian_matrix=jacobian_matrix, patch_center=(cy, cx),
+            patch_size=submatrix_size)
 
         _log(verbose, 2, f"  [sub-Jdet] centre ({cy},{cx}) window {sy}x{sx}:\n"
              + np.array2string(
@@ -366,7 +426,7 @@ def _serial_fix_pixel(
         if plot_callback is not None:
             plot_callback(deformation_i, phi)
 
-        if float(quality_matrix[0, 1:-1, 1:-1].min()) > threshold - err_tol:
+        if float(quality_matrix[0].min()) > threshold - err_tol:
             break
 
         # Grow window for next sub-iteration

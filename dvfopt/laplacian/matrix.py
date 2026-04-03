@@ -51,50 +51,55 @@ def laplacianA3D(shape, boundaryIndices, use_correspondences=True):
     Y = Y.flatten().astype(int)
     Z = Z.flatten().astype(int)
 
+    n = len(X)
     ids_0 = X * shape[1] * shape[2] + Y * shape[2] + Z
-    data = np.ones(len(ids_0)) * 2 * k
+    data = np.ones(n) * 2 * k
+
+    # Pre-compute boundary mask once
+    bnd = np.zeros(n, dtype=bool)
+    bnd[boundaryIndices] = True
 
     # x-1
     cids_x1 = (X - 1) * shape[1] * shape[2] + Y * shape[2] + Z
-    invalid_cx1 = np.concatenate([np.where(X == 0)[0], boundaryIndices])
-    rids_x1 = np.delete(ids_0, invalid_cx1)
-    cids_x1 = np.delete(cids_x1, invalid_cx1)
-    data[invalid_cx1] -= 1
+    valid = (X > 0) & ~bnd
+    rids_x1 = ids_0[valid]
+    cids_x1 = cids_x1[valid]
+    data[~valid] -= 1
 
     # x+1
     cids_x2 = (X + 1) * shape[1] * shape[2] + Y * shape[2] + Z
-    invalid_cx2 = np.concatenate([np.where(X == shape[0] - 1)[0], boundaryIndices])
-    rids_x2 = np.delete(ids_0, invalid_cx2)
-    cids_x2 = np.delete(cids_x2, invalid_cx2)
-    data[invalid_cx2] -= 1
+    valid = (X < shape[0] - 1) & ~bnd
+    rids_x2 = ids_0[valid]
+    cids_x2 = cids_x2[valid]
+    data[~valid] -= 1
 
     # y-1
     cids_y1 = X * shape[1] * shape[2] + (Y - 1) * shape[2] + Z
-    invalid_cy1 = np.concatenate([np.where(Y == 0)[0], boundaryIndices])
-    rids_y1 = np.delete(ids_0, invalid_cy1)
-    cids_y1 = np.delete(cids_y1, invalid_cy1)
-    data[invalid_cy1] -= 1
+    valid = (Y > 0) & ~bnd
+    rids_y1 = ids_0[valid]
+    cids_y1 = cids_y1[valid]
+    data[~valid] -= 1
 
     # y+1
     cids_y2 = X * shape[1] * shape[2] + (Y + 1) * shape[2] + Z
-    invalid_cy2 = np.concatenate([np.where(Y == shape[1] - 1)[0], boundaryIndices])
-    rids_y2 = np.delete(ids_0, invalid_cy2)
-    cids_y2 = np.delete(cids_y2, invalid_cy2)
-    data[invalid_cy2] -= 1
+    valid = (Y < shape[1] - 1) & ~bnd
+    rids_y2 = ids_0[valid]
+    cids_y2 = cids_y2[valid]
+    data[~valid] -= 1
 
     # z-1
     cids_z1 = X * shape[1] * shape[2] + Y * shape[2] + Z - 1
-    invalid_cz1 = np.concatenate([np.where(Z == 0)[0], boundaryIndices])
-    rids_z1 = np.delete(ids_0, invalid_cz1)
-    cids_z1 = np.delete(cids_z1, invalid_cz1)
-    data[invalid_cz1] -= 1
+    valid = (Z > 0) & ~bnd
+    rids_z1 = ids_0[valid]
+    cids_z1 = cids_z1[valid]
+    data[~valid] -= 1
 
     # z+1
     cids_z2 = X * shape[1] * shape[2] + Y * shape[2] + Z + 1
-    invalid_cz2 = np.concatenate([np.where(Z == shape[2] - 1)[0], boundaryIndices])
-    rids_z2 = np.delete(ids_0, invalid_cz2)
-    cids_z2 = np.delete(cids_z2, invalid_cz2)
-    data[invalid_cz2] -= 1
+    valid = (Z < shape[2] - 1) & ~bnd
+    rids_z2 = ids_0[valid]
+    cids_z2 = cids_z2[valid]
+    data[~valid] -= 1
 
     if use_correspondences:
         data[boundaryIndices] += 1

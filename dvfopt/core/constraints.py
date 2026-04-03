@@ -1,6 +1,7 @@
 """Constraint builders and quality-map helpers for SLSQP optimisation."""
 
 import numpy as np
+import scipy.sparse
 from scipy.optimize import LinearConstraint, NonlinearConstraint
 
 from dvfopt._defaults import _unpack_size
@@ -13,6 +14,11 @@ from dvfopt.jacobian.shoelace import (
 from dvfopt.jacobian.monotonicity import (
     _monotonicity_diffs_2d,
     injectivity_constraint,
+)
+from dvfopt.core.gradients import (
+    jdet_constraint_jacobian_2d,
+    shoelace_constraint_jacobian_2d,
+    injectivity_constraint_jacobian_2d,
 )
 
 
@@ -29,7 +35,8 @@ def jacobian_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
         return jdet.flatten()
 
 
-def _quality_map(phi, enforce_shoelace, enforce_injectivity=False):
+def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
+                 jacobian_matrix=None):
     """Per-pixel quality metric combining gradient-Jdet and optional extras.
 
     When both *enforce_shoelace* and *enforce_injectivity* are ``False``,
@@ -37,9 +44,14 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False):
     spread to per-pixel values and the element-wise minimum is returned
     so that the worst violation drives pixel selection and convergence.
 
+    Parameters
+    ----------
+    jacobian_matrix : ndarray or None
+        Pre-computed Jacobian; avoids redundant recomputation.
+
     Returns shape ``(1, H, W)`` — same as ``jacobian_det2D``.
     """
-    jdet = jacobian_det2D(phi)
+    jdet = jacobian_matrix if jacobian_matrix is not None else jacobian_det2D(phi)
     if not enforce_shoelace and not enforce_injectivity:
         return jdet
     result = jdet.copy()
@@ -92,6 +104,7 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
     nlc = NonlinearConstraint(
         lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
         threshold, np.inf,
+        jac=lambda phi1: jdet_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
     )
     constraints = [nlc]
 
@@ -99,12 +112,14 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
         constraints.append(NonlinearConstraint(
             lambda phi1: shoelace_constraint(phi1, submatrix_size, exclude_bounds),
             threshold, np.inf,
+            jac=lambda phi1: shoelace_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
         ))
 
     if enforce_injectivity:
         constraints.append(NonlinearConstraint(
             lambda phi1: injectivity_constraint(phi1, submatrix_size, exclude_bounds),
             threshold, np.inf,
+            jac=lambda phi1: injectivity_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
         ))
 
     if exclude_bounds:
@@ -120,10 +135,12 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
             idx = y * sx + x
             fixed_indices.extend([idx, idx + y_offset_sub])
 
+        fixed_indices = np.array(fixed_indices)
         fixed_values = phi_sub_flat[fixed_indices]
-        A_eq = np.zeros((len(fixed_indices), phi_sub_flat.size))
-        for row, idx in enumerate(fixed_indices):
-            A_eq[row, idx] = 1
+        n_fixed = len(fixed_indices)
+        A_eq = scipy.sparse.csr_matrix(
+            (np.ones(n_fixed), (np.arange(n_fixed), fixed_indices)),
+            shape=(n_fixed, phi_sub_flat.size))
 
         constraints.append(LinearConstraint(A_eq, fixed_values, fixed_values))
 

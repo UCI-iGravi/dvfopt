@@ -45,6 +45,10 @@ echo Installing remaining dependencies from requirements.txt ...
 .venv\Scripts\python -m pip install -r requirements.txt
 
 echo.
+echo Installing dvfopt package in editable mode ...
+.venv\Scripts\python -m pip install -e .
+
+echo.
 echo ============================================================
 echo   Done!  To use this environment in VS Code:
 echo     1. Open the Command Palette  (Ctrl+Shift+P)
