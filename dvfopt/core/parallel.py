@@ -24,6 +24,7 @@ from dvfopt.core.solver import (
     _optimize_single_window,
     _apply_result,
     _serial_fix_pixel,
+    _adaptive_injectivity_loop,
 )
 
 
@@ -88,6 +89,24 @@ def iterative_parallel(
         verbose = 1
     elif verbose is False:
         verbose = 0
+
+    # Adaptive outer loop: when enforce_injectivity=True and no explicit
+    # threshold is given, double tau until globally injective.
+    if enforce_injectivity and injectivity_threshold is None:
+        return _adaptive_injectivity_loop(
+            deformation_i, iterative_parallel, verbose,
+            methodName=methodName,
+            save_path=save_path,
+            plot_every=plot_every,
+            threshold=threshold,
+            err_tol=err_tol,
+            max_iterations=max_iterations,
+            max_per_index_iter=max_per_index_iter,
+            max_minimize_iter=max_minimize_iter,
+            max_workers=max_workers,
+            enforce_shoelace=enforce_shoelace,
+            enforce_injectivity=enforce_injectivity,
+        )
 
     if max_workers is None:
         max_workers = os.cpu_count()

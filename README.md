@@ -145,7 +145,7 @@ Optimizes the entire displacement field simultaneously via Sequential Least Squa
 
 ### 3. Iterative SLSQP
 
-**Entry point:** `iterative_with_jacobians2()` in `dvfopt/core/iterative.py`
+**Entry point:** `iterative_serial()` in `dvfopt/core/iterative.py`
 
 The primary method. Instead of optimizing the full grid, it repeatedly identifies the worst folding region and corrects it with a small local optimization:
 
@@ -224,6 +224,20 @@ $$F(x_1) \neq F(x_2) \quad \forall x_1 \neq x_2$$
 which is a **global** one-to-one property over the whole domain. A map can satisfy $\det(DF)>0$ everywhere and still overlap distant regions (many-to-one globally).
 
 In practical terms for displacement correction: Jacobian positivity removes local flips/folds, but by itself does not prevent non-local self-overlap. This is exactly why optional global-geometric constraints (shoelace/injectivity) are useful.
+
+#### The "double-flip" gap
+
+A subtler problem exists even within a single cell. The determinant formula is:
+
+$$J_{\det} = \left(1 + \frac{\partial u_y}{\partial y}\right)\left(1 + \frac{\partial u_x}{\partial x}\right) - \frac{\partial u_y}{\partial x} \cdot \frac{\partial u_x}{\partial y}$$
+
+The determinant can be **positive even if both diagonal terms are individually negative**:
+
+$$\left(1 + \frac{\partial u_y}{\partial y}\right) = -0.5, \quad \left(1 + \frac{\partial u_x}{\partial x}\right) = -0.8 \quad \Rightarrow \quad J_{\det} = 0.4 + \text{small shear}$$
+
+This is a "double-flip": the cell is inverted in both $y$ and $x$ simultaneously. The determinant is positive because $(-a)(-b) = ab > 0$, but the geometry is wrong — corner positions are swapped in both directions. An optimizer minimizing L2 error subject only to $J_{\det} \geq \tau$ will happily produce this as a valid solution, because it satisfies the constraint while requiring less movement than a proper correction.
+
+The monotonicity constraint blocks this directly: requiring $1 + \partial u_x/\partial x \geq \tau_{\text{inj}}$ and $1 + \partial u_y/\partial y \geq \tau_{\text{inj}}$ individually means neither diagonal term can go negative, regardless of the other. This is why the injectivity constraint produces geometrically correct results even in cases where the Jdet constraint alone would converge to a degenerate configuration.
 
 **Visual example (positive Jacobian, not injective):**
 
@@ -334,7 +348,7 @@ The anti-diagonal constraints also cover **sub-window boundary-adjacent cells** 
 The injectivity constraints use a separate lower bound $\tau_{\text{inj}}$ (controlled by `injectivity_threshold`) that can be set independently of the Jdet threshold $\tau$:
 
 ```python
-phi_corr = iterative_with_jacobians2(
+phi_corr = iterative_serial(
     deformation,
     enforce_injectivity=True,
     injectivity_threshold=0.3,   # vertex-separation margin
@@ -582,7 +596,7 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 
 | Sub-package | Purpose |
 |-------------|---------|
-| `dvfopt.core` | Objective/constraint functions, `iterative_with_jacobians2` (serial), `iterative_parallel` (hybrid), `iterative_3d`, window selection, SLSQP solver |
+| `dvfopt.core` | Objective/constraint functions, `iterative_serial` (serial), `iterative_parallel` (hybrid), `iterative_3d`, window selection, SLSQP solver |
 | `dvfopt.jacobian` | Pure-numpy 2D/3D Jacobian (`jacobian_det2D`, `jacobian_det3D`), SimpleITK wrapper, shoelace constraint, injectivity constraint |
 | `dvfopt.dvf` | `generate_random_dvf`, `scale_dvf` (2D/3D) |
 | `dvfopt.laplacian` | Sparse Laplacian matrix with Dirichlet BCs, LGMRES solver for displacement interpolation from correspondences |

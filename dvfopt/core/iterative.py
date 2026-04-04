@@ -14,11 +14,12 @@ from dvfopt.core.solver import (
     _save_results,
     _full_grid_step,
     _serial_fix_pixel,
+    _adaptive_injectivity_loop,
 )
 from dvfopt.core.constraints import _quality_map
 
 
-def iterative_with_jacobians2(
+def iterative_serial(
     deformation_i,
     methodName="SLSQP",
     verbose=1,
@@ -94,6 +95,24 @@ def iterative_with_jacobians2(
         verbose = 1
     elif verbose is False:
         verbose = 0
+
+    # Adaptive outer loop: when enforce_injectivity=True and no explicit
+    # threshold is given, double tau until globally injective.
+    if enforce_injectivity and injectivity_threshold is None:
+        return _adaptive_injectivity_loop(
+            deformation_i, iterative_serial, verbose,
+            methodName=methodName,
+            save_path=save_path,
+            plot_every=plot_every,
+            plot_callback=plot_callback,
+            threshold=threshold,
+            err_tol=err_tol,
+            max_iterations=max_iterations,
+            max_per_index_iter=max_per_index_iter,
+            max_minimize_iter=max_minimize_iter,
+            enforce_shoelace=enforce_shoelace,
+            enforce_injectivity=enforce_injectivity,
+        )
 
     error_list, num_neg_jac, iter_times, min_jdet_list, window_counts = _setup_accumulators()
 

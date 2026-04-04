@@ -19,7 +19,7 @@ Research codebase for correcting **negative Jacobian determinants** in 2D and 3D
 |--------|----------|-------------|----------|
 | **Heuristic (NMVF)** | `notebooks/heuristic-neg-jacobian.ipynb` | `heuristic_negative_jacobian_correction()` | Fastest, highest L2 error |
 | **Full SLSQP** | `legacy_code/slsqp-full-modified.ipynb` | `full_slsqp()` | Lowest L2 error, slowest (full grid optimization) |
-| **Iterative SLSQP** | `notebooks/slsqp-iterative-refactored.ipynb` | `iterative_with_jacobians2()` | Near-optimal L2, faster (windowed sub-optimizations) |
+| **Iterative SLSQP** | `notebooks/slsqp-iterative-refactored.ipynb` | `iterative_serial()` | Near-optimal L2, faster (windowed sub-optimizations) |
 
 All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and return a corrected field.
 
@@ -32,7 +32,7 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 
 ## Package Structure (`dvfopt/`)
 
-- **`dvfopt.core`** — Optimization algorithms. `core/objective.py`: L2 objective. `core/constraints.py`: Jacobian/shoelace/injectivity constraints. `core/spatial.py`: window selection, bounding boxes, edge logic. `core/solver.py`: single-window SLSQP. `core/iterative.py`: `iterative_with_jacobians2()` (serial 2D). `core/parallel.py`: `iterative_parallel()` (hybrid parallel 2D). `core/solver3d.py` + `core/iterative3d.py`: 3D extension.
+- **`dvfopt.core`** — Optimization algorithms. `core/objective.py`: L2 objective. `core/constraints.py`: Jacobian/shoelace/injectivity constraints. `core/spatial.py`: window selection, bounding boxes, edge logic. `core/solver.py`: single-window SLSQP. `core/iterative.py`: `iterative_serial()` (serial 2D). `core/parallel.py`: `iterative_parallel()` (hybrid parallel 2D). `core/solver3d.py` + `core/iterative3d.py`: 3D extension.
 - **`dvfopt.jacobian`** — Jacobian computation. `numpy_jdet.py`: pure-numpy 2D/3D via `np.gradient`. `sitk_jdet.py`: SimpleITK wrapper. `shoelace.py`: geometric quad-cell area constraint. `monotonicity.py`: injectivity/monotonicity constraint.
 - **`dvfopt.dvf`** — DVF utilities. `generation.py`: `generate_random_dvf()` (2D/3D). `scaling.py`: `scale_dvf()` bicubic rescaling (2D/3D).
 - **`dvfopt.laplacian`** — Laplacian interpolation. `matrix.py`: sparse Laplacian matrix with Dirichlet BCs. `solver.py`: LGMRES solver, `sliceToSlice3DLaplacian()` end-to-end pipeline.

@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
 from dvfopt.testcases import SYNTHETIC_CASES, make_deformation
-from dvfopt import iterative_with_jacobians2, jacobian_det2D
+from dvfopt import iterative_serial, jacobian_det2D
 from dvfopt.jacobian import shoelace_det2D, _monotonicity_diffs_2d
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "docs", "images")
@@ -126,7 +126,7 @@ def main():
     # ---- 1. Jacobian-only (default) ----
     print("1/4  Jacobian-only constraint ...")
     t0 = time.time()
-    phi_jac = iterative_with_jacobians2(
+    phi_jac = iterative_serial(
         deformation, verbose=0, enforce_shoelace=False, enforce_injectivity=False,
     )
     t_jac = time.time() - t0
@@ -140,7 +140,7 @@ def main():
     # ---- 2. Jacobian + Shoelace ----
     print("2/4  Jacobian + Shoelace ...")
     t0 = time.time()
-    phi_shoe = iterative_with_jacobians2(
+    phi_shoe = iterative_serial(
         deformation, verbose=0, enforce_shoelace=True, enforce_injectivity=False,
     )
     t_shoe = time.time() - t0
@@ -157,7 +157,7 @@ def main():
     # ---- 3. Jacobian + Injectivity ----
     print("3/4  Jacobian + Injectivity ...")
     t0 = time.time()
-    phi_inject = iterative_with_jacobians2(
+    phi_inject = iterative_serial(
         deformation, verbose=0, enforce_shoelace=False, enforce_injectivity=True,
     )
     t_inject = time.time() - t0
@@ -174,7 +174,7 @@ def main():
     # ---- 4. All three ----
     print("4/4  All constraints ...")
     t0 = time.time()
-    phi_all = iterative_with_jacobians2(
+    phi_all = iterative_serial(
         deformation, verbose=0, enforce_shoelace=True, enforce_injectivity=True,
     )
     t_all = time.time() - t0

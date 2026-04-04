@@ -7,7 +7,7 @@ Public API
 ----------
 Core solvers::
 
-    from dvfopt import iterative_with_jacobians2, iterative_parallel, iterative_3d
+    from dvfopt import iterative_serial, iterative_parallel, iterative_3d
 
 Jacobian computation::
 
@@ -35,7 +35,7 @@ __version__ = "0.1.0"
 
 # -- Core solvers ------------------------------------------------------------
 from dvfopt.core import (
-    iterative_with_jacobians2,
+    iterative_serial,
     iterative_parallel,
     iterative_3d,
 )

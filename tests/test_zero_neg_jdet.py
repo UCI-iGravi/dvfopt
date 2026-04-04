@@ -12,7 +12,7 @@ entire-field folds, boundary-only folds, and adversarial patterns.
 import numpy as np
 import pytest
 
-from dvfopt.core.iterative import iterative_with_jacobians2
+from dvfopt.core.iterative import iterative_serial
 from dvfopt.core.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
@@ -59,7 +59,7 @@ class TestSimpleCases:
         d[2, 0, 4, 4] = 4.0   # large dx spike at center
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_two_opposing_spikes(self):
@@ -69,7 +69,7 @@ class TestSimpleCases:
         d[2, 0, 5, 5] = -3.0   # push left
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_horizontal_shear(self):
@@ -79,7 +79,7 @@ class TestSimpleCases:
         d[1, 0, 4, :] = -3.0   # row 4 moves up
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_diagonal_fold(self):
@@ -91,7 +91,7 @@ class TestSimpleCases:
                 d[2, 0, i, i + 1] = -3.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_checkerboard_folds(self):
@@ -103,7 +103,7 @@ class TestSimpleCases:
                 d[2, 0, y, x] = sign * 2.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=1000)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=1000)
         _assert_no_neg_jdet(phi)
 
 
@@ -120,7 +120,7 @@ class TestGridEdgeCases:
         d[2, 0, 1, 1] = 3.0  # spike at center
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_4x4_grid(self):
@@ -130,7 +130,7 @@ class TestGridEdgeCases:
         d[2, 0, 2, 2] = -3.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_tall_narrow_grid(self):
@@ -140,7 +140,7 @@ class TestGridEdgeCases:
         d[2, 0, 10, 3] = -3.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_wide_short_grid(self):
@@ -150,7 +150,7 @@ class TestGridEdgeCases:
         d[2, 0, 2, 11] = -3.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_fold_at_top_left_corner(self):
@@ -161,7 +161,7 @@ class TestGridEdgeCases:
         d[2, 0, 1, 0] = -2.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_fold_at_bottom_right_corner(self):
@@ -172,7 +172,7 @@ class TestGridEdgeCases:
         d[2, 0, 8, 9] = 2.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_fold_along_entire_top_edge(self):
@@ -182,7 +182,7 @@ class TestGridEdgeCases:
         d[1, 0, 1, :] = -3.0   # second row pulled up
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_fold_along_entire_left_edge(self):
@@ -192,7 +192,7 @@ class TestGridEdgeCases:
         d[2, 0, :, 1] = -3.0   # second column pulled left
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
 
@@ -216,7 +216,7 @@ class TestDisplacementEdgeCases:
         # This field has positive Jdet everywhere (just below 1)
         assert jdet.min() > 0, "Precondition: uniform compression should have positive Jdet"
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=10)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=10)
         # Should be essentially unchanged
         phi_init = np.stack([d[1, 0], d[2, 0]])
         np.testing.assert_allclose(phi, phi_init, atol=1e-8)
@@ -228,7 +228,7 @@ class TestDisplacementEdgeCases:
         d = generate_random_dvf((3, 1, 10, 10), max_magnitude=5.0, seed=99).astype(np.float64)
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=1000)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=1000)
         _assert_no_neg_jdet(phi)
 
     def test_concentrated_fold_region(self):
@@ -241,7 +241,7 @@ class TestDisplacementEdgeCases:
         d[1, 0, 6, 5] = 2.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_multiple_isolated_folds(self):
@@ -258,7 +258,7 @@ class TestDisplacementEdgeCases:
         d[1, 0, 11, 10] = -3.0
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
     def test_both_dx_and_dy_fold(self):
@@ -270,7 +270,7 @@ class TestDisplacementEdgeCases:
         d[1, 0, 6, 6] = -3.0  # dy
         _assert_has_negative_jdet(d)
 
-        phi = iterative_with_jacobians2(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
+        phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet(phi)
 
 
@@ -323,7 +323,7 @@ class TestConstraintModes:
     def test_jdet_only(self):
         d = self._field()
         _assert_has_negative_jdet(d)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             d, verbose=0, threshold=THRESHOLD, max_iterations=500,
             enforce_shoelace=False, enforce_injectivity=False,
         )
@@ -332,7 +332,7 @@ class TestConstraintModes:
     def test_with_shoelace(self):
         d = self._field()
         _assert_has_negative_jdet(d)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             d, verbose=0, threshold=THRESHOLD, max_iterations=500,
             enforce_shoelace=True, enforce_injectivity=False,
         )
@@ -341,7 +341,7 @@ class TestConstraintModes:
     def test_with_injectivity(self):
         d = self._field()
         _assert_has_negative_jdet(d)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             d, verbose=0, threshold=THRESHOLD, max_iterations=1000,
             enforce_shoelace=False, enforce_injectivity=True,
         )
@@ -350,7 +350,7 @@ class TestConstraintModes:
     def test_with_both(self):
         d = self._field()
         _assert_has_negative_jdet(d)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             d, verbose=0, threshold=THRESHOLD, max_iterations=1000,
             enforce_shoelace=True, enforce_injectivity=True,
         )
@@ -380,7 +380,7 @@ class TestSyntheticCases:
         if jdet_before.min() >= THRESHOLD:
             pytest.skip(f"Case {case_key} has no negative Jdet (min={jdet_before.min():.4f})")
 
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             deformation, verbose=0, threshold=THRESHOLD, max_iterations=500,
         )
         _assert_no_neg_jdet(phi)
@@ -398,7 +398,7 @@ class TestSyntheticCases:
         if jdet_before.min() >= THRESHOLD:
             pytest.skip(f"Case {case_key} has no negative Jdet (min={jdet_before.min():.4f})")
 
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             deformation, verbose=0, threshold=THRESHOLD, max_iterations=1000,
         )
         _assert_no_neg_jdet(phi)

@@ -19,6 +19,7 @@ from dvfopt.jacobian.monotonicity import (
     _diagonal_monotonicity_diffs_2d,
     injectivity_constraint,
 )
+from dvfopt.jacobian.intersection import has_quad_self_intersections
 
 __all__ = [
     "jacobian_det2D",
@@ -27,4 +28,5 @@ __all__ = [
     "shoelace_det2D",
     "shoelace_constraint",
     "injectivity_constraint",
+    "has_quad_self_intersections",
 ]

@@ -22,7 +22,7 @@ def run_correction(dvf, solver, verbose=0, **solver_kwargs):
         Deformation field (channels [dz, dy, dx]).
     solver : callable
         Solver function, e.g. ``iterative_parallel`` or
-        ``iterative_with_jacobians2``.  Called as
+        ``iterative_serial``.  Called as
         ``solver(dvf, verbose=verbose, **solver_kwargs)``.
     verbose : int
         Passed to the solver.

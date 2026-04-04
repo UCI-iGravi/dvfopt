@@ -18,7 +18,7 @@ class TestConvergenceProperties:
     @staticmethod
     def _run_and_collect_metrics(deformation, **kwargs):
         """Run solver and return per-iteration metrics."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         # Collect Jdet snapshots by running manually
         phi_init_snap = np.stack([deformation[1, 0], deformation[2, 0]])
@@ -26,7 +26,7 @@ class TestConvergenceProperties:
         neg_before = int((jdet_before <= 0).sum())
         min_before = float(jdet_before.min())
 
-        phi = iterative_with_jacobians2(deformation, verbose=0, **kwargs)
+        phi = iterative_serial(deformation, verbose=0, **kwargs)
 
         jdet_after = jacobian_det2D(phi)
         neg_after = int((jdet_after <= 0).sum())

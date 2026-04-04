@@ -46,7 +46,7 @@ The solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `enfor
 
 | Function | Module | Purpose |
 |----------|--------|---------|
-| `iterative_with_jacobians2()` | `dvfopt.core.iterative` | Serial 2D iterative SLSQP (primary) |
+| `iterative_serial()` | `dvfopt.core.iterative` | Serial 2D iterative SLSQP (primary) |
 | `iterative_parallel()` | `dvfopt.core.parallel` | Parallel 2D variant |
 | `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |

@@ -441,3 +441,62 @@ def _serial_fix_pixel(
             window_reached_max = True
 
     return jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
+
+
+# ---------------------------------------------------------------------------
+# Adaptive injectivity outer loop
+# ---------------------------------------------------------------------------
+
+def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose, **kwargs):
+    """Run *correct_fn* with doubling ``injectivity_threshold`` until globally injective.
+
+    Called automatically when ``enforce_injectivity=True`` and
+    ``injectivity_threshold=None``.  Each pass reruns the full correction
+    from the **original** ``deformation_i`` (so the L2 objective always
+    measures displacement from the original field).
+
+    Parameters
+    ----------
+    correct_fn : callable
+        One of ``iterative_serial`` or ``iterative_parallel``.
+        Must accept ``injectivity_threshold=<float>`` as a keyword.
+    verbose : int
+        Outer-loop verbosity.  The inner correction runs silently (``verbose=0``).
+    **kwargs
+        All other arguments forwarded to *correct_fn* (threshold, err_tol,
+        max_iterations, enforce_shoelace, enforce_injectivity, …).
+        ``injectivity_threshold`` must NOT be present — it is managed here.
+
+    Returns
+    -------
+    phi : ndarray, shape ``(2, H, W)``
+    """
+    from dvfopt.jacobian.intersection import has_quad_self_intersections
+
+    tau = 0.05
+    max_doublings = 5   # covers 0.05 → 0.10 → 0.20 → 0.40 → 0.80 → 1.60
+
+    for attempt in range(max_doublings + 1):
+        _log(verbose, 1,
+             f"[adaptive-injectivity] attempt {attempt + 1}/{max_doublings + 1}  "
+             f"injectivity_threshold={tau:.4f}")
+
+        phi = correct_fn(
+            deformation_i.copy(),
+            verbose=0,
+            injectivity_threshold=tau,
+            **kwargs,
+        )
+
+        if not has_quad_self_intersections(phi):
+            _log(verbose, 1,
+                 f"[adaptive-injectivity] globally injective at tau={tau:.4f}")
+            return phi
+
+        _log(verbose, 1,
+             f"[adaptive-injectivity] intersections remain — doubling tau")
+        tau *= 2.0
+
+    _log(verbose, 1,
+         "[adaptive-injectivity] max doublings reached; returning best result")
+    return phi

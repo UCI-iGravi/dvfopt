@@ -11,7 +11,7 @@ from dvfopt.dvf.generation import generate_random_dvf
 
 
 class TestIterativeSolver2D:
-    """End-to-end tests for iterative_with_jacobians2."""
+    """End-to-end tests for iterative_serial."""
 
     @staticmethod
     def _make_folded_field(H=10, W=10):
@@ -20,7 +20,7 @@ class TestIterativeSolver2D:
 
     def test_corrects_negative_jacobians(self):
         """After correction, all Jacobian determinants should be >= threshold."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         jdet_before = jacobian_det2D(deformation[[1, 2], 0])
@@ -28,7 +28,7 @@ class TestIterativeSolver2D:
             f"Test field should have negative Jdet, got min={jdet_before.min():.4f}"
         )
 
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             deformation, verbose=0, threshold=0.01, max_iterations=500,
         )
         jdet_after = jacobian_det2D(phi)
@@ -37,36 +37,36 @@ class TestIterativeSolver2D:
         )
 
     def test_output_shape(self):
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = self._make_folded_field(8, 12)
-        phi = iterative_with_jacobians2(deformation, verbose=0, max_iterations=50)
+        phi = iterative_serial(deformation, verbose=0, max_iterations=50)
         assert phi.shape == (2, 8, 12)
 
     def test_identity_field_unchanged(self):
         """A field with no negative Jdet should pass through with minimal change."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = np.zeros((3, 1, 8, 8), dtype=np.float64)
-        phi = iterative_with_jacobians2(deformation, verbose=0, max_iterations=10)
+        phi = iterative_serial(deformation, verbose=0, max_iterations=10)
         np.testing.assert_allclose(phi, 0.0, atol=1e-10)
 
     def test_displacement_stays_close(self):
         """Corrected field should not deviate too far from the original."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         phi_init = np.stack([deformation[1, 0], deformation[2, 0]])
-        phi = iterative_with_jacobians2(deformation, verbose=0, max_iterations=500)
+        phi = iterative_serial(deformation, verbose=0, max_iterations=500)
         max_change = np.abs(phi - phi_init).max()
         assert max_change < 10.0, f"Max displacement change too large: {max_change:.3f}"
 
     def test_with_shoelace(self):
         """Solver should also succeed with enforce_shoelace=True."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             deformation, verbose=0, threshold=0.01,
             max_iterations=500, enforce_shoelace=True,
         )
@@ -75,10 +75,10 @@ class TestIterativeSolver2D:
 
     def test_with_injectivity(self):
         """Solver should also succeed with enforce_injectivity=True."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             deformation, verbose=0, threshold=0.01,
             max_iterations=1000, enforce_injectivity=True,
         )
@@ -119,7 +119,7 @@ class TestRandomDvfCorrection:
 
     def test_random_dvf_small_magnitude(self):
         """Small random displacements should be correctable."""
-        from dvfopt.core.iterative import iterative_with_jacobians2
+        from dvfopt.core.iterative import iterative_serial
 
         dvf = generate_random_dvf((3, 1, 12, 12), max_magnitude=1.5, seed=42)
         dvf = dvf.astype(np.float64)
@@ -128,7 +128,7 @@ class TestRandomDvfCorrection:
         if jdet_before.min() >= 0.01:
             pytest.skip("Random DVF has no negative Jacobians to correct")
 
-        phi = iterative_with_jacobians2(
+        phi = iterative_serial(
             dvf, verbose=0, threshold=0.01, max_iterations=500,
         )
         jdet_after = jacobian_det2D(phi)
