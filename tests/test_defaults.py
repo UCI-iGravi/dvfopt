@@ -62,6 +62,6 @@ class TestUnpackSize3D:
         assert _unpack_size_3d([2, 4, 6]) == (2, 4, 6)
 
     def test_non_triple_tuple_raises(self):
-        # A 2-element tuple doesn't match len==3, falls through to int() on tuple → TypeError
-        with pytest.raises(TypeError):
+        # A 2-element tuple has len != 3, so _unpack_size_3d raises ValueError explicitly
+        with pytest.raises(ValueError):
             _unpack_size_3d((3, 5))

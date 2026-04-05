@@ -21,6 +21,7 @@ from dvfopt.core.spatial import (
     neg_jdet_bounding_window,
     _frozen_edges_clean,
     get_phi_sub_flat,
+    get_phi_sub_flat_padded,
     _edge_flags,
 )
 
@@ -282,7 +283,7 @@ def _optimize_single_window(
     enforce_injectivity=False,
     injectivity_threshold=None,
 ):
-    """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed)``."""
+    """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed, success)``."""
 
     constraints = _build_constraints(
         phi_sub_flat, submatrix_size, is_at_edge, window_reached_max, threshold,
@@ -301,22 +302,44 @@ def _optimize_single_window(
         method=method_name,
     )
     elapsed = time.time() - t0
-    return result.x, elapsed
+    return result.x, elapsed, result.success
 
 
 # ---------------------------------------------------------------------------
 # Apply result back into phi
 # ---------------------------------------------------------------------------
-def _apply_result(phi, result_x, cy, cx, sub_size):
-    """Write optimised sub-window back into *phi*."""
-    sy, sx = _unpack_size(sub_size)
-    hy, hx = sy // 2, sx // 2
-    hy_hi, hx_hi = sy - hy, sx - hx
-    pixels = sy * sx
-    phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-        result_x[:pixels].reshape(sy, sx)
-    phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-        result_x[pixels:].reshape(sy, sx)
+def _apply_result(phi, result_x, cy, cx, sub_size, write_size=None):
+    """Write optimised sub-window back into *phi*.
+
+    Parameters
+    ----------
+    sub_size : tuple
+        Size of the optimised window (i.e., shape of ``result_x``).  When
+        padded extraction was used this is ``(sy+2, sx+2)``.
+    write_size : tuple or None
+        Original unpadded window size ``(sy, sx)``.  When provided, only the
+        inner ``write_size`` region of ``result_x`` (stripping the 1-pixel
+        padding on each side) is written back.  ``None`` writes the full
+        ``result_x`` (no padding).
+    """
+    opt_sy, opt_sx = _unpack_size(sub_size)
+    pixels = opt_sy * opt_sx
+
+    if write_size is not None:
+        wr_sy, wr_sx = _unpack_size(write_size)
+        hy, hx = wr_sy // 2, wr_sx // 2
+        hy_hi, hx_hi = wr_sy - hy, wr_sx - hx
+        phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+            result_x[:pixels].reshape(opt_sy, opt_sx)[1:-1, 1:-1]
+        phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+            result_x[pixels:].reshape(opt_sy, opt_sx)[1:-1, 1:-1]
+    else:
+        hy, hx = opt_sy // 2, opt_sx // 2
+        hy_hi, hx_hi = opt_sy - hy, opt_sx - hx
+        phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+            result_x[:pixels].reshape(opt_sy, opt_sx)
+        phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
+            result_x[pixels:].reshape(opt_sy, opt_sx)
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +357,7 @@ def _serial_fix_pixel(
     plot_callback=None,
     deformation_i=None,
     min_window=(3, 3),
+    labeled=None,
 ):
     """Fix a single pixel using the serial adaptive-window inner loop.
 
@@ -352,7 +376,7 @@ def _serial_fix_pixel(
 
     # Adaptive starting size from negative-Jdet bounding box
     submatrix_size, bbox_center = neg_jdet_bounding_window(
-        quality_matrix, neg_index_tuple, threshold, err_tol)
+        quality_matrix, neg_index_tuple, threshold, err_tol, labeled=labeled)
     max_sy, max_sx = _unpack_size(max_window)
     min_sy, min_sx = _unpack_size(min_window)
     submatrix_size = (max(min(submatrix_size[0], max_sy), min_sy),
@@ -360,61 +384,101 @@ def _serial_fix_pixel(
 
     per_index_iter = 0
     window_reached_max = False
+    # Check bounds used in while condition from iteration 2+.
+    # Expanded by 1px when padded because phi[cy-hy] is freely optimised,
+    # making J[cy-hy-1] subject to change (patched by _patch_jacobian_2d).
+    _check_y0 = _check_y1 = _check_x0 = _check_x1 = 0  # placeholders, short-circuited on first eval
 
     while (
         per_index_iter == 0
         or (
-            (not window_reached_max)
-            and per_index_iter < max_per_index_iter
+            per_index_iter < max_per_index_iter
             and (quality_matrix[0,
-                    cy - hy:cy + hy_hi,
-                    cx - hx:cx + hx_hi]
+                    _check_y0:_check_y1,
+                    _check_x0:_check_x1]
                  < threshold - err_tol).any()
         )
     ):
-        per_index_iter += 1
-
-        window_counts[_unpack_size(submatrix_size)] += 1
-
         cz, cy, cx = get_nearest_center(
             bbox_center, slice_shape, submatrix_size, near_cent_dict)
         sy, sx = _unpack_size(submatrix_size)
         hy, hx = sy // 2, sx // 2
         hy_hi, hx_hi = sy - hy, sx - hx
 
-        phi_init_sub_flat = get_phi_sub_flat(phi_init, cz, cy, cx, slice_shape, submatrix_size)
-        phi_sub_flat = get_phi_sub_flat(phi, cz, cy, cx, slice_shape, submatrix_size)
+        # Try padded extraction: (sy+2)x(sx+2) so the full original window
+        # (including its boundary ring) is optimised and its Jacobian is
+        # constrained with proper central-difference context.
+        phi_sub_flat, opt_size = get_phi_sub_flat_padded(
+            phi, cz, cy, cx, slice_shape, submatrix_size)
+        phi_init_sub_flat, _ = get_phi_sub_flat_padded(
+            phi_init, cz, cy, cx, slice_shape, submatrix_size)
+        is_padded = opt_size != (sy, sx)
 
-        if per_index_iter > 1:
-            _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (sub-iter {per_index_iter})")
+        # Update check region for the NEXT while-condition evaluation.
+        # Must be done before any `continue` so the bounds are always current.
+        # Clamp to actual grid bounds (H, W), not max_window, so the check
+        # remains correct if max_window is ever set smaller than the grid.
+        _H, _W = slice_shape[1], slice_shape[2]
+        _pad = 1 if is_padded else 0
+        _check_y0 = max(cy - hy - _pad, 0)
+        _check_y1 = min(cy + hy_hi + _pad, _H)
+        _check_x0 = max(cx - hx - _pad, 0)
+        _check_x1 = min(cx + hx_hi + _pad, _W)
 
         is_at_edge, w_max = _edge_flags(cy, cx, submatrix_size, slice_shape, max_window)
         window_reached_max = window_reached_max or w_max
 
-        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}")
+        # When padded, the frozen boundary is the outer ring of the padded
+        # window (1px outside the original); override edge flags accordingly.
+        opt_is_at_edge = False if is_padded else is_at_edge
+        opt_window_reached_max = False if is_padded else window_reached_max
 
-        # Skip optimizer if frozen edges have negative Jdet (likely infeasible)
-        if (not is_at_edge and not window_reached_max
+        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}  padded={is_padded}")
+
+        # Skip optimizer if frozen edges have negative Jdet (likely infeasible).
+        # Does NOT consume per_index_iter budget — only actual optimizer calls do.
+        # For padded windows check the padded outer ring (opt_size); for
+        # unpacked windows check the original boundary ring (submatrix_size).
+        check_size = opt_size if is_padded else submatrix_size
+        if (not opt_is_at_edge and not opt_window_reached_max
                 and not _frozen_edges_clean(quality_matrix, cy, cx,
-                                           submatrix_size, threshold, err_tol)):
+                                           check_size, threshold, err_tol)):
             _log(verbose, 2, f"  [skip] Frozen edges have neg Jdet at win {sy}x{sx} — growing")
             sy, sx = _unpack_size(submatrix_size)
             if sy < max_sy or sx < max_sx:
                 submatrix_size = (min(sy + 2, max_sy), min(sx + 2, max_sx))
             continue
 
+        # Frozen edges are clean (or not applicable): run the optimiser.
+        per_index_iter += 1
+        window_counts[_unpack_size(submatrix_size)] += 1
+
+        if per_index_iter > 1:
+            _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (opt-iter {per_index_iter})")
+
+        # Adaptive iteration budget: scale with window area so large windows
+        # get proportionally more SLSQP iterations to converge.
+        _opt_sy, _opt_sx = _unpack_size(opt_size)
+        _eff_max_iter = min(max(max_minimize_iter, 2 * _opt_sy * _opt_sx // 10),
+                            10 * max_minimize_iter)
+
         # Run optimisation directly — no process pool
-        result_x, elapsed = _optimize_single_window(
-            phi_sub_flat, phi_init_sub_flat, submatrix_size,
-            is_at_edge, window_reached_max,
-            threshold, max_minimize_iter, methodName,
+        result_x, elapsed, opt_success = _optimize_single_window(
+            phi_sub_flat, phi_init_sub_flat, opt_size,
+            opt_is_at_edge, opt_window_reached_max,
+            threshold, _eff_max_iter, methodName,
             enforce_shoelace=enforce_shoelace,
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
         )
         iter_times.append(elapsed)
+        if not opt_success:
+            _log(verbose, 2,
+                 f"  [warn] SLSQP did not converge at win {sy}x{sx} "
+                 f"(sub-iter {per_index_iter})")
 
-        _apply_result(phi, result_x, cy, cx, submatrix_size)
+        _apply_result(phi, result_x, cy, cx, opt_size,
+                      write_size=submatrix_size if is_padded else None)
 
         jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
             phi, phi_init, enforce_shoelace, enforce_injectivity,
@@ -447,7 +511,8 @@ def _serial_fix_pixel(
 # Adaptive injectivity outer loop
 # ---------------------------------------------------------------------------
 
-def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose, **kwargs):
+def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose,
+                               max_doublings=5, **kwargs):
     """Run *correct_fn* with doubling ``injectivity_threshold`` until globally injective.
 
     Called automatically when ``enforce_injectivity=True`` and
@@ -462,6 +527,9 @@ def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose, **kwargs):
         Must accept ``injectivity_threshold=<float>`` as a keyword.
     verbose : int
         Outer-loop verbosity.  The inner correction runs silently (``verbose=0``).
+    max_doublings : int
+        Maximum number of times to double ``tau`` before giving up.
+        Default 5 covers 0.05 → 0.10 → 0.20 → 0.40 → 0.80 → 1.60.
     **kwargs
         All other arguments forwarded to *correct_fn* (threshold, err_tol,
         max_iterations, enforce_shoelace, enforce_injectivity, …).
@@ -474,12 +542,11 @@ def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose, **kwargs):
     from dvfopt.jacobian.intersection import has_quad_self_intersections
 
     tau = 0.05
-    max_doublings = 5   # covers 0.05 → 0.10 → 0.20 → 0.40 → 0.80 → 1.60
 
     for attempt in range(max_doublings + 1):
         _log(verbose, 1,
              f"[adaptive-injectivity] attempt {attempt + 1}/{max_doublings + 1}  "
-             f"injectivity_threshold={tau:.4f}")
+             f"injectivity_threshold={tau:.4f}  max_doublings={max_doublings}")
 
         phi = correct_fn(
             deformation_i.copy(),

@@ -4,15 +4,15 @@ import numpy as np
 
 
 def objectiveEuc(phi, phi_init):
-    """L2 norm objective with analytical gradient.
+    """L2-squared objective with analytical gradient.
+
+    Minimises ``0.5 * ||phi - phi_init||^2``.  The gradient is
+    ``phi - phi_init`` — linear, zero at the optimum, well-conditioned
+    everywhere.  Preferred over the raw L2 norm because that has a kink
+    at ``phi = phi_init`` where the Hessian is ill-conditioned, causing
+    SLSQP to take erratic steps in the final convergence phase.
 
     Returns ``(value, gradient)`` for use with ``minimize(..., jac=True)``.
-    The gradient of ``||phi - phi_init||`` is ``(phi - phi_init) / ||phi - phi_init||``.
     """
     diff = phi - phi_init
-    sq_norm = np.dot(diff, diff)
-    if sq_norm == 0.0:
-        return 0.0, np.zeros_like(phi)
-    norm = np.sqrt(sq_norm)
-    diff /= norm  # in-place: avoids allocating a second array
-    return norm, diff
+    return 0.5 * np.dot(diff, diff), diff

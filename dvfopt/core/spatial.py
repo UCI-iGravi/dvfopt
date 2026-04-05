@@ -6,30 +6,20 @@ from scipy.ndimage import label
 from dvfopt._defaults import _unpack_size
 
 
-def nearest_center(shape, submatrix_size):
-    """Build a dict mapping every (z,y,x) to the nearest valid sub-window centre."""
+def get_nearest_center(neg_index, slice_shape, submatrix_size, near_cent_dict=None):
+    """Return the nearest valid sub-window centre for *neg_index*.
+
+    Computed in O(1) by clamping the requested position to the valid
+    range ``[hy, H - hy_hi]`` × ``[hx, W - hx_hi]``.  The *near_cent_dict*
+    parameter is accepted but ignored (kept for call-site compatibility).
+    """
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
-    max_y = shape[1] - sy + hy
-    max_x = shape[2] - sx + hx
-    near_cent = {}
-    for z in range(shape[0]):
-        for y in range(shape[1]):
-            for x in range(shape[2]):
-                near_cent[(z, y, x)] = [z, max(hy, min(y, max_y)),
-                                           max(hx, min(x, max_x))]
-    return near_cent
-
-
-def get_nearest_center(neg_index, slice_shape, submatrix_size, near_cent_dict):
-    """Look up (or compute) the nearest valid centre for *neg_index*."""
-    key = _unpack_size(submatrix_size)  # normalise to tuple for caching
-    if key in near_cent_dict:
-        return near_cent_dict[key][(0, *neg_index)]
-    else:
-        near_cent = nearest_center(slice_shape, key)
-        near_cent_dict[key] = near_cent
-        return near_cent[(0, *neg_index)]
+    hy_hi, hx_hi = sy - hy, sx - hx
+    max_y = slice_shape[1] - hy_hi
+    max_x = slice_shape[2] - hx_hi
+    y, x = neg_index
+    return [0, max(hy, min(int(y), max_y)), max(hx, min(int(x), max_x))]
 
 
 def argmin_quality(jacobian_matrix):
@@ -39,7 +29,7 @@ def argmin_quality(jacobian_matrix):
     return (int(idx[0]), int(idx[1]))
 
 
-def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
+def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol, labeled=None):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
 
     The window is the bounding box of all pixels with Jdet <= *threshold* - *err_tol*
@@ -59,6 +49,11 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
     center_yx : tuple of int
         ``(y, x)`` of the worst pixel.
     threshold, err_tol : float
+    labeled : ndarray or None
+        Pre-computed connected-component label array (same shape as
+        ``jacobian_matrix[0]``).  When provided, the ``scipy.ndimage.label``
+        call is skipped.  Pass this when calling in a loop over many pixels
+        to avoid recomputing labels for every pixel.
 
     Returns
     -------
@@ -67,8 +62,9 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol):
     bbox_center : tuple of int
         ``(y, x)`` centre of the bounding box.
     """
-    neg_mask = jacobian_matrix[0] <= threshold - err_tol
-    labeled, _ = label(neg_mask)  # 8-connectivity is the scipy default via structure
+    if labeled is None:
+        neg_mask = jacobian_matrix[0] <= threshold - err_tol
+        labeled, _ = label(neg_mask)
     region_label = labeled[center_yx[0], center_yx[1]]
 
     if region_label == 0:
@@ -106,8 +102,11 @@ def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
     hy_hi, hx_hi = sy - hy, sx - hx
-    y0, y1 = cy - hy, cy + hy_hi - 1
-    x0, x1 = cx - hx, cx + hx_hi - 1
+    H, W = jacobian_matrix.shape[1], jacobian_matrix.shape[2]
+    y0 = max(cy - hy, 0)
+    y1 = min(cy + hy_hi - 1, H - 1)
+    x0 = max(cx - hx, 0)
+    x1 = min(cx + hx_hi - 1, W - 1)
     edge_vals = np.concatenate([
         jacobian_matrix[0, y0, x0:x1 + 1].ravel(),
         jacobian_matrix[0, y1, x0:x1 + 1].ravel(),
@@ -127,6 +126,45 @@ def get_phi_sub_flat(phi, cz, cy, cx, shape, submatrix_size):
     return np.concatenate([phix.flatten(), phiy.flatten()])
 
 
+def get_phi_sub_flat_padded(phi, cz, cy, cx, shape, submatrix_size):
+    """Extract a sub-window with 1-pixel padding on all sides when possible.
+
+    When the window fits 1 pixel inside the grid boundary on all sides, the
+    extraction is expanded to ``(sy+2) x (sx+2)``.  The extra ring is used as
+    the frozen boundary in the SLSQP constraints, so the full original
+    ``sy x sx`` window (including its boundary ring) is optimised and its
+    Jacobian is constrained with proper central-difference context.
+
+    When padding is not possible (window too close to the grid edge), falls
+    back to the standard ``sy x sx`` extraction.
+
+    Returns
+    -------
+    flat : ndarray
+        Flattened ``[dx, dy]`` values of the (possibly padded) sub-window.
+    actual_size : tuple of int
+        ``(sy+2, sx+2)`` if padded, ``(sy, sx)`` otherwise.
+    """
+    sy, sx = _unpack_size(submatrix_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+    H, W = shape[1], shape[2]
+
+    can_pad = (cy - hy - 1 >= 0 and cy + hy_hi + 1 <= H and
+               cx - hx - 1 >= 0 and cx + hx_hi + 1 <= W)
+
+    if can_pad:
+        phix = phi[1, cy - hy - 1:cy + hy_hi + 1, cx - hx - 1:cx + hx_hi + 1]
+        phiy = phi[0, cy - hy - 1:cy + hy_hi + 1, cx - hx - 1:cx + hx_hi + 1]
+        actual_size = (sy + 2, sx + 2)
+    else:
+        phix = phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
+        phiy = phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
+        actual_size = (sy, sx)
+
+    return np.concatenate([phix.flatten(), phiy.flatten()]), actual_size
+
+
 def _window_bounds(cy, cx, submatrix_size):
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
@@ -144,6 +182,11 @@ def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
 
     Uses a 2D boolean grid for O(window_area) overlap checks instead of
     O(k) pairwise comparisons per candidate.
+
+    The occupancy footprint is expanded by 1 pixel on each side beyond the
+    window bounds.  This enforces a 1-pixel gap between parallel windows so
+    that the padded frozen boundary of each window is never modified by
+    another window in the same batch.
     """
     H, W = slice_shape[1], slice_shape[2]
     occupied = np.zeros((H, W), dtype=bool)
@@ -155,10 +198,16 @@ def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
         cz, cy, cx = get_nearest_center(center_key, slice_shape, ws, near_cent_dict)
         y0, y1, x0, x1 = _window_bounds(cy, cx, ws)
 
-        if occupied[y0:y1 + 1, x0:x1 + 1].any():
+        # Padded footprint: 1 extra pixel on each side for gap enforcement
+        py0 = max(y0 - 1, 0)
+        py1 = min(y1 + 1, H - 1)
+        px0 = max(x0 - 1, 0)
+        px1 = min(x1 + 1, W - 1)
+
+        if occupied[py0:py1 + 1, px0:px1 + 1].any():
             continue
 
-        occupied[y0:y1 + 1, x0:x1 + 1] = True
+        occupied[py0:py1 + 1, px0:px1 + 1] = True
         selected.append((neg_idx, (cz, cy, cx), ws))
 
     return selected

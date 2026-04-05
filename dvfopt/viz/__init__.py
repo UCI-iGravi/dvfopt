@@ -12,6 +12,7 @@ from dvfopt.viz._style import (
     NEG_CONTOUR_COLOR,
 )
 from dvfopt.viz.snapshots import plot_step_snapshot
+from dvfopt.viz.debug import DebugTracer
 from dvfopt.viz.fields import (
     plot_initial_deformation,
     plot_deformations,
@@ -44,6 +45,7 @@ __all__ = [
     "QUIVER_COLOR",
     "NEG_CONTOUR_COLOR",
     "plot_step_snapshot",
+    "DebugTracer",
     "plot_initial_deformation",
     "plot_deformations",
     "plot_jacobians_iteratively",

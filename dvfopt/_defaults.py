@@ -4,7 +4,7 @@ DEFAULT_PARAMS = {
     "threshold": 0.01,
     "err_tol": 1e-5,
     "max_iterations": 10000,
-    "max_per_index_iter": 50,
+    "max_per_index_iter": 200,
     "max_minimize_iter": 1000,
 }
 
@@ -42,4 +42,7 @@ def _unpack_size_3d(subvolume_size):
     if isinstance(subvolume_size, (tuple, list)):
         if len(subvolume_size) == 3:
             return int(subvolume_size[0]), int(subvolume_size[1]), int(subvolume_size[2])
+        raise ValueError(
+            f"_unpack_size_3d expects int or 3-tuple, got length-{len(subvolume_size)} sequence"
+        )
     return int(subvolume_size), int(subvolume_size), int(subvolume_size)

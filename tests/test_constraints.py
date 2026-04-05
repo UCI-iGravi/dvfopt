@@ -60,7 +60,9 @@ class TestInjectivityConstraint:
         phi_flat = np.zeros(2 * sy * sx)
         vals = injectivity_constraint(phi_flat, (sy, sx), exclude_boundaries=True)
         # h_mono interior: (sy-2)*(sx-3), v_mono interior: (sy-3)*(sx-2)
-        expected_len = (sy - 2) * (sx - 3) + (sy - 3) * (sx - 2)
+        # d1 and d2 diagonal: (sy-1)*(sx-1) cells each, minus 2 all-frozen corners
+        n_diag = (sy - 1) * (sx - 1) - 2
+        expected_len = (sy - 2) * (sx - 3) + (sy - 3) * (sx - 2) + 2 * n_diag
         assert vals.shape == (expected_len,)
         np.testing.assert_allclose(vals, 1.0)
 
@@ -68,7 +70,8 @@ class TestInjectivityConstraint:
         sy, sx = 6, 6
         phi_flat = np.zeros(2 * sy * sx)
         vals = injectivity_constraint(phi_flat, (sy, sx), exclude_boundaries=False)
-        expected_len = sy * (sx - 1) + (sy - 1) * sx
+        # h_mono: sy*(sx-1), v_mono: (sy-1)*sx, d1: (sy-1)*(sx-1), d2: (sy-1)*(sx-1)
+        expected_len = sy * (sx - 1) + (sy - 1) * sx + 2 * (sy - 1) * (sx - 1)
         assert vals.shape == (expected_len,)
         np.testing.assert_allclose(vals, 1.0)
 

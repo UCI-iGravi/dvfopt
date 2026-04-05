@@ -245,7 +245,7 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
     norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     cmap = plt.get_cmap("bwr")
 
-    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    fig, axes = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
 
     init_neg = int((jac_init <= 0).sum())
     corr_neg = int((jac_corr <= 0).sum())
@@ -309,9 +309,7 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
 
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    fig.subplots_adjust(right=0.87)
-    fig.colorbar(sm, ax=axes.tolist(), label="Jacobian determinant",
-                 fraction=0.03, pad=0.06, shrink=0.85)
+    fig.colorbar(sm, ax=axes, label="Jacobian determinant", shrink=0.85)
 
     if title:
         fig.suptitle(title, fontsize=13, fontweight="bold", y=1.02)

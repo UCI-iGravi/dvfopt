@@ -66,6 +66,12 @@ def _update_metrics_3d(phi, phi_init, num_neg_jac, min_jdet_list,
 def _patch_jacobian_3d(jacobian_matrix, phi, center, sub_size):
     """Recompute Jacobian only in the modified sub-volume + 1-voxel border.
 
+    Uses a two-layer design matching `_patch_jacobian_2d`:
+    - Write-back region: sub-volume ± 1-voxel border (what gets stored).
+    - Computation region: write-back ± 1 extra voxel for central-difference
+      context, so ``np.gradient`` uses central differences at the write-back
+      boundary rather than one-sided differences.
+
     Mutates *jacobian_matrix* in place and returns it.
     """
     cz, cy, cx = center
@@ -74,18 +80,26 @@ def _patch_jacobian_3d(jacobian_matrix, phi, center, sub_size):
     hz_hi, hy_hi, hx_hi = sz - hz, sy - hy, sx - hx
     D, H, W = phi.shape[1], phi.shape[2], phi.shape[3]
 
-    z0 = max(cz - hz - 1, 0)
-    z1 = min(cz + hz_hi + 1, D)
-    y0 = max(cy - hy - 1, 0)
-    y1 = min(cy + hy_hi + 1, H)
-    x0 = max(cx - hx - 1, 0)
-    x1 = min(cx + hx_hi + 1, W)
+    # Write-back region: sub-volume + 1-voxel border
+    wz0 = max(cz - hz - 1, 0);  wz1 = min(cz + hz_hi + 1, D)
+    wy0 = max(cy - hy - 1, 0);  wy1 = min(cy + hy_hi + 1, H)
+    wx0 = max(cx - hx - 1, 0);  wx1 = min(cx + hx_hi + 1, W)
 
-    dz_sub = phi[0, z0:z1, y0:y1, x0:x1]
-    dy_sub = phi[1, z0:z1, y0:y1, x0:x1]
-    dx_sub = phi[2, z0:z1, y0:y1, x0:x1]
-    jdet_sub = _numpy_jdet_3d(dz_sub, dy_sub, dx_sub)
-    jacobian_matrix[z0:z1, y0:y1, x0:x1] = jdet_sub
+    # Computation region: 1 extra voxel on each side for gradient context
+    cz0 = max(wz0 - 1, 0);  cz1 = min(wz1 + 1, D)
+    cy0 = max(wy0 - 1, 0);  cy1 = min(wy1 + 1, H)
+    cx0 = max(wx0 - 1, 0);  cx1 = min(wx1 + 1, W)
+
+    jdet_comp = _numpy_jdet_3d(phi[0, cz0:cz1, cy0:cy1, cx0:cx1],
+                                phi[1, cz0:cz1, cy0:cy1, cx0:cx1],
+                                phi[2, cz0:cz1, cy0:cy1, cx0:cx1])
+
+    # Trim to write-back region
+    tz0 = wz0 - cz0;  ty0 = wy0 - cy0;  tx0 = wx0 - cx0
+    jacobian_matrix[wz0:wz1, wy0:wy1, wx0:wx1] = \
+        jdet_comp[tz0:tz0 + (wz1 - wz0),
+                  ty0:ty0 + (wy1 - wy0),
+                  tx0:tx0 + (wx1 - wx0)]
     return jacobian_matrix
 
 
@@ -117,7 +131,7 @@ def _optimize_single_window_3d(
     max_minimize_iter,
     method_name,
 ):
-    """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed)``."""
+    """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``."""
     constraints = _build_constraints_3d(
         phi_sub_flat, subvolume_size, freeze_mask, threshold,
     )
@@ -132,7 +146,7 @@ def _optimize_single_window_3d(
         method=method_name,
     )
     elapsed = time.time() - t0
-    return result.x, elapsed
+    return result.x, elapsed, result.success
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +202,7 @@ def _serial_fix_voxel(
     max_per_index_iter, max_minimize_iter,
     max_window, threshold, err_tol, methodName, verbose,
     error_list, num_neg_jac, min_jdet_list, iter_times,
+    min_window=(3, 3, 3),
 ):
     """Fix a single voxel using the serial adaptive-window inner loop.
 
@@ -200,16 +215,15 @@ def _serial_fix_voxel(
     subvolume_size, bbox_center = neg_jdet_bounding_window_3d(
         jacobian_matrix, neg_index, threshold, err_tol)
     max_sz, max_sy, max_sx = _unpack_size_3d(max_window)
-    subvolume_size = (min(subvolume_size[0], max_sz),
-                      min(subvolume_size[1], max_sy),
-                      min(subvolume_size[2], max_sx))
+    min_sz, min_sy, min_sx = _unpack_size_3d(min_window)
+    subvolume_size = (max(min(subvolume_size[0], max_sz), min_sz),
+                      max(min(subvolume_size[1], max_sy), min_sy),
+                      max(min(subvolume_size[2], max_sx), min_sx))
 
     per_index_iter = 0
     window_reached_max = False
 
     while per_index_iter < max_per_index_iter:
-        per_index_iter += 1
-
         cz, cy, cx = get_nearest_center_3d(
             bbox_center, volume_shape, subvolume_size)
         sz, sy, sx = _unpack_size_3d(subvolume_size)
@@ -237,8 +251,12 @@ def _serial_fix_voxel(
              f"window_reached_max={window_reached_max}  "
              f"frozen_voxels={int(freeze_mask.sum())}")
 
-        # Skip optimizer if frozen edges have negative Jdet
+        # Skip optimizer if frozen edges have negative Jdet (infeasible constraint).
+        # Only skip when the window can still grow; at max window the optimizer
+        # must run unconditionally (no frozen edges apply when window_reached_max).
         if (freeze_mask.any()
+                and not window_reached_max
+                and not is_at_edge
                 and not _frozen_edges_clean_3d(
                     jacobian_matrix, cz, cy, cx,
                     subvolume_size, threshold, err_tol, freeze_mask)):
@@ -251,14 +269,24 @@ def _serial_fix_voxel(
                                   min(sx + 2, max_sx))
             continue
 
+        per_index_iter += 1
         window_counts[subvolume_size] += 1
 
-        result_x, elapsed = _optimize_single_window_3d(
+        # Adaptive iteration budget: scale with window volume.
+        _n_vars = 3 * sz * sy * sx
+        _eff_max_iter = min(max(max_minimize_iter, _n_vars // 10),
+                            10 * max_minimize_iter)
+
+        result_x, elapsed, opt_success = _optimize_single_window_3d(
             phi_sub_flat, phi_init_sub_flat, subvolume_size,
             freeze_mask,
-            threshold, max_minimize_iter, methodName,
+            threshold, _eff_max_iter, methodName,
         )
         iter_times.append(elapsed)
+        if not opt_success:
+            _log(verbose, 2,
+                 f"  [warn] SLSQP did not converge at win {sz}x{sy}x{sx} "
+                 f"centre ({cz},{cy},{cx})")
 
         _apply_result_3d(phi, result_x, cz, cy, cx, subvolume_size)
 
@@ -275,8 +303,6 @@ def _serial_fix_voxel(
             break
 
         # Check local window and grow for next sub-iteration
-        if window_reached_max:
-            break
         local = jacobian_matrix[cz - hz:cz + hz_hi,
                                 cy - hy:cy + hy_hi,
                                 cx - hx:cx + hx_hi]

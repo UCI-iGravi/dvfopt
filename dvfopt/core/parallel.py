@@ -5,12 +5,14 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
+from scipy.ndimage import label as _scipy_label
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size
 from dvfopt.core.spatial import (
     get_nearest_center,
     neg_jdet_bounding_window,
     get_phi_sub_flat,
+    get_phi_sub_flat_padded,
     _select_non_overlapping,
     _edge_flags,
 )
@@ -20,7 +22,7 @@ from dvfopt.core.solver import (
     _init_phi,
     _update_metrics,
     _save_results,
-    _full_grid_step,
+
     _optimize_single_window,
     _apply_result,
     _serial_fix_pixel,
@@ -52,6 +54,7 @@ def iterative_parallel(
     enforce_shoelace=False,
     enforce_injectivity=False,
     injectivity_threshold=None,
+    max_doublings=5,
 ):
     """Hybrid serial/parallel iterative SLSQP correction.
 
@@ -95,6 +98,7 @@ def iterative_parallel(
     if enforce_injectivity and injectivity_threshold is None:
         return _adaptive_injectivity_loop(
             deformation_i, iterative_parallel, verbose,
+            max_doublings=max_doublings,
             methodName=methodName,
             save_path=save_path,
             plot_every=plot_every,
@@ -141,6 +145,10 @@ def iterative_parallel(
     prev_neg = init_neg
     attempted_pixels = set()  # pixels attempted in the last batch
     executor = None  # lazy — only created if we actually need parallelism
+    stall_counts = {}        # neg_pixel -> consecutive no-improvement count
+    consecutive_improving = 0
+    _STALL_THRESHOLD = 3
+    _DE_ESCALATE_AFTER = 5
 
     try:
         while (iteration < max_iterations
@@ -151,14 +159,25 @@ def iterative_parallel(
             if not neg_pixels:
                 break
 
-            # Assign / grow window sizes for batching decision
+            # Pre-compute connected-component labels once for all neg pixels
+            # this iteration (avoids O(n_neg * H*W) label calls).
+            _neg_mask = quality_matrix[0] <= threshold - err_tol
+            _labeled_neg, _ = _scipy_label(_neg_mask)
+
+            worst_pixel = neg_pixels[0]  # captured before the step for stall tracking
+
+            # Purge stale stall_counts for pixels no longer below threshold.
             current_neg_set = set(neg_pixels)
+            stall_counts = {k: v for k, v in stall_counts.items()
+                            if k in current_neg_set}
+
+            # Assign / grow window sizes for batching decision
             new_window_sizes = {}
             new_bbox_centers = {}
             for px in neg_pixels:
                 # Always recompute bounding box for current Jacobian state
                 bbox_size, bbox_center = neg_jdet_bounding_window(
-                    quality_matrix, px, threshold, err_tol
+                    quality_matrix, px, threshold, err_tol, labeled=_labeled_neg
                 )
                 bsy, bsx = _unpack_size(bbox_size)
                 max_sy, max_sx = _unpack_size(max_window)
@@ -221,9 +240,11 @@ def iterative_parallel(
                         enforce_shoelace=enforce_shoelace,
                         enforce_injectivity=enforce_injectivity,
                         injectivity_threshold=injectivity_threshold,
+                        min_window=global_min_window,
+                        labeled=_labeled_neg,
                     )
 
-                cur_neg = int((jacobian_matrix <= 0).sum())
+                cur_neg = int((quality_matrix[0] <= threshold - err_tol).sum())
                 cur_min = float(jacobian_matrix.min())
                 cur_err = error_list[-1] if error_list else 0.0
                 _ssy, _ssx = _unpack_size(sub_size)
@@ -232,25 +253,26 @@ def iterative_parallel(
                      f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
                      f"win {_ssy}x{_ssx}  sub-iters {sub_iters}")
 
-                # Full-grid fallback for non-square grids
-                _sub_sy, _sub_sx = _unpack_size(sub_size)
-                if (_sub_sy >= H and _sub_sx >= W
-                        and H != W
-                        and (quality_matrix[0] <= threshold - err_tol).any()):
-                    iter_start = time.time()
-                    _full_grid_step(phi, phi_init, H, W, threshold,
-                                    max_minimize_iter, methodName, verbose,
-                                    enforce_shoelace, enforce_injectivity,
-                                    injectivity_threshold=injectivity_threshold)
-                    iter_times.append(time.time() - iter_start)
-
-                    jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
-                        phi, phi_init, enforce_shoelace, enforce_injectivity,
-                        num_neg_jac, min_jdet_list, error_list)
-                    _log(verbose, 1,
-                         f"         -> full-grid  neg_jdet {cur_neg:5d}  "
-                         f"min_jdet {cur_min:+.6f}  L2 {error_list[-1]:.4f}")
-
+                gsy, gsx = _unpack_size(global_min_window)
+                if cur_neg >= prev_neg:
+                    consecutive_improving = 0
+                    stall_counts[neg_idx] = stall_counts.get(neg_idx, 0) + 1
+                    if stall_counts[neg_idx] >= _STALL_THRESHOLD and (gsy < H or gsx < W):
+                        global_min_window = (min(gsy + 2, H), min(gsx + 2, W))
+                        stall_counts[neg_idx] = 0
+                        _log(verbose, 1,
+                             f"  [escalate] serial pixel ({neg_idx[0]},{neg_idx[1]}) "
+                             f"stalled {_STALL_THRESHOLD}x, "
+                             f"global min window -> "
+                             f"{global_min_window[0]}x{global_min_window[1]}")
+                else:
+                    stall_counts.pop(neg_idx, None)
+                    consecutive_improving += 1
+                    if consecutive_improving >= _DE_ESCALATE_AFTER and (gsy > 3 or gsx > 3):
+                        global_min_window = (3, 3)
+                        consecutive_improving = 0
+                        _log(verbose, 1,
+                             "  [de-escalate] consistent improvement, min window -> 3x3")
                 prev_neg = cur_neg
                 attempted_pixels = {neg_idx}
 
@@ -275,32 +297,50 @@ def iterative_parallel(
                 for neg_idx, (cz, cy, cx), sub_size in batch:
                     window_counts[_unpack_size(sub_size)] += 1
 
-                    phi_init_sub_flat = get_phi_sub_flat(
-                        phi_init, cz, cy, cx, slice_shape, sub_size)
-                    phi_sub_flat = get_phi_sub_flat(
+                    # Use padded extraction so the full original window
+                    # (including boundary ring) is optimised with correct
+                    # central-difference Jacobian context.
+                    phi_sub_flat, opt_size = get_phi_sub_flat_padded(
                         phi, cz, cy, cx, slice_shape, sub_size)
+                    phi_init_sub_flat, _ = get_phi_sub_flat_padded(
+                        phi_init, cz, cy, cx, slice_shape, sub_size)
+                    is_padded = opt_size != _unpack_size(sub_size)
 
-                    is_at_edge, window_reached_max = _edge_flags(
-                        cy, cx, sub_size, slice_shape, max_window)
+                    if is_padded:
+                        opt_is_at_edge = False
+                        opt_window_reached_max = False
+                    else:
+                        opt_is_at_edge, opt_window_reached_max = _edge_flags(
+                            cy, cx, sub_size, slice_shape, max_window)
+
+                    _opt_sy, _opt_sx = _unpack_size(opt_size)
+                    _eff_max_iter = min(max(max_minimize_iter,
+                                           2 * _opt_sy * _opt_sx // 10),
+                                        10 * max_minimize_iter)
 
                     fut = executor.submit(
                         _optimize_single_window,
-                        phi_sub_flat, phi_init_sub_flat, sub_size,
-                        is_at_edge, window_reached_max,
-                        threshold, max_minimize_iter, methodName,
+                        phi_sub_flat, phi_init_sub_flat, opt_size,
+                        opt_is_at_edge, opt_window_reached_max,
+                        threshold, _eff_max_iter, methodName,
                         enforce_shoelace,
                         enforce_injectivity,
                         injectivity_threshold,
                     )
-                    futures[fut] = (neg_idx, cz, cy, cx, sub_size)
+                    futures[fut] = (neg_idx, cz, cy, cx, sub_size, is_padded, opt_size)
 
                 batch_time = 0.0
                 completed_windows = []
                 for fut in as_completed(futures):
-                    neg_idx, cz, cy, cx, sub_size = futures[fut]
-                    result_x, elapsed = fut.result()
+                    neg_idx, cz, cy, cx, sub_size, is_padded, opt_size = futures[fut]
+                    result_x, elapsed, opt_success = fut.result()
+                    if not opt_success:
+                        _log(verbose, 2,
+                             f"  [warn] SLSQP did not converge for window "
+                             f"at ({cy},{cx}) size {_unpack_size(opt_size)}")
                     batch_time = max(batch_time, elapsed)
-                    _apply_result(phi, result_x, cy, cx, sub_size)
+                    _apply_result(phi, result_x, cy, cx, opt_size,
+                                  write_size=sub_size if is_padded else None)
                     completed_windows.append(((cy, cx), sub_size))
 
                 iter_times.append(batch_time)
@@ -320,15 +360,29 @@ def iterative_parallel(
                      f"         -> neg_jdet {cur_neg:5d}  "
                      f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}")
 
-                # Escalate global min window when parallel doesn't
-                # improve — forces larger windows and eventually serial.
+                # Escalate global min window only when worst pixel stalls
+                # repeatedly; de-escalate after sustained improvement.
                 gsy, gsx = _unpack_size(global_min_window)
-                if cur_neg >= prev_neg and (gsy < H or gsx < W):
-                    global_min_window = (min(gsy + 2, H), min(gsx + 2, W))
-                    _log(verbose, 1,
-                         f"  [escalate] parallel didn't improve "
-                         f"({prev_neg}->{cur_neg}), "
-                         f"global min window -> {global_min_window[0]}x{global_min_window[1]}")
+                if cur_neg >= prev_neg:
+                    consecutive_improving = 0
+                    stall_counts[worst_pixel] = stall_counts.get(worst_pixel, 0) + 1
+                    if stall_counts[worst_pixel] >= _STALL_THRESHOLD and (gsy < H or gsx < W):
+                        global_min_window = (min(gsy + 2, H), min(gsx + 2, W))
+                        stall_counts[worst_pixel] = 0
+                        _log(verbose, 1,
+                             f"  [escalate] parallel pixel "
+                             f"({worst_pixel[0]},{worst_pixel[1]}) "
+                             f"stalled {_STALL_THRESHOLD}x, "
+                             f"global min window -> "
+                             f"{global_min_window[0]}x{global_min_window[1]}")
+                else:
+                    stall_counts.pop(worst_pixel, None)
+                    consecutive_improving += 1
+                    if consecutive_improving >= _DE_ESCALATE_AFTER and (gsy > 3 or gsx > 3):
+                        global_min_window = (3, 3)
+                        consecutive_improving = 0
+                        _log(verbose, 1,
+                             "  [de-escalate] consistent improvement, min window -> 3x3")
                 prev_neg = cur_neg
                 attempted_pixels = {item[0] for item in batch}
 
