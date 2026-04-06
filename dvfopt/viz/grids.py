@@ -184,7 +184,7 @@ def _invert_displacement(dy, dx, iterations=50):
 # ---------------------------------------------------------------------------
 def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
                            title="", spacing=1, linewidth=0.5,
-                           inverse=False):
+                           inverse=False, jdet_vmax=None):
     """Side-by-side deformation grids coloured by Jacobian determinant.
 
     Parameters
@@ -198,6 +198,9 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
     inverse : bool
         If False (default), show fixed\u2192moving (pull-back).
         If True, show moving\u2192fixed via proper fixed-point inversion.
+    jdet_vmax : float or None
+        If set, caps the colormap range to ``[-jdet_vmax, jdet_vmax]``.
+        Useful when extreme outliers wash out the colour scale.
     """
     _, _, H, W = deformation_i.shape
 
@@ -242,6 +245,9 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
     J_all = np.concatenate([jac_init.ravel(), jac_corr.ravel()])
     vmin = min(float(J_all.min()), -0.5)
     vmax = max(float(J_all.max()), 1.5)
+    if jdet_vmax is not None:
+        vmin = max(vmin, -jdet_vmax)
+        vmax = min(vmax, jdet_vmax)
     norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     cmap = plt.get_cmap("bwr")
 
