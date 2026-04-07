@@ -8,7 +8,8 @@
       "Bash(xargs grep:*)",
       "Bash(find \"c:\\\\Users\\\\Andy\\\\Documents\\\\GitHub\\\\UCI-iGravi\\\\deformation-field-processing\" -type f -name \"*.py\" ! -path \"*/.venv/*\" ! -path \"*/archive/*\" -exec grep -l \"ipywidgets\\\\|streamlit\\\\|Flask\\\\|fastapi\\\\|dash\\\\|click.command\" {} \\\\;)",
       "Bash(python -c ':*)",
-      "Bash(python -c \"import json; nb=json.load\\(open\\('benchmarks/correct-3d-slices.ipynb'\\)\\); print\\(json.dumps\\([{'id': c.get\\('id',''\\), 'type': c['cell_type']} for c in nb['cells']], indent=2\\)\\)\")"
+      "Bash(python -c \"import json; nb=json.load\\(open\\('benchmarks/correct-3d-slices.ipynb'\\)\\); print\\(json.dumps\\([{'id': c.get\\('id',''\\), 'type': c['cell_type']} for c in nb['cells']], indent=2\\)\\)\")",
+      "Bash(python -m pytest tests/test_jacobian_cross_validation.py -v)"
     ]
   }
 }
