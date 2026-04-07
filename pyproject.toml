@@ -1,0 +1,24 @@
+[project]
+name = "dvfopt"
+version = "0.1.0"
+description = "Correction of negative Jacobian determinants in deformation (displacement) fields"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "SimpleITK",
+    "nibabel",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+benchmarks = [
+    "itk-elastix",
+    "opencv-python-headless",
+    "timm",
+    "torch",
+    "voxelmorph",
+]
+
+[tool.setuptools.packages.find]
+include = ["dvfopt*"]
