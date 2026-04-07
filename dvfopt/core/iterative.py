@@ -22,7 +22,7 @@ from dvfopt.core.constraints import _quality_map
 
 def iterative_serial(
     deformation_i,
-    methodName="SLSQP",
+    method_name="SLSQP",
     verbose=1,
     save_path=None,
     plot_every=0,
@@ -44,7 +44,7 @@ def iterative_serial(
     ----------
     deformation_i : ndarray, shape ``(3, 1, H, W)``
         Input deformation field with channels ``[dz, dy, dx]``.
-    methodName : str
+    method_name : str
         Optimiser method passed to ``scipy.optimize.minimize``.
     verbose : int
         Verbosity level. ``0`` = silent, ``1`` = per-iteration progress
@@ -113,7 +113,7 @@ def iterative_serial(
         return _adaptive_injectivity_loop(
             deformation_i, iterative_serial, verbose,
             max_doublings=max_doublings,
-            methodName=methodName,
+            method_name=method_name,
             save_path=save_path,
             plot_every=plot_every,
             plot_callback=plot_callback,
@@ -135,7 +135,7 @@ def iterative_serial(
     max_window = (H, W)
     near_cent_dict = {}
 
-    _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={methodName}")
+    _log(verbose, 1, f"[init] Grid {H}x{W}  |  threshold={threshold}  |  method={method_name}")
     _log(verbose, 2, f"[init] deformation_i shape: {deformation_i.shape}, phi shape: {phi.shape}")
 
     # Initial Jacobian
@@ -195,7 +195,7 @@ def iterative_serial(
                 neg_index_tuple, phi, phi_init, jacobian_matrix,
                 slice_shape, near_cent_dict, window_counts,
                 max_per_index_iter, max_minimize_iter,
-                max_window, threshold, err_tol, methodName, verbose,
+                max_window, threshold, err_tol, method_name, verbose,
                 error_list, num_neg_jac, min_jdet_list, iter_times,
                 enforce_shoelace=enforce_shoelace,
                 enforce_injectivity=enforce_injectivity,
@@ -264,7 +264,7 @@ def iterative_serial(
     final_neg = int((jacobian_matrix <= 0).sum())
     final_min = float(jacobian_matrix.min())
 
-    _print_summary(verbose, methodName, (H, W), iteration,
+    _print_summary(verbose, method_name, (H, W), iteration,
                    init_neg, final_neg, init_min, final_min,
                    final_err, elapsed)
 
@@ -272,7 +272,7 @@ def iterative_serial(
 
     if save_path is not None:
         _save_results(
-            save_path, method=methodName, threshold=threshold, err_tol=err_tol,
+            save_path, method=method_name, threshold=threshold, err_tol=err_tol,
             max_iterations=max_iterations, max_per_index_iter=max_per_index_iter,
             max_minimize_iter=max_minimize_iter,
             grid_shape=(H, W), elapsed=elapsed, final_err=final_err,

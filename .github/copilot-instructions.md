@@ -35,18 +35,16 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 - **`dvfopt.core`** — Optimization algorithms. `core/objective.py`: L2 objective. `core/constraints.py`: Jacobian/shoelace/injectivity constraints. `core/spatial.py`: window selection, bounding boxes, edge logic. `core/solver.py`: single-window SLSQP. `core/iterative.py`: `iterative_serial()` (serial 2D). `core/parallel.py`: `iterative_parallel()` (hybrid parallel 2D). `core/solver3d.py` + `core/iterative3d.py`: 3D extension.
 - **`dvfopt.jacobian`** — Jacobian computation. `numpy_jdet.py`: pure-numpy 2D/3D via `np.gradient`. `sitk_jdet.py`: SimpleITK wrapper. `shoelace.py`: geometric quad-cell area constraint. `monotonicity.py`: injectivity/monotonicity constraint.
 - **`dvfopt.dvf`** — DVF utilities. `generation.py`: `generate_random_dvf()` (2D/3D). `scaling.py`: `scale_dvf()` bicubic rescaling (2D/3D).
-- **`dvfopt.laplacian`** — Laplacian interpolation. `matrix.py`: sparse Laplacian matrix with Dirichlet BCs. `solver.py`: LGMRES solver, `sliceToSlice3DLaplacian()` end-to-end pipeline.
-- **`dvfopt.viz`** — All visualization. `snapshots.py`: per-iteration heatmaps. `fields.py`: deformation field plots. `grids.py`: deformed quad-grid visualization colored by Jdet. `closeups.py`: checkerboard and neighborhood views. `pipeline.py`: `run_lapl_and_correction()` end-to-end pipeline.
+- **`laplacian_interp`** — Laplacian interpolation (separate package). `matrix.py`: sparse Laplacian matrix with Dirichlet BCs. `solver.py`: LGMRES solver, `slice_to_slice_3d_laplacian()` end-to-end pipeline.
+- **`dvfopt.viz`** — All visualization. `snapshots.py`: per-iteration heatmaps. `fields.py`: deformation field plots. `grids.py`: deformed quad-grid visualization colored by Jdet. `closeups.py`: checkerboard and neighborhood views.
 - **`dvfopt.io`** — I/O. `nifti.py`: NIfTI loading via nibabel.
-- **`dvfopt.utils`** — Helpers. `checkerboard.py`, `correspondences.py`, `transform.py`.
-- **`dvfopt.testcases`** — Test case registry. `SYNTHETIC_CASES`, `RANDOM_DVF_CASES`, `REAL_DATA_SLICES`, `make_deformation()`, `make_random_dvf()`, `load_slice()`, `save_and_summarize()`.
-- **`correspondences.py`** — `remove_duplicates()`, `do_lines_intersect()`, `swap_correspondences()`, `downsample_points()`: handle point correspondences and detect/resolve crossing displacement vectors.
-- **`correspondences.py`** — `remove_duplicates()`, `do_lines_intersect()`, `swap_correspondences()`, `downsample_points()`: handle point correspondences and detect/resolve crossing displacement vectors.
+- **`dvfopt.utils`** — Helpers. `checkerboard.py`.
+- **`testcases`** — Test case registry (separate package). `SYNTHETIC_CASES`, `RANDOM_DVF_CASES`, `REAL_DATA_SLICES`, `make_deformation()`, `make_random_dvf()`, `load_slice()`, `save_and_summarize()`.
 
 ## Test Cases & Data
 
-- **Synthetic grids:** Defined in `dvfopt/testcases.py` as `SYNTHETIC_CASES` dict mapping case keys to `(msample, fsample, grid_size)` tuples. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
-- **Random DVFs:** Defined in `dvfopt/testcases.py` as `RANDOM_DVF_CASES` dict. Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)` from `dvfopt.dvf`.
+- **Synthetic grids:** Defined in `testcases/_cases.py` as `SYNTHETIC_CASES` dict mapping case keys to `(msample, fsample, grid_size)` tuples. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
+- **Random DVFs:** Defined in `testcases/_cases.py` as `RANDOM_DVF_CASES` dict. Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)` from `dvfopt.dvf`.
 - **Real data:** `.npy` files in `data/` (e.g., `02b_320x456_slice200.npy`). Configured in `REAL_DATA_SLICES` dict. Downscaled versions at 64×91 via `scale_dvf()`.
 
 ## Output Structure
@@ -66,5 +64,5 @@ Organized as `paper_outputs/experiments/{method}/{grid_size}/{test_case}/` and `
 ## Working With This Codebase
 
 - Notebooks in `archive/` are historical iterations; notebooks in `notebooks/` are canonical.
-- When modifying optimization functions (`objectiveEuc`, constraint functions), preserve the `phi` flattening convention: `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx.
-- Laplacian matrix construction in `dvfopt/laplacian/matrix.py` uses `z*ny*nz + y*nz + x` flattening — be careful with axis ordering when modifying.
+- When modifying optimization functions (`objective_euc`, constraint functions), preserve the `phi` flattening convention: `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx.
+- Laplacian matrix construction in `laplacian_interp/matrix.py` uses `z*ny*nz + y*nz + x` flattening — be careful with axis ordering when modifying.

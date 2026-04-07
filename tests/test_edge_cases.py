@@ -547,27 +547,27 @@ class TestSpatialHelpers:
 class TestObjective:
     def test_gradient_numerical_check(self):
         """Analytical gradient of L2-squared must match finite differences."""
-        from dvfopt.core.objective import objectiveEuc
+        from dvfopt.core.objective import objective_euc
         rng = np.random.default_rng(7)
         phi = rng.standard_normal(20)
         phi_init = rng.standard_normal(20)
         eps = 1e-6
-        val, grad = objectiveEuc(phi, phi_init)
+        val, grad = objective_euc(phi, phi_init)
         grad_fd = np.zeros_like(phi)
         for i in range(len(phi)):
             p = phi.copy(); p[i] += eps
-            v_hi, _ = objectiveEuc(p, phi_init)
+            v_hi, _ = objective_euc(p, phi_init)
             p = phi.copy(); p[i] -= eps
-            v_lo, _ = objectiveEuc(p, phi_init)
+            v_lo, _ = objective_euc(p, phi_init)
             grad_fd[i] = (v_hi - v_lo) / (2 * eps)
         np.testing.assert_allclose(grad, grad_fd, rtol=1e-5,
                                    err_msg="Analytical gradient does not match FD")
 
     def test_objective_zero_at_init(self):
         """Value must be zero when phi == phi_init."""
-        from dvfopt.core.objective import objectiveEuc
+        from dvfopt.core.objective import objective_euc
         phi = np.array([1.0, 2.0, -3.0])
-        val, grad = objectiveEuc(phi, phi.copy())
+        val, grad = objective_euc(phi, phi.copy())
         assert val == pytest.approx(0.0)
         np.testing.assert_allclose(grad, 0.0)
 

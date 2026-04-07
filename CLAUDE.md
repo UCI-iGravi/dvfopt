@@ -42,7 +42,7 @@ pytest tests/test_iterative.py
 ### Optimization internals
 
 - **phi flattening:** `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx. Preserve this when modifying objective/constraint functions.
-- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `dvfopt/laplacian/matrix.py`.
+- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `laplacian_interp/matrix.py`.
 - **Windowed approach:** iterative SLSQP finds worst-Jdet pixel, computes bounding box of connected negative region + 1px positive border (min 3×3), runs `scipy.optimize.minimize(method='SLSQP')` on that sub-window with frozen edges. Grows window by 2 if needed.
 - **Parallel variant:** `iterative_parallel()` batches non-overlapping windows into `ProcessPoolExecutor`. Falls back to serial for single windows (avoids Windows spawn overhead).
 
@@ -58,12 +58,14 @@ The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `en
 | `iterative_parallel()` | `dvfopt.core.parallel` | Parallel 2D variant |
 | `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
-| `sliceToSlice3DLaplacian()` | `dvfopt.laplacian.solver` | Build DVF from correspondences |
-| `make_deformation()` / `make_random_dvf()` | `dvfopt.testcases` | Generate test deformation fields |
+| `slice_to_slice_3d_laplacian()` | `laplacian_interp.solver` | Build DVF from correspondences |
+| `make_deformation()` / `make_random_dvf()` | `testcases` | Generate test deformation fields |
 
 ### Directory layout
 
-- `dvfopt/` — installable package (core solvers, jacobian, dvf utils, laplacian, viz, io, testcases)
+- `dvfopt/` — installable package (core solvers, jacobian, dvf utils, viz, io)
+- `laplacian_interp/` — standalone Laplacian interpolation package (matrix construction, LGMRES solver)
+- `testcases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
 - `notebooks/` — canonical experiment notebooks
 - `benchmarks/` — performance comparison notebooks (serial vs parallel, constraint modes, scalability, registration methods)
 - `scripts/` — image generation scripts for docs

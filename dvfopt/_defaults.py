@@ -34,6 +34,17 @@ def _unpack_size(submatrix_size):
     return int(submatrix_size), int(submatrix_size)
 
 
+def _adaptive_maxiter(n_variables, max_minimize_iter):
+    """Scale SLSQP iteration budget with the number of optimisation variables.
+
+    Larger windows get proportionally more iterations so the solver has a
+    better chance of converging.  The budget is clamped to
+    ``[max_minimize_iter, 10 * max_minimize_iter]``.
+    """
+    return min(max(max_minimize_iter, n_variables // 10),
+               10 * max_minimize_iter)
+
+
 def _unpack_size_3d(subvolume_size):
     """Normalize *subvolume_size* to a ``(sz, sy, sx)`` tuple.
 

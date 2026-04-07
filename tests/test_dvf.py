@@ -14,7 +14,7 @@ class TestGenerateRandomDvf:
 
     def test_dtype(self):
         dvf = generate_random_dvf((3, 1, 8, 8), seed=42)
-        assert dvf.dtype == np.float32
+        assert dvf.dtype == np.float64
 
     def test_magnitude_bounds(self):
         mag = 3.0

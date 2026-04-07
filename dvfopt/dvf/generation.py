@@ -23,7 +23,7 @@ def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
     rng = np.random.default_rng(seed)
     C, _, H, W = shape
     assert C == 3, "DVF must have 3 channels (dz, dy, dx)"
-    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float32)
+    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float64)
 
 
 def generate_random_dvf_3d(shape, max_magnitude=5.0, seed=None):

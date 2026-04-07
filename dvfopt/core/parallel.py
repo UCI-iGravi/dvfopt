@@ -7,7 +7,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 from scipy.ndimage import label as _scipy_label
 
-from dvfopt._defaults import _log, _resolve_params, _unpack_size
+from dvfopt._defaults import _log, _resolve_params, _unpack_size, _adaptive_maxiter
 from dvfopt.core.spatial import (
     get_nearest_center,
     neg_jdet_bounding_window,
@@ -41,7 +41,7 @@ def _find_negative_pixels(jacobian_matrix, threshold, err_tol):
 
 def iterative_parallel(
     deformation_i,
-    methodName="SLSQP",
+    method_name="SLSQP",
     verbose=1,
     save_path=None,
     plot_every=0,
@@ -99,7 +99,7 @@ def iterative_parallel(
         return _adaptive_injectivity_loop(
             deformation_i, iterative_parallel, verbose,
             max_doublings=max_doublings,
-            methodName=methodName,
+            method_name=method_name,
             save_path=save_path,
             plot_every=plot_every,
             threshold=threshold,
@@ -125,7 +125,7 @@ def iterative_parallel(
 
     _log(verbose, 1,
          f"[init] Grid {H}x{W}  |  threshold={threshold}  "
-         f"|  method={methodName}  |  workers={max_workers}")
+         f"|  method={method_name}  |  workers={max_workers}")
 
     jacobian_matrix, quality_matrix, init_neg, init_min = _update_metrics(
         phi, phi_init, enforce_shoelace, enforce_injectivity,
@@ -198,8 +198,15 @@ def iterative_parallel(
                 gsy, gsx = _unpack_size(global_min_window)
                 ws_sy, ws_sx = _unpack_size(new_window_sizes[px])
                 new_window_sizes[px] = (max(ws_sy, gsy), max(ws_sx, gsx))
-            pixel_window_sizes = new_window_sizes
-            pixel_bbox_centers = new_bbox_centers
+            # Merge into persistent dict so skipped pixels retain their
+            # grown window sizes across iterations.
+            pixel_window_sizes.update(new_window_sizes)
+            pixel_bbox_centers.update(new_bbox_centers)
+            # Purge entries for pixels no longer negative.
+            pixel_window_sizes = {k: v for k, v in pixel_window_sizes.items()
+                                  if k in current_neg_set}
+            pixel_bbox_centers = {k: v for k, v in pixel_bbox_centers.items()
+                                  if k in current_neg_set}
 
             # Select non-overlapping batch
             batch = _select_non_overlapping(
@@ -235,7 +242,7 @@ def iterative_parallel(
                         slice_shape, near_cent_dict, window_counts,
                         max_per_index_iter,
                         max_minimize_iter, max_window,
-                        threshold, err_tol, methodName, verbose,
+                        threshold, err_tol, method_name, verbose,
                         error_list, num_neg_jac, min_jdet_list, iter_times,
                         enforce_shoelace=enforce_shoelace,
                         enforce_injectivity=enforce_injectivity,
@@ -314,15 +321,14 @@ def iterative_parallel(
                             cy, cx, sub_size, slice_shape, max_window)
 
                     _opt_sy, _opt_sx = _unpack_size(opt_size)
-                    _eff_max_iter = min(max(max_minimize_iter,
-                                           2 * _opt_sy * _opt_sx // 10),
-                                        10 * max_minimize_iter)
+                    _eff_max_iter = _adaptive_maxiter(
+                        2 * _opt_sy * _opt_sx, max_minimize_iter)
 
                     fut = executor.submit(
                         _optimize_single_window,
                         phi_sub_flat, phi_init_sub_flat, opt_size,
                         opt_is_at_edge, opt_window_reached_max,
-                        threshold, _eff_max_iter, methodName,
+                        threshold, _eff_max_iter, method_name,
                         enforce_shoelace,
                         enforce_injectivity,
                         injectivity_threshold,
@@ -362,8 +368,10 @@ def iterative_parallel(
 
                 # Escalate global min window only when worst pixel stalls
                 # repeatedly; de-escalate after sustained improvement.
+                # Only track stall for worst_pixel if it was actually in the batch.
+                batch_pixels = {item[0] for item in batch}
                 gsy, gsx = _unpack_size(global_min_window)
-                if cur_neg >= prev_neg:
+                if cur_neg >= prev_neg and worst_pixel in batch_pixels:
                     consecutive_improving = 0
                     stall_counts[worst_pixel] = stall_counts.get(worst_pixel, 0) + 1
                     if stall_counts[worst_pixel] >= _STALL_THRESHOLD and (gsy < H or gsx < W):
@@ -375,6 +383,8 @@ def iterative_parallel(
                              f"stalled {_STALL_THRESHOLD}x, "
                              f"global min window -> "
                              f"{global_min_window[0]}x{global_min_window[1]}")
+                elif cur_neg >= prev_neg:
+                    consecutive_improving = 0
                 else:
                     stall_counts.pop(worst_pixel, None)
                     consecutive_improving += 1
@@ -384,7 +394,7 @@ def iterative_parallel(
                         _log(verbose, 1,
                              "  [de-escalate] consistent improvement, min window -> 3x3")
                 prev_neg = cur_neg
-                attempted_pixels = {item[0] for item in batch}
+                attempted_pixels = batch_pixels
 
             # Side-by-side before/after snapshot for this iteration.
             if _show_snap:
@@ -402,7 +412,7 @@ def iterative_parallel(
 
     finally:
         if executor is not None:
-            executor.shutdown(wait=False)
+            executor.shutdown(wait=True)
 
     end_time = time.time()
     elapsed = end_time - start_time
@@ -412,7 +422,7 @@ def iterative_parallel(
     final_min = float(jacobian_matrix.min())
 
     _print_summary(
-        verbose, f"{methodName} — hybrid parallel", (H, W), iteration,
+        verbose, f"{method_name} — hybrid parallel", (H, W), iteration,
         init_neg, final_neg, init_min, final_min, final_err, elapsed,
         extra_lines=f"(serial={serial_iters}, parallel={parallel_iters})",
     )
@@ -421,7 +431,7 @@ def iterative_parallel(
 
     if save_path is not None:
         _save_results(
-            save_path, method=f"{methodName} (hybrid parallel)",
+            save_path, method=f"{method_name} (hybrid parallel)",
             threshold=threshold, err_tol=err_tol,
             max_iterations=max_iterations, max_per_index_iter=max_per_index_iter,
             max_minimize_iter=max_minimize_iter,

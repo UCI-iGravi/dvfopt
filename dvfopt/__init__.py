@@ -17,17 +17,17 @@ DVF utilities::
 
     from dvfopt import generate_random_dvf, scale_dvf
 
-Laplacian interpolation::
+Laplacian interpolation (separate ``laplacian_interp`` package)::
 
-    from dvfopt import sliceToSlice3DLaplacian, compute3DLaplacianFromShape
+    from laplacian_interp import slice_to_slice_3d_laplacian, laplacian_a_3d
 
 Visualisation (imports matplotlib)::
 
     from dvfopt.viz import plot_deformations, plot_grid_before_after
 
-Test cases::
+Test cases (separate ``testcases`` package)::
 
-    from dvfopt.testcases import SYNTHETIC_CASES, make_deformation
+    from testcases import SYNTHETIC_CASES, make_deformation
 """
 
 # -- Package metadata -------------------------------------------------------
@@ -58,28 +58,8 @@ from dvfopt.dvf import (
     scale_dvf_3d,
 )
 
-# -- Laplacian interpolation -------------------------------------------------
-from dvfopt.laplacian import (
-    laplacian_a_3d,
-    laplacianA3D,
-    compute_3d_laplacian_from_shape,
-    compute3DLaplacianFromShape,
-    slice_to_slice_3d_laplacian,
-    sliceToSlice3DLaplacian,
-)
-
 # -- I/O ---------------------------------------------------------------------
-from dvfopt.io import load_nii_images, loadNiiImages
-
-# -- Test cases --------------------------------------------------------------
-from dvfopt.testcases import (
-    SYNTHETIC_CASES,
-    RANDOM_DVF_CASES,
-    REAL_DATA_SLICES,
-    make_deformation,
-    make_random_dvf,
-    load_slice,
-)
+from dvfopt.io import load_nii_images
 
 # -- Defaults ----------------------------------------------------------------
 from dvfopt._defaults import DEFAULT_PARAMS

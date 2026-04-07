@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from dvfopt.core.spatial import (
-    nearest_center,
     get_nearest_center,
     argmin_quality,
     neg_jdet_bounding_window,
@@ -19,43 +18,34 @@ from dvfopt._defaults import _unpack_size
 class TestNearestCenter:
     def test_center_pixel_maps_to_self(self):
         shape = (1, 10, 10)
-        nc = nearest_center(shape, 3)
-        # (0, 5, 5) is well inside → should map to itself
-        assert nc[(0, 5, 5)] == [0, 5, 5]
+        # (5, 5) is well inside → should map to itself
+        assert get_nearest_center((5, 5), shape, 3) == [0, 5, 5]
 
     def test_corner_clamps(self):
         shape = (1, 10, 10)
-        nc = nearest_center(shape, 3)
-        # (0, 0, 0) should clamp to (0, 1, 1) — the nearest valid center for 3x3
-        assert nc[(0, 0, 0)] == [0, 1, 1]
+        # (0, 0) should clamp to (0, 1, 1) — the nearest valid center for 3x3
+        assert get_nearest_center((0, 0), shape, 3) == [0, 1, 1]
 
     def test_bottom_right_clamps(self):
         shape = (1, 10, 10)
-        nc = nearest_center(shape, 3)
-        # (0, 9, 9) should clamp to (0, 8, 8)
-        assert nc[(0, 9, 9)] == [0, 8, 8]
+        # (9, 9) should clamp to (0, 8, 8)
+        assert get_nearest_center((9, 9), shape, 3) == [0, 8, 8]
 
     def test_rectangular_window(self):
         shape = (1, 8, 12)
-        nc = nearest_center(shape, (3, 5))
         # Top-left corner: hy=1, hx=2
-        assert nc[(0, 0, 0)] == [0, 1, 2]
+        assert get_nearest_center((0, 0), shape, (3, 5)) == [0, 1, 2]
 
 
 class TestGetNearestCenter:
-    def test_cached_lookup(self):
+    def test_basic_lookup(self):
         shape = (1, 10, 10)
-        cache = {}
-        result = get_nearest_center((5, 5), shape, 3, cache)
+        result = get_nearest_center((5, 5), shape, 3)
         assert result == [0, 5, 5]
-        # Cache should now contain the key
-        assert (3, 3) in cache
 
-    def test_second_call_uses_cache(self):
+    def test_different_positions(self):
         shape = (1, 10, 10)
-        cache = {}
-        get_nearest_center((3, 3), shape, 5, cache)
-        result = get_nearest_center((7, 7), shape, 5, cache)
+        result = get_nearest_center((7, 7), shape, 5)
         assert result == [0, 7, 7]
 
 

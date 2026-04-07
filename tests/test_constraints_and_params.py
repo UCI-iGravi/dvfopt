@@ -9,7 +9,7 @@ Covers:
   - Both constraints together
   - injectivity_threshold at threshold, below threshold (should warn/fail
     gracefully), above threshold (stricter)
-  - methodName parameter (SLSQP)
+  - method_name parameter (SLSQP)
   - threshold / err_tol parameter sweep
   - max_iterations hard cap
   - max_per_index_iter hard cap
