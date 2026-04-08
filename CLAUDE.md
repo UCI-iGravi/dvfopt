@@ -59,13 +59,13 @@ The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `en
 | `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
 | `slice_to_slice_3d_laplacian()` | `laplacian_interp.solver` | Build DVF from correspondences |
-| `make_deformation()` / `make_random_dvf()` | `testcases` | Generate test deformation fields |
+| `make_deformation()` / `make_random_dvf()` | `test_cases` | Generate test deformation fields |
 
 ### Directory layout
 
 - `dvfopt/` — installable package (core solvers, jacobian, dvf utils, viz, io)
 - `laplacian_interp/` — standalone Laplacian interpolation package (matrix construction, LGMRES solver)
-- `testcases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
+- `test_cases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
 - `notebooks/` — canonical experiment notebooks
 - `benchmarks/` — performance comparison notebooks (serial vs parallel, constraint modes, scalability, registration methods)
 - `scripts/` — image generation scripts for docs

@@ -360,7 +360,7 @@ class TestConstraintModes:
 
 
 # ---------------------------------------------------------------------------
-# Synthetic test cases from testcases package
+# Synthetic test cases from test_cases package
 # ---------------------------------------------------------------------------
 
 class TestSyntheticCases:
@@ -373,7 +373,7 @@ class TestSyntheticCases:
         "03b_10x10_crossing",
     ])
     def test_synthetic_case(self, case_key):
-        from testcases import make_deformation
+        from test_cases import make_deformation
 
         deformation, _, _ = make_deformation(case_key)
         deformation = deformation.astype(np.float64)
@@ -392,7 +392,7 @@ class TestSyntheticCases:
         "01f_20x20_random_seed_42",
     ])
     def test_random_dvf_case(self, case_key):
-        from testcases import make_random_dvf
+        from test_cases import make_random_dvf
 
         deformation = make_random_dvf(case_key).astype(np.float64)
         jdet_before = jacobian_det2D(deformation[[1, 2], 0])

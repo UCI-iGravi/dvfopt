@@ -11,7 +11,6 @@ from dvfopt._defaults import _log, _resolve_params, _unpack_size, _adaptive_maxi
 from dvfopt.core.spatial import (
     get_nearest_center,
     neg_jdet_bounding_window,
-    get_phi_sub_flat,
     get_phi_sub_flat_padded,
     _select_non_overlapping,
     _edge_flags,

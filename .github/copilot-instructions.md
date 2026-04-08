@@ -39,12 +39,12 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 - **`dvfopt.viz`** — All visualization. `snapshots.py`: per-iteration heatmaps. `fields.py`: deformation field plots. `grids.py`: deformed quad-grid visualization colored by Jdet. `closeups.py`: checkerboard and neighborhood views.
 - **`dvfopt.io`** — I/O. `nifti.py`: NIfTI loading via nibabel.
 - **`dvfopt.utils`** — Helpers. `checkerboard.py`.
-- **`testcases`** — Test case registry (separate package). `SYNTHETIC_CASES`, `RANDOM_DVF_CASES`, `REAL_DATA_SLICES`, `make_deformation()`, `make_random_dvf()`, `load_slice()`, `save_and_summarize()`.
+- **`test_cases`** — Test case registry (separate package). `SYNTHETIC_CASES`, `RANDOM_DVF_CASES`, `REAL_DATA_SLICES`, `make_deformation()`, `make_random_dvf()`, `load_slice()`, `save_and_summarize()`.
 
 ## Test Cases & Data
 
-- **Synthetic grids:** Defined in `testcases/_cases.py` as `SYNTHETIC_CASES` dict mapping case keys to `(msample, fsample, grid_size)` tuples. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
-- **Random DVFs:** Defined in `testcases/_cases.py` as `RANDOM_DVF_CASES` dict. Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)` from `dvfopt.dvf`.
+- **Synthetic grids:** Defined in `test_cases/_cases.py` as `SYNTHETIC_CASES` dict mapping case keys to `(msample, fsample, grid_size)` tuples. Common sizes: 10×10, 20×20. Types: `crossing` (intersecting vectors), `opposites` (opposing vectors), `checkerboard`.
+- **Random DVFs:** Defined in `test_cases/_cases.py` as `RANDOM_DVF_CASES` dict. Generated via `generate_random_dvf(shape=(3,1,H,W), max_magnitude=5.0)` from `dvfopt.dvf`.
 - **Real data:** `.npy` files in `data/` (e.g., `02b_320x456_slice200.npy`). Configured in `REAL_DATA_SLICES` dict. Downscaled versions at 64×91 via `scale_dvf()`.
 
 ## Output Structure
