@@ -25,9 +25,9 @@ Visualisation (imports matplotlib)::
 
     from dvfopt.viz import plot_deformations, plot_grid_before_after
 
-Test cases (separate ``testcases`` package)::
+Test cases (separate ``test_cases`` package)::
 
-    from testcases import SYNTHETIC_CASES, make_deformation
+    from test_cases import SYNTHETIC_CASES, make_deformation
 """
 
 # -- Package metadata -------------------------------------------------------

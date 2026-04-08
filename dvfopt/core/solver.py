@@ -10,7 +10,7 @@ from scipy.optimize import minimize, NonlinearConstraint
 from dvfopt._defaults import _log, _unpack_size, _adaptive_maxiter
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 from dvfopt.jacobian.shoelace import _shoelace_areas_2d
-from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d, injectivity_constraint
+from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.core.objective import objective_euc
 from dvfopt.core.constraints import (
     _build_constraints,

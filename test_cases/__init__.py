@@ -11,15 +11,15 @@ Real-data slices are loaded via :func:`load_slice`.
 
 Usage::
 
-    from testcases import SYNTHETIC_CASES, load_slice, make_deformation
+    from test_cases import SYNTHETIC_CASES, load_slice, make_deformation
 """
 
-from testcases._cases import (
+from test_cases._cases import (
     SYNTHETIC_CASES,
     RANDOM_DVF_CASES,
     REAL_DATA_SLICES,
 )
-from testcases._builders import (
+from test_cases._builders import (
     make_deformation,
     make_random_dvf,
     load_slice,

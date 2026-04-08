@@ -172,10 +172,6 @@ def _window_bounds(cy, cx, submatrix_size):
     return (cy - hy, cy + hy_hi - 1, cx - hx, cx + hx_hi - 1)
 
 
-def _windows_overlap(b1, b2):
-    return not (b1[1] < b2[0] or b2[1] < b1[0] or b1[3] < b2[2] or b2[3] < b1[2])
-
-
 def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
                              near_cent_dict, pixel_bbox_centers=None):
     """Greedily select non-overlapping windows using an occupancy grid.

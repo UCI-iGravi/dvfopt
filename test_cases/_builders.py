@@ -9,7 +9,7 @@ import numpy as np
 from laplacian_interp import slice_to_slice_3d_laplacian
 from dvfopt.dvf import generate_random_dvf, scale_dvf
 
-from testcases._cases import SYNTHETIC_CASES, RANDOM_DVF_CASES
+from test_cases._cases import SYNTHETIC_CASES, RANDOM_DVF_CASES
 
 
 def make_deformation(case_key):

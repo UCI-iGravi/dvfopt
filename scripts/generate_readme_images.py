@@ -12,7 +12,7 @@ import matplotlib.colors as mcolors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
-from testcases import (
+from test_cases import (
     SYNTHETIC_CASES, RANDOM_DVF_CASES,
     make_deformation, make_random_dvf,
 )
