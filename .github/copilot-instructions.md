@@ -35,7 +35,7 @@ All methods take a `(3, 1, H, W)` deformation, fix negative-Jdet regions, and re
 - **`dvfopt.core`** — Optimization algorithms. `core/objective.py`: L2 objective. `core/constraints.py`: Jacobian/shoelace/injectivity constraints. `core/spatial.py`: window selection, bounding boxes, edge logic. `core/solver.py`: single-window SLSQP. `core/iterative.py`: `iterative_serial()` (serial 2D). `core/parallel.py`: `iterative_parallel()` (hybrid parallel 2D). `core/solver3d.py` + `core/iterative3d.py`: 3D extension.
 - **`dvfopt.jacobian`** — Jacobian computation. `numpy_jdet.py`: pure-numpy 2D/3D via `np.gradient`. `sitk_jdet.py`: SimpleITK wrapper. `shoelace.py`: geometric quad-cell area constraint. `monotonicity.py`: injectivity/monotonicity constraint.
 - **`dvfopt.dvf`** — DVF utilities. `generation.py`: `generate_random_dvf()` (2D/3D). `scaling.py`: `scale_dvf()` bicubic rescaling (2D/3D).
-- **`laplacian_interp`** — Laplacian interpolation (separate package). `matrix.py`: sparse Laplacian matrix with Dirichlet BCs. `solver.py`: LGMRES solver, `slice_to_slice_3d_laplacian()` end-to-end pipeline.
+- **`laplacian`** — Laplacian interpolation (separate package). `utils.py`: sparse 1D/2D/3D Laplacian matrix with Dirichlet BCs and anisotropic spacing. `solver.py`: `solveLaplacianFromCorrespondences()` CG/LGMRES solver. `correspondence.py`: contour extraction, normal estimation, correspondence matching, `sliceToSlice3DLaplacian()` end-to-end pipeline.
 - **`dvfopt.viz`** — All visualization. `snapshots.py`: per-iteration heatmaps. `fields.py`: deformation field plots. `grids.py`: deformed quad-grid visualization colored by Jdet. `closeups.py`: checkerboard and neighborhood views.
 - **`dvfopt.io`** — I/O. `nifti.py`: NIfTI loading via nibabel.
 - **`dvfopt.utils`** — Helpers. `checkerboard.py`.
@@ -65,4 +65,4 @@ Organized as `paper_outputs/experiments/{method}/{grid_size}/{test_case}/` and `
 
 - Notebooks in `archive/` are historical iterations; notebooks in `notebooks/` are canonical.
 - When modifying optimization functions (`objective_euc`, constraint functions), preserve the `phi` flattening convention: `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx.
-- Laplacian matrix construction in `laplacian_interp/matrix.py` uses `z*ny*nz + y*nz + x` flattening — be careful with axis ordering when modifying.
+- Laplacian matrix construction in `laplacian/utils.py` uses `z*ny*nz + y*nz + x` flattening — be careful with axis ordering when modifying.

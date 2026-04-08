@@ -1,12 +1,12 @@
 """Deformation field builders — functions that assemble test inputs.
 
 These depend on both ``dvfopt`` (DVF generation, Jacobian computation) and
-``laplacian_interp`` (correspondence-based interpolation).
+``laplacian`` (correspondence-based interpolation).
 """
 
 import numpy as np
 
-from laplacian_interp import slice_to_slice_3d_laplacian
+from laplacian import solveLaplacianFromCorrespondences
 from dvfopt.dvf import generate_random_dvf, scale_dvf
 
 from test_cases._cases import SYNTHETIC_CASES, RANDOM_DVF_CASES
@@ -21,8 +21,7 @@ def make_deformation(case_key):
     case = SYNTHETIC_CASES[case_key]
     ms, fs = case["msample"], case["fsample"]
     H, W = case["resolution"]
-    fixed_sample = np.zeros((1, H, W))
-    deformation, _, _, _, _ = slice_to_slice_3d_laplacian(fixed_sample, ms, fs)
+    deformation = solveLaplacianFromCorrespondences((1, H, W), ms, fs)
     return deformation, ms, fs
 
 
@@ -73,8 +72,7 @@ def load_slice(slice_idx, scale_factor=1.0,
     scaled_m = np.round(mpoints * scale_factor).astype(int)
     scaled_f = np.round(fpoints * scale_factor).astype(int)
 
-    fixed_sample = np.zeros((1, H_new, W_new))
-    deformation, _, _, _, _ = slice_to_slice_3d_laplacian(fixed_sample, scaled_m, scaled_f)
+    deformation = solveLaplacianFromCorrespondences((1, H_new, W_new), scaled_m, scaled_f)
 
     return deformation, scaled_m, scaled_f
 

@@ -9,6 +9,9 @@ dependencies = [
     "SimpleITK",
     "nibabel",
     "matplotlib",
+    "scikit-image",
+    "joblib",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
@@ -21,4 +24,4 @@ benchmarks = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["dvfopt*", "laplacian_interp*", "test_cases*"]
+include = ["dvfopt*", "laplacian*", "test_cases*"]

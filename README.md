@@ -603,7 +603,7 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 | `dvfopt.viz` | `plot_deformations` (2×2 panel), `plot_grid_before_after` (colored quad grids), `plot_step_snapshot` (per-iteration heatmap) |
 | `test_cases` | `SYNTHETIC_CASES` (8 correspondence-based), `RANDOM_DVF_CASES` (4 random), `REAL_DATA_SLICES` (8 real-data configs) — separate package |
 | `dvfopt.utils` | Checkerboard generation |
-| `laplacian_interp` | Sparse Laplacian matrix with Dirichlet BCs, LGMRES solver for displacement interpolation from correspondences (separate package) |
+| `laplacian` | Sparse 1D/2D/3D Laplacian matrix with Dirichlet BCs, CG/LGMRES solvers, contour correspondence matching, slice-to-slice registration pipeline (separate package) |
 
 ## Test Cases
 

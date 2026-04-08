@@ -17,9 +17,9 @@ DVF utilities::
 
     from dvfopt import generate_random_dvf, scale_dvf
 
-Laplacian interpolation (separate ``laplacian_interp`` package)::
+Laplacian interpolation (separate ``laplacian`` package)::
 
-    from laplacian_interp import slice_to_slice_3d_laplacian, laplacian_a_3d
+    from laplacian import solveLaplacianFromCorrespondences, sliceToSlice3DLaplacian, laplacianA3D
 
 Visualisation (imports matplotlib)::
 
