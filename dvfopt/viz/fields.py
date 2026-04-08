@@ -218,7 +218,7 @@ def plot_deformations(
 # ---------------------------------------------------------------------------
 # Jacobian progression grid
 # ---------------------------------------------------------------------------
-def plot_jacobians_iteratively(jacobians, msample=None, fsample=None, methodName="SLSQP"):
+def plot_jacobians_iteratively(jacobians, msample=None, fsample=None, method_name="SLSQP"):
     """Plot a sequence of Jacobian determinant maps in a grid.
 
     Parameters
@@ -226,7 +226,7 @@ def plot_jacobians_iteratively(jacobians, msample=None, fsample=None, methodName
     jacobians : list of ndarray
         Each entry is a ``(1, H, W)`` Jacobian determinant array.
     msample, fsample : ndarray or None
-    methodName : str
+    method_name : str
     """
     num = len(jacobians)
     ncols = min(3, num)
@@ -270,7 +270,7 @@ def plot_jacobians_iteratively(jacobians, msample=None, fsample=None, methodName
 
     fig.colorbar(im, ax=axs_flat[:num].tolist(), orientation="vertical",
                  fraction=0.03, pad=0.04, shrink=0.8)
-    fig.suptitle(f"Jacobian progression \u2014 {methodName}", fontsize=13, fontweight="bold")
+    fig.suptitle(f"Jacobian progression \u2014 {method_name}", fontsize=13, fontweight="bold")
     plt.show()
 
 

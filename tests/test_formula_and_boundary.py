@@ -6,7 +6,7 @@ Verifies:
   2. _frozen_edges_clean_3d — completely untested function
   3. _frozen_edges_clean (2D) at exact threshold value (strict >)
   4. _shoelace_areas_2d formula for non-trivial known geometry
-  5. objectiveEuc exact value and gradient formula
+  5. objective_euc exact value and gradient formula
   6. Injectivity diagonal components (d1, d2) reach quality_map
   7. _patch_jacobian_2d / _patch_jacobian_3d clamping at grid boundaries
 
@@ -290,16 +290,16 @@ class TestShoelaceFormula:
 # ===========================================================================
 
 class TestObjectiveEucFormula:
-    """objectiveEuc minimises 0.5 * ||phi - phi_init||^2.
+    """objective_euc minimises 0.5 * ||phi - phi_init||^2.
     The value and gradient must match this formula exactly."""
 
     def test_known_value_and_gradient(self):
         """phi = [1, 3, -2], phi_init = [0, 0, 0]:
         value = 0.5*(1+9+4) = 7.0, gradient = [1, 3, -2]."""
-        from dvfopt.core.objective import objectiveEuc
+        from dvfopt.core.objective import objective_euc
         phi = np.array([1.0, 3.0, -2.0])
         phi_init = np.zeros(3)
-        val, grad = objectiveEuc(phi, phi_init)
+        val, grad = objective_euc(phi, phi_init)
         assert val == pytest.approx(7.0, rel=1e-12), \
             f"Expected value=7.0, got {val}"
         np.testing.assert_allclose(grad, [1.0, 3.0, -2.0], atol=1e-12,
@@ -309,21 +309,21 @@ class TestObjectiveEucFormula:
         """Gradient is (phi - phi_init), NOT 2*(phi - phi_init).
         The 0.5 factor in the objective cancels the factor of 2 from the derivative.
         """
-        from dvfopt.core.objective import objectiveEuc
+        from dvfopt.core.objective import objective_euc
         phi = np.array([2.0, -1.0])
         phi_init = np.array([0.5, 0.5])
-        _, grad = objectiveEuc(phi, phi_init)
+        _, grad = objective_euc(phi, phi_init)
         expected_grad = phi - phi_init   # [1.5, -1.5]
         np.testing.assert_allclose(grad, expected_grad, atol=1e-12,
                                    err_msg="Gradient = (phi - phi_init), not 2*(phi - phi_init)")
 
     def test_value_is_half_sum_of_squares(self):
         """Value must be exactly 0.5 * dot(diff, diff)."""
-        from dvfopt.core.objective import objectiveEuc
+        from dvfopt.core.objective import objective_euc
         rng = np.random.default_rng(7)
         phi = rng.standard_normal(20)
         phi_init = rng.standard_normal(20)
-        val, _ = objectiveEuc(phi, phi_init)
+        val, _ = objective_euc(phi, phi_init)
         expected = 0.5 * np.dot(phi - phi_init, phi - phi_init)
         assert val == pytest.approx(expected, rel=1e-12), \
             f"Value mismatch: got {val}, expected {expected}"

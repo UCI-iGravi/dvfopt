@@ -7,11 +7,11 @@ from collections import defaultdict
 import numpy as np
 from scipy.optimize import minimize, NonlinearConstraint
 
-from dvfopt._defaults import _log, _unpack_size
+from dvfopt._defaults import _log, _unpack_size, _adaptive_maxiter
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 from dvfopt.jacobian.shoelace import _shoelace_areas_2d
 from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d, injectivity_constraint
-from dvfopt.core.objective import objectiveEuc
+from dvfopt.core.objective import objective_euc
 from dvfopt.core.constraints import (
     _build_constraints,
     _quality_map,
@@ -216,7 +216,7 @@ def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
 # Full-grid optimisation fallback (non-square grids)
 # ---------------------------------------------------------------------------
 def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
-                    methodName, verbose, enforce_shoelace, enforce_injectivity,
+                    method_name, verbose, enforce_shoelace, enforce_injectivity,
                     injectivity_threshold=None):
     """Optimize the entire H×W grid at once.
 
@@ -255,12 +255,12 @@ def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
          f"({2 * pixels} variables)")
 
     result = minimize(
-        lambda phi1: objectiveEuc(phi1, phi_init_flat),
+        lambda phi1: objective_euc(phi1, phi_init_flat),
         phi_flat,
         jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
-        method=methodName,
+        method=method_name,
     )
 
     phi[1] = result.x[:pixels].reshape(H, W)
@@ -294,7 +294,7 @@ def _optimize_single_window(
 
     t0 = time.time()
     result = minimize(
-        lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
+        lambda phi1: objective_euc(phi1, phi_init_sub_flat),
         phi_sub_flat,
         jac=True,
         constraints=constraints,
@@ -302,6 +302,8 @@ def _optimize_single_window(
         method=method_name,
     )
     elapsed = time.time() - t0
+    if not np.all(np.isfinite(result.x)):
+        return phi_sub_flat, elapsed, False
     return result.x, elapsed, result.success
 
 
@@ -349,7 +351,7 @@ def _serial_fix_pixel(
     neg_index_tuple, phi, phi_init, jacobian_matrix,
     slice_shape, near_cent_dict, window_counts,
     max_per_index_iter, max_minimize_iter,
-    max_window, threshold, err_tol, methodName, verbose,
+    max_window, threshold, err_tol, method_name, verbose,
     error_list, num_neg_jac, min_jdet_list, iter_times,
     enforce_shoelace=False,
     enforce_injectivity=False,
@@ -456,17 +458,14 @@ def _serial_fix_pixel(
         if per_index_iter > 1:
             _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (opt-iter {per_index_iter})")
 
-        # Adaptive iteration budget: scale with window area so large windows
-        # get proportionally more SLSQP iterations to converge.
         _opt_sy, _opt_sx = _unpack_size(opt_size)
-        _eff_max_iter = min(max(max_minimize_iter, 2 * _opt_sy * _opt_sx // 10),
-                            10 * max_minimize_iter)
+        _eff_max_iter = _adaptive_maxiter(2 * _opt_sy * _opt_sx, max_minimize_iter)
 
         # Run optimisation directly — no process pool
         result_x, elapsed, opt_success = _optimize_single_window(
             phi_sub_flat, phi_init_sub_flat, opt_size,
             opt_is_at_edge, opt_window_reached_max,
-            threshold, _eff_max_iter, methodName,
+            threshold, _eff_max_iter, method_name,
             enforce_shoelace=enforce_shoelace,
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,

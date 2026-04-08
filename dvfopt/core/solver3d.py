@@ -5,9 +5,9 @@ import time
 import numpy as np
 from scipy.optimize import minimize, NonlinearConstraint
 
-from dvfopt._defaults import _log, _unpack_size_3d
+from dvfopt._defaults import _log, _unpack_size_3d, _adaptive_maxiter
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_3d, jacobian_det3D
-from dvfopt.core.objective import objectiveEuc
+from dvfopt.core.objective import objective_euc
 from dvfopt.core.spatial3d import (
     get_nearest_center_3d,
     argmin_worst_voxel,
@@ -138,7 +138,7 @@ def _optimize_single_window_3d(
 
     t0 = time.time()
     result = minimize(
-        lambda phi1: objectiveEuc(phi1, phi_init_sub_flat),
+        lambda phi1: objective_euc(phi1, phi_init_sub_flat),
         phi_sub_flat,
         jac=True,
         constraints=constraints,
@@ -146,6 +146,8 @@ def _optimize_single_window_3d(
         method=method_name,
     )
     elapsed = time.time() - t0
+    if not np.all(np.isfinite(result.x)):
+        return phi_sub_flat, elapsed, False
     return result.x, elapsed, result.success
 
 
@@ -153,7 +155,7 @@ def _optimize_single_window_3d(
 # Full-grid optimisation fallback (non-cubic grids)
 # ---------------------------------------------------------------------------
 def _full_grid_step_3d(phi, phi_init, D, H, W, threshold,
-                       max_minimize_iter, methodName, verbose):
+                       max_minimize_iter, method_name, verbose):
     """Optimize the entire D x H x W grid at once."""
     voxels = D * H * W
     phi_flat = np.concatenate([phi[2].flatten(),
@@ -180,12 +182,12 @@ def _full_grid_step_3d(phi, phi_init, D, H, W, threshold,
          f"({3 * voxels} variables)")
 
     result = minimize(
-        lambda phi1: objectiveEuc(phi1, phi_init_flat),
+        lambda phi1: objective_euc(phi1, phi_init_flat),
         phi_flat,
         jac=True,
         constraints=constraints,
         options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
-        method=methodName,
+        method=method_name,
     )
 
     phi[2] = result.x[:voxels].reshape(D, H, W)
@@ -200,7 +202,7 @@ def _serial_fix_voxel(
     neg_index, phi, phi_init, jacobian_matrix,
     volume_shape, window_counts,
     max_per_index_iter, max_minimize_iter,
-    max_window, threshold, err_tol, methodName, verbose,
+    max_window, threshold, err_tol, method_name, verbose,
     error_list, num_neg_jac, min_jdet_list, iter_times,
     min_window=(3, 3, 3),
 ):
@@ -272,15 +274,13 @@ def _serial_fix_voxel(
         per_index_iter += 1
         window_counts[subvolume_size] += 1
 
-        # Adaptive iteration budget: scale with window volume.
         _n_vars = 3 * sz * sy * sx
-        _eff_max_iter = min(max(max_minimize_iter, _n_vars // 10),
-                            10 * max_minimize_iter)
+        _eff_max_iter = _adaptive_maxiter(_n_vars, max_minimize_iter)
 
         result_x, elapsed, opt_success = _optimize_single_window_3d(
             phi_sub_flat, phi_init_sub_flat, subvolume_size,
             freeze_mask,
-            threshold, _eff_max_iter, methodName,
+            threshold, _eff_max_iter, method_name,
         )
         iter_times.append(elapsed)
         if not opt_success:

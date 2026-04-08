@@ -16,7 +16,7 @@ from dvfopt.core.solver3d import (
 
 def iterative_3d(
     deformation,
-    methodName="SLSQP",
+    method_name="SLSQP",
     verbose=1,
     save_path=None,
     threshold=None,
@@ -31,7 +31,7 @@ def iterative_3d(
     ----------
     deformation : ndarray, shape ``(3, D, H, W)``
         Input deformation field with channels ``[dz, dy, dx]``.
-    methodName : str
+    method_name : str
         Optimiser method passed to ``scipy.optimize.minimize``.
     verbose : int
         ``0`` = silent, ``1`` = per-iteration progress, ``2`` = debug.
@@ -70,7 +70,7 @@ def iterative_3d(
 
     _log(verbose, 1,
          f"[init] Grid {D}x{H}x{W}  |  threshold={threshold}  "
-         f"|  method={methodName}")
+         f"|  method={method_name}")
 
     jacobian_matrix, init_neg, init_min = _update_metrics_3d(
         phi, phi_init, num_neg_jac, min_jdet_list)
@@ -101,7 +101,7 @@ def iterative_3d(
                 neg_index, phi, phi_init, jacobian_matrix,
                 volume_shape, window_counts,
                 max_per_index_iter, max_minimize_iter,
-                max_window, threshold, err_tol, methodName, verbose,
+                max_window, threshold, err_tol, method_name, verbose,
                 error_list, num_neg_jac, min_jdet_list, iter_times,
                 min_window=global_min_window,
             )
@@ -157,7 +157,7 @@ def iterative_3d(
     final_neg = int((jacobian_matrix <= 0).sum())
     final_min = float(jacobian_matrix.min())
 
-    _print_summary(verbose, f"{methodName} — 3D", (D, H, W), iteration,
+    _print_summary(verbose, f"{method_name} — 3D", (D, H, W), iteration,
                    init_neg, final_neg, init_min, final_min,
                    final_err, elapsed)
 
@@ -165,7 +165,7 @@ def iterative_3d(
 
     if save_path is not None:
         _save_results(
-            save_path, method=methodName, threshold=threshold,
+            save_path, method=method_name, threshold=threshold,
             err_tol=err_tol, max_iterations=max_iterations,
             max_per_index_iter=max_per_index_iter,
             max_minimize_iter=max_minimize_iter,

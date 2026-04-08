@@ -29,7 +29,6 @@ from dvfopt.viz.closeups import (
     plot_checkerboard_before_after,
     plot_neg_jdet_neighborhoods,
 )
-from dvfopt.viz.pipeline import run_lapl_and_correction
 from dvfopt.viz.fields3d import (
     plot_jdet_slices,
     plot_jdet_3d,
@@ -56,7 +55,6 @@ __all__ = [
     "plot_grid_before_after",
     "plot_checkerboard_before_after",
     "plot_neg_jdet_neighborhoods",
-    "run_lapl_and_correction",
     "plot_jdet_slices",
     "plot_jdet_3d",
     "plot_jdet_3d_before_after",

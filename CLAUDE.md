@@ -15,11 +15,19 @@ pip install -e .
 # Install with benchmark dependencies (itk-elastix, opencv, timm, torch, voxelmorph)
 pip install -e ".[benchmarks]"
 
-# Or install from requirements.txt (includes voxelmorph from GitHub)
-pip install -r requirements.txt
+# Or install all dev dependencies (includes voxelmorph from GitHub, pandas, ipykernel)
+pip install -r requirements-dev.txt
 ```
 
-There is no test suite, linter, or CI pipeline. Validation is done through Jupyter notebooks.
+Tests live in `tests/` and are run with `pytest`. There is no linter or CI pipeline. Additional validation is done through Jupyter notebooks.
+
+```bash
+# Run all tests
+pytest
+
+# Run a specific test module
+pytest tests/test_iterative.py
+```
 
 ## Architecture
 
@@ -34,13 +42,13 @@ There is no test suite, linter, or CI pipeline. Validation is done through Jupyt
 ### Optimization internals
 
 - **phi flattening:** `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx. Preserve this when modifying objective/constraint functions.
-- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `dvfopt/laplacian/matrix.py`.
+- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `laplacian_interp/matrix.py`.
 - **Windowed approach:** iterative SLSQP finds worst-Jdet pixel, computes bounding box of connected negative region + 1px positive border (min 3×3), runs `scipy.optimize.minimize(method='SLSQP')` on that sub-window with frozen edges. Grows window by 2 if needed.
 - **Parallel variant:** `iterative_parallel()` batches non-overlapping windows into `ProcessPoolExecutor`. Falls back to serial for single windows (avoids Windows spawn overhead).
 
 ### Constraint modes
 
-The solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `enforce_injectivity=True` (coordinate monotonicity) flags in addition to the default Jacobian determinant constraint.
+The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `enforce_injectivity=True` (coordinate monotonicity) flags in addition to the default Jacobian determinant constraint. The 3D solver (`iterative_3d`) does not yet support these extra constraint modes — only the Jacobian determinant constraint is available in 3D.
 
 ### Key entry points
 
@@ -50,12 +58,14 @@ The solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `enfor
 | `iterative_parallel()` | `dvfopt.core.parallel` | Parallel 2D variant |
 | `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
-| `sliceToSlice3DLaplacian()` | `dvfopt.laplacian.solver` | Build DVF from correspondences |
-| `make_deformation()` / `make_random_dvf()` | `dvfopt.testcases` | Generate test deformation fields |
+| `slice_to_slice_3d_laplacian()` | `laplacian_interp.solver` | Build DVF from correspondences |
+| `make_deformation()` / `make_random_dvf()` | `testcases` | Generate test deformation fields |
 
 ### Directory layout
 
-- `dvfopt/` — installable package (core solvers, jacobian, dvf utils, laplacian, viz, io, testcases)
+- `dvfopt/` — installable package (core solvers, jacobian, dvf utils, viz, io)
+- `laplacian_interp/` — standalone Laplacian interpolation package (matrix construction, LGMRES solver)
+- `testcases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
 - `notebooks/` — canonical experiment notebooks
 - `benchmarks/` — performance comparison notebooks (serial vs parallel, constraint modes, scalability, registration methods)
 - `scripts/` — image generation scripts for docs

@@ -21,4 +21,4 @@ benchmarks = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["dvfopt*"]
+include = ["dvfopt*", "laplacian_interp*", "testcases*"]

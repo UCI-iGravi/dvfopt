@@ -84,15 +84,15 @@ def has_quad_self_intersections(phi):
     X = cols + dx   # (H, W)
 
     # Per-quad AABB: corners TL(r,c), TR(r,c+1), BR(r+1,c+1), BL(r+1,c)
-    yTL = Y[:-1, :-1]; xTL = X[:-1, :-1]
-    yTR = Y[:-1, 1:];  xTR = X[:-1, 1:]
-    yBR = Y[1:,  1:];  xBR = X[1:,  1:]
-    yBL = Y[1:,  :-1]; xBL = X[1:,  :-1]
+    y_tl = Y[:-1, :-1]; x_tl = X[:-1, :-1]
+    y_tr = Y[:-1, 1:];  x_tr = X[:-1, 1:]
+    y_br = Y[1:,  1:];  x_br = X[1:,  1:]
+    y_bl = Y[1:,  :-1]; x_bl = X[1:,  :-1]
 
-    aabb_ymin = np.minimum(np.minimum(yTL, yTR), np.minimum(yBL, yBR))  # (nr,nc)
-    aabb_ymax = np.maximum(np.maximum(yTL, yTR), np.maximum(yBL, yBR))
-    aabb_xmin = np.minimum(np.minimum(xTL, xTR), np.minimum(xBL, xBR))
-    aabb_xmax = np.maximum(np.maximum(xTL, xTR), np.maximum(xBL, xBR))
+    aabb_ymin = np.minimum(np.minimum(y_tl, y_tr), np.minimum(y_bl, y_br))  # (nr,nc)
+    aabb_ymax = np.maximum(np.maximum(y_tl, y_tr), np.maximum(y_bl, y_br))
+    aabb_xmin = np.minimum(np.minimum(x_tl, x_tr), np.minimum(x_bl, x_br))
+    aabb_xmax = np.maximum(np.maximum(x_tl, x_tr), np.maximum(x_bl, x_br))
 
     # Flatten to list of (r, c) quads with their data
     # For large grids (nr*nc > ~10k) this loop can be slow, but it is
@@ -101,10 +101,10 @@ def has_quad_self_intersections(phi):
 
     # Build flat corner arrays  shape (n_quads, 4, 2)
     corners = np.stack([
-        np.stack([yTL.ravel(), xTL.ravel()], axis=1),
-        np.stack([yTR.ravel(), xTR.ravel()], axis=1),
-        np.stack([yBR.ravel(), xBR.ravel()], axis=1),
-        np.stack([yBL.ravel(), xBL.ravel()], axis=1),
+        np.stack([y_tl.ravel(), x_tl.ravel()], axis=1),
+        np.stack([y_tr.ravel(), x_tr.ravel()], axis=1),
+        np.stack([y_br.ravel(), x_br.ravel()], axis=1),
+        np.stack([y_bl.ravel(), x_bl.ravel()], axis=1),
     ], axis=1)   # (n_quads, 4, 2)
 
     ymin_flat = aabb_ymin.ravel()

@@ -1,12 +1,11 @@
-"""Tests for dvfopt.laplacian.solver — Laplacian interpolation solver."""
+"""Tests for laplacian_interp.solver — Laplacian interpolation solver."""
 
 import numpy as np
 import pytest
 
-from dvfopt.laplacian.solver import (
+from laplacian_interp.solver import (
     _prepare_correspondence_data,
-    sliceToSlice3DLaplacian,
-    createA,
+    slice_to_slice_3d_laplacian,
 )
 
 
@@ -45,14 +44,14 @@ class TestSliceToSlice3DLaplacian:
         fixed = np.zeros((1, 8, 10))
         mpoints = np.array([[0, 2, 3], [0, 5, 7]])
         fpoints = np.array([[0, 1, 2], [0, 4, 6]])
-        deformation, A, Xd, Yd, Zd = sliceToSlice3DLaplacian(fixed, mpoints, fpoints)
+        deformation, A, Xd, Yd, Zd = slice_to_slice_3d_laplacian(fixed, mpoints, fpoints)
         assert deformation.shape == (3, 1, 8, 10)
 
     def test_zero_displacement_at_correspondences(self):
         """Where m==f, displacement should be ~0."""
         fixed = np.zeros((1, 10, 10))
         pts = np.array([[0, 3, 3], [0, 7, 7]])
-        deformation, _, _, _, _ = sliceToSlice3DLaplacian(fixed, pts, pts)
+        deformation, _, _, _, _ = slice_to_slice_3d_laplacian(fixed, pts, pts)
         # At correspondence points, displacement should be near zero
         for p in pts:
             z, y, x = p
@@ -64,31 +63,7 @@ class TestSliceToSlice3DLaplacian:
         fixed = np.zeros((1, 8, 8))
         mpoints = np.array([[0, 2, 2]])
         fpoints = np.array([[0, 4, 4]])
-        deformation, _, _, _, _ = sliceToSlice3DLaplacian(fixed, mpoints, fpoints)
+        deformation, _, _, _, _ = slice_to_slice_3d_laplacian(fixed, mpoints, fpoints)
         np.testing.assert_array_equal(deformation[0], 0.0)
 
 
-class TestCreateA:
-    def test_output_is_sparse(self):
-        import scipy.sparse
-        fixed = np.zeros((1, 5, 5))
-        mpoints = np.array([[0, 2, 2]])
-        fpoints = np.array([[0, 1, 1]])
-        A = createA(fixed, mpoints, fpoints)
-        assert scipy.sparse.issparse(A)
-
-    def test_shape(self):
-        fixed = np.zeros((1, 5, 5))
-        mpoints = np.array([[0, 2, 2]])
-        fpoints = np.array([[0, 1, 1]])
-        A = createA(fixed, mpoints, fpoints)
-        n = 1 * 5 * 5
-        assert A.shape == (n, n)
-
-    def test_no_correspondences_flag(self):
-        fixed = np.zeros((1, 5, 5))
-        mpoints = np.array([[0, 2, 2]])
-        fpoints = np.array([[0, 1, 1]])
-        A_with = createA(fixed, mpoints, fpoints, use_correspondences=True)
-        A_without = createA(fixed, mpoints, fpoints, use_correspondences=False)
-        assert A_without.dtype == np.int8

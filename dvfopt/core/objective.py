@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def objectiveEuc(phi, phi_init):
+def objective_euc(phi, phi_init):
     """L2-squared objective with analytical gradient.
 
     Minimises ``0.5 * ||phi - phi_init||^2``.  The gradient is

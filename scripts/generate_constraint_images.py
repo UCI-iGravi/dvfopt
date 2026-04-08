@@ -13,7 +13,7 @@ import matplotlib.colors as mcolors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
-from dvfopt.testcases import SYNTHETIC_CASES, make_deformation
+from testcases import SYNTHETIC_CASES, make_deformation
 from dvfopt import iterative_serial, jacobian_det2D
 from dvfopt.jacobian import shoelace_det2D, _monotonicity_diffs_2d
 

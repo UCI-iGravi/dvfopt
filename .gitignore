@@ -161,6 +161,7 @@ cython_debug/
 .DS_Store
 *.npy
 *.gz
-/archive
 /data/test_cases
 /output
+/archive
+.claude/settings.local.json

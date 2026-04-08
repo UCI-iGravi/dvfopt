@@ -599,10 +599,10 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 | `dvfopt.core` | Objective/constraint functions, `iterative_serial` (serial), `iterative_parallel` (hybrid), `iterative_3d`, window selection, SLSQP solver |
 | `dvfopt.jacobian` | Pure-numpy 2D/3D Jacobian (`jacobian_det2D`, `jacobian_det3D`), SimpleITK wrapper, shoelace constraint, injectivity constraint |
 | `dvfopt.dvf` | `generate_random_dvf`, `scale_dvf` (2D/3D) |
-| `dvfopt.laplacian` | Sparse Laplacian matrix with Dirichlet BCs, LGMRES solver for displacement interpolation from correspondences |
-| `dvfopt.viz` | `plot_deformations` (2×2 panel), `plot_grid_before_after` (colored quad grids), `plot_step_snapshot` (per-iteration heatmap), `run_lapl_and_correction` (end-to-end pipeline) |
-| `dvfopt.testcases` | `SYNTHETIC_CASES` (8 correspondence-based), `RANDOM_DVF_CASES` (4 random), `REAL_DATA_SLICES` (8 real-data configs) |
-| `dvfopt.utils` | Checkerboard generation, point correspondence utilities, affine/deformation transforms |
+| `dvfopt.viz` | `plot_deformations` (2×2 panel), `plot_grid_before_after` (colored quad grids), `plot_step_snapshot` (per-iteration heatmap) |
+| `testcases` | `SYNTHETIC_CASES` (8 correspondence-based), `RANDOM_DVF_CASES` (4 random), `REAL_DATA_SLICES` (8 real-data configs) — separate package |
+| `dvfopt.utils` | Checkerboard generation |
+| `laplacian_interp` | Sparse Laplacian matrix with Dirichlet BCs, LGMRES solver for displacement interpolation from correspondences (separate package) |
 
 ## Test Cases
 
@@ -642,7 +642,7 @@ Upscaled cases (5×5 → larger) produce smooth spiral-like patterns via bicubic
 
 ### Real Data
 
-Axial slices from ANTs registration warps (`.npy` files), available at full resolution (320×456) and downscaled (64×91). Real data files are not included in the repository — see `dvfopt/testcases.py` for the `REAL_DATA_SLICES` configuration.
+Axial slices from ANTs registration warps (`.npy` files), available at full resolution (320×456) and downscaled (64×91). Real data files are not included in the repository — see `testcases/_cases.py` for the `REAL_DATA_SLICES` configuration.
 
 ## Installation
 
