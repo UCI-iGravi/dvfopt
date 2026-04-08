@@ -74,7 +74,6 @@ def slice_to_slice_3d_laplacian(fixed_image, mpoints, fpoints):
 
     A = laplacian_a_3d(fdata.shape, boundary_indices)
 
-    dx = lgmres(A, Xd, rtol=1e-2)[0]
     dy = lgmres(A, Yd, rtol=1e-2)[0]
     dz = lgmres(A, Zd, rtol=1e-2)[0]
 
