@@ -71,7 +71,7 @@ def getDataContours(dataImage):
     edges = feature.canny(binary, sigma=3)
     all_labels = measure.label(edges)
     
-    for label in range(np.max(all_labels)):
+    for label in range(1, np.max(all_labels) + 1):
         if( np.sum(all_labels==label)<100):
             edges[all_labels==label] = 0
 
@@ -95,7 +95,7 @@ def getTemplateContours(templateImage):
 
     all_labels = measure.label(edges)
 
-    for label in range(np.max(all_labels)):
+    for label in range(1, np.max(all_labels) + 1):
         if( np.sum(all_labels==label)<25):
             edges[all_labels==label] = 0
     return edges, binary
