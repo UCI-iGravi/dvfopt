@@ -450,8 +450,8 @@ def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis
     for sno in range(n_slices):
         msno = sno if sliceMatchList == "same" else sliceMatchList[sno]
         # np.take already returns a copy — no need for .copy()
-        data_slice = np.take(mdata, sno, axis=axis)
-        template_slice = np.take(fdata, msno, axis=axis)
+        template_slice = np.take(fdata, sno, axis=axis)
+        data_slice = np.take(mdata, msno, axis=axis)
         slice_pairs.append((sno, template_slice, data_slice))
     del fdata, mdata
 
