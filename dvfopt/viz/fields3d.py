@@ -162,8 +162,9 @@ def plot_neg_voxels_before_after(jdet_before, jdet_after, title=None,
                                  elev=25, azim=-60):
     """Side-by-side 3D voxel plots of negative-Jdet regions.
 
-    Solid red blocks mark voxels with Jdet <= 0.  Intensity scales with
-    the magnitude of the negative Jdet.
+    Solid blue blocks mark voxels with Jdet <= 0.  Intensity scales with
+    the magnitude of the negative Jdet.  Blue matches the `RdBu_r`
+    colormap used by the other 3D Jdet views.
 
     Parameters
     ----------
@@ -194,9 +195,9 @@ def plot_neg_voxels_before_after(jdet_before, jdet_after, title=None,
             alpha = np.clip(
                 0.4 + 0.6 * np.abs(neg_vals) / abs(worst), 0.4, 1.0
             )
-            colors[neg_t, 0] = 0.85   # R
-            colors[neg_t, 1] = 0.15   # G
-            colors[neg_t, 2] = 0.15   # B
+            colors[neg_t, 0] = 0.02   # R
+            colors[neg_t, 1] = 0.19   # G
+            colors[neg_t, 2] = 0.38   # B  (matches RdBu_r at vmin)
             colors[neg_t, 3] = alpha   # A
 
             ax.voxels(neg_t, facecolors=colors, edgecolor="black",
