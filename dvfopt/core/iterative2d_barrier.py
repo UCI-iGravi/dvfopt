@@ -410,54 +410,47 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
                               max_minimize_iter, device, dtype):
     """Batched penalty->barrier on K non-overlapping interior 2D patches.
     Shares a single LBFGS optimizer across K patches via (K, 2, Hmax, Wmax)
-    tensor with per-patch frozen/active masks. Mutates phi_full in place.
-    Returns (lam_steps, mu_steps)."""
+    tensor with per-patch frozen/active masks."""
     H, W = grid_shape
     K = len(bboxes)
     Hmax = max(y1 - y0 + 1 for (y0, y1, x0, x1) in bboxes)
     Wmax = max(x1 - x0 + 1 for (y0, y1, x0, x1) in bboxes)
 
-    # Init batch tensor; padding cells outside each patch's Hp*Wp region stay 0.
     phi_batch_init = torch.zeros((K, 2, Hmax, Wmax), dtype=dtype, device=device)
-    # cell_frozen: True = frozen (padding OR patch rim). Start all-padding-frozen.
     cell_frozen = torch.ones((K, Hmax, Wmax), dtype=torch.bool, device=device)
     active_cell = torch.zeros((K, Hmax, Wmax), dtype=torch.bool, device=device)
 
     for k, (y0, y1, x0, x1) in enumerate(bboxes):
         Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
         phi_batch_init[k, :, :Hp, :Wp] = phi_full[:, y0:y1 + 1, x0:x1 + 1]
-        # All callers here pre-filter to interior-only patches, so every real
-        # cell along the patch boundary is frozen (no grid-edge exceptions).
         pf = torch.zeros((Hp, Wp), dtype=torch.bool, device=device)
         pf[0, :] = True;  pf[-1, :] = True
         pf[:, 0] = True;  pf[:, -1] = True
         cell_frozen[k, :Hp, :Wp] = pf
         active_cell[k, :Hp, :Wp] = ~pf
 
-    cell_frozen_b = cell_frozen.unsqueeze(1)  # (K, 1, Hmax, Wmax)
+    cell_frozen_b = cell_frozen.unsqueeze(1)
     active_f = active_cell.to(dtype=dtype)
     phi_var = phi_batch_init.detach().clone().requires_grad_(True)
 
     tol_change = 1e-9 if dtype == torch.float64 else 1e-7
-    hs = 10
-    mi = min(max_minimize_iter, 100)
+    hs = 20
+    mi = max_minimize_iter
     target = threshold_f + margin
     n_lam = len(lam_schedule)
     lam_steps = 0
     mu_steps = 0
 
-    # Per-patch min over active cells: used for feasibility check.
     def _per_patch_min(phi_eff):
         j = _jdet_2d_torch_batched(phi_eff)
         j_masked = torch.where(active_cell, j, torch.full_like(j, float("inf")))
-        return j_masked.reshape(K, -1).min(dim=1).values  # (K,)
+        return j_masked.reshape(K, -1).min(dim=1).values
 
     with torch.no_grad():
         phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
         per_patch_min = _per_patch_min(phi_eff)
-        feasible_k = per_patch_min >= target  # (K,) bool
+        feasible_k = per_patch_min >= target
 
-    # Phase 1: penalty. Run over whole batch; stop if all feasible.
     for lam_idx, lam in enumerate(lam_schedule):
         if bool(feasible_k.all().item()):
             break
@@ -486,11 +479,8 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
                 per_patch_min = _per_patch_min(phi_eff)
                 feasible_k = per_patch_min >= target
 
-    # Phase 2: barrier — only patches that are currently feasible.
-    # Infeasible patches' contributions are masked out so they don't trigger
-    # the log(slack<=0) fallback that would blow up gradients globally.
     if bool(feasible_k.any().item()):
-        active_bar = active_cell & feasible_k.view(K, 1, 1)   # bool (K, H, W)
+        active_bar = active_cell & feasible_k.view(K, 1, 1)
         active_bar_f = active_bar.to(dtype=dtype)
         prev_l2 = None
         for mu in mu_schedule:
@@ -524,7 +514,6 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
                 break
             prev_l2 = cur_l2
 
-    # Writeback per patch (bboxes are non-overlapping by construction).
     with torch.no_grad():
         phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
         for k, (y0, y1, x0, x1) in enumerate(bboxes):
@@ -718,11 +707,12 @@ def iterative_2d_barrier_torch(
         for iteration in range(max_iterations):
             with torch.no_grad():
                 j = _jdet_2d_torch(phi_full)
-                j_np = j.cpu().numpy()
-            neg_mask = j_np <= threshold_f - err_tol_f
-            if not neg_mask.any():
+                neg_mask_t = j <= threshold_f - err_tol_f
+                any_neg = bool(neg_mask_t.any().item())
+            if not any_neg:
                 _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
                 break
+            neg_mask = neg_mask_t.cpu().numpy()
             labeled, n_components = label(neg_mask, structure=structure)
 
             t0 = time.time()
@@ -744,7 +734,7 @@ def iterative_2d_barrier_torch(
                 is_interior = (y0 > 0 and y1 < H - 1 and x0 > 0 and x1 < W - 1)
                 # Active voxel count = (Hp-2)*(Wp-2) for interior patches (rim-frozen).
                 n_active_est = max(0, (Hp - 2) * (Wp - 2))
-                if is_interior and n_active_est < 500:
+                if is_interior and n_active_est < 3000:
                     small_bboxes.append((y0, y1, x0, x1))
                 else:
                     large_bboxes.append((y0, y1, x0, x1))

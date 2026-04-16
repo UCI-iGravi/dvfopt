@@ -100,15 +100,16 @@ def main():
     if os.path.exists(real_path):
         full = np.load(real_path)
         _, Df, Hf, Wf = full.shape
+        print(f"  real full shape: (3, {Df}, {Hf}, {Wf})")
         synth['real_1_4'] = scale_dvf_3d(full, (Df // 4, Hf // 4, Wf // 4))
+        synth['real_1_2'] = scale_dvf_3d(full, (Df // 2, Hf // 2, Wf // 2))
         del full
 
     for key, dvf in synth.items():
         for mode in ['win', 'full']:
-            n_dofs = 3 * dvf[0].size
-            if mode == 'full' and n_dofs > 40_000_000:
-                print(f"  {key:<22s} {mode:>5s}  [skipped: {n_dofs:,} DOFs > cap]")
-                continue
+            # Full-grid now uses active-set DOF reduction — radius=10 keeps the
+            # LBFGS variable bounded by the size of the infeasible region, not
+            # the full grid, so the legacy total-DOF cap no longer applies.
             r = test_3d(key, dvf, mode)
             print_row(key, mode, r)
 

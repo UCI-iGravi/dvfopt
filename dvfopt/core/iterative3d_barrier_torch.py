@@ -23,6 +23,20 @@ from dvfopt._defaults import _log, _resolve_params
 from dvfopt.core.solver import _setup_accumulators, _print_summary, _save_results
 
 
+def _build_active_mask_3d(j, target, radius):
+    """Dilate {j < target} by ``radius`` voxels via 3D max-pool.
+
+    Returns a (D, H, W) bool mask of voxels whose displacement is free to
+    move in active-set full-grid mode. A voxel is frozen if every element
+    within ``radius`` steps is already feasible — its Jdet is fixed and it
+    cannot contribute to relaxing the constraint.
+    """
+    unsafe = (j < target).to(torch.float32).unsqueeze(0).unsqueeze(0)
+    k = 2 * radius + 1
+    pooled = torch.nn.functional.max_pool3d(unsafe, kernel_size=k, stride=1, padding=radius)
+    return pooled.squeeze(0).squeeze(0).bool()
+
+
 def _jdet_3d_torch(phi):
     """3D Jacobian determinant of phi shaped (3, D, H, W) on torch.
 
@@ -102,8 +116,9 @@ def _group_nonoverlapping_3d(bboxes, max_batch=32):
 def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
                               threshold_f, margin, lam_schedule, mu_schedule,
                               max_minimize_iter, device, dtype):
-    """Batched 3D penalty->barrier on K non-overlapping interior patches.
-    All patches in `bboxes` must be interior (not touching grid edge)."""
+    """Batched penalty->barrier on K non-overlapping interior 3D patches.
+    Shares a single LBFGS optimizer across K patches via (K, 3, Dmax, Hmax, Wmax)
+    tensor with per-patch frozen/active masks."""
     D, H, W = grid_shape
     K = len(bboxes)
     Dmax = max(z1 - z0 + 1 for (z0, z1, y0, y1, x0, x1) in bboxes)
@@ -124,13 +139,13 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
         cell_frozen[k, :Dp, :Hp, :Wp] = pf
         active_cell[k, :Dp, :Hp, :Wp] = ~pf
 
-    cell_frozen_b = cell_frozen.unsqueeze(1)  # (K, 1, D, H, W)
+    cell_frozen_b = cell_frozen.unsqueeze(1)
     active_f = active_cell.to(dtype=dtype)
     phi_var = phi_batch_init.detach().clone().requires_grad_(True)
 
     tol_change = 1e-9 if dtype == torch.float64 else 1e-7
-    hs = 10
-    mi = min(max_minimize_iter, 100)
+    hs = 20
+    mi = max_minimize_iter
     target = threshold_f + margin
     n_lam = len(lam_schedule)
     lam_steps = 0
@@ -370,6 +385,7 @@ def iterative_3d_barrier_torch(
     max_iterations=50,
     windowed=True,
     pad=2,
+    active_set_radius=10,
     device=None,
     dtype=torch.float32,
 ):
@@ -395,6 +411,12 @@ def iterative_3d_barrier_torch(
         boundary ring. When False, optimise the full grid at once.
     pad : int
         Voxels of expansion on each side of each component bbox.
+    active_set_radius : int or None
+        Full-grid mode only. Dilation radius (in voxels) around the
+        infeasible region; only DOFs within the dilated mask become LBFGS
+        variables. Shrinks the optimizer footprint on large volumes (makes
+        otherwise-intractable grids fit in GPU memory) without artificial
+        patch boundaries. Set to ``None`` to optimise every voxel.
     device : str or torch.device or None
         ``"cuda"``/``"cpu"``. Defaults to ``"cuda"`` if available.
     dtype : torch.dtype
@@ -448,11 +470,12 @@ def iterative_3d_barrier_torch(
         for iteration in range(max_iterations):
             with torch.no_grad():
                 j = _jdet_3d_torch(phi_full)
-                j_np = j.cpu().numpy()
-            neg_mask = j_np <= threshold_f - err_tol_f
-            if not neg_mask.any():
+                neg_mask_t = j <= threshold_f - err_tol_f
+                any_neg = bool(neg_mask_t.any().item())
+            if not any_neg:
                 _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
                 break
+            neg_mask = neg_mask_t.cpu().numpy()
             labeled, n_components = label(neg_mask, structure=structure)
 
             t0 = time.time()
@@ -472,7 +495,7 @@ def iterative_3d_barrier_torch(
                                y0 > 0 and y1 < H - 1 and
                                x0 > 0 and x1 < W - 1)
                 n_active_est = max(0, (Dp - 2) * (Hp - 2) * (Wp - 2))
-                if is_interior and n_active_est < 500:
+                if is_interior and n_active_est < 3000:
                     small_bboxes.append((z0, z1, y0, y1, x0, x1))
                 else:
                     large_bboxes.append((z0, z1, y0, y1, x0, x1))
@@ -522,81 +545,49 @@ def iterative_3d_barrier_torch(
         phi_var_final = phi_full
     else:
         tol_change = 1e-9 if dtype == torch.float64 else 1e-7
-        phi_var = phi_init.detach().clone().requires_grad_(True)
-        feasible = init_min >= target
-        cur_min = init_min
-        for k, lam in enumerate(lam_schedule):
-            if feasible:
-                break
 
-            def closure():
-                if phi_var.grad is not None:
-                    phi_var.grad.zero_()
-                diff = phi_var - phi_init
-                data = 0.5 * (diff * diff).sum()
-                j = _jdet_3d_torch(phi_var)
-                viol = torch.clamp(target - j, min=0.0)
-                pen = lam * (viol * viol).sum()
-                loss = data + pen
-                loss.backward()
-                return loss
-
-            opt = torch.optim.LBFGS(
-                [phi_var],
-                lr=1.0,
-                max_iter=max_minimize_iter,
-                tolerance_grad=1e-6,
-                tolerance_change=tol_change,
-                history_size=20,
-                line_search_fn="strong_wolfe",
-            )
-            t0 = time.time()
-            opt.step(closure)
-            elapsed = time.time() - t0
-            iter_times.append(elapsed)
-
+        if active_set_radius is None:
+            active_vox = torch.ones((D, H, W), dtype=torch.bool, device=device)
+        else:
             with torch.no_grad():
-                j = _jdet_3d_torch(phi_var)
-                cur_neg = int((j <= 0).sum().item())
-                cur_min = float(j.min().item())
-                l2 = float(torch.linalg.norm(phi_var - phi_init).item())
-            num_neg_jac.append(cur_neg)
-            min_jdet_list.append(cur_min)
-            error_list.append(l2)
+                active_vox = _build_active_mask_3d(j0, target, int(active_set_radius))
+        n_active = int(active_vox.sum().item())
+        if n_active == 0:
+            _log(verbose, 1, "[active-set] already feasible — no DOFs to optimise")
+            phi_var_final = phi_init.detach().clone()
+        else:
+            active_dof = active_vox.unsqueeze(0).expand(3, D, H, W).contiguous()
+            active_vox_f = active_vox.to(dtype=dtype)
+            phi_var_flat = phi_init.masked_select(active_dof).detach().clone().requires_grad_(True)
             _log(verbose, 1,
-                 f"[penalty {k+1}/{len(lam_schedule)}] lam={lam:g}  "
-                 f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                 f"L2={l2:.4f}  t={elapsed:.2f}s")
-            if cur_min >= target:
-                feasible = True
-                break
+                 f"[active-set] radius={active_set_radius}  "
+                 f"active_vox={n_active:,}/{D*H*W:,} ({100.0*n_active/(D*H*W):.1f}%)  "
+                 f"LBFGS DOFs={phi_var_flat.numel():,}")
 
-        if not feasible:
-            _log(verbose, 1,
-                 f"[penalty] did not reach feasibility (min_J={cur_min:+.6f} < {target}); "
-                 "skipping barrier phase")
+            def _compose():
+                return phi_init.masked_scatter(active_dof, phi_var_flat)
 
-        if feasible:
-            prev_l2 = None
-            for k, mu in enumerate(mu_schedule):
+            feasible = init_min >= target
+            cur_min = init_min
+            for k, lam in enumerate(lam_schedule):
+                if feasible:
+                    break
+
                 def closure():
-                    if phi_var.grad is not None:
-                        phi_var.grad.zero_()
-                    diff = phi_var - phi_init
+                    if phi_var_flat.grad is not None:
+                        phi_var_flat.grad.zero_()
+                    phi = _compose()
+                    diff = phi - phi_init
                     data = 0.5 * (diff * diff).sum()
-                    j = _jdet_3d_torch(phi_var)
-                    slack = j - threshold_f
-                    if slack.min() <= 0:
-                        viol = torch.clamp(-slack + 1e-12, min=0.0)
-                        bar = 1e8 * (viol * viol).sum()
-                    else:
-                        bar = -mu * torch.log(slack).sum()
-                    loss = data + bar
+                    j = _jdet_3d_torch(phi)
+                    viol = torch.clamp(target - j, min=0.0)
+                    pen = lam * (viol * viol * active_vox_f).sum()
+                    loss = data + pen
                     loss.backward()
                     return loss
 
                 opt = torch.optim.LBFGS(
-                    [phi_var],
+                    [phi_var_flat],
                     lr=1.0,
                     max_iter=max_minimize_iter,
                     tolerance_grad=1e-6,
@@ -610,23 +601,82 @@ def iterative_3d_barrier_torch(
                 iter_times.append(elapsed)
 
                 with torch.no_grad():
-                    j = _jdet_3d_torch(phi_var)
+                    phi = _compose()
+                    j = _jdet_3d_torch(phi)
                     cur_neg = int((j <= 0).sum().item())
                     cur_min = float(j.min().item())
-                    l2 = float(torch.linalg.norm(phi_var - phi_init).item())
+                    l2 = float(torch.linalg.norm(phi - phi_init).item())
                 num_neg_jac.append(cur_neg)
                 min_jdet_list.append(cur_min)
                 error_list.append(l2)
                 _log(verbose, 1,
-                     f"[barrier {k+1}/{len(mu_schedule)}] mu={mu:g}  "
+                     f"[penalty {k+1}/{len(lam_schedule)}] lam={lam:g}  "
                      f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
                      f"L2={l2:.4f}  t={elapsed:.2f}s")
-                if prev_l2 is not None and abs(l2 - prev_l2) / max(prev_l2, 1e-9) < 1e-5:
-                    _log(verbose, 1, f"[barrier] L2 converged — early exit")
+                if cur_min >= target:
+                    feasible = True
                     break
-                prev_l2 = l2
 
-        phi_var_final = phi_var.detach()
+            if not feasible:
+                _log(verbose, 1,
+                     f"[penalty] did not reach feasibility (min_J={cur_min:+.6f} < {target}); "
+                     "skipping barrier phase")
+
+            if feasible:
+                prev_l2 = None
+                for k, mu in enumerate(mu_schedule):
+                    def closure_bar():
+                        if phi_var_flat.grad is not None:
+                            phi_var_flat.grad.zero_()
+                        phi = _compose()
+                        diff = phi - phi_init
+                        data = 0.5 * (diff * diff).sum()
+                        j = _jdet_3d_torch(phi)
+                        slack = j - threshold_f
+                        safe_slack = torch.where(active_vox, slack, torch.ones_like(slack))
+                        if (slack * active_vox_f).min() <= 0:
+                            viol = torch.clamp(-slack + 1e-12, min=0.0) * active_vox_f
+                            bar = 1e8 * (viol * viol).sum()
+                        else:
+                            bar = -mu * (torch.log(safe_slack) * active_vox_f).sum()
+                        loss = data + bar
+                        loss.backward()
+                        return loss
+
+                    opt = torch.optim.LBFGS(
+                        [phi_var_flat],
+                        lr=1.0,
+                        max_iter=max_minimize_iter,
+                        tolerance_grad=1e-6,
+                        tolerance_change=tol_change,
+                        history_size=20,
+                        line_search_fn="strong_wolfe",
+                    )
+                    t0 = time.time()
+                    opt.step(closure_bar)
+                    elapsed = time.time() - t0
+                    iter_times.append(elapsed)
+
+                    with torch.no_grad():
+                        phi = _compose()
+                        j = _jdet_3d_torch(phi)
+                        cur_neg = int((j <= 0).sum().item())
+                        cur_min = float(j.min().item())
+                        l2 = float(torch.linalg.norm(phi - phi_init).item())
+                    num_neg_jac.append(cur_neg)
+                    min_jdet_list.append(cur_min)
+                    error_list.append(l2)
+                    _log(verbose, 1,
+                         f"[barrier {k+1}/{len(mu_schedule)}] mu={mu:g}  "
+                         f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                         f"L2={l2:.4f}  t={elapsed:.2f}s")
+                    if prev_l2 is not None and abs(l2 - prev_l2) / max(prev_l2, 1e-9) < 1e-5:
+                        _log(verbose, 1, f"[barrier] L2 converged — early exit")
+                        break
+                    prev_l2 = l2
+
+            with torch.no_grad():
+                phi_var_final = _compose().detach()
 
     elapsed_total = time.time() - start_time
     with torch.no_grad():
