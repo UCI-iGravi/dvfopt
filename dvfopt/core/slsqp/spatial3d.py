@@ -37,13 +37,16 @@ def argmin_worst_voxel(jacobian_matrix):
 
 
 def neg_jdet_bounding_window_3d(jacobian_matrix, center_zyx, threshold, err_tol,
-                                labeled_array=None):
+                                labeled_array=None, pad=2):
     """Compute the smallest sub-volume enclosing the negative-Jdet region.
 
     The sub-volume is the bounding box of all voxels with
     Jdet <= *threshold* - *err_tol* that are **connected**
-    (26-connectivity) to *center_zyx*, expanded by 1 voxel on each
+    (26-connectivity) to *center_zyx*, expanded by *pad* voxels on each
     side.  Each dimension is at least 3.
+
+    The default ``pad=2`` provides 1 voxel of optimisation room around
+    the negative region plus 1 voxel for the frozen boundary ring.
 
     Returns
     -------
@@ -63,12 +66,12 @@ def neg_jdet_bounding_window_3d(jacobian_matrix, center_zyx, threshold, err_tol,
     region_zs, region_ys, region_xs = np.where(labeled_array == region_label)
 
     D, H, W = jacobian_matrix.shape
-    z_min = max(int(region_zs.min()) - 1, 0)
-    z_max = min(int(region_zs.max()) + 1, D - 1)
-    y_min = max(int(region_ys.min()) - 1, 0)
-    y_max = min(int(region_ys.max()) + 1, H - 1)
-    x_min = max(int(region_xs.min()) - 1, 0)
-    x_max = min(int(region_xs.max()) + 1, W - 1)
+    z_min = max(int(region_zs.min()) - pad, 0)
+    z_max = min(int(region_zs.max()) + pad, D - 1)
+    y_min = max(int(region_ys.min()) - pad, 0)
+    y_max = min(int(region_ys.max()) + pad, H - 1)
+    x_min = max(int(region_xs.min()) - pad, 0)
+    x_max = min(int(region_xs.max()) + pad, W - 1)
 
     depth  = max(z_max - z_min + 1, 3)
     height = max(y_max - y_min + 1, 3)
@@ -110,6 +113,7 @@ def _frozen_boundary_mask_3d(cz, cy, cx, subvolume_size, volume_shape):
     if end_x < W - 1:
         mask[:, :, -1] = True
     return mask
+
 
 
 def _frozen_edges_clean_3d(jacobian_matrix, cz, cy, cx, subvolume_size,

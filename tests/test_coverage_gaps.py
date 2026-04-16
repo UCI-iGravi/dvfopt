@@ -604,8 +604,7 @@ class TestFrozenEdgeSkipRegression:
         """
         H, W = 14, 14
         dvf = np.zeros((3, 1, H, W), dtype=np.float64)
-        # Wide connected strip — the worst pixel's initial 3x3 window will have
-        # boundary pixels that are also negative, triggering frozen-edge skips.
+        # Wide connected strip
         for i in range(4, 10):
             dvf[2, 0, i, 4:10] = 3.0 if i % 2 == 0 else -3.0
         phi = iterative_serial(

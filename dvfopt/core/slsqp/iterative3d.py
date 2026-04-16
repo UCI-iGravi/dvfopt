@@ -3,6 +3,7 @@
 import time
 
 import numpy as np
+from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size_3d
 from dvfopt.core.slsqp.spatial3d import argmin_worst_voxel
@@ -105,6 +106,12 @@ def iterative_3d(
 
         neg_index = argmin_worst_voxel(jacobian_matrix)
 
+        # Compute connected-component labels for the current negative mask.
+        # Used by the bounding-window and component-aware freeze mask.
+        neg_mask = jacobian_matrix <= threshold - err_tol
+        structure = np.ones((3, 3, 3))  # 26-connectivity
+        labeled_array, _ = label(neg_mask, structure=structure)
+
         # Purge stale stall_counts for voxels no longer below threshold.
         stall_counts = {k: v for k, v in stall_counts.items()
                         if jacobian_matrix[k[0], k[1], k[2]] <= threshold - err_tol}
@@ -117,6 +124,7 @@ def iterative_3d(
                 max_window, threshold, err_tol, method_name, verbose,
                 error_list, num_neg_jac, min_jdet_list, iter_times,
                 min_window=global_min_window,
+                labeled_array=labeled_array,
             )
 
         sz, sy, sx = _unpack_size_3d(subvolume_size)

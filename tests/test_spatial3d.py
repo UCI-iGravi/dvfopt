@@ -46,24 +46,58 @@ class TestArgminWorstVoxel:
 
 class TestNegJdetBoundingWindow3D:
     def test_single_negative_voxel(self):
-        jac = np.ones((8, 8, 8))
-        jac[4, 4, 4] = -0.1
+        jac = np.ones((12, 12, 12))
+        jac[6, 6, 6] = -0.1
         (sz, sy, sx), (cz, cy, cx) = neg_jdet_bounding_window_3d(
-            jac, (4, 4, 4), 0.01, 1e-5)
-        assert sz >= 3 and sy >= 3 and sx >= 3
+            jac, (6, 6, 6), 0.01, 1e-5)
+        # Default pad=2: single voxel -> bbox is 1+2*2=5 per dim
+        assert sz == 5 and sy == 5 and sx == 5
+
+    def test_custom_pad(self):
+        jac = np.ones((12, 12, 12))
+        jac[6, 6, 6] = -0.1
+        (sz, sy, sx), _ = neg_jdet_bounding_window_3d(
+            jac, (6, 6, 6), 0.01, 1e-5, pad=1)
+        assert sz == 3 and sy == 3 and sx == 3
 
     def test_not_negative_returns_default(self):
-        jac = np.ones((8, 8, 8))
+        jac = np.ones((12, 12, 12))
         (sz, sy, sx), center = neg_jdet_bounding_window_3d(
-            jac, (4, 4, 4), 0.01, 1e-5)
+            jac, (6, 6, 6), 0.01, 1e-5)
         assert (sz, sy, sx) == (3, 3, 3)
 
     def test_larger_region(self):
-        jac = np.ones((10, 10, 10))
-        jac[3:6, 3:6, 3:6] = -0.5
+        jac = np.ones((16, 16, 16))
+        jac[5:8, 5:8, 5:8] = -0.5
         (sz, sy, sx), _ = neg_jdet_bounding_window_3d(
-            jac, (4, 4, 4), 0.01, 1e-5)
-        assert sz >= 5 and sy >= 5 and sx >= 5
+            jac, (6, 6, 6), 0.01, 1e-5)
+        # 3 neg voxels span + 2*2 pad = 3+4=7 per dim
+        assert sz >= 7 and sy >= 7 and sx >= 7
+
+    def test_pad_clamps_to_grid(self):
+        """Padding should not extend past grid boundaries."""
+        jac = np.ones((8, 8, 8))
+        jac[1, 1, 1] = -0.1
+        (sz, sy, sx), _ = neg_jdet_bounding_window_3d(
+            jac, (1, 1, 1), 0.01, 1e-5, pad=5)
+        # Should not crash; dimensions clamped to grid
+        assert sz <= 8 and sy <= 8 and sx <= 8
+
+    def test_labeled_array_isolates_component(self):
+        """With labeled_array, only the target component's bbox is used."""
+        from scipy.ndimage import label
+        jac = np.ones((16, 16, 16))
+        jac[3, 3, 3] = -0.5   # blob A
+        jac[12, 12, 12] = -0.5  # blob B (far away)
+        neg_mask = jac <= 0.01 - 1e-5
+        labeled, _ = label(neg_mask, structure=np.ones((3, 3, 3)))
+
+        # Asking for blob A's bounding box
+        (sz, sy, sx), (cz, cy, cx) = neg_jdet_bounding_window_3d(
+            jac, (3, 3, 3), 0.01, 1e-5, labeled_array=labeled)
+        # Should be centered near blob A, not spanning to blob B
+        assert cz <= 6 and cy <= 6 and cx <= 6
+        assert sz <= 10 and sy <= 10 and sx <= 10
 
 
 class TestFrozenBoundaryMask3D:
@@ -83,15 +117,15 @@ class TestFrozenBoundaryMask3D:
     def test_corner_window(self):
         """Window at grid corner: faces touching grid edge should NOT be frozen."""
         mask = _frozen_boundary_mask_3d(1, 1, 1, (3, 3, 3), (8, 10, 12))
-        # z=0 face touches grid edge → not frozen
+        # z=0 face touches grid edge -> not frozen
         assert not mask[0, :, :].all()
-        # But z=-1 face doesn't touch grid edge → frozen
+        # But z=-1 face doesn't touch grid edge -> frozen
         assert mask[-1, :, :].all()
 
     def test_grid_edge_touching(self):
         """Window at z=0: the first z-slice should not be frozen."""
         mask = _frozen_boundary_mask_3d(1, 4, 5, (3, 3, 3), (8, 10, 12))
-        # cz=1, hz=1 → start_z=0 → on grid edge
+        # cz=1, hz=1 -> start_z=0 -> on grid edge
         assert not mask[0, 1, 1]  # z=0 interior pixel not frozen
 
 

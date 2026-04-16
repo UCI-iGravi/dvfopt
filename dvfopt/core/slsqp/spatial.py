@@ -29,14 +29,16 @@ def argmin_quality(jacobian_matrix):
     return (int(idx[0]), int(idx[1]))
 
 
-def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol, labeled=None):
+def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
+                             labeled=None, pad=2):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
 
     The window is the bounding box of all pixels with Jdet <= *threshold* - *err_tol*
-    that are **connected** (8-connectivity) to *center_yx*, expanded by 1 pixel on
-    each side so the frozen edges sit on positive-Jdet pixels.
+    that are **connected** (8-connectivity) to *center_yx*, expanded by *pad* pixels
+    on each side.  The default ``pad=2`` provides 1 pixel of optimisation room
+    around the negative region plus 1 pixel for the frozen boundary ring.
 
-    The window dimensions match the bounding box — the height and width
+    The window dimensions match the bounding box -- the height and width
     can differ, producing a rectangular window.  The bbox centre is returned
     so callers can position the window on the region's centre (via
     ``nearest_center``) rather than on the worst pixel, avoiding an
@@ -54,11 +56,13 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol, lab
         ``jacobian_matrix[0]``).  When provided, the ``scipy.ndimage.label``
         call is skipped.  Pass this when calling in a loop over many pixels
         to avoid recomputing labels for every pixel.
+    pad : int
+        Number of pixels to expand the bounding box on each side.
 
     Returns
     -------
     size : tuple of int
-        ``(height, width)`` — each >= 3.
+        ``(height, width)`` -- each >= 3.
     bbox_center : tuple of int
         ``(y, x)`` centre of the bounding box.
     """
@@ -72,13 +76,13 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol, lab
         return (3, 3), center_yx
 
     region_ys, region_xs = np.where(labeled == region_label)
-    # Bounding box of the connected negative region + 1 pixel border,
+    # Bounding box of the connected negative region + pad pixel border,
     # clamped to the grid so edge-touching regions don't go out of bounds.
     H, W = jacobian_matrix.shape[1:]
-    y_min = max(int(region_ys.min()) - 1, 0)
-    y_max = min(int(region_ys.max()) + 1, H - 1)
-    x_min = max(int(region_xs.min()) - 1, 0)
-    x_max = min(int(region_xs.max()) + 1, W - 1)
+    y_min = max(int(region_ys.min()) - pad, 0)
+    y_max = min(int(region_ys.max()) + pad, H - 1)
+    x_min = max(int(region_xs.min()) - pad, 0)
+    x_max = min(int(region_xs.max()) + pad, W - 1)
 
     # Rectangular window matching the bounding box (floor 3 per dim).
     height = max(y_max - y_min + 1, 3)
