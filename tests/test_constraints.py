@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.constraints import jacobian_constraint, _quality_map
+from dvfopt.core.slsqp.constraints import jacobian_constraint, _quality_map
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt.jacobian.shoelace import shoelace_constraint
 from dvfopt.jacobian.monotonicity import injectivity_constraint

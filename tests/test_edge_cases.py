@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
-from dvfopt.core.iterative import iterative_serial
-from dvfopt.core.iterative3d import iterative_3d
+from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp.iterative3d import iterative_3d
 
 
 # ---------------------------------------------------------------------------
@@ -475,7 +475,7 @@ class TestConstraintModes:
 class TestSpatialHelpers:
     def test_get_nearest_center_clamps_to_valid_range(self):
         """get_nearest_center must never place the window outside the grid."""
-        from dvfopt.core.spatial import get_nearest_center
+        from dvfopt.core.slsqp.spatial import get_nearest_center
         slice_shape = (1, 20, 20)
 
         # Pixel at corner (0, 0) with large window
@@ -491,7 +491,7 @@ class TestSpatialHelpers:
 
     def test_neg_jdet_bounding_window_single_pixel(self):
         """Bounding window around a lone negative pixel should be at least 3×3."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
         jm = np.ones((1, 10, 10))
         jm[0, 5, 5] = -0.5  # single negative pixel
         size, center = neg_jdet_bounding_window(jm, (5, 5), THRESHOLD, ERR_TOL)
@@ -499,7 +499,7 @@ class TestSpatialHelpers:
 
     def test_neg_jdet_bounding_window_precomputed_labels(self):
         """Passing precomputed labels must give same result as computing them."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
         from scipy.ndimage import label
         jm = np.ones((1, 10, 10))
         jm[0, 4:7, 4:7] = -0.5
@@ -513,13 +513,13 @@ class TestSpatialHelpers:
 
     def test_frozen_edges_clean_all_positive(self):
         """Window entirely above threshold → frozen edges are clean."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         jm = np.ones((1, 10, 10)) * 0.5
         assert _frozen_edges_clean(jm, 5, 5, (5, 5), THRESHOLD, ERR_TOL)
 
     def test_frozen_edges_clean_negative_on_edge(self):
         """Negative value on the window edge → not clean."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         jm = np.ones((1, 10, 10)) * 0.5
         jm[0, 3, 3] = -0.5  # this is the top-left corner of a (5,5) window at (5,5)
         # Window at cy=5, cx=5, size=(5,5): y0=3, y1=7, x0=3, x1=7
@@ -527,7 +527,7 @@ class TestSpatialHelpers:
 
     def test_frozen_edges_clean_at_grid_border(self):
         """Window touching grid border → edge pixels not frozen → always clean."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         # Window at cy=1, cx=1 with size=(3,3): y0=0, y1=2, x0=0, x1=2
         # That means the window IS at the border; _frozen_edges_clean checks
         # the outer ring of the window. Even if edge is negative, caller

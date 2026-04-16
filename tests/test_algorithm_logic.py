@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
-from dvfopt.core.iterative import iterative_serial
+from dvfopt.core.slsqp.iterative import iterative_serial
 
 THRESHOLD = 0.01
 ERR_TOL = 1e-5
@@ -115,7 +115,7 @@ class TestConnectedComponentIsolation:
     def test_bounding_window_does_not_cross_to_distant_cluster(self):
         """Two well-separated negative clusters.  Querying cluster 1 must NOT
         produce a window large enough to cover cluster 2."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window, get_nearest_center
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window, get_nearest_center
 
         H, W = 20, 20
         jm = np.ones((1, H, W)) * 0.5
@@ -136,7 +136,7 @@ class TestConnectedComponentIsolation:
     def test_bounding_window_center_is_bbox_center_not_worst_pixel(self):
         """When the worst pixel is off-center in a connected region, the returned
         center must be the bounding-box center, not the worst pixel itself."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 20, 20)) * 0.5
         # Horizontal strip at row 8, cols 3..9 — 7 pixels wide
@@ -152,7 +152,7 @@ class TestConnectedComponentIsolation:
 
     def test_wide_flat_cluster_produces_non_square_window(self):
         """A wide, flat negative region must produce a window wider than tall."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 20, 20)) * 0.5
         # Single row, 10 pixels wide → window should be wider than tall
@@ -165,7 +165,7 @@ class TestConnectedComponentIsolation:
 
     def test_entire_grid_negative_produces_full_grid_window(self):
         """All pixels negative → bounding window covers the whole grid."""
-        from dvfopt.core.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
 
         H, W = 8, 8
         jm = np.full((1, H, W), -0.5)
@@ -186,7 +186,7 @@ class TestWriteBackLogic:
         """The 1-pixel border of the padded extraction area must NOT be written
         back when write_size is given."""
         from dvfopt.core.solver import _apply_result
-        from dvfopt.core.spatial import get_phi_sub_flat_padded
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded
 
         rng = np.random.default_rng(7)
         H, W = 15, 15
@@ -222,7 +222,7 @@ class TestWriteBackLogic:
         """After padded write-back, pixels inside the original (sy,sx) window
         should differ from before; pixels completely outside should not."""
         from dvfopt.core.solver import _apply_result
-        from dvfopt.core.spatial import get_phi_sub_flat_padded
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded
 
         H, W = 15, 15
         phi = np.ones((2, H, W)) * 0.0   # known constant base
@@ -250,7 +250,7 @@ class TestWriteBackLogic:
         """Without padding, _apply_result (write_size=None) writes the full
         (sy,sx) region including the boundary ring."""
         from dvfopt.core.solver import _apply_result
-        from dvfopt.core.spatial import get_phi_sub_flat
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat
 
         H, W = 15, 15
         phi = np.zeros((2, H, W))
@@ -303,7 +303,7 @@ class TestEdgeFlagsLogic:
     """_edge_flags must truthfully report is_at_edge and window_reached_max."""
 
     def _flags(self, cy, cx, size, H=10, W=10, max_size=None):
-        from dvfopt.core.spatial import _edge_flags
+        from dvfopt.core.slsqp.spatial import _edge_flags
         if max_size is None:
             max_size = (H, W)
         return _edge_flags(cy, cx, size, (1, H, W), max_size)
@@ -357,8 +357,8 @@ class TestOptimizationSatisfiesConstraint:
         """Call _optimize_single_window directly on a sub-window with a fold.
         The returned x must satisfy jacobian_constraint >= threshold."""
         from dvfopt.core.solver import _optimize_single_window
-        from dvfopt.core.constraints import jacobian_constraint
-        from dvfopt.core.spatial import get_phi_sub_flat
+        from dvfopt.core.slsqp.constraints import jacobian_constraint
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat
 
         H, W = 15, 15
         phi = np.zeros((2, H, W))
@@ -423,7 +423,7 @@ class TestQualityMapExact:
 
     def test_without_constraints_returns_same_jdet_object(self):
         """With no extra constraints, quality_map must be the same object as jdet."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         phi = np.random.default_rng(0).standard_normal((2, 8, 8)) * 0.2
         jdet = jacobian_det2D(phi)
         qm = _quality_map(phi, enforce_shoelace=False, enforce_injectivity=False,
@@ -433,7 +433,7 @@ class TestQualityMapExact:
     def test_quality_map_for_identity_is_exactly_one(self):
         """Zero displacement: Jdet=1 and shoelace=1 everywhere.
         quality_map must be exactly 1, not less (not a too-low bound)."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         phi = np.zeros((2, 8, 8))
         jdet = jacobian_det2D(phi)
         qm = _quality_map(phi, enforce_shoelace=True, enforce_injectivity=True,
@@ -443,7 +443,7 @@ class TestQualityMapExact:
 
     def test_quality_map_minimum_equals_minimum_of_contributing_metrics(self):
         """qm.min() must equal the minimum of all individual metrics (tight lower bound)."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         from dvfopt.jacobian.shoelace import shoelace_det2D
 
         rng = np.random.default_rng(42)
@@ -464,7 +464,7 @@ class TestQualityMapExact:
 
     def test_quality_map_reflects_shoelace_when_shoelace_is_bottleneck(self):
         """At pixels where shoelace < Jdet, quality_map must equal the shoelace value."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         from dvfopt.jacobian.shoelace import shoelace_det2D
 
         # Construct a phi where Jdet > 0 everywhere but shoelace areas can be small

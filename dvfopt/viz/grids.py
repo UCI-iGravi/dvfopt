@@ -154,9 +154,9 @@ def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
 def _invert_displacement(dy, dx, iterations=50):
     """Compute inverse displacement field via fixed-point iteration.
 
-    Given pull-back displacement *d* where ``T(x) = x + d(x)`` maps
-    fixed \u2192 moving, compute ``d_inv`` where ``T^{-1}(y) = y + d_inv(y)``
-    maps moving \u2192 fixed.
+    Given a pull-back displacement field *d* where ``T(x) = x + d(x)``
+    is the forward warp, compute ``d_inv`` where
+    ``T^{-1}(y) = y + d_inv(y)`` is the push-forward (inverse) warp.
     """
     H, W = dy.shape
     yy, xx = np.mgrid[0:H, 0:W].astype(float)
@@ -196,8 +196,9 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
     spacing : int
     linewidth : float
     inverse : bool
-        If False (default), show fixed\u2192moving (pull-back).
-        If True, show moving\u2192fixed via proper fixed-point inversion.
+        If False (default), show the pull-back displacement field.
+        If True, show the push-forward (inverse) field via fixed-point
+        iteration.
     jdet_vmax : float or None
         If set, caps the colormap range to ``[-jdet_vmax, jdet_vmax]``.
         Useful when extreme outliers wash out the colour scale.
@@ -256,11 +257,11 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
     init_neg = int((jac_init <= 0).sum())
     corr_neg = int((jac_corr <= 0).sum())
 
-    arrow = "moving\u2192fixed" if inverse else "fixed\u2192moving"
+    direction = "push-forward" if inverse else "pull-back"
 
     for ax, phi, jac, label in [
-        (axes[0], phi_init_view, jac_init, f"Initial \u2014 {arrow} (neg Jdet = {init_neg})"),
-        (axes[1], phi_corr_view, jac_corr, f"Corrected \u2014 {arrow} (neg Jdet = {corr_neg})"),
+        (axes[0], phi_init_view, jac_init, f"Initial — {direction} field (neg Jdet = {init_neg})"),
+        (axes[1], phi_corr_view, jac_corr, f"Corrected — {direction} field (neg Jdet = {corr_neg})"),
     ]:
         dy = phi[0]
         dx = phi[1]

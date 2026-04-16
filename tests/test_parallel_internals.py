@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.parallel import _find_negative_pixels
+from dvfopt.core.slsqp.parallel import _find_negative_pixels
 
 
 class TestFindNegativePixels:

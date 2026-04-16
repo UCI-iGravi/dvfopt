@@ -35,7 +35,7 @@ class TestPaddedExtractionBoundary:
 
     def test_interior_center_returns_padded_size(self):
         """Far from all edges: padded extraction returns (sy+2, sx+2)."""
-        from dvfopt.core.spatial import get_phi_sub_flat_padded
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded
         phi = np.random.default_rng(0).standard_normal((2, 15, 15))
         sy, sx = 3, 3
         flat, actual_size = get_phi_sub_flat_padded(phi, 0, 7, 7, (1, 15, 15), (sy, sx))
@@ -44,7 +44,7 @@ class TestPaddedExtractionBoundary:
 
     def test_exact_lower_boundary_still_pads(self):
         """cy - hy - 1 = 0 (exactly zero) → can still pad."""
-        from dvfopt.core.spatial import get_phi_sub_flat_padded
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded
         phi = np.random.default_rng(1).standard_normal((2, 15, 15))
         sy, sx = 3, 3
         hy = sy // 2   # = 1
@@ -55,7 +55,7 @@ class TestPaddedExtractionBoundary:
 
     def test_one_step_inside_edge_falls_back(self):
         """cy - hy - 1 = -1 (one step inside lower edge) → falls back to unpadded."""
-        from dvfopt.core.spatial import get_phi_sub_flat_padded
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded
         phi = np.random.default_rng(2).standard_normal((2, 15, 15))
         sy, sx = 3, 3
         hy = sy // 2   # = 1
@@ -68,7 +68,7 @@ class TestPaddedExtractionBoundary:
     def test_padded_fallback_inner_values_match_unpadded(self):
         """When can_pad=True, the inner (sy,sx) of the padded result equals
         the unpadded extraction �� verifying they describe the same region."""
-        from dvfopt.core.spatial import get_phi_sub_flat_padded, get_phi_sub_flat
+        from dvfopt.core.slsqp.spatial import get_phi_sub_flat_padded, get_phi_sub_flat
         phi = np.random.default_rng(3).standard_normal((2, 15, 15))
         sy, sx = 5, 5
         cy, cx = 7, 7
@@ -95,11 +95,11 @@ class TestFrozenEdgesClean3d:
 
     def _interior_mask(self, D=6, H=6, W=6):
         """Freeze all 6 faces of a 3x3x3 window at the centre."""
-        from dvfopt.core.spatial3d import _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_boundary_mask_3d
         return _frozen_boundary_mask_3d(3, 3, 3, (3, 3, 3), (D, H, W))
 
     def test_all_frozen_voxels_positive_returns_true(self):
-        from dvfopt.core.spatial3d import _frozen_edges_clean_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_edges_clean_3d
         jm = np.ones((6, 6, 6)) * 0.5   # all positive
         freeze_mask = self._interior_mask()
         result = _frozen_edges_clean_3d(jm, 3, 3, 3, (3, 3, 3), THRESHOLD, ERR_TOL,
@@ -107,7 +107,7 @@ class TestFrozenEdgesClean3d:
         assert bool(result)
 
     def test_one_frozen_voxel_negative_returns_false(self):
-        from dvfopt.core.spatial3d import _frozen_edges_clean_3d, _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_edges_clean_3d, _frozen_boundary_mask_3d
         jm = np.ones((6, 6, 6)) * 0.5
         # Window at (3,3,3) size (3,3,3): hz=1, starts at z=2
         # Frozen z-min face is at z-index 0 of subvolume = grid index 2
@@ -119,7 +119,7 @@ class TestFrozenEdgesClean3d:
 
     def test_empty_freeze_mask_returns_true(self):
         """If no voxels are frozen, the function must return True (safe path)."""
-        from dvfopt.core.spatial3d import _frozen_edges_clean_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_edges_clean_3d
         D, H, W = 5, 5, 5
         jm = np.ones((D, H, W)) * (-0.5)   # everything negative — but no frozen voxels
         freeze_mask = np.zeros((3, 3, 3), dtype=bool)   # all False
@@ -130,7 +130,7 @@ class TestFrozenEdgesClean3d:
     def test_frozen_voxel_exactly_at_boundary_is_not_clean(self):
         """A frozen voxel with Jdet == threshold - err_tol must return False.
         The check is strict >: value at boundary is NOT clean."""
-        from dvfopt.core.spatial3d import _frozen_edges_clean_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_edges_clean_3d
         boundary = THRESHOLD - ERR_TOL
         jm = np.ones((6, 6, 6)) * 0.5
         jm[2, 3, 3] = boundary   # exactly at boundary on frozen face
@@ -142,7 +142,7 @@ class TestFrozenEdgesClean3d:
 
     def test_frozen_voxel_just_above_boundary_is_clean(self):
         """A frozen voxel with Jdet just above boundary must return True."""
-        from dvfopt.core.spatial3d import _frozen_edges_clean_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_edges_clean_3d
         boundary = THRESHOLD - ERR_TOL
         jm = np.ones((6, 6, 6)) * 0.5
         jm[2, 3, 3] = boundary + 1e-10   # just above boundary
@@ -170,7 +170,7 @@ class TestFrozenEdgesClean2dBoundary:
 
     def test_boundary_value_exactly_at_threshold_is_not_clean(self):
         """edge_vals.min() == threshold - err_tol → returns False (strict >)."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         boundary = THRESHOLD - ERR_TOL
         jm = np.ones((1, 10, 10)) * 0.5
         # Top-left corner of the (5,5) window at (5,5) is at y=3, x=3
@@ -181,7 +181,7 @@ class TestFrozenEdgesClean2dBoundary:
 
     def test_boundary_value_just_above_threshold_is_clean(self):
         """edge_vals.min() just above threshold - err_tol → returns True."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         boundary = THRESHOLD - ERR_TOL
         jm = np.ones((1, 10, 10)) * 0.5
         jm[0, 3, 3] = boundary + 1e-10
@@ -190,13 +190,13 @@ class TestFrozenEdgesClean2dBoundary:
             "Value just above threshold-err_tol should be clean"
 
     def test_all_boundary_pixels_positive_returns_true(self):
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         jm = np.ones((1, 10, 10)) * 1.0
         assert _frozen_edges_clean(jm, 5, 5, (5, 5), THRESHOLD, ERR_TOL)
 
     def test_inner_pixel_negative_does_not_affect_edges(self):
         """A deeply interior negative pixel must not influence the edge check."""
-        from dvfopt.core.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
         jm = np.ones((1, 10, 10)) * 0.5
         jm[0, 5, 5] = -0.5   # interior of the window, not the boundary
         # Edge pixels are still all 0.5 > threshold - err_tol
@@ -346,7 +346,7 @@ class TestInjectivityDiagonalComponents:
         """phi where h_mono > 0, v_mono > 0, but d1 < 0 at one cell.
         quality_map must be < threshold at the pixels adjoining that cell.
         """
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
 
         H, W = 6, 6
         phi = np.zeros((2, H, W))
@@ -378,7 +378,7 @@ class TestInjectivityDiagonalComponents:
         To get d2 < 0: dy[r,c+1] must be large positive.
         d2[2,2] = 1 + dy[3,2] - dy[2,3] = 1 + 0 - 2.5 = -1.5.
         """
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
 
         H, W = 6, 6
         phi = np.zeros((2, H, W))
@@ -400,7 +400,7 @@ class TestInjectivityDiagonalComponents:
         """For zero displacement, h_mono=v_mono=d1=d2=1 everywhere.
         quality_map should be min(jdet=1, mono=1) = 1 everywhere.
         """
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
 
         phi = np.zeros((2, 8, 8))
         jdet = jacobian_det2D(phi)
@@ -412,7 +412,7 @@ class TestInjectivityDiagonalComponents:
     def test_h_mono_violation_does_not_confuse_d1_check(self):
         """A pure h_mono violation (no d1/d2 issue) shows up in quality_map
         at the correct pixels, not at unrelated diagonal positions."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d
 
         H, W = 6, 6

@@ -12,11 +12,11 @@ from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 from dvfopt.jacobian.shoelace import _shoelace_areas_2d
 from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.core.objective import objective_euc
-from dvfopt.core.constraints import (
+from dvfopt.core.slsqp.constraints import (
     _build_constraints,
     _quality_map,
 )
-from dvfopt.core.spatial import (
+from dvfopt.core.slsqp.spatial import (
     get_nearest_center,
     neg_jdet_bounding_window,
     _frozen_edges_clean,

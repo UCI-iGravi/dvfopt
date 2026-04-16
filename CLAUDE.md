@@ -68,7 +68,13 @@ The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `en
 - `laplacian/` — standalone Laplacian interpolation package (matrix construction, CG/LGMRES solvers, contour correspondence matching)
 - `test_cases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
 - `notebooks/` — canonical experiment notebooks
-- `benchmarks/` — performance comparison notebooks (serial vs parallel, constraint modes, scalability, registration methods)
+- `benchmarks/` — performance comparison notebooks, grouped into subfolders:
+  - `solvers/slsqp/` — SLSQP windowed solver comparisons (serial vs parallel, constraint modes, windowed vs fullgrid, 3D correction)
+  - `solvers/barrier/` — penalty/barrier L-BFGS solver (3D barrier, CPU vs GPU)
+  - `scaling/` — performance vs grid size, folding severity, L2-Jdet correlation
+  - `registration/` — external registration methods (Elastix, VoxelMorph, TransMorph, ANTs, OpenCV) + post-hoc correction
+  - `pipelines/` — end-to-end 3D slice-wise correction pipelines
+  - `benchmark_utils.py` — shared helpers; notebooks add `..` to sys.path to import it
 - `scripts/` — image generation scripts for docs
 - `data/` — real data NIfTI files and `.npy` test case arrays
 - `archive/` — historical notebooks (not canonical)

@@ -37,8 +37,8 @@ from dvfopt.jacobian.monotonicity import (
     _diagonal_monotonicity_diffs_2d,
     injectivity_constraint,
 )
-from dvfopt.core.iterative import iterative_serial
-from dvfopt.core.iterative3d import iterative_3d
+from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp.iterative3d import iterative_3d
 
 THRESHOLD = 0.01
 ERR_TOL = 1e-5
@@ -292,7 +292,7 @@ class TestBothConstraints:
 
     def test_quality_map_uses_minimum_of_all_metrics(self):
         """quality_map must be ≤ min(jdet, shoelace) element-wise."""
-        from dvfopt.core.constraints import _quality_map
+        from dvfopt.core.slsqp.constraints import _quality_map
         rng = np.random.default_rng(77)
         phi = rng.standard_normal((2, 10, 10)) * 0.3
         jdet = jacobian_det2D(phi)
@@ -315,28 +315,28 @@ class TestBothConstraints:
 
 class TestJdetConstraintFunction:
     def test_interior_shape(self):
-        from dvfopt.core.constraints import jacobian_constraint
+        from dvfopt.core.slsqp.constraints import jacobian_constraint
         sy, sx = 7, 5
         phi_flat = np.zeros(2 * sy * sx)
         vals = jacobian_constraint(phi_flat, (sy, sx), exclude_boundaries=True)
         assert len(vals) == (sy - 2) * (sx - 2)
 
     def test_full_shape(self):
-        from dvfopt.core.constraints import jacobian_constraint
+        from dvfopt.core.slsqp.constraints import jacobian_constraint
         sy, sx = 6, 4
         phi_flat = np.zeros(2 * sy * sx)
         vals = jacobian_constraint(phi_flat, (sy, sx), exclude_boundaries=False)
         assert len(vals) == sy * sx
 
     def test_identity_gives_ones(self):
-        from dvfopt.core.constraints import jacobian_constraint
+        from dvfopt.core.slsqp.constraints import jacobian_constraint
         sy, sx = 5, 5
         phi_flat = np.zeros(2 * sy * sx)
         vals = jacobian_constraint(phi_flat, (sy, sx), exclude_boundaries=False)
         np.testing.assert_allclose(vals, 1.0, atol=1e-12)
 
     def test_3d_identity_gives_ones(self):
-        from dvfopt.core.constraints3d import jacobian_constraint_3d
+        from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d
         sz, sy, sx = 4, 4, 4
         phi_flat = np.zeros(3 * sz * sy * sx)
         vals = jacobian_constraint_3d(phi_flat, (sz, sy, sx))
@@ -344,7 +344,7 @@ class TestJdetConstraintFunction:
 
     def test_3d_constraint_with_freeze_mask(self):
         """freeze_mask excludes frozen voxels from the constraint output."""
-        from dvfopt.core.constraints3d import jacobian_constraint_3d
+        from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d
         sz, sy, sx = 3, 3, 3
         voxels = sz * sy * sx
         phi_flat = np.zeros(3 * voxels)
@@ -358,7 +358,7 @@ class TestJdetConstraintFunction:
     def test_frozen_ring_linear_constraint_correct_indices(self):
         """_build_constraints frozen LinearConstraint must pin exactly the
         boundary indices of phi_sub_flat."""
-        from dvfopt.core.constraints import _build_constraints
+        from dvfopt.core.slsqp.constraints import _build_constraints
         sy, sx = 5, 5
         pixels = sy * sx
         rng = np.random.default_rng(11)
@@ -394,7 +394,7 @@ class TestJdetConstraintFunction:
 
     def test_no_linear_constraint_when_at_edge(self):
         """At edge (is_at_edge=True) → no frozen LinearConstraint."""
-        from dvfopt.core.constraints import _build_constraints
+        from dvfopt.core.slsqp.constraints import _build_constraints
         from scipy.optimize import LinearConstraint
         sy, sx = 5, 5
         phi_flat = np.zeros(2 * sy * sx)
@@ -408,7 +408,7 @@ class TestJdetConstraintFunction:
 
     def test_no_linear_constraint_when_max_window(self):
         """At max window → no frozen LinearConstraint."""
-        from dvfopt.core.constraints import _build_constraints
+        from dvfopt.core.slsqp.constraints import _build_constraints
         from scipy.optimize import LinearConstraint
         sy, sx = 5, 5
         phi_flat = np.zeros(2 * sy * sx)
@@ -421,7 +421,7 @@ class TestJdetConstraintFunction:
 
     def test_3d_no_linear_constraint_when_no_freeze(self):
         """_build_constraints_3d with all-False freeze_mask → no LinearConstraint."""
-        from dvfopt.core.constraints3d import _build_constraints_3d
+        from dvfopt.core.slsqp.constraints3d import _build_constraints_3d
         from scipy.optimize import LinearConstraint
         sz, sy, sx = 3, 3, 3
         phi_flat = np.zeros(3 * sz * sy * sx)
@@ -482,14 +482,14 @@ class TestOptimizerParameters:
         """With max_iterations=1 the outer loop must run at most once."""
         call_count = {"n": 0}
         original_argmin = __import__(
-            "dvfopt.core.spatial", fromlist=["argmin_quality"]
+            "dvfopt.core.slsqp.spatial", fromlist=["argmin_quality"]
         ).argmin_quality
 
         def counting_argmin(qm):
             call_count["n"] += 1
             return original_argmin(qm)
 
-        import dvfopt.core.iterative as _iter_mod
+        import dvfopt.core.slsqp.iterative as _iter_mod
         original = _iter_mod.argmin_quality
         _iter_mod.argmin_quality = counting_argmin
         try:
@@ -588,7 +588,7 @@ class TestOptimizerParameters:
 class TestParallelVariant:
 
     def _run_par(self, dvf, **kw):
-        from dvfopt.core.parallel import iterative_parallel
+        from dvfopt.core.slsqp.parallel import iterative_parallel
         kw.setdefault("verbose", 0)
         kw.setdefault("threshold", THRESHOLD)
         kw.setdefault("err_tol", ERR_TOL)

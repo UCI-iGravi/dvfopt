@@ -20,7 +20,7 @@ class TestIterativeSolver2D:
 
     def test_corrects_negative_jacobians(self):
         """After correction, all Jacobian determinants should be >= threshold."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         jdet_before = jacobian_det2D(deformation[[1, 2], 0])
@@ -37,7 +37,7 @@ class TestIterativeSolver2D:
         )
 
     def test_output_shape(self):
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = self._make_folded_field(8, 12)
         phi = iterative_serial(deformation, verbose=0, max_iterations=50)
@@ -45,7 +45,7 @@ class TestIterativeSolver2D:
 
     def test_identity_field_unchanged(self):
         """A field with no negative Jdet should pass through with minimal change."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = np.zeros((3, 1, 8, 8), dtype=np.float64)
         phi = iterative_serial(deformation, verbose=0, max_iterations=10)
@@ -53,7 +53,7 @@ class TestIterativeSolver2D:
 
     def test_displacement_stays_close(self):
         """Corrected field should not deviate too far from the original."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         phi_init = np.stack([deformation[1, 0], deformation[2, 0]])
@@ -63,7 +63,7 @@ class TestIterativeSolver2D:
 
     def test_with_shoelace(self):
         """Solver should also succeed with enforce_shoelace=True."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_serial(
@@ -75,7 +75,7 @@ class TestIterativeSolver2D:
 
     def test_with_injectivity(self):
         """Solver should also succeed with enforce_injectivity=True."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_serial(
@@ -94,7 +94,7 @@ class TestParallelSolver2D:
         return generate_random_dvf((3, 1, H, W), max_magnitude=3.0, seed=42).astype(np.float64)
 
     def test_corrects_negative_jacobians(self):
-        from dvfopt.core.parallel import iterative_parallel
+        from dvfopt.core.slsqp.parallel import iterative_parallel
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_parallel(
@@ -105,7 +105,7 @@ class TestParallelSolver2D:
         assert jdet_after.min() >= 0.01 - 1e-5
 
     def test_output_shape(self):
-        from dvfopt.core.parallel import iterative_parallel
+        from dvfopt.core.slsqp.parallel import iterative_parallel
 
         deformation = self._make_folded_field(8, 12)
         phi = iterative_parallel(
@@ -119,7 +119,7 @@ class TestRandomDvfCorrection:
 
     def test_random_dvf_small_magnitude(self):
         """Small random displacements should be correctable."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         dvf = generate_random_dvf((3, 1, 12, 12), max_magnitude=1.5, seed=42)
         dvf = dvf.astype(np.float64)

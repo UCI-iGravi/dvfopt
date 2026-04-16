@@ -10,7 +10,7 @@ from dvfopt.core.solver import (
     _update_metrics,
     _setup_accumulators,
 )
-from dvfopt.core.constraints import _build_constraints
+from dvfopt.core.slsqp.constraints import _build_constraints
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 

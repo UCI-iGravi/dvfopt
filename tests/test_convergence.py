@@ -18,7 +18,7 @@ class TestConvergenceProperties:
     @staticmethod
     def _run_and_collect_metrics(deformation, **kwargs):
         """Run solver and return per-iteration metrics."""
-        from dvfopt.core.iterative import iterative_serial
+        from dvfopt.core.slsqp.iterative import iterative_serial
 
         # Collect Jdet snapshots by running manually
         phi_init_snap = np.stack([deformation[1, 0], deformation[2, 0]])

@@ -25,9 +25,9 @@ import numpy as np
 import pytest
 
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
-from dvfopt.core.iterative import iterative_serial
-from dvfopt.core.iterative3d import iterative_3d
-from dvfopt.core.parallel import iterative_parallel
+from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp.iterative3d import iterative_3d
+from dvfopt.core.slsqp.parallel import iterative_parallel
 
 THRESHOLD = 0.01
 ERR_TOL = 1e-5
@@ -153,14 +153,14 @@ class TestArgminFunctions:
     """argmin_quality and argmin_worst_voxel must return the correct index."""
 
     def test_argmin_quality_known_minimum(self):
-        from dvfopt.core.spatial import argmin_quality
+        from dvfopt.core.slsqp.spatial import argmin_quality
         jm = np.ones((1, 8, 8)) * 0.5
         jm[0, 3, 6] = -0.3  # unique minimum
         y, x = argmin_quality(jm)
         assert (y, x) == (3, 6), f"Expected (3,6), got ({y},{x})"
 
     def test_argmin_quality_returns_int_tuple(self):
-        from dvfopt.core.spatial import argmin_quality
+        from dvfopt.core.slsqp.spatial import argmin_quality
         jm = np.ones((1, 5, 5))
         jm[0, 2, 2] = -1.0
         result = argmin_quality(jm)
@@ -168,14 +168,14 @@ class TestArgminFunctions:
         assert all(isinstance(v, int) for v in result)
 
     def test_argmin_worst_voxel_known_minimum(self):
-        from dvfopt.core.spatial3d import argmin_worst_voxel
+        from dvfopt.core.slsqp.spatial3d import argmin_worst_voxel
         jm = np.ones((4, 5, 6)) * 0.5
         jm[1, 2, 4] = -0.7  # unique minimum
         z, y, x = argmin_worst_voxel(jm)
         assert (z, y, x) == (1, 2, 4), f"Expected (1,2,4), got ({z},{y},{x})"
 
     def test_argmin_worst_voxel_returns_int_tuple(self):
-        from dvfopt.core.spatial3d import argmin_worst_voxel
+        from dvfopt.core.slsqp.spatial3d import argmin_worst_voxel
         jm = np.ones((3, 4, 5))
         jm[0, 0, 0] = -1.0
         result = argmin_worst_voxel(jm)
@@ -235,19 +235,19 @@ class TestGetNearestCenter3d:
     """get_nearest_center_3d must clamp to valid range in all 3 axes."""
 
     def test_interior_point_unchanged(self):
-        from dvfopt.core.spatial3d import get_nearest_center_3d
+        from dvfopt.core.slsqp.spatial3d import get_nearest_center_3d
         cz, cy, cx = get_nearest_center_3d((5, 5, 5), (10, 10, 10), (3, 3, 3))
         assert (cz, cy, cx) == (5, 5, 5)
 
     def test_clamp_at_origin_corner(self):
-        from dvfopt.core.spatial3d import get_nearest_center_3d
+        from dvfopt.core.slsqp.spatial3d import get_nearest_center_3d
         cz, cy, cx = get_nearest_center_3d((0, 0, 0), (10, 10, 10), (5, 5, 5))
         hz = 5 // 2  # = 2
         assert cz >= hz and cy >= hz and cx >= hz, \
             f"Origin corner not clamped: ({cz},{cy},{cx})"
 
     def test_clamp_at_far_corner(self):
-        from dvfopt.core.spatial3d import get_nearest_center_3d
+        from dvfopt.core.slsqp.spatial3d import get_nearest_center_3d
         D, H, W = 8, 10, 12
         sz, sy, sx = 5, 5, 5
         cz, cy, cx = get_nearest_center_3d((D - 1, H - 1, W - 1), (D, H, W), (sz, sy, sx))
@@ -257,7 +257,7 @@ class TestGetNearestCenter3d:
         assert cx + (sx - sx // 2) <= W
 
     def test_clamp_asymmetric_volume(self):
-        from dvfopt.core.spatial3d import get_nearest_center_3d
+        from dvfopt.core.slsqp.spatial3d import get_nearest_center_3d
         D, H, W = 4, 8, 6
         # Full-grid window at corner; center should land at (D//2, H//2, W//2)
         cz, cy, cx = get_nearest_center_3d((0, 0, 0), (D, H, W), (D, H, W))
@@ -274,7 +274,7 @@ class TestBoundingWindow3d:
     """neg_jdet_bounding_window_3d correctness."""
 
     def test_single_negative_voxel_at_least_3x3x3(self):
-        from dvfopt.core.spatial3d import neg_jdet_bounding_window_3d
+        from dvfopt.core.slsqp.spatial3d import neg_jdet_bounding_window_3d
         jm = np.ones((6, 6, 6)) * 0.5
         jm[3, 3, 3] = -0.5
         size, _ = neg_jdet_bounding_window_3d(jm, (3, 3, 3), THRESHOLD, ERR_TOL)
@@ -282,7 +282,7 @@ class TestBoundingWindow3d:
 
     def test_region_label_zero_safe_path(self):
         """Calling with a voxel NOT in the negative region returns (3,3,3)."""
-        from dvfopt.core.spatial3d import neg_jdet_bounding_window_3d
+        from dvfopt.core.slsqp.spatial3d import neg_jdet_bounding_window_3d
         jm = np.ones((6, 6, 6)) * 0.5
         jm[1, 1, 1] = -0.5  # negative at (1,1,1)
         # Ask for bounding window centred on a POSITIVE voxel
@@ -291,7 +291,7 @@ class TestBoundingWindow3d:
 
     def test_precomputed_labels_same_result(self):
         """Passing pre-computed labels gives identical result."""
-        from dvfopt.core.spatial3d import neg_jdet_bounding_window_3d
+        from dvfopt.core.slsqp.spatial3d import neg_jdet_bounding_window_3d
         from scipy.ndimage import label
         jm = np.ones((8, 8, 8)) * 0.5
         jm[3:5, 3:5, 3:5] = -0.3
@@ -305,7 +305,7 @@ class TestBoundingWindow3d:
 
     def test_connected_region_sizing(self):
         """A 3x3x3 negative cube should yield a window >= 5x5x5 (cube + 1px border)."""
-        from dvfopt.core.spatial3d import neg_jdet_bounding_window_3d
+        from dvfopt.core.slsqp.spatial3d import neg_jdet_bounding_window_3d
         jm = np.ones((10, 10, 10)) * 0.5
         jm[3:6, 3:6, 3:6] = -0.3
         size, _ = neg_jdet_bounding_window_3d(jm, (4, 4, 4), THRESHOLD, ERR_TOL)
@@ -321,7 +321,7 @@ class TestFrozenBoundaryMask3d:
     """Interior-facing faces must be frozen; grid-edge faces must not."""
 
     def test_interior_window_all_six_faces_frozen(self):
-        from dvfopt.core.spatial3d import _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_boundary_mask_3d
         # (3,3,3) window centred at (5,5,5) in a 10x10x10 volume
         mask = _frozen_boundary_mask_3d(5, 5, 5, (3, 3, 3), (10, 10, 10))
         assert mask.shape == (3, 3, 3)
@@ -333,7 +333,7 @@ class TestFrozenBoundaryMask3d:
         assert mask[:, :, -1].all(), "x-max face not frozen"
 
     def test_corner_window_grid_edge_faces_not_frozen(self):
-        from dvfopt.core.spatial3d import _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_boundary_mask_3d
         # hz=1 => cz=1 => start_z = 1 - 1 = 0 (at grid edge) => z-min NOT frozen
         mask = _frozen_boundary_mask_3d(1, 1, 1, (3, 3, 3), (6, 6, 6))
         assert not mask[0, :, :].all(),  "z-min face (at grid edge) should not be frozen"
@@ -345,13 +345,13 @@ class TestFrozenBoundaryMask3d:
         assert mask[:, :, -1].all(), "x-max interior face should be frozen"
 
     def test_full_grid_window_no_faces_frozen(self):
-        from dvfopt.core.spatial3d import _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_boundary_mask_3d
         D, H, W = 5, 5, 5
         mask = _frozen_boundary_mask_3d(D // 2, H // 2, W // 2, (D, H, W), (D, H, W))
         assert not mask.any(), "Full-grid window should have zero frozen faces"
 
     def test_mask_shape_matches_subvolume(self):
-        from dvfopt.core.spatial3d import _frozen_boundary_mask_3d
+        from dvfopt.core.slsqp.spatial3d import _frozen_boundary_mask_3d
         mask = _frozen_boundary_mask_3d(5, 5, 5, (3, 5, 7), (10, 10, 10))
         assert mask.shape == (3, 5, 7)
 
@@ -364,7 +364,7 @@ class TestPhiSubFlat3d:
     """get_phi_sub_flat_3d packs [dx, dy, dz]; values must round-trip exactly."""
 
     def test_roundtrip_values_preserved(self):
-        from dvfopt.core.spatial3d import get_phi_sub_flat_3d
+        from dvfopt.core.slsqp.spatial3d import get_phi_sub_flat_3d
         rng = np.random.default_rng(0)
         phi = rng.standard_normal((3, 8, 8, 8))
         sz, sy, sx = 3, 3, 3
@@ -386,14 +386,14 @@ class TestPhiSubFlat3d:
                                       err_msg="dz values (last block) wrong")
 
     def test_flat_length_is_3_times_voxels(self):
-        from dvfopt.core.spatial3d import get_phi_sub_flat_3d
+        from dvfopt.core.slsqp.spatial3d import get_phi_sub_flat_3d
         phi = np.zeros((3, 10, 10, 10))
         flat = get_phi_sub_flat_3d(phi, 5, 5, 5, (3, 5, 7))
         assert len(flat) == 3 * 3 * 5 * 7
 
     def test_channel_order_dx_dy_dz(self):
         """First voxels block = dx(=1), middle = dy(=2), last = dz(=3)."""
-        from dvfopt.core.spatial3d import get_phi_sub_flat_3d
+        from dvfopt.core.slsqp.spatial3d import get_phi_sub_flat_3d
         phi = np.zeros((3, 6, 6, 6))
         phi[2] = 1.0   # dx channel
         phi[1] = 2.0   # dy channel

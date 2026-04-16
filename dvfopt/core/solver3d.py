@@ -8,7 +8,7 @@ from scipy.optimize import minimize, NonlinearConstraint
 from dvfopt._defaults import _log, _unpack_size_3d, _adaptive_maxiter
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_3d, jacobian_det3D
 from dvfopt.core.objective import objective_euc
-from dvfopt.core.spatial3d import (
+from dvfopt.core.slsqp.spatial3d import (
     get_nearest_center_3d,
     argmin_worst_voxel,
     neg_jdet_bounding_window_3d,
@@ -17,11 +17,11 @@ from dvfopt.core.spatial3d import (
     get_phi_sub_flat_3d,
     _edge_flags_3d,
 )
-from dvfopt.core.constraints3d import (
+from dvfopt.core.slsqp.constraints3d import (
     jacobian_constraint_3d,
     _build_constraints_3d,
 )
-from dvfopt.core.gradients3d import jdet_constraint_jacobian_3d
+from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d
 
 
 # ---------------------------------------------------------------------------

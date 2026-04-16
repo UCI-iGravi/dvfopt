@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.spatial import (
+from dvfopt.core.slsqp.spatial import (
     get_nearest_center,
     argmin_quality,
     neg_jdet_bounding_window,
