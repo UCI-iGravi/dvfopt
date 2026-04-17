@@ -11,6 +11,7 @@ from dvfopt.core.slsqp.spatial3d import (
     _frozen_edges_clean_3d,
     get_phi_sub_flat_3d,
     _edge_flags_3d,
+    _clamp_to_voxel_budget,
 )
 
 
@@ -175,6 +176,55 @@ class TestGetPhiSubFlat3D:
         expected_dz = phi[0, 3:6, 3:6, 3:6].flatten()
         np.testing.assert_array_equal(
             flat, np.concatenate([expected_dx, expected_dy, expected_dz]))
+
+
+class TestClampToVoxelBudget:
+    """Aspect-preserving sub-volume clamp used by the voxel-cap solver."""
+
+    def test_no_budget_passthrough(self):
+        assert _clamp_to_voxel_budget((5, 7, 9), None) == (5, 7, 9)
+
+    def test_under_budget_passthrough(self):
+        # 5*7*9 = 315 < 400
+        assert _clamp_to_voxel_budget((5, 7, 9), 400) == (5, 7, 9)
+
+    def test_shrinks_cube_to_budget(self):
+        out = _clamp_to_voxel_budget((10, 10, 10), 400)
+        assert out[0] * out[1] * out[2] <= 400
+        # Isotropic input stays roughly isotropic
+        assert max(out) - min(out) <= 1
+
+    def test_preserves_aspect_ratio(self):
+        sz, sy, sx = _clamp_to_voxel_budget((4, 8, 16), 200)
+        assert sz * sy * sx <= 200
+        # Input aspect is 1:2:4, longest should still be longest
+        assert sx >= sy >= sz
+
+    def test_respects_min_size_floor(self):
+        # Without floor protection, budget=10 would collapse small dims to 0.
+        out = _clamp_to_voxel_budget((2, 2, 100), 10)
+        assert out[0] >= 3 and out[1] >= 3 and out[2] >= 3
+        # Floor may push product above budget — that's expected; we never
+        # violate the min-size invariant.
+
+    def test_custom_min_size(self):
+        out = _clamp_to_voxel_budget((10, 10, 10), 8, min_size=(2, 2, 2))
+        assert out == (2, 2, 2)
+
+    def test_int_and_tuple_size(self):
+        assert _clamp_to_voxel_budget(5, 400) == (5, 5, 5)
+
+    def test_budget_exactly_hit(self):
+        # 343 < 400 so passthrough
+        assert _clamp_to_voxel_budget((7, 7, 7), 400) == (7, 7, 7)
+        # 729 > 400 so must shrink
+        out = _clamp_to_voxel_budget((9, 9, 9), 400)
+        assert out[0] * out[1] * out[2] <= 400
+
+    def test_elongated_admitted_that_cube_cap_rejects(self):
+        """Doc claim: elongated (3,3,39) has 351 vox <= 400 and is kept,
+        whereas a per-axis (7,7,7) cap would reject it."""
+        assert _clamp_to_voxel_budget((3, 3, 39), 400) == (3, 3, 39)
 
 
 class TestEdgeFlags3D:

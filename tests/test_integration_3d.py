@@ -96,3 +96,122 @@ class TestIterative3D:
 
         phi = iterative_3d(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
         _assert_no_neg_jdet_3d(phi)
+
+
+class TestMaxWindowVoxels:
+    """The ``max_window_voxels`` cap must be respected end-to-end."""
+
+    def test_cap_respected_and_corrects(self, monkeypatch):
+        """With a tight voxel cap the solver should still fix a small fold,
+        and no window passed to the SLSQP inner call may exceed the cap."""
+        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core import solver3d as s3
+
+        d = np.zeros((3, 6, 6, 6), dtype=np.float64)
+        d[2, 3, 3, 3] = 3.5
+        assert jacobian_det3D(d).min() < THRESHOLD
+
+        max_obs = {"v": 0}
+        orig_opt = s3._optimize_single_window_3d
+
+        def spy(phi_sub_flat, phi_init_sub_flat, subvolume_size, *a, **kw):
+            sz, sy, sx = subvolume_size
+            v = int(sz) * int(sy) * int(sx)
+            max_obs["v"] = max(max_obs["v"], v)
+            return orig_opt(phi_sub_flat, phi_init_sub_flat,
+                           subvolume_size, *a, **kw)
+
+        monkeypatch.setattr(s3, "_optimize_single_window_3d", spy)
+
+        CAP = 80
+        phi = it3.iterative_3d(d, verbose=0, threshold=THRESHOLD,
+                               max_iterations=200, max_window_voxels=CAP)
+        _assert_no_neg_jdet_3d(phi)
+        assert max_obs["v"] <= CAP, \
+            f"A window of {max_obs['v']} voxels exceeded cap {CAP}"
+
+    def test_cap_with_aspect_preserved(self):
+        """Budget shrink should preserve aspect ratio (no axis collapse)."""
+        from dvfopt.core.slsqp.iterative3d import iterative_3d
+
+        # Elongated grid: any window will prefer matching aspect.
+        d = np.zeros((3, 4, 4, 20), dtype=np.float64)
+        d[2, 2, 2, 10] = 3.5
+        assert jacobian_det3D(d).min() < THRESHOLD
+        phi = iterative_3d(d, verbose=0, threshold=THRESHOLD,
+                           max_iterations=200, max_window_voxels=60)
+        _assert_no_neg_jdet_3d(phi)
+
+    def test_no_cap_equivalent_to_default(self):
+        """``max_window_voxels=None`` should match unset default behaviour."""
+        from dvfopt.core.slsqp.iterative3d import iterative_3d
+
+        d = np.zeros((3, 5, 5, 5), dtype=np.float64)
+        d[2, 2, 2, 2] = 3.0
+        phi_a = iterative_3d(d, verbose=0, threshold=THRESHOLD,
+                             max_iterations=200)
+        phi_b = iterative_3d(d, verbose=0, threshold=THRESHOLD,
+                             max_iterations=200, max_window_voxels=None)
+        np.testing.assert_allclose(phi_a, phi_b, atol=1e-12)
+
+
+class TestVoxelCapEscalation:
+    """Livelock escalation should raise the effective voxel cap."""
+
+    def test_ceiling_is_respected(self, monkeypatch):
+        """The escalated cap must never exceed the ceiling."""
+        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core import solver3d as s3
+
+        d = np.zeros((3, 6, 6, 6), dtype=np.float64)
+        d[2, 3, 3, 3] = 3.5
+        assert jacobian_det3D(d).min() < THRESHOLD
+
+        max_obs = {"v": 0}
+        orig = s3._optimize_single_window_3d
+
+        def spy(pf, pif, sub, *a, **kw):
+            v = int(sub[0]) * int(sub[1]) * int(sub[2])
+            max_obs["v"] = max(max_obs["v"], v)
+            return orig(pf, pif, sub, *a, **kw)
+
+        monkeypatch.setattr(s3, "_optimize_single_window_3d", spy)
+
+        CEIL = 120
+        phi = it3.iterative_3d(
+            d, verbose=0, threshold=THRESHOLD, max_iterations=200,
+            max_window_voxels=40, max_window_voxels_ceiling=CEIL,
+            voxel_cap_stall_threshold=2,
+        )
+        # Correctness first.
+        _assert_no_neg_jdet_3d(phi)
+        # Never exceed the hard ceiling.
+        assert max_obs["v"] <= CEIL, \
+            f"Max window {max_obs['v']} > ceiling {CEIL}"
+
+    def test_no_escalation_when_ceiling_none(self, monkeypatch):
+        """Without a ceiling the initial cap must stay in force."""
+        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core import solver3d as s3
+
+        d = np.zeros((3, 6, 6, 6), dtype=np.float64)
+        d[2, 3, 3, 3] = 3.5
+
+        max_obs = {"v": 0}
+        orig = s3._optimize_single_window_3d
+
+        def spy(pf, pif, sub, *a, **kw):
+            v = int(sub[0]) * int(sub[1]) * int(sub[2])
+            max_obs["v"] = max(max_obs["v"], v)
+            return orig(pf, pif, sub, *a, **kw)
+
+        monkeypatch.setattr(s3, "_optimize_single_window_3d", spy)
+
+        CAP = 60
+        it3.iterative_3d(
+            d, verbose=0, threshold=THRESHOLD, max_iterations=50,
+            max_window_voxels=CAP, max_window_voxels_ceiling=None,
+            voxel_cap_stall_threshold=2,
+        )
+        assert max_obs["v"] <= CAP, \
+            f"Max window {max_obs['v']} exceeded static cap {CAP}"

@@ -16,6 +16,7 @@ from dvfopt.core.slsqp.spatial3d import (
     _frozen_edges_clean_3d,
     get_phi_sub_flat_3d,
     _edge_flags_3d,
+    _clamp_to_voxel_budget,
 )
 from dvfopt.core.slsqp.constraints3d import (
     jacobian_constraint_3d,
@@ -206,6 +207,7 @@ def _serial_fix_voxel(
     error_list, num_neg_jac, min_jdet_list, iter_times,
     min_window=(3, 3, 3),
     labeled_array=None,
+    max_window_voxels=None,
 ):
     """Fix a single voxel using the serial adaptive-window inner loop.
 
@@ -231,6 +233,8 @@ def _serial_fix_voxel(
     subvolume_size = (max(min(subvolume_size[0], max_sz), min_sz),
                       max(min(subvolume_size[1], max_sy), min_sy),
                       max(min(subvolume_size[2], max_sx), min_sx))
+    subvolume_size = _clamp_to_voxel_budget(
+        subvolume_size, max_window_voxels, min_window)
 
     per_index_iter = 0
     window_reached_max = False
@@ -279,6 +283,8 @@ def _serial_fix_voxel(
                 subvolume_size = (min(sz + 2, max_sz),
                                   min(sy + 2, max_sy),
                                   min(sx + 2, max_sx))
+                subvolume_size = _clamp_to_voxel_budget(
+                    subvolume_size, max_window_voxels, min_window)
             continue
 
         per_index_iter += 1
@@ -319,9 +325,15 @@ def _serial_fix_voxel(
         if not (local < threshold - err_tol).any():
             break
         if sz < max_sz or sy < max_sy or sx < max_sx:
-            subvolume_size = (min(sz + 2, max_sz),
-                              min(sy + 2, max_sy),
-                              min(sx + 2, max_sx))
+            grown = (min(sz + 2, max_sz),
+                     min(sy + 2, max_sy),
+                     min(sx + 2, max_sx))
+            clamped = _clamp_to_voxel_budget(
+                grown, max_window_voxels, min_window)
+            if clamped == (sz, sy, sx):
+                # Voxel budget blocked growth → treat as at-max.
+                window_reached_max = True
+            subvolume_size = clamped
         else:
             window_reached_max = True
 

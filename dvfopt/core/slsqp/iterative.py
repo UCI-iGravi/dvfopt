@@ -156,6 +156,17 @@ def iterative_serial(
     _STALL_THRESHOLD = 3     # escalate after this many consecutive stalls on same pixel
     _DE_ESCALATE_AFTER = 5   # de-escalate after this many consecutive improving iterations
 
+    # Oscillation-livelock guard: per-pixel stall_counts reset on any
+    # neg-count drop, so alternating between two pixels (e.g. neg 1->2->1->2)
+    # never hits _STALL_THRESHOLD for either index even though the global
+    # neg count hasn't actually improved in many iters. Track iters since a
+    # new *best* (min-so-far) neg-count and escalate global_min_window when
+    # that plateaus — forces windows big enough to cover both oscillating
+    # pixels in a single SLSQP call.
+    best_neg_seen = init_neg
+    iters_since_best = 0
+    _OSCILLATION_STALL = 4   # escalate when no new best for this many iters
+
     while iteration < max_iterations and (quality_matrix[0] <= threshold - err_tol).any():
         iteration += 1
 
@@ -231,6 +242,22 @@ def iterative_serial(
                 consecutive_improving = 0
                 _log(verbose, 1, "  [de-escalate] consistent improvement, min window -> 3x3")
         prev_neg = cur_neg
+
+        # Oscillation-livelock escalation (orthogonal to per-pixel stall).
+        # Uses "iters since new best" rather than "consecutive stall" so it
+        # triggers on 1->2->1->2 patterns the per-pixel counter misses.
+        if cur_neg < best_neg_seen:
+            best_neg_seen = cur_neg
+            iters_since_best = 0
+        else:
+            iters_since_best += 1
+            gsy2, gsx2 = global_min_window  # re-snapshot (per-pixel branch may have mutated)
+            if iters_since_best >= _OSCILLATION_STALL and (gsy2 < H or gsx2 < W):
+                global_min_window = (min(gsy2 + 2, H), min(gsx2 + 2, W))
+                iters_since_best = 0
+                _log(verbose, 1,
+                     f"  [escalate-osc] no new best for {_OSCILLATION_STALL} iters, "
+                     f"min window -> {global_min_window[0]}x{global_min_window[1]}")
 
         # Side-by-side before/after snapshot for this iteration.
         if _show_snap:
