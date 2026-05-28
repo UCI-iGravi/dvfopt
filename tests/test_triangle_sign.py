@@ -194,36 +194,30 @@ class TestCornerPatchAreas:
         assert patches[1] < 0, "patch at (H-1,W-1) should detect the planted fold"
 
     def test_every_vertex_now_in_at_least_two_triangles(self):
-        """Build the vertex->triangle incidence under the full-coverage scheme
-        and verify every vertex (interior, edge, AND corner) is in >= 2.
-
-        The standard TR-BL per-cell scheme touches each cell-vertex via:
-          - T1 at cell (y, x): vertices (TR, BL, BR)
-          - T2 at cell (y, x): vertices (TL, BL, TR)
-        The patches add:
-          - patch_TL at cell (0, 0): (TL, BR, TR) — second hit for (0, 0)
-          - patch_BR at cell (H-2, W-2): (TL, BL, BR) — second hit for (H-1, W-1)
-        """
+        """Verify coverage from production area formulas, not hand-coded tuples."""
         for H, W in [(4, 4), (5, 6), (8, 10)]:
+            dy = np.zeros((H, W))
+            dx = np.zeros((H, W))
+            T1, T2, patches = _triangle_areas_2d_full_coverage(dy, dx)
+            baseline = np.concatenate([T1.ravel(), T2.ravel(), patches.ravel()])
+            eps = 1e-3
             coverage = np.zeros((H, W), dtype=int)
-            # Standard per-cell
-            for y in range(H - 1):
-                for x in range(W - 1):
-                    tl, tr = (y, x), (y, x + 1)
-                    bl, br = (y + 1, x), (y + 1, x + 1)
-                    for v in (tr, bl, br):
-                        coverage[v] += 1
-                    for v in (tl, bl, tr):
-                        coverage[v] += 1
-            # Patches
-            for v in [(0, 0), (1, 1), (0, 1)]:
-                coverage[v] += 1
-            for v in [(H - 2, W - 2), (H - 1, W - 2), (H - 1, W - 1)]:
-                coverage[v] += 1
-            # Every vertex must now have coverage >= 2.
+
+            for y in range(H):
+                for x in range(W):
+                    touched = np.zeros_like(baseline, dtype=bool)
+                    for arr_name in ("dy", "dx"):
+                        dy_p = dy.copy()
+                        dx_p = dx.copy()
+                        if arr_name == "dy":
+                            dy_p[y, x] += eps
+                        else:
+                            dx_p[y, x] += eps
+                        T1_p, T2_p, patches_p = _triangle_areas_2d_full_coverage(dy_p, dx_p)
+                        probe = np.concatenate([T1_p.ravel(), T2_p.ravel(), patches_p.ravel()])
+                        touched |= np.abs(probe - baseline) > 1e-12
+                    coverage[y, x] = int(touched.sum())
+
             assert coverage.min() >= 2, (
                 f"{H}x{W}: weakest vertex still has only {coverage.min()} triangles"
             )
-            # And specifically the two previously-weak corners are now == 2 (at minimum).
-            assert coverage[0, 0] >= 2
-            assert coverage[H - 1, W - 1] >= 2
