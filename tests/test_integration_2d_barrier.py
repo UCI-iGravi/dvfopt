@@ -55,6 +55,22 @@ class TestBarrier2DNumpy:
         phi = iterative_2d_barrier(d, verbose=0, threshold=THRESHOLD)
         assert np.linalg.norm(phi - phi_init) < 50.0
 
+    def test_full_grid_mode_runs(self):
+        """Regression: the full-grid (windowed=False) path was migrated to
+        the unified _barrier_core homotopy. Confirm it still produces a
+        valid output and corrects folds."""
+        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+
+        d = _make_folded_field(8, 8)
+        phi = iterative_2d_barrier(d, verbose=0, threshold=THRESHOLD,
+                                    windowed=False, max_minimize_iter=100)
+        assert phi.shape == (2, 8, 8)
+        # Result should be at least as good as the input.
+        init_min = float(jacobian_det2D(d[[1, 2], 0]).min())
+        final_min = float(jacobian_det2D(phi).min())
+        assert final_min >= init_min - 1e-6, \
+            f"full-grid mode made the field worse: init_min={init_min}, final_min={final_min}"
+
 
 class TestBarrier2DTorch:
     def test_identity_unchanged(self):

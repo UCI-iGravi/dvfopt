@@ -30,28 +30,6 @@ import scipy.sparse
 from dvfopt.core.slsqp._grad_op import gradient_operator, scale_rows
 
 
-def _gradient_stencil_axis1(j, sx):
-    """Return ``(indices, coefficients)`` for ``np.gradient`` along axis=1 at column ``j``."""
-    if sx == 1:
-        return [j], [0.0]
-    if j == 0:
-        return [0, 1], [-1.0, 1.0]
-    if j == sx - 1:
-        return [sx - 2, sx - 1], [-1.0, 1.0]
-    return [j - 1, j + 1], [-0.5, 0.5]
-
-
-def _gradient_stencil_axis0(i, sy):
-    """Return ``(row_indices, coefficients)`` for ``np.gradient`` along axis=0 at row ``i``."""
-    if sy == 1:
-        return [i], [0.0]
-    if i == 0:
-        return [0, 1], [-1.0, 1.0]
-    if i == sy - 1:
-        return [sy - 2, sy - 1], [-1.0, 1.0]
-    return [i - 1, i + 1], [-0.5, 0.5]
-
-
 def _interior_keep_mask(sy, sx, exclude_boundaries):
     """Return a flat boolean mask (length sy*sx) selecting rows for the constraint."""
     if not exclude_boundaries:

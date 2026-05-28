@@ -59,7 +59,9 @@ class TestFeasibility:
                                         phi_corr[1].ravel()])
         T1 = _tri_areas_flat(phi_flat_corr, H, W)
         n_neg_final = int((T1 <= 0).sum())
-        assert n_neg_final <= n_neg_init
+        # The seed-3 14x14 field has enough room to fully resolve.
+        assert n_neg_final == 0, \
+            f"expected all folds eliminated, got {n_neg_final}"
 
 
 class TestAnchorModes:

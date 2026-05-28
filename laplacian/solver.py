@@ -87,6 +87,18 @@ def solveLaplacianFromCorrespondences(
     # Displacement = source − target
     disp = source_pts - target_pts
 
+    # Detect colliding correspondences: two source points rounded to the same
+    # target voxel. Plain `rhs[flat_indices] = disp[:, ax]` keeps only the
+    # last write, silently discarding the others. Warn so callers know.
+    unique_idx, inverse, counts = np.unique(flat_indices, return_inverse=True,
+                                            return_counts=True)
+    if counts.max() > 1:
+        n_collisions = int((counts > 1).sum())
+        n_lost = int(len(flat_indices) - len(unique_idx))
+        log(f"[warn] {n_collisions} target voxels received multiple "
+            f"correspondences; {n_lost} duplicate displacements were dropped "
+            f"(last-write-wins on fancy-index assignment).")
+
     # Build RHS for each solved axis
     rhs_arrays = []
     if axis_labels is None:
@@ -129,7 +141,13 @@ def solveLaplacianFromCorrespondences(
             x, info = sp_cg(A, rhs, **{_cg_tol_kw: rtol}, maxiter=maxiter, M=M_pre, callback=_cb)
         else:
             x, info = sp_lgmres(A, rhs, **{_lgmres_tol_kw: rtol}, maxiter=maxiter, callback=_cb)
-        log(f"  {label} converged in {iters[0]} iterations")
+        if info == 0:
+            log(f"  {label} converged in {iters[0]} iterations")
+        elif info > 0:
+            log(f"[warn]  {label} did NOT converge — hit maxiter={maxiter} "
+                f"after {iters[0]} iters (info={info}); result may be inaccurate")
+        else:
+            log(f"[warn]  {label} solver returned illegal input (info={info})")
         solutions[label] = x
 
     del A, M_pre; gc.collect()

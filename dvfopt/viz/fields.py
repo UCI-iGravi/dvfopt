@@ -312,8 +312,10 @@ def plot_deformation_field(deformation, msample=None, fsample=None,
     axs[0].set_title(f"Jacobian determinant ({neg} negative)")
 
     if show_values:
+        # Annotate only the Jdet heatmap (axs[0]); axs[1] is the quiver
+        # field on top of the same J background — repeating the text
+        # overlay there clutters the arrows without adding information.
         _annotate_jdet_values(axs[0], J)
-        _annotate_jdet_values(axs[1], J)
 
     # Right: quiver plot
     x, y = np.meshgrid(range(deformation.shape[3]), range(deformation.shape[2]), indexing="xy")

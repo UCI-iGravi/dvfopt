@@ -100,6 +100,11 @@ class DVFoptConfig:
         1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
     mu_schedule: Tuple[float, ...] = (1e-1, 1e-2, 1e-3, 1e-4)
     barrier_max_iter: int = 300
+    tri_full_coverage: bool = False  # 2tri only: add two corner-patch
+                                      # triangles so every grid vertex
+                                      # (incl. (0,0), (H-1,W-1)) is in ≥2
+                                      # triangle constraints. Has no effect
+                                      # when constraint != '2tri'.
 
     # ---- polish ----
     use_l1_polish: bool = False
@@ -576,7 +581,8 @@ class DVFopt:
                 lam_schedule=c.lam_schedule, mu_schedule=c.mu_schedule,
                 max_minimize_iter=c.barrier_max_iter,
                 anchor=c.objective, eps_l1=c.eps_l1,
-                verbose=c.verbose, record_history=c.record_history)
+                verbose=c.verbose, record_history=c.record_history,
+                full_coverage=c.tri_full_coverage)
             # iterative_2d_tri_barrier returns just phi when record_history=False,
             # (phi, history) when True.
             if isinstance(out, tuple):

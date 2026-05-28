@@ -23,7 +23,10 @@ import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.jacobian.shoelace import _ref_grid
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.jacobian.triangle_sign import (
+    _triangle_areas_2d,
+    _corner_patch_areas_2d,
+)
 from dvfopt.core._barrier_core import (
     run_penalty_barrier_lbfgs,
     DEFAULT_LAM_SCHEDULE,
@@ -79,6 +82,72 @@ def _tri_grad_T_v(phi_flat, H, W, v):
     return np.concatenate([g_dy.ravel(), g_dx.ravel()])
 
 
+# --- Full-coverage variants: add two corner-patch triangles so every grid
+# vertex (incl. the two diagonally-opposite corners (0,0) and (H-1, W-1))
+# is enforced by at least two triangles. The standard scheme above leaves
+# those two corners with only ONE constraint each.
+
+def _tri_areas_flat_full_coverage(phi_flat, H, W):
+    """Standard T1, T2 stack plus two corner patches.
+
+    Output layout: ``[T1.ravel, T2.ravel, patch_TL, patch_BR]`` — length
+    ``2*(H-1)*(W-1) + 2``.
+    """
+    HW = H * W
+    dy = phi_flat[:HW].reshape(H, W)
+    dx = phi_flat[HW:].reshape(H, W)
+    T1, T2 = _triangle_areas_2d(dy, dx)
+    patches = _corner_patch_areas_2d(dy, dx)
+    return np.concatenate([T1.ravel(), T2.ravel(), patches])
+
+
+def _tri_grad_T_v_full_coverage(phi_flat, H, W, v):
+    """J^T @ v for the full-coverage 2-triangle Jacobian.
+
+    Layout of ``v``: first ``2*(H-1)*(W-1)`` entries are the standard T1/T2
+    constraints, last 2 are the corner patches ``[patch_TL, patch_BR]``.
+    """
+    n_cells = (H - 1) * (W - 1)
+    HW = H * W
+
+    # Standard contribution.
+    g = _tri_grad_T_v(phi_flat, H, W, v[:2 * n_cells])
+
+    # Patch contributions are tiny — only 6 vertices touched total — but
+    # we still write them into the dy/dx grids for a clean concat.
+    dy = phi_flat[:HW].reshape(H, W)
+    dx = phi_flat[HW:].reshape(H, W)
+    ref_y, ref_x = _ref_grid(H, W)
+    def_x = ref_x + dx
+    def_y = ref_y + dy
+
+    g_dy = g[:HW].reshape(H, W).copy()
+    g_dx = g[HW:].reshape(H, W).copy()
+
+    v_tl = v[2 * n_cells]      # patch at corner (0, 0)
+    v_br = v[2 * n_cells + 1]  # patch at corner (H-1, W-1)
+
+    # patch_TL: A=TL=(0,0), B=BR=(1,1), C=TR=(0,1).
+    # Derived analytically from T = -0.5 * ((Bx-Ax)(Cy-Ay) - (By-Ay)(Cx-Ax)).
+    g_dx[0, 0] += v_tl * 0.5 * (def_y[0, 1] - def_y[1, 1])    # ∂T/∂Ax
+    g_dy[0, 0] += v_tl * 0.5 * (def_x[1, 1] - def_x[0, 1])    # ∂T/∂Ay
+    g_dx[1, 1] += v_tl * -0.5 * (def_y[0, 1] - def_y[0, 0])   # ∂T/∂Bx
+    g_dy[1, 1] += v_tl * 0.5 * (def_x[0, 1] - def_x[0, 0])    # ∂T/∂By
+    g_dx[0, 1] += v_tl * 0.5 * (def_y[1, 1] - def_y[0, 0])    # ∂T/∂Cx
+    g_dy[0, 1] += v_tl * -0.5 * (def_x[1, 1] - def_x[0, 0])   # ∂T/∂Cy
+
+    # patch_BR: A=TL=(H-2, W-2), B=BL=(H-1, W-2), C=BR=(H-1, W-1).
+    Hm2, Wm2 = H - 2, W - 2
+    g_dx[Hm2, Wm2]     += v_br * 0.5 * (def_y[H - 1, W - 1] - def_y[H - 1, Wm2])
+    g_dy[Hm2, Wm2]     += v_br * 0.5 * (def_x[H - 1, Wm2] - def_x[H - 1, W - 1])
+    g_dx[H - 1, Wm2]   += v_br * -0.5 * (def_y[H - 1, W - 1] - def_y[Hm2, Wm2])
+    g_dy[H - 1, Wm2]   += v_br * 0.5 * (def_x[H - 1, W - 1] - def_x[Hm2, Wm2])
+    g_dx[H - 1, W - 1] += v_br * 0.5 * (def_y[H - 1, Wm2] - def_y[Hm2, Wm2])
+    g_dy[H - 1, W - 1] += v_br * -0.5 * (def_x[H - 1, Wm2] - def_x[Hm2, Wm2])
+
+    return np.concatenate([g_dy.ravel(), g_dx.ravel()])
+
+
 # ----------------------------------------------------------------- main entry
 def iterative_2d_tri_barrier(deformation_2hw, *,
                              threshold=None, margin=1e-3,
@@ -87,7 +156,8 @@ def iterative_2d_tri_barrier(deformation_2hw, *,
                              max_minimize_iter=300,
                              anchor='l2', eps_l1=1e-4,
                              verbose=1,
-                             record_history=False):
+                             record_history=False,
+                             full_coverage=False):
     """Penalty -> log-barrier L-BFGS-B solver enforcing T1, T2 >= threshold.
 
     Parameters
@@ -111,6 +181,13 @@ def iterative_2d_tri_barrier(deformation_2hw, *,
     record_history : bool
         If True, returns ``(phi, history)`` where history is a list of
         per-step dicts. Otherwise returns ``phi``.
+    full_coverage : bool
+        When True, also enforces two patch triangles using the opposite
+        (TL-BR) diagonal at cells ``(0, 0)`` and ``(H-2, W-2)``. This
+        closes the coverage gap of the standard TR-BL per-cell scheme:
+        without it, vertices ``(0, 0)`` and ``(H-1, W-1)`` are touched by
+        exactly one triangle each; with it, every vertex is in at least
+        two triangles. Adds 2 constraint values; negligible cost.
 
     Returns
     -------
@@ -129,19 +206,25 @@ def iterative_2d_tri_barrier(deformation_2hw, *,
     phi_init_flat = np.concatenate([deformation_2hw[0].ravel(),
                                     deformation_2hw[1].ravel()])
 
-    T_init = _tri_areas_flat(phi_init_flat, H, W)
+    constraint_values_fn = (_tri_areas_flat_full_coverage
+                            if full_coverage else _tri_areas_flat)
+    constraint_adjoint_fn = (_tri_grad_T_v_full_coverage
+                             if full_coverage else _tri_grad_T_v)
+
+    T_init = constraint_values_fn(phi_init_flat, H, W)
     init_neg = int((T_init <= 0).sum())
     init_min = float(T_init.min())
     if verbose >= 1:
+        scheme = '2-tri full-coverage' if full_coverage else '2-tri'
         print(f'[2d-tri-barrier init] grid {H}x{W}  threshold={threshold}  '
-              f'margin={margin}  anchor={anchor}')
-        print(f'[init] 2-tri neg={init_neg}  min={init_min:+.5f}')
+              f'margin={margin}  anchor={anchor}  scheme={scheme}')
+        print(f'[init] tri neg={init_neg}  min={init_min:+.5f}')
 
     t_start = time.time()
     phi_flat, info = run_penalty_barrier_lbfgs(
         phi_init_flat, phi_init_flat,
-        constraint_values=lambda p: _tri_areas_flat(p, H, W),
-        constraint_adjoint=lambda p, v: _tri_grad_T_v(p, H, W, v),
+        constraint_values=lambda p: constraint_values_fn(p, H, W),
+        constraint_adjoint=lambda p, v: constraint_adjoint_fn(p, H, W, v),
         threshold=threshold, margin=margin,
         lam_schedule=lam_schedule, mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
@@ -150,7 +233,7 @@ def iterative_2d_tri_barrier(deformation_2hw, *,
     )
 
     if verbose >= 1:
-        T = _tri_areas_flat(phi_flat, H, W)
+        T = constraint_values_fn(phi_flat, H, W)
         print(f'[2d-tri-barrier done] neg={int((T <= 0).sum())}  '
               f'min={float(T.min()):+.6f}  feasible={info["feasible"]}  '
               f'({time.time()-t_start:.1f}s)')
@@ -159,6 +242,10 @@ def iterative_2d_tri_barrier(deformation_2hw, *,
                          phi_flat[H * W:].reshape(H, W)])
     if record_history:
         # Map core's 'min_T' key back to 'min_tri' the existing callers expect.
-        history = [dict(h, min_tri=h.pop('min_T')) for h in info['history']]
+        # Non-mutating: the comprehension below copies each dict before
+        # renaming, so info['history'] itself stays intact.
+        history = [{**h, 'min_tri': h['min_T']} for h in info['history']]
+        for h in history:
+            del h['min_T']
         return phi_corr, history
     return phi_corr

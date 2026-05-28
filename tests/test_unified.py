@@ -155,4 +155,7 @@ class TestBarrierReducesFolds:
         T1_final, T2_final = _triangle_areas_2d(res.corrected[0],
                                                 res.corrected[1])
         final_neg = int(((T1_final <= 0) | (T2_final <= 0)).sum())
-        assert final_neg <= init_neg
+        # For this seeded 14x14 field with a moderate fold count, the
+        # barrier solver should fully resolve.
+        assert final_neg == 0, \
+            f"expected barrier to clear all folds, got {final_neg} remaining"

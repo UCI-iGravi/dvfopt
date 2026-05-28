@@ -13,6 +13,42 @@ from dvfopt.viz._style import CMAP
 
 
 # ---------------------------------------------------------------------------
+# Shared cell-polygon rendering
+# ---------------------------------------------------------------------------
+def _draw_jdet_cell_polygons(ax, def_x, def_y, jac, *,
+                              cmap, norm, spacing=1, linewidth=0.5):
+    """Add one matplotlib Polygon per cell, coloured by ``jac[i, j]``.
+
+    Cells with non-positive Jdet are drawn opaque with a yellow border
+    (high zorder so they stand out); positive-Jdet cells get a light tint.
+
+    Shared between :func:`plot_grid` and :func:`plot_grid_before_after` —
+    the iteration pattern and colouring used to be duplicated verbatim
+    across both call sites.
+    """
+    H, W = def_x.shape
+    for i in range(0, H - spacing, spacing):
+        for j in range(0, W - spacing, spacing):
+            ci = [i, i, i + spacing, i + spacing]
+            cj = [j, j + spacing, j + spacing, j]
+            corners = [(def_x[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)],
+                        def_y[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)])
+                       for r, c in zip(ci, cj)]
+            jval = jac[i, j]
+            fc = cmap(norm(jval))
+            if jval <= 0:
+                poly = Polygon(corners, closed=True,
+                               facecolor=fc, edgecolor="yellow",
+                               linewidth=max(linewidth * 3, 1.5),
+                               zorder=2)
+            else:
+                poly = Polygon(corners, closed=True,
+                               facecolor=(*fc[:3], 0.25),
+                               edgecolor="none", zorder=0)
+            ax.add_patch(poly)
+
+
+# ---------------------------------------------------------------------------
 # Simple deformed-grid plots
 # ---------------------------------------------------------------------------
 def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
@@ -260,26 +296,8 @@ def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
     def_x = xx + dx
     def_y = yy + dy
 
-    for i in range(0, H - spacing, spacing):
-        for j in range(0, W - spacing, spacing):
-            ci = [i, i, i + spacing, i + spacing]
-            cj = [j, j + spacing, j + spacing, j]
-            corners = [(def_x[np.clip(r, 0, H-1), np.clip(c, 0, W-1)],
-                        def_y[np.clip(r, 0, H-1), np.clip(c, 0, W-1)])
-                       for r, c in zip(ci, cj)]
-            jval = jac[i, j]
-            if jval <= 0:
-                fc = cmap(norm(jval))
-                poly = Polygon(corners, closed=True,
-                               facecolor=fc, edgecolor="yellow",
-                               linewidth=max(linewidth * 3, 1.5),
-                               zorder=2)
-            else:
-                fc = cmap(norm(jval))
-                poly = Polygon(corners, closed=True,
-                               facecolor=(*fc[:3], 0.25),
-                               edgecolor="none", zorder=0)
-            ax.add_patch(poly)
+    _draw_jdet_cell_polygons(ax, def_x, def_y, jac, cmap=cmap, norm=norm,
+                              spacing=spacing, linewidth=linewidth)
 
     row_indices = list(range(0, H, spacing))
     if (H - 1) not in row_indices:
@@ -418,26 +436,8 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
         def_y = yy + dy
 
         # Layer 1: light Jdet-coloured cell fills
-        for i in range(0, H - spacing, spacing):
-            for j in range(0, W - spacing, spacing):
-                ci = [i, i, i + spacing, i + spacing]
-                cj = [j, j + spacing, j + spacing, j]
-                corners = [(def_x[np.clip(r, 0, H-1), np.clip(c, 0, W-1)],
-                            def_y[np.clip(r, 0, H-1), np.clip(c, 0, W-1)])
-                           for r, c in zip(ci, cj)]
-                jval = jac[i, j]
-                if jval <= 0:
-                    fc = cmap(norm(jval))
-                    poly = Polygon(corners, closed=True,
-                                   facecolor=fc, edgecolor="yellow",
-                                   linewidth=max(linewidth * 3, 1.5),
-                                   zorder=2)
-                else:
-                    fc = cmap(norm(jval))
-                    poly = Polygon(corners, closed=True,
-                                   facecolor=(*fc[:3], 0.25),
-                                   edgecolor="none", zorder=0)
-                ax.add_patch(poly)
+        _draw_jdet_cell_polygons(ax, def_x, def_y, jac, cmap=cmap, norm=norm,
+                                  spacing=spacing, linewidth=linewidth)
 
         # Layer 2: wireframe grid lines
         row_indices = list(range(0, H, spacing))

@@ -16,17 +16,11 @@ import time
 
 import numpy as np
 from scipy.ndimage import label
-from scipy.optimize import minimize
 
 from dvfopt._defaults import _log, _resolve_params
 from dvfopt.core.solver import _setup_accumulators, _print_summary, _save_results
 from dvfopt.core.solver3d import _init_phi_3d, _update_metrics_3d
-from dvfopt.core.barrier_objective import (
-    penalty_objective_3d,
-    barrier_objective_3d,
-    jdet_full,
-    _jdet_grad_T_v,
-)
+from dvfopt.core.barrier_objective import jdet_full, _jdet_grad_T_v
 from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
 
 
@@ -220,76 +214,28 @@ def _iterative_3d_barrier_fullgrid(
     verbose, error_list, num_neg_jac, iter_times, min_jdet_list,
 ):
     """Original full-grid penalty->barrier loop. Mutates phi & accumulators."""
-    D, H, W = grid_size
     phi_flat = _pack_phi(phi)
-    target = threshold + margin
-    j0 = jdet_full(phi_flat, grid_size)
-    feasible = float(j0.min()) >= target
-    cur_min = float(j0.min())
-
-    for k, lam in enumerate(lam_schedule):
-        if feasible:
-            break
-        t0 = time.time()
-        res = minimize(
-            penalty_objective_3d,
-            phi_flat,
-            args=(phi_init_flat, grid_size, threshold, margin, lam),
-            jac=True,
-            method="L-BFGS-B",
-            options={"maxiter": max_minimize_iter, "disp": verbose >= 2,
-                     "gtol": 1e-6},
-        )
-        elapsed = time.time() - t0
-        iter_times.append(elapsed)
-        phi_flat = res.x
-        j = jdet_full(phi_flat, grid_size)
-        cur_neg = int((j <= 0).sum())
-        cur_min = float(j.min())
-        num_neg_jac.append(cur_neg)
-        min_jdet_list.append(cur_min)
-        l2 = float(np.linalg.norm(phi_flat - phi_init_flat))
-        error_list.append(l2)
+    phi_flat, info = run_penalty_barrier_lbfgs(
+        phi_flat, phi_init_flat,
+        constraint_values=lambda p: jdet_full(p, grid_size),
+        constraint_adjoint=lambda p, v: _jdet_grad_T_v(p, grid_size, v),
+        threshold=threshold, margin=margin,
+        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        max_iter=max_minimize_iter,
+        anchor='l2',
+        verbose=verbose, record_history=True,
+    )
+    if not info['feasible']:
+        T_end = jdet_full(phi_flat, grid_size)
         _log(verbose, 1,
-             f"[penalty {k+1}/{len(lam_schedule)}] lam={lam:g}  "
-             f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-             f"L2={l2:.4f}  iters={res.nit}  t={elapsed:.2f}s")
-        if cur_min >= target:
-            feasible = True
-            break
-
-    if not feasible:
-        _log(verbose, 1,
-             f"[penalty] did not reach feasibility (min_J={cur_min:+.6f} < {target}); "
+             f"[penalty] did not reach feasibility "
+             f"(min_J={float(T_end.min()):+.6f} < {threshold + margin}); "
              "skipping barrier phase")
-
-    if feasible:
-        for k, mu in enumerate(mu_schedule):
-            t0 = time.time()
-            res = minimize(
-                barrier_objective_3d,
-                phi_flat,
-                args=(phi_init_flat, grid_size, threshold, mu),
-                jac=True,
-                method="L-BFGS-B",
-                options={"maxiter": max_minimize_iter, "disp": verbose >= 2,
-                         "gtol": 1e-6},
-            )
-            elapsed = time.time() - t0
-            iter_times.append(elapsed)
-            phi_flat = res.x
-            j = jdet_full(phi_flat, grid_size)
-            cur_neg = int((j <= 0).sum())
-            cur_min = float(j.min())
-            num_neg_jac.append(cur_neg)
-            min_jdet_list.append(cur_min)
-            l2 = float(np.linalg.norm(phi_flat - phi_init_flat))
-            error_list.append(l2)
-            _log(verbose, 1,
-                 f"[barrier {k+1}/{len(mu_schedule)}] mu={mu:g}  "
-                 f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                 f"L2={l2:.4f}  iters={res.nit}  t={elapsed:.2f}s")
-
+    for step in info['history']:
+        num_neg_jac.append(step['n_neg'])
+        min_jdet_list.append(step['min_T'])
+        iter_times.append(step['wall_s'])
+        error_list.append(0.0)
     _unpack_phi(phi_flat, grid_size, out=phi)
 
 
