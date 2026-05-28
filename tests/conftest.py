@@ -37,3 +37,20 @@ def identity_phi_3d():
 def identity_deformation_3d():
     """A (3,6,6,6) zero-displacement 3D deformation field."""
     return np.zeros((3, 6, 6, 6), dtype=np.float64)
+
+
+# ---------------------------------------------------------------------------
+# Shared helper for "planted fold" 2D fields used across many test files.
+# Previously duplicated 5x in test_tri_*.py, test_wallbreakers.py, test_unified.py
+# with diverging defaults (scale=0.3 vs 0.4). Now lives here.
+# ---------------------------------------------------------------------------
+
+def planted_fold(H: int = 10, W: int = 10, *,
+                 seed: int = 0, scale: float = 0.4) -> np.ndarray:
+    """Return a ``(2, H, W)`` field with channels ``[dy, dx]`` and a
+    planted fold (probabilistically). ``scale=0.4`` typically produces
+    a few-to-dozen negative triangles on a 10×10 grid.
+    """
+    rng = np.random.default_rng(seed)
+    return np.stack([rng.normal(0, scale, (H, W)),
+                     rng.normal(0, scale, (H, W))])

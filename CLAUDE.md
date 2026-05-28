@@ -57,11 +57,38 @@ The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `en
 
 ### Key entry points
 
+**SLSQP windowed solvers (Jdet constraint):**
+
 | Function | Module | Purpose |
 |----------|--------|---------|
 | `iterative_serial()` | `dvfopt.core.iterative` | Serial 2D iterative SLSQP (primary) |
 | `iterative_parallel()` | `dvfopt.core.parallel` | Parallel 2D variant |
 | `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
+
+**2D 2-triangle solvers** (the strict PL-bijectivity constraint; see `dvfopt/__init__.py` docstring for guidance on which to pick):
+
+| Function | Strategy | Use case |
+|----------|----------|----------|
+| `iterative_2d_tri_slsqp()` | Full-grid SLSQP + L1/L2 + warm-restart (notebook 14) | Mild folds, full-grid fits in memory |
+| `iterative_2d_tri_barrier()` | Penalty → log-barrier L-BFGS-B | Mild to moderate folds, all sizes |
+| `iterative_2d_tri_schwarz()` | Hybrid overlapping-tile Schwarz + per-cluster SLSQP | Many small clusters across a big slice |
+| `iterative_2d_tri_harmonic_polished()` (m10) | Harmonic seed + ALM + barrier polish | Dense folds, **100% feasibility guaranteed** |
+| `iterative_2d_tri_refine_repair()` (m14, anchor='l1' = m14_l1) | m10 seed + soft-penalty pull + repair + polish | Dense folds, **smallest L2/L1 cost** |
+
+**Building blocks:**
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `solve_cluster_2tri_2d()` | `dvfopt.core._cluster_2tri` | Per-cluster SLSQP with frozen-edge interior mask |
+| `harmonic_extension_2d()` (m02) | `dvfopt.core.wallbreakers._harmonic` | Laplacian extension over fold cores |
+| `augmented_lagrangian_2d()` (m03) | `dvfopt.core.wallbreakers._alm` | PHR-ALM with L-BFGS-B |
+| `l2_refine_2d()` (m12) | `dvfopt.core.wallbreakers._l2_refine` | Soft-penalty refinement of a feasible seed |
+| `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.tri_primitives` | Canonical 2-triangle constraint + adjoint |
+
+**Other primitives:**
+
+| Function | Module | Purpose |
+|----------|--------|---------|
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
 | `solveLaplacianFromCorrespondences()` | `laplacian.solver` | Build DVF from correspondences |
 | `sliceToSlice3DLaplacian()` | `laplacian.correspondence` | Full slice-to-slice Laplacian registration pipeline |

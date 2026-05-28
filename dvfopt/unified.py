@@ -72,7 +72,9 @@ class DVFoptConfig:
     margin: float = 1e-3             # barrier safety margin
 
     # ---- solver / objective ----
-    solver: str = 'auto'             # 'slsqp', 'trust-constr', 'barrier', 'auto'
+    # 'slsqp', 'trust-constr', 'barrier', 'schwarz', 'm10', 'm14', 'auto'.
+    # The latter three are 2-triangle-only wall-breaker pipelines.
+    solver: str = 'auto'
     objective: str = 'l2'            # 'l2', 'l1', 'none'
     eps_l1: float = 1e-4
     jacobian: str = 'analytical'     # 'analytical', 'finite-diff', 'central-diff'
@@ -435,7 +437,8 @@ class DVFopt:
         c = self.config
         if c.constraint not in ('2tri', 'jdet', '6tet'):
             raise ValueError(f'bad constraint: {c.constraint!r}')
-        if c.solver not in ('slsqp', 'trust-constr', 'barrier', 'auto'):
+        if c.solver not in ('slsqp', 'trust-constr', 'barrier',
+                            'schwarz', 'm10', 'm14', 'auto'):
             raise ValueError(f'bad solver: {c.solver!r}')
         if c.objective not in ('l2', 'l1', 'none'):
             raise ValueError(f'bad objective: {c.objective!r}')
@@ -523,6 +526,12 @@ class DVFopt:
             phi_new, hist, n_outer = self._run_barrier(phi2)
         elif solver == 'trust-constr':
             phi_new, hist, n_outer = self._run_trust_constr(phi2)
+        elif solver == 'schwarz':
+            phi_new, hist, n_outer = self._run_schwarz(phi2)
+        elif solver == 'm10':
+            phi_new, hist, n_outer = self._run_m10(phi2)
+        elif solver == 'm14':
+            phi_new, hist, n_outer = self._run_m14(phi2)
         else:
             # 'slsqp' (default)
             phi_new, hist, n_outer = self._run_slsqp(phi2)
@@ -610,6 +619,61 @@ class DVFopt:
         raise ValueError(f'barrier not implemented for constraint='
                          f'{c.constraint!r}')
 
+    # ---- solver: schwarz (2tri only) ----
+    def _run_schwarz(self, phi2):
+        c = self.config
+        if c.constraint != '2tri':
+            raise ValueError(f'schwarz only implemented for constraint=2tri; '
+                             f'got {c.constraint!r}')
+        from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
+        out = iterative_2d_tri_schwarz(
+            phi2, threshold=c.threshold,
+            max_outer=c.max_outer_iters,
+            verbose=c.verbose, record_history=c.record_history)
+        if isinstance(out, tuple):
+            phi_new, hist = out
+        else:
+            phi_new, hist = out, []
+        return phi_new, hist, len(hist) if hist else 1
+
+    # ---- solver: m10 (harmonic + ALM + barrier polish) ----
+    def _run_m10(self, phi2):
+        c = self.config
+        if c.constraint != '2tri':
+            raise ValueError(f'm10 only implemented for constraint=2tri; '
+                             f'got {c.constraint!r}')
+        from dvfopt.core.wallbreakers import iterative_2d_tri_harmonic_polished
+        if c.record_history:
+            phi_new, info = iterative_2d_tri_harmonic_polished(
+                phi2, threshold=c.threshold, margin=c.margin,
+                anchor=c.objective, eps_l1=c.eps_l1,
+                verbose=c.verbose, record_history=True)
+            return phi_new, [info], 1
+        phi_new = iterative_2d_tri_harmonic_polished(
+            phi2, threshold=c.threshold, margin=c.margin,
+            anchor=c.objective, eps_l1=c.eps_l1,
+            verbose=c.verbose)
+        return phi_new, [], 1
+
+    # ---- solver: m14 (refine-repair pipeline) ----
+    def _run_m14(self, phi2):
+        c = self.config
+        if c.constraint != '2tri':
+            raise ValueError(f'm14 only implemented for constraint=2tri; '
+                             f'got {c.constraint!r}')
+        from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair
+        if c.record_history:
+            phi_new, info = iterative_2d_tri_refine_repair(
+                phi2, threshold=c.threshold, margin=c.margin,
+                anchor=c.objective, eps_l1=c.eps_l1,
+                verbose=c.verbose, record_history=True)
+            return phi_new, [info], 1
+        phi_new = iterative_2d_tri_refine_repair(
+            phi2, threshold=c.threshold, margin=c.margin,
+            anchor=c.objective, eps_l1=c.eps_l1,
+            verbose=c.verbose)
+        return phi_new, [], 1
+
     # ---- solver: trust-constr (per-component, 2tri) ----
     def _run_trust_constr(self, phi2):
         c = self.config
@@ -646,6 +710,22 @@ class DVFopt:
         if c.constraint not in ('2tri', 'jdet'):
             raise ValueError(f'slsqp not implemented for constraint='
                              f'{c.constraint!r}')
+        # For constraint='2tri', the package now ships a full-grid SLSQP
+        # path (iterative_2d_tri_slsqp) that supports L1/L2 anchors and a
+        # reactive warm-restart. Route there when the user asked for it.
+        if c.constraint == '2tri' and c.mode == 'full-grid':
+            from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
+            phi_new = iterative_2d_tri_slsqp(
+                phi2,
+                threshold=c.threshold,
+                max_iter=c.slsqp_max_iter,
+                warm_max_iter=c.slsqp_max_iter * 8,
+                anchor=c.objective,
+                eps_l1=c.eps_l1,
+                full_coverage=c.tri_full_coverage,
+                verbose=c.verbose,
+            )
+            return phi_new, [], 1
         # iterative_serial only supports the windowed L2 path. Warn loudly
         # if the user requested combinations we silently can't honour, so
         # the result they get matches what they asked for.

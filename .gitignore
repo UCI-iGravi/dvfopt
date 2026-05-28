@@ -175,3 +175,4 @@ cython_debug/
 /notebooks/experiments/wall_breakers/results_b0039_laplacian
 /notebooks/experiments/wall_breakers/results_full_dvf
 /notebooks/output_demo
+/benchmarks/results

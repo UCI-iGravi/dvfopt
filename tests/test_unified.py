@@ -92,14 +92,37 @@ class TestResolveSolverHeuristic:
 
 class TestSlsqpWarnings:
     def test_full_grid_emits_warning(self):
-        phi = _planted_fold_2d()
+        """For constraint='jdet' + mode='full-grid', DVFopt still falls
+        back to windowed and warns. (For constraint='2tri' + mode='full-grid'
+        the package now has a real full-grid path via iterative_2d_tri_slsqp,
+        so no warning fires there — covered separately.)"""
+        # Build a Jdet-infeasible field so _run_slsqp actually fires.
+        rng = np.random.default_rng(7)
+        phi = np.stack([rng.normal(0, 0.6, (12, 12)),
+                        rng.normal(0, 0.6, (12, 12))])
         cfg = DVFoptConfig(solver="slsqp", mode="full-grid", verbose=0,
-                           constraint="2tri")
+                           constraint="jdet")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             DVFopt(cfg).fit(phi)
         msgs = [str(w.message) for w in caught]
-        assert any("only supports mode='windowed'" in m for m in msgs)
+        assert any("only supports mode='windowed'" in m for m in msgs), \
+            f"expected windowed-only warning, got: {msgs}"
+
+    def test_2tri_full_grid_uses_tri_slsqp_no_warning(self):
+        """constraint='2tri' + mode='full-grid' now routes to the new
+        iterative_2d_tri_slsqp path — should not emit the windowed-only
+        warning."""
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(solver="slsqp", mode="full-grid", verbose=0,
+                           constraint="2tri", objective="l1",
+                           slsqp_max_iter=40)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            DVFopt(cfg).fit(phi)
+        msgs = [str(w.message) for w in caught]
+        assert not any("only supports mode='windowed'" in m for m in msgs), \
+            f"unexpected windowed-only warning fired: {msgs}"
 
     def test_non_l2_objective_emits_warning(self):
         phi = _planted_fold_2d()
