@@ -25,7 +25,9 @@ from dvfopt.core.barrier_objective import (
     penalty_objective_3d,
     barrier_objective_3d,
     jdet_full,
+    _jdet_grad_T_v,
 )
+from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
 
 
 def _pack_phi(phi):
@@ -115,57 +117,28 @@ def _optimize_patch(phi, phi_init, z0, z1, y0, y1, x0, x1, grid_shape,
     # agrees with the global field by construction.
     active_mask = (~frozen_mask).ravel()
 
-    target = threshold + margin
-    j0 = jdet_full(phi_flat, patch_size)
-    feasible = float(j0[active_mask].min()) >= target
-
     t_start = time.time()
-    lam_steps = 0
-    mu_steps = 0
+    phi_flat, info = run_penalty_barrier_lbfgs(
+        phi_flat, phi_anchor,
+        constraint_values=lambda p: jdet_full(p, patch_size),
+        constraint_adjoint=lambda p, v: _jdet_grad_T_v(p, patch_size, v),
+        threshold=threshold, margin=margin,
+        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        max_iter=max_minimize_iter,
+        active_mask=active_mask, bounds=bounds,
+        anchor='l2',
+        verbose=max(0, verbose - 2),  # core's verbose=1 is per-step; suppress unless very chatty
+    )
+    lam_steps = info['lam_steps']
+    mu_steps = info['mu_steps']
 
-    # Phase 1: penalty continuation
-    for lam in lam_schedule:
-        if feasible:
-            break
-        res = minimize(
-            penalty_objective_3d,
-            phi_flat,
-            args=(phi_anchor, patch_size, threshold, margin, lam, active_mask),
-            jac=True,
-            method="L-BFGS-B",
-            bounds=bounds,
-            options={"maxiter": max_minimize_iter, "gtol": 1e-6,
-                     "disp": verbose >= 3},
-        )
-        phi_flat = res.x
-        lam_steps += 1
-        j = jdet_full(phi_flat, patch_size)
-        if float(j[active_mask].min()) >= target:
-            feasible = True
-            break
-
-    # Phase 2: barrier continuation (only if feasible)
-    if feasible:
-        for mu in mu_schedule:
-            res = minimize(
-                barrier_objective_3d,
-                phi_flat,
-                args=(phi_anchor, patch_size, threshold, mu, active_mask),
-                jac=True,
-                method="L-BFGS-B",
-                bounds=bounds,
-                options={"maxiter": max_minimize_iter, "gtol": 1e-6,
-                         "disp": verbose >= 3},
-            )
-            phi_flat = res.x
-            mu_steps += 1
-
-    # Write patch back into full phi
+    # Write patch back into full phi.
     _unpack_phi(phi_flat, patch_size, out=phi_patch)
     phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = phi_patch
 
     j_final = jdet_full(phi_flat, patch_size)
-    return time.time() - t_start, lam_steps, mu_steps, float(j_final[active_mask].min())
+    return (time.time() - t_start, lam_steps, mu_steps,
+            float(j_final[active_mask].min()))
 
 
 def _iterative_3d_barrier_windowed(
@@ -177,6 +150,9 @@ def _iterative_3d_barrier_windowed(
     """Windowed penalty->barrier loop. Mutates phi & accumulators in place."""
     D, H, W = grid_size
     structure = np.ones((3, 3, 3))  # 26-connectivity
+    converged = False
+    cur_neg = -1
+    cur_min = float("nan")
 
     for iteration in range(max_iterations):
         j = jdet_full(_pack_phi(phi), grid_size).reshape(D, H, W)
@@ -184,6 +160,7 @@ def _iterative_3d_barrier_windowed(
         if not neg_mask.any():
             _log(verbose, 1,
                  f"[iter {iteration+1}] No neg-Jdet voxels remain — exiting")
+            converged = True
             break
 
         labeled, n_components = label(neg_mask, structure=structure)
@@ -228,7 +205,13 @@ def _iterative_3d_barrier_windowed(
              f"L2={l2:.4f}  t={elapsed:.2f}s")
 
         if cur_neg == 0 and cur_min >= threshold - err_tol:
+            converged = True
             break
+
+    if not converged:
+        _log(verbose, 1,
+             f"[done] max_iterations={max_iterations} reached without "
+             f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})")
 
 
 def _iterative_3d_barrier_fullgrid(

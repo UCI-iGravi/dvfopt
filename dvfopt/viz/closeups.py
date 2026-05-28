@@ -6,22 +6,12 @@ from matplotlib.patches import Polygon
 import numpy as np
 
 from dvfopt.jacobian import jacobian_det2D
+from dvfopt.jacobian.shoelace import _shoelace_areas_from_positions as _quad_signed_areas
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-def _quad_signed_areas(def_x, def_y):
-    """Shoelace-formula signed area for each quad cell.
-
-    Returns shape ``(rows-1, cols-1)``.
-    """
-    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]
-    x1, y1 = def_x[:-1, 1:],  def_y[:-1, 1:]
-    x2, y2 = def_x[1:, 1:],   def_y[1:, 1:]
-    x3, y3 = def_x[1:, :-1],  def_y[1:, :-1]
-    return 0.5 * ((x0*y1 - x1*y0) + (x1*y2 - x2*y1)
-                + (x2*y3 - x3*y2) + (x3*y0 - x0*y3))
 
 
 def _find_neg_jdet_centers(jac, H, W, margin, max_panels, dedup_dist):

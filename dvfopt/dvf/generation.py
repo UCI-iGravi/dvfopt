@@ -1,7 +1,13 @@
 """DVF generation utilities."""
 
 import numpy as np
-from scipy.ndimage import zoom
+
+
+def _generate_random_dvf(shape, max_magnitude, seed):
+    """Shared implementation for the 2D/3D random-DVF helpers."""
+    assert shape[0] == 3, "DVF must have 3 channels (dz, dy, dx)"
+    rng = np.random.default_rng(seed)
+    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float64)
 
 
 def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
@@ -20,10 +26,7 @@ def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
     -------
     ndarray of shape ``(3, 1, H, W)``
     """
-    rng = np.random.default_rng(seed)
-    C, _, H, W = shape
-    assert C == 3, "DVF must have 3 channels (dz, dy, dx)"
-    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float64)
+    return _generate_random_dvf(shape, max_magnitude, seed)
 
 
 def generate_random_dvf_3d(shape, max_magnitude=5.0, seed=None):
@@ -42,7 +45,4 @@ def generate_random_dvf_3d(shape, max_magnitude=5.0, seed=None):
     -------
     ndarray of shape ``(3, D, H, W)``
     """
-    rng = np.random.default_rng(seed)
-    C = shape[0]
-    assert C == 3, "DVF must have 3 channels (dz, dy, dx)"
-    return rng.uniform(-max_magnitude, max_magnitude, size=shape).astype(np.float64)
+    return _generate_random_dvf(shape, max_magnitude, seed)

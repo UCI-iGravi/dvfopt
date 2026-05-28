@@ -38,20 +38,9 @@ def _coerce_2d(deformation):
 # ============================================================
 # Numpy / scipy backend
 # ============================================================
-def _adjoint_central_diff(w, axis):
-    n = w.shape[axis]
-    if n == 1:
-        return np.zeros_like(w)
-    w_m = np.moveaxis(w, axis, 0)
-    out_m = np.zeros_like(w_m)
-    c_next = np.full(n, 0.5);  c_next[0] = 1.0
-    c_prev = np.full(n, 0.5);  c_prev[n - 1] = 1.0
-    bshape = [1] * w_m.ndim;  bshape[0] = n - 1
-    out_m[1:n] += c_next[:n - 1].reshape(bshape) * w_m[:n - 1]
-    out_m[0:n - 1] -= c_prev[1:n].reshape(bshape) * w_m[1:n]
-    out_m[0] -= w_m[0]
-    out_m[n - 1] += w_m[n - 1]
-    return np.moveaxis(out_m, 0, axis)
+# _adjoint_central_diff is the dimension-agnostic adjoint of np.gradient;
+# defined once in barrier_objective.
+from dvfopt.core.barrier_objective import _adjoint_central_diff  # noqa: E402
 
 
 def _split_phi_2d(phi_flat, grid_size):
@@ -207,7 +196,10 @@ def _optimize_patch_2d(phi, y0, y1, x0, x1, grid_shape,
                            jac=True, method="L-BFGS-B", bounds=bounds,
                            options={"maxiter": max_minimize_iter, "gtol": 1e-6,
                                     "disp": verbose >= 3})
-            phi_flat = res.x
+            # Only accept the step if the barrier objective is finite; an
+            # infeasible iterate returns inf and would silently corrupt phi.
+            if np.isfinite(res.fun):
+                phi_flat = res.x
             mu_steps += 1
 
     phi_patch = _unpack_phi_2d(phi_flat, patch_size)
@@ -267,12 +259,14 @@ def iterative_2d_barrier(
 
     if windowed:
         structure = np.ones((3, 3))  # 8-connectivity
+        converged = False
         for iteration in range(max_iterations):
             phi_flat = _pack_phi_2d(phi)
             j = _jdet_2d_flat(phi_flat, grid_size).reshape(H, W)
             neg_mask = j <= threshold - err_tol
             if not neg_mask.any():
                 _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
+                converged = True
                 break
 
             labeled, n_components = label(neg_mask, structure=structure)
@@ -306,7 +300,12 @@ def iterative_2d_barrier(
                  f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
                  f"L2={l2:.4f}  t={elapsed:.2f}s")
             if cur_neg == 0 and cur_min >= threshold - err_tol:
+                converged = True
                 break
+        if not converged:
+            _log(verbose, 1,
+                 f"[done] max_iterations={max_iterations} reached without "
+                 f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})")
     else:
         # Full-grid mode
         phi_flat = _pack_phi_2d(phi)
@@ -338,7 +337,11 @@ def iterative_2d_barrier(
                                options={"maxiter": max_minimize_iter, "gtol": 1e-6})
                 elapsed = time.time() - t0
                 iter_times.append(elapsed)
-                phi_flat = res.x
+                # Only accept the step if the barrier objective is finite;
+                # an infeasible iterate returns inf and would silently
+                # corrupt phi.
+                if np.isfinite(res.fun):
+                    phi_flat = res.x
                 j = _jdet_2d_flat(phi_flat, grid_size)
                 cur_neg = int((j <= 0).sum()); cur_min = float(j.min())
                 l2 = float(np.linalg.norm(phi_flat - phi_init_flat))

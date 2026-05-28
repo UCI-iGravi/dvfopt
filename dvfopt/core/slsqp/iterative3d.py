@@ -139,6 +139,14 @@ def iterative_3d(
                      and max_window_voxels_ceiling is not None
                      and max_window_voxels_ceiling > max_window_voxels)
 
+    # Window-size oscillation guard (ported from 2D): per-voxel stall_counts
+    # reset on any neg-count drop, so an alternating 12 -> 13 -> 12 pattern
+    # never hits _STALL_THRESHOLD for either voxel even though no real
+    # progress is happening. Track iters since a *new best* neg-count and
+    # bump global_min_window when that plateaus.
+    iters_since_window_best = 0
+    _OSCILLATION_STALL = 4
+
     while (iteration < max_iterations
            and (jacobian_matrix <= threshold - err_tol).any()):
         iteration += 1
@@ -214,8 +222,10 @@ def iterative_3d(
         if neg_count < best_neg_seen:
             best_neg_seen = neg_count
             iters_since_best = 0
+            iters_since_window_best = 0
         else:
             iters_since_best += 1
+            iters_since_window_best += 1
             if (_escalate_cap
                     and iters_since_best >= voxel_cap_stall_threshold
                     and cur_voxel_cap < max_window_voxels_ceiling):
@@ -228,6 +238,23 @@ def iterative_3d(
                          f"  [escalate-vox] no new best for "
                          f"{voxel_cap_stall_threshold} iters, "
                          f"voxel cap -> {cur_voxel_cap}")
+
+            # Window-size oscillation escalation (orthogonal to per-voxel
+            # stall and to voxel-cap escalation). Triggers on 1->2->1->2
+            # patterns the per-voxel counter misses.
+            gsz2, gsy2, gsx2 = global_min_window
+            mwz, mwy, mwx = max_window
+            if (iters_since_window_best >= _OSCILLATION_STALL
+                    and (gsz2 < mwz or gsy2 < mwy or gsx2 < mwx)):
+                global_min_window = (min(gsz2 + 2, mwz),
+                                     min(gsy2 + 2, mwy),
+                                     min(gsx2 + 2, mwx))
+                iters_since_window_best = 0
+                _log(verbose, 1,
+                     f"  [escalate-osc] no new best for "
+                     f"{_OSCILLATION_STALL} iters, min window -> "
+                     f"{global_min_window[0]}x{global_min_window[1]}x"
+                     f"{global_min_window[2]}")
 
         if float(jacobian_matrix.min()) > threshold - err_tol:
             _log(verbose, 1,

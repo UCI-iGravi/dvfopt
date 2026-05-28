@@ -93,35 +93,10 @@ def neg_jdet_bounding_window_3d(jacobian_matrix, center_zyx, threshold, err_tol,
     size : tuple of int ``(sz, sy, sx)``
     bbox_center : tuple of int ``(z, y, x)``
     """
-    if labeled_array is None:
-        neg_mask = jacobian_matrix <= threshold - err_tol
-        structure = np.ones((3, 3, 3))  # 26-connectivity
-        labeled_array, _ = label(neg_mask, structure=structure)
-
-    region_label = labeled_array[center_zyx[0], center_zyx[1], center_zyx[2]]
-
-    if region_label == 0:
-        return (3, 3, 3), center_zyx
-
-    region_zs, region_ys, region_xs = np.where(labeled_array == region_label)
-
-    D, H, W = jacobian_matrix.shape
-    z_min = max(int(region_zs.min()) - pad, 0)
-    z_max = min(int(region_zs.max()) + pad, D - 1)
-    y_min = max(int(region_ys.min()) - pad, 0)
-    y_max = min(int(region_ys.max()) + pad, H - 1)
-    x_min = max(int(region_xs.min()) - pad, 0)
-    x_max = min(int(region_xs.max()) + pad, W - 1)
-
-    depth  = max(z_max - z_min + 1, 3)
-    height = max(y_max - y_min + 1, 3)
-    width  = max(x_max - x_min + 1, 3)
-
-    bbox_center = ((z_min + z_max + 1) // 2,
-                   (y_min + y_max + 1) // 2,
-                   (x_min + x_max + 1) // 2)
-
-    return (depth, height, width), bbox_center
+    from dvfopt.core.slsqp.spatial import _bbox_window_nd
+    neg_field = jacobian_matrix <= threshold - err_tol
+    return _bbox_window_nd(neg_field, tuple(center_zyx), pad,
+                           labeled=labeled_array, connectivity_full=True)
 
 
 def _frozen_boundary_mask_3d(cz, cy, cx, subvolume_size, volume_shape):

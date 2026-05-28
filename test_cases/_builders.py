@@ -19,7 +19,10 @@ def make_deformation(case_key):
     ``(deformation, msample, fsample)``.
     """
     case = SYNTHETIC_CASES[case_key]
-    ms, fs = case["msample"], case["fsample"]
+    # SYNTHETIC_CASES holds shared numpy arrays at module scope; copy so
+    # downstream code can mutate freely without poisoning the cache.
+    ms = np.asarray(case["msample"]).copy()
+    fs = np.asarray(case["fsample"]).copy()
     H, W = case["resolution"]
     deformation = solveLaplacianFromCorrespondences((1, H, W), ms, fs)
     return deformation, ms, fs

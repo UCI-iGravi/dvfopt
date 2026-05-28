@@ -169,3 +169,9 @@ cython_debug/
 .claude/scheduled_tasks.lock
 /benchmarks/two_triangle/results/
 /notebooks/manuscript/output
+/notebooks/experiments/output_demo
+/notebooks/experiments/wall_breakers/results
+/notebooks/experiments/wall_breakers/results_b0039_composed
+/notebooks/experiments/wall_breakers/results_b0039_laplacian
+/notebooks/experiments/wall_breakers/results_full_dvf
+/notebooks/output_demo

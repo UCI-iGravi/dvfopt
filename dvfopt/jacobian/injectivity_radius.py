@@ -48,9 +48,11 @@ def _sigma_min_2d(a, b, c, d):
 def _hessian_frob_norm_2d(dy, dx):
     """Pointwise Frobenius norm of the second-derivative tensor of u.
 
-    For a 2-component field (u_x, u_y) there are six independent second
-    partials: {xx, xy, yy} for each component. Returns their sqrt-sum-of-
-    squares at each pixel.
+    For a 2-component field (u_x, u_y) the Hessian of each component is a
+    symmetric 2x2 tensor with three independent entries {xx, xy, yy}. The
+    Frobenius norm squared of a symmetric 2x2 matrix is
+    H_xx^2 + 2*H_xy^2 + H_yy^2 (off-diagonal counted twice). Summing over
+    both components gives the field's Hessian Frobenius norm at each pixel.
     """
     dxx = np.gradient(np.gradient(dx, axis=1), axis=1)
     dxy = np.gradient(np.gradient(dx, axis=1), axis=0)
@@ -58,8 +60,8 @@ def _hessian_frob_norm_2d(dy, dx):
     exx = np.gradient(np.gradient(dy, axis=1), axis=1)
     exy = np.gradient(np.gradient(dy, axis=1), axis=0)
     eyy = np.gradient(np.gradient(dy, axis=0), axis=0)
-    return np.sqrt(dxx * dxx + dxy * dxy + dyy * dyy
-                   + exx * exx + exy * exy + eyy * eyy)
+    return np.sqrt(dxx * dxx + 2.0 * dxy * dxy + dyy * dyy
+                   + exx * exx + 2.0 * exy * exy + eyy * eyy)
 
 
 def ift_radius_2d(phi_xy, eps=1e-8):

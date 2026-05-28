@@ -41,7 +41,12 @@ pytest tests/test_iterative.py
 
 ### Optimization internals
 
-- **phi flattening:** `phi[:len(phi)//2]` = dy, `phi[len(phi)//2:]` = dx. Preserve this when modifying objective/constraint functions.
+- **phi flattening — TWO conventions exist, do not cross-mix them:**
+  - **SLSQP modules** (`dvfopt/core/slsqp/constraints*.py`, `gradients*.py`, `iterative*.py`, the windowed solver, `dvfopt/core/iterative2d_barrier.py`, `dvfopt/core/iterative3d_barrier*.py`, `dvfopt/core/barrier_objective.py`):
+    `phi[:N]` = `dx`, `phi[N:2N]` = `dy` (3D: also `phi[2N:]` = `dz`). I.e. **x-channel first**.
+  - **Tri-barrier module** (`dvfopt/core/iterative2d_tri_barrier.py` — the 2-triangle penalty/barrier solver):
+    `phi[:N]` = `dy`, `phi[N:]` = `dx`. I.e. **y-channel first**.
+  - A flat phi vector from one module CANNOT be passed to a helper from the other without channel-swapping. If you write a new helper that may consume both, add an assertion on the layout.
 - **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `laplacian/utils.py`.
 - **Windowed approach:** iterative SLSQP finds worst-Jdet pixel, computes bounding box of connected negative region + 1px positive border (min 3×3), runs `scipy.optimize.minimize(method='SLSQP')` on that sub-window with frozen edges. Grows window by 2 if needed.
 - **Parallel variant:** `iterative_parallel()` batches non-overlapping windows into `ProcessPoolExecutor`. Falls back to serial for single windows (avoids Windows spawn overhead).

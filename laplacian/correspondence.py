@@ -11,6 +11,7 @@ Performance optimizations:
 - CG solver with diagonal (Jacobi) preconditioner (replaces LGMRES)
 - Threaded parallel solves for independent RHS vectors
 """
+import inspect
 import os
 import time
 import numpy as np
@@ -20,6 +21,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from joblib import Parallel, delayed
+
+# SciPy < 1.12 uses 'tol'; >= 1.12 uses 'rtol' (and deprecates 'tol').
+_CG_TOL_KW = 'rtol' if 'rtol' in inspect.signature(cg).parameters else 'tol'
+_LGMRES_TOL_KW = 'rtol' if 'rtol' in inspect.signature(lgmres).parameters else 'tol'
 
 import skimage
 from skimage import feature
@@ -468,7 +473,8 @@ def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis
 
     if len(flist) == 0:
         log("Warning: No correspondence points found. Returning zero deformation.", 'warn')
-        return np.zeros((nd, n0, n1, n2))
+        _dtype_early = np.float32 if solver_dtype == 'float32' else np.float64
+        return np.zeros((nd, n0, n1, n2), dtype=_dtype_early)
 
     fpoints = np.concatenate(flist)
     mpoints = np.concatenate(mlist)
@@ -562,9 +568,9 @@ def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis
                         f"rel_resid={rel:.2e}, {elapsed:.0f}s elapsed "
                         f"({rate:.1f} it/s)", 'progress')
         if _use_cg:
-            x, info = cg(A, rhs, rtol=rtol, maxiter=maxiter, M=M, callback=_progress)
+            x, info = cg(A, rhs, **{_CG_TOL_KW: rtol}, maxiter=maxiter, M=M, callback=_progress)
         else:
-            x, info = lgmres(A, rhs, rtol=rtol, maxiter=maxiter, callback=_progress)
+            x, info = lgmres(A, rhs, **{_LGMRES_TOL_KW: rtol}, maxiter=maxiter, callback=_progress)
         elapsed = time.time() - t0
         final_resid = np.linalg.norm(A @ x - rhs)
         final_rel = final_resid / rhs_norm if rhs_norm > 0 else final_resid
@@ -587,8 +593,7 @@ def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis
     del A, Yd, Xd
     log(f"Solves completed in {round(time.time() - start)} sec total", 'success')
 
-    deformationField = np.zeros((nd, n0, n1, n2), dtype=np.float32)
-    deformationField[0] = np.zeros((n0, n1, n2), dtype=np.float32)
+    deformationField = np.zeros((nd, n0, n1, n2), dtype=_dtype)
     deformationField[1] = dy.reshape((n0, n1, n2))
     deformationField[2] = dx.reshape((n0, n1, n2))
     del dx, dy

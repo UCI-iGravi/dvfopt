@@ -65,3 +65,16 @@ from dvfopt.io import load_nii_images
 
 # -- Defaults ----------------------------------------------------------------
 from dvfopt._defaults import DEFAULT_PARAMS
+
+# -- Unified high-level API (lazy) ------------------------------------------
+# ``dvfopt.unified`` pulls in the barrier solver, which imports torch at
+# module load. Defer that cost so ``import dvfopt`` is cheap for callers
+# that only need the SLSQP path.
+_LAZY_UNIFIED = {'DVFopt', 'DVFoptConfig', 'Result', 'SliceResult'}
+
+
+def __getattr__(name):
+    if name in _LAZY_UNIFIED:
+        from dvfopt import unified
+        return getattr(unified, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
