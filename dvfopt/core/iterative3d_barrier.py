@@ -235,7 +235,17 @@ def _iterative_3d_barrier_fullgrid(
         num_neg_jac.append(step['n_neg'])
         min_jdet_list.append(step['min_T'])
         iter_times.append(step['wall_s'])
-        error_list.append(0.0)
+        if 'l2' in step:
+            l2 = float(step['l2'])
+        elif 'phi_flat' in step:
+            l2 = float(np.linalg.norm(step['phi_flat'] - phi_init_flat))
+        else:
+            raise RuntimeError(
+                "run_penalty_barrier_lbfgs(record_history=True) did not record "
+                "per-step L2 data or iterates; cannot populate full-grid 3D "
+                "barrier error_list without silently writing incorrect zeros."
+            )
+        error_list.append(l2)
     _unpack_phi(phi_flat, grid_size, out=phi)
 
 
