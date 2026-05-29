@@ -516,3 +516,126 @@ def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5,
         plt.suptitle(title, fontsize=13)
     plt.tight_layout()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Canonical 2-triangle benchmark harness
+# ---------------------------------------------------------------------------
+
+def benchmark_canonical_2tri_2d(method_fn, *,
+                                 label=None,
+                                 threshold=None,
+                                 err_tol=1e-5,
+                                 verbose=True):
+    """Run ``method_fn`` over every canonical 2D 2-tri case and report results.
+
+    Parameters
+    ----------
+    method_fn : callable
+        ``phi_2hw -> phi_corrected_2hw``. Must accept and return arrays of
+        shape ``(2, H, W)`` with channels ``[dy, dx]``. The function may
+        raise; failures are caught and recorded in the row.
+    label : str, optional
+        Method label used in printed output. Inferred from ``method_fn``
+        if not provided.
+    threshold : float, optional
+        Lower bound used for the feasibility check. Defaults to
+        ``DEFAULT_PARAMS['threshold']``.
+    err_tol : float, optional
+        Tolerance for the feasibility check
+        (``min_T >= threshold - err_tol``).
+    verbose : bool
+        If True, print a per-case progress line.
+
+    Returns
+    -------
+    rows : list of dict
+        One dict per case with keys:
+        ``case, shape, init_n_neg, init_min_T,
+         final_n_neg, final_min_T, feasible,
+         wall_s, l1, l2, error``.
+
+    Example
+    -------
+    >>> from dvfopt import iterative_2d_tri_barrier
+    >>> rows = benchmark_canonical_2tri_2d(
+    ...     lambda p: iterative_2d_tri_barrier(p, verbose=0),
+    ...     label='barrier_l2')
+    """
+    from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+    from test_cases import canonical_2tri_2d
+
+    if threshold is None:
+        threshold = DEFAULT_PARAMS['threshold']
+    if label is None:
+        label = getattr(method_fn, '__name__', 'method')
+
+    rows = []
+    for name, phi_in, meta in canonical_2tri_2d():
+        t0 = time.perf_counter()
+        err = ''
+        try:
+            phi_out = method_fn(phi_in.copy())
+        except Exception as exc:
+            wall = time.perf_counter() - t0
+            err = f'{type(exc).__name__}: {exc}'
+            phi_out = None
+        else:
+            wall = time.perf_counter() - t0
+
+        row = dict(
+            case=name, shape=tuple(meta['shape']), method=label,
+            init_n_neg=meta['init_n_neg'],
+            init_min_T=meta['init_min_T'],
+            wall_s=wall, error=err,
+        )
+        if phi_out is None:
+            row.update(final_n_neg=-1, final_min_T=float('nan'),
+                       feasible=False, l1=float('nan'), l2=float('nan'))
+        else:
+            T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
+            n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+            min_T = float(min(T1.min(), T2.min()))
+            diff = (phi_out - phi_in).ravel()
+            row.update(
+                final_n_neg=n_neg,
+                final_min_T=min_T,
+                feasible=(n_neg == 0 and min_T >= threshold - err_tol),
+                l1=float(np.abs(diff).sum()),
+                l2=float(np.sqrt(np.dot(diff, diff))),
+            )
+        rows.append(row)
+        if verbose:
+            tag = 'OK' if row.get('feasible') else ('ERR' if err else 'FAIL')
+            print(f'  [{tag:>4}] {name:<22} {label:<22} '
+                  f'wall={row["wall_s"]:6.2f}s  '
+                  f'n_neg={row["final_n_neg"]:>4}  '
+                  f'min_T={row["final_min_T"]:+.4f}  '
+                  f'L1={row["l1"]:>8.3f}  L2={row["l2"]:>7.3f}'
+                  + (f'  {err}' if err else ''))
+    return rows
+
+
+def benchmark_methods_table(methods, *, threshold=None, verbose=True):
+    """Convenience: run several methods over the canonical suite and return
+    a single flat list of result rows.
+
+    Parameters
+    ----------
+    methods : list of (str, callable)
+        ``(label, method_fn)`` pairs.
+    threshold, verbose
+        Forwarded to :func:`benchmark_canonical_2tri_2d`.
+
+    Returns
+    -------
+    list of dict
+        Concatenated rows from every method.
+    """
+    out = []
+    for label, fn in methods:
+        if verbose:
+            print(f'=== {label} ===')
+        out.extend(benchmark_canonical_2tri_2d(
+            fn, label=label, threshold=threshold, verbose=verbose))
+    return out

@@ -42,11 +42,11 @@ pytest tests/test_iterative.py
 ### Optimization internals
 
 - **phi flattening — TWO conventions exist, do not cross-mix them:**
-  - **SLSQP modules** (`dvfopt/core/slsqp/constraints*.py`, `gradients*.py`, `iterative*.py`, the windowed solver, `dvfopt/core/iterative2d_barrier.py`, `dvfopt/core/iterative3d_barrier*.py`, `dvfopt/core/barrier_objective.py`):
+  - **Windowed Jdet SLSQP family** (`dvfopt/core/slsqp/constraints*.py`, `gradients*.py`, `iterative*.py`, the windowed serial/parallel solvers, `dvfopt/core/iterative2d_barrier.py`, `dvfopt/core/iterative3d_barrier*.py`, `dvfopt/core/barrier_objective.py`):
     `phi[:N]` = `dx`, `phi[N:2N]` = `dy` (3D: also `phi[2N:]` = `dz`). I.e. **x-channel first**.
-  - **Tri-barrier module** (`dvfopt/core/iterative2d_tri_barrier.py` — the 2-triangle penalty/barrier solver):
+  - **All 2-triangle solvers** (the 2tri barrier, full-grid SLSQP, Schwarz, wall-breakers m02/m03/m10/m12/m14, `_cluster_2tri`, the shared `tri_primitives` module):
     `phi[:N]` = `dy`, `phi[N:]` = `dx`. I.e. **y-channel first**.
-  - A flat phi vector from one module CANNOT be passed to a helper from the other without channel-swapping. If you write a new helper that may consume both, add an assertion on the layout.
+  - A flat phi vector from a Jdet-SLSQP helper CANNOT be passed to a 2-triangle helper without channel-swapping. If you write a new helper that may consume both, add an assertion on the layout. Helpers in `tri_primitives.py` and `_barrier_core.py` (anchor term) are the single sources of truth for the 2-triangle world — reuse them rather than re-deriving partials.
 - **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `laplacian/utils.py`.
 - **Windowed approach:** iterative SLSQP finds worst-Jdet pixel, computes bounding box of connected negative region + 1px positive border (min 3×3), runs `scipy.optimize.minimize(method='SLSQP')` on that sub-window with frozen edges. Grows window by 2 if needed.
 - **Parallel variant:** `iterative_parallel()` batches non-overlapping windows into `ProcessPoolExecutor`. Falls back to serial for single windows (avoids Windows spawn overhead).
@@ -74,6 +74,7 @@ The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `en
 | `iterative_2d_tri_schwarz()` | Hybrid overlapping-tile Schwarz + per-cluster SLSQP | Many small clusters across a big slice |
 | `iterative_2d_tri_harmonic_polished()` (m10) | Harmonic seed + ALM + barrier polish | Dense folds, **100% feasibility guaranteed** |
 | `iterative_2d_tri_refine_repair()` (m14, anchor='l1' = m14_l1) | m10 seed + soft-penalty pull + repair + polish | Dense folds, **smallest L2/L1 cost** |
+| `iterative_2d_tri_refine_repair_schwarz()` (m14-Schwarz) | m14 per fold cluster + final global polish | Large slices (e.g. 320×456) with sparse-to-moderate folds — **~5x faster than global m14** |
 
 **Building blocks:**
 

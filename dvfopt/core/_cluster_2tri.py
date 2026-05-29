@@ -26,6 +26,7 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import minimize, NonlinearConstraint
 
+from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 
@@ -186,7 +187,7 @@ def solve_cluster_2tri_2d(
     phi_anchor_win: np.ndarray,
     interior_mask: np.ndarray,
     *,
-    threshold: float = 0.01,
+    threshold: float = None,
     eps_l1: float = 1e-4,
     l2_max_passes: int = 12,
     l2_max_iter: int = 80,
@@ -207,8 +208,10 @@ def solve_cluster_2tri_2d(
         ``True`` for corners that are movable; ``False`` for frozen-edge
         corners. The shape matches the per-voxel corner grid (one more
         than the cell grid on each axis).
-    threshold : float
+    threshold : float, optional
         Lower bound for both T1 and T2 areas (the 2-triangle constraint).
+        Defaults to ``DEFAULT_PARAMS['threshold']`` (0.01) — matching every
+        other 2D triangle solver in the package.
     eps_l1 : float
         Smoothing for the L1 polish step.
     l2_max_passes : int
@@ -233,6 +236,8 @@ def solve_cluster_2tri_2d(
         ``l2_passes_run``, ``l2_total_nit``, ``l2_total_t``,
         ``l1_polished``, ``l1_nit``, ``l1_t``, ``cluster_t``.
     """
+    if threshold is None:
+        threshold = DEFAULT_PARAMS['threshold']
     t0 = time.time()
     T1, T2 = _triangle_areas_2d(phi_win[0], phi_win[1])
     init_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())

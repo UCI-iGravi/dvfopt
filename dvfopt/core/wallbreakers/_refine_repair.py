@@ -63,6 +63,7 @@ def iterative_2d_tri_refine_repair(
     lam_schedule: tuple = (1e2, 1e4, 1e6, 1e8),
     inner_maxiter: int = 300,
     ring_pad: int = 2,
+    max_grow_iters: int = 8,
     polish_mu: tuple = (1e-2, 1e-4, 1e-6),
     polish_maxiter: int = 200,
     time_budget_s: float = 600.0,
@@ -113,6 +114,7 @@ def iterative_2d_tri_refine_repair(
         seed = iterative_2d_tri_harmonic_polished(
             phi_in, threshold=threshold, margin=margin,
             anchor=anchor, eps_l1=eps_l1,
+            max_grow_iters=max_grow_iters,
             time_budget_s=time_budget_s * 0.4,
             verbose=verbose)
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))
@@ -146,7 +148,7 @@ def iterative_2d_tri_refine_repair(
     if pulled_min < threshold:
         repaired = harmonic_extension_2d(
             pulled, threshold=threshold, ring_pad=ring_pad,
-            max_grow_iters=8, margin=margin)
+            max_grow_iters=max_grow_iters, margin=margin)
     else:
         repaired = pulled
     repaired_min = _min_tri(repaired)

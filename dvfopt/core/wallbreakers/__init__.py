@@ -18,6 +18,12 @@ Public API
 * :func:`iterative_2d_tri_refine_repair` (m14): 4-stage — m10 seed →
   soft-penalty pull → harmonic repair → barrier polish. The L2/L1
   winner. Run with ``anchor='l1'`` for the smallest deviation from input.
+* :func:`iterative_2d_tri_refine_repair_schwarz` (m14-Schwarz): m14 with
+  cluster-localized domain decomposition. Detects fold components,
+  runs m14 per-cluster on bounding-box crops, splices back. Final
+  global barrier polish recovers the safety margin if Schwarz overlap
+  nicks it. ~5x faster than global m14 on the full B0039 z=12 slice
+  with ~11% lower L1.
 """
 from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
@@ -28,6 +34,9 @@ from dvfopt.core.wallbreakers._harmonic_polished import (
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )
+from dvfopt.core.wallbreakers._m14_schwarz import (
+    iterative_2d_tri_refine_repair_schwarz,
+)
 
 __all__ = [
     'harmonic_extension_2d',
@@ -35,4 +44,5 @@ __all__ = [
     'l2_refine_2d',
     'iterative_2d_tri_harmonic_polished',
     'iterative_2d_tri_refine_repair',
+    'iterative_2d_tri_refine_repair_schwarz',
 ]

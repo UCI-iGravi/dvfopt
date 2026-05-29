@@ -18,6 +18,8 @@ SLSQP-based correctors (Jdet constraint, windowed)::
                                           # ("always-feasibility baseline")
     iterative_2d_tri_refine_repair       # m14: m10 seed + soft-penalty pull
                                           # + repair + polish. anchor='l1' = m14_l1.
+    iterative_2d_tri_refine_repair_schwarz  # m14-Schwarz: cluster-localized m14
+                                             # for large slices with sparse folds
 
 2-triangle building blocks (use directly if assembling your own pipeline)::
 
@@ -55,6 +57,10 @@ Which 2D 2-triangle corrector to pick?
   larger L2) or ``iterative_2d_tri_refine_repair(anchor='l1')`` (slower,
   ~half the L2, ~80% less L1).
 * Many small fold clusters across a large slice: ``iterative_2d_tri_schwarz``.
+* Large slice (e.g. full 320x456) with sparse-to-moderate folds:
+  ``iterative_2d_tri_refine_repair_schwarz`` — m14 with cluster-localized
+  domain decomposition. ~5x faster than global m14 on the full B0039
+  z=12 slice with ~11% lower L1.
 """
 
 # -- Package metadata -------------------------------------------------------
@@ -71,16 +77,12 @@ from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
 from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
 from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
 
-# Wall-breaker methods promoted from notebooks/experiments/wall_breakers.
-# m10: 100% feasibility on the original B0039 DVF (always-feasibility baseline).
-# m14: same feasibility, ~half the L2 cost (uses m10 as a seed and refines).
-from dvfopt.core.wallbreakers import (
-    iterative_2d_tri_harmonic_polished,   # m10
-    iterative_2d_tri_refine_repair,        # m14 (use anchor='l1' for m14_l1)
-    harmonic_extension_2d,                 # m02 building block
-    augmented_lagrangian_2d,               # m03 building block
-    l2_refine_2d,                          # m12 building block
-)
+# Wall-breaker methods promoted from notebooks/experiments/wall_breakers
+# are imported lazily — they're large modules used by a minority of
+# callers, and pulling them at package-load adds a noticeable import-time
+# cost to the SLSQP-only path. The lazy-attribute hook below routes
+# ``dvfopt.iterative_2d_tri_harmonic_polished`` and friends to the
+# subpackage on first access.
 
 # -- Jacobian computation ---------------------------------------------------
 from dvfopt.jacobian import (
@@ -108,15 +110,28 @@ from dvfopt.io import load_nii_images
 # -- Defaults ----------------------------------------------------------------
 from dvfopt._defaults import DEFAULT_PARAMS
 
-# -- Unified high-level API (lazy) ------------------------------------------
+# -- Lazy attributes ---------------------------------------------------------
 # ``dvfopt.unified`` pulls in the barrier solver, which imports torch at
 # module load. Defer that cost so ``import dvfopt`` is cheap for callers
-# that only need the SLSQP path.
+# that only need the SLSQP path. The wall-breaker subpackage is similarly
+# heavy (scipy.sparse, scipy.ndimage, scipy.optimize) and only a minority
+# of callers need it.
 _LAZY_UNIFIED = {'DVFopt', 'DVFoptConfig', 'Result', 'SliceResult'}
+_LAZY_WALLBREAKERS = {
+    'iterative_2d_tri_harmonic_polished',         # m10
+    'iterative_2d_tri_refine_repair',             # m14 (anchor='l1' = m14_l1)
+    'iterative_2d_tri_refine_repair_schwarz',     # m14-Schwarz (cluster-localized)
+    'harmonic_extension_2d',                      # m02 building block
+    'augmented_lagrangian_2d',                    # m03 building block
+    'l2_refine_2d',                               # m12 building block
+}
 
 
 def __getattr__(name):
     if name in _LAZY_UNIFIED:
         from dvfopt import unified
         return getattr(unified, name)
+    if name in _LAZY_WALLBREAKERS:
+        from dvfopt.core import wallbreakers
+        return getattr(wallbreakers, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

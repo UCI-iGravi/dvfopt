@@ -43,17 +43,7 @@ from dvfopt.jacobian.triangle_sign import (
     _triangle_areas_2d,
     _corner_patch_areas_2d,
 )
-
-
-# (case_key, npy_path)
-CASES = [
-    ('01a_10x10_crossing', '01a_10x10_crossing.npy'),
-    ('01b_10x10_opposite', '01b_10x10_opposite.npy'),
-    ('03a_10x10_opposite', '03a_10x10_opposite.npy'),
-    ('03b_10x10_crossing', '03b_10x10_crossing.npy'),
-    ('03c_20x20_opposite', '03c_20x20_opposite.npy'),
-    ('03d_20x20_crossing', '03d_20x20_crossing.npy'),
-]
+from test_cases import canonical_2tri_2d
 
 
 def _l1(a, b): return float(np.abs(a - b).sum())
@@ -147,9 +137,7 @@ METHODS = [
 ]
 
 
-def run_one(case_key, npy_path, method_label, fn):
-    arr = np.load(os.path.join(_REPO_ROOT, 'data', 'test_cases', npy_path))
-    phi_init = np.stack([arr[1, 0], arr[2, 0]])
+def run_one(case_key, phi_init, method_label, fn):
     init = _stats(phi_init)
 
     t0 = time.perf_counter()
@@ -198,9 +186,13 @@ def main():
         cell_neg_f='cell_n_f', cell_min_f='cell_min_f',
         p_min_f='patch_f', l1='L1', l2='L2', feas='feas'))
     print('-' * 130)
-    for case, npy in CASES:
+    # Load the canonical suite once — the synthetic correspondences pass
+    # through the same Laplacian interpolation that produced the legacy
+    # data/test_cases/*.npy snapshots.
+    cases = canonical_2tri_2d()
+    for case, phi_init, _meta in cases:
         for method_label, fn in METHODS:
-            r = run_one(case, npy, method_label, fn)
+            r = run_one(case, phi_init, method_label, fn)
             rows.append(r)
             if r.get('error'):
                 print(f"{case:<22} {r['shape']!s:<7} {method_label:<22} "

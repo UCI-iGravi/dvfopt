@@ -18,20 +18,24 @@ from test_cases._cases import (
     SYNTHETIC_CASES,
     RANDOM_DVF_CASES,
     REAL_DATA_SLICES,
+    CANONICAL_2TRI_2D_KEYS,
 )
 from test_cases._builders import (
     make_deformation,
     make_random_dvf,
     load_slice,
     save_and_summarize,
+    canonical_2tri_2d,
 )
 
 __all__ = [
     "SYNTHETIC_CASES",
     "RANDOM_DVF_CASES",
     "REAL_DATA_SLICES",
+    "CANONICAL_2TRI_2D_KEYS",
     "make_deformation",
     "make_random_dvf",
     "load_slice",
     "save_and_summarize",
+    "canonical_2tri_2d",
 ]
