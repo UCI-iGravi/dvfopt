@@ -72,8 +72,9 @@ class DVFoptConfig:
     margin: float = 1e-3             # barrier safety margin
 
     # ---- solver / objective ----
-    # 'slsqp', 'trust-constr', 'barrier', 'schwarz', 'm10', 'm14', 'auto'.
-    # The latter three are 2-triangle-only wall-breaker pipelines.
+    # 'slsqp', 'trust-constr', 'barrier', 'schwarz', 'm10', 'm14',
+    # 'm14_schwarz', 'auto'. The last four are 2-triangle-only
+    # wall-breaker pipelines.
     solver: str = 'auto'
     objective: str = 'l2'            # 'l2', 'l1', 'none'
     eps_l1: float = 1e-4
@@ -438,7 +439,8 @@ class DVFopt:
         if c.constraint not in ('2tri', 'jdet', '6tet'):
             raise ValueError(f'bad constraint: {c.constraint!r}')
         if c.solver not in ('slsqp', 'trust-constr', 'barrier',
-                            'schwarz', 'm10', 'm14', 'auto'):
+                            'schwarz', 'm10', 'm14', 'm14_schwarz',
+                            'auto'):
             raise ValueError(f'bad solver: {c.solver!r}')
         if c.objective not in ('l2', 'l1', 'none'):
             raise ValueError(f'bad objective: {c.objective!r}')
@@ -513,7 +515,8 @@ class DVFopt:
                 solver_used='none', n_outer_iters=0, wall_time=0.0,
                 notes='already feasible')
 
-        solver = self._resolve_solver(init_n_neg, init_min)
+        solver = self._resolve_solver(init_n_neg, init_min,
+                                       slice_pixels=phi2.shape[1] * phi2.shape[2])
         t0 = time.time()
         history: List[Dict[str, Any]] = []
         snapshots: List[Dict[str, Any]] = []
@@ -532,6 +535,8 @@ class DVFopt:
             phi_new, hist, n_outer = self._run_m10(phi2)
         elif solver == 'm14':
             phi_new, hist, n_outer = self._run_m14(phi2)
+        elif solver == 'm14_schwarz':
+            phi_new, hist, n_outer = self._run_m14_schwarz(phi2)
         else:
             # 'slsqp' (default)
             phi_new, hist, n_outer = self._run_slsqp(phi2)
@@ -558,25 +563,66 @@ class DVFopt:
             history=history, snapshots=snapshots,
             notes=('feasible' if feasible else 'still folded'))
 
-    def _resolve_solver(self, init_n_neg, init_min):
+    def _resolve_solver(self, init_n_neg, init_min, slice_pixels=None):
         """Auto-select a solver based on the slice difficulty.
 
-        Heuristics:
-          - n_neg > 500                              -> barrier (full-grid)
-          - jdet constraint and init_min < -1.0      -> barrier (severe fold)
-          - 2tri constraint and init_min < -0.25     -> barrier (severe fold)
-          - otherwise                                -> slsqp
+        Heuristics for the 2-triangle constraint, based on the
+        B0039 z=12 wall-test (see ``benchmarks/results/
+        b0039_z12_full_slice.csv`` and the canonical synthetic suite):
 
-        The min-value thresholds are constraint-specific because Jdet and
-        triangle area live on different scales.
+          - **n_neg > 5000 OR init_min < -10**         -> m14 / m14_schwarz.
+            Extreme density where even the barrier solver leaves
+            residual folds (e.g. the full B0039 z=12 slice with 8978
+            folds: barrier left 3760, m10 reduced to 24, m14 closes
+            the gap with a refinement+repair pass). For large slices
+            (``H*W > 20000`` corners) we route to ``m14_schwarz`` —
+            cluster-localized m14 — which on the full B0039 z=12 slice
+            is ~5x faster than global m14 with ~11% lower L1. Picks
+            ``m10`` over ``m14`` when the user asked for
+            ``objective='l2'`` (already L2-optimal in its first ALM
+            phase).
+          - **n_neg > 100 OR init_min < -0.25**        -> barrier.
+            Dominates SLSQP by 100-580× wall-clock at moderate-to-dense
+            fold counts (see `_run_b0039_z12_wall_test`). The wall for
+            the SLSQP family sits around 100 folds.
+          - **otherwise**                              -> slsqp.
+            For very mild folds the SLSQP active-set machinery is
+            comparable to barrier in wall-clock and gives KKT-cert
+            semantics.
+
+        Heuristics for the jdet constraint (no wall-breakers yet):
+
+          - n_neg > 500 OR init_min < -1.0             -> barrier.
+          - otherwise                                  -> slsqp.
+
+        The min-value thresholds are constraint-specific because Jdet
+        and triangle area live on different scales.
         """
         c = self.config
         if c.solver != 'auto':
             return c.solver
-        if init_n_neg > 500:
-            return 'barrier'
-        severe_min = -1.0 if c.constraint == 'jdet' else -0.25
-        if init_min < severe_min:
+        if c.constraint == '2tri':
+            # Tier 1: extreme density — only the wall-breakers reach
+            # feasibility here. The barrier solver left 3760 residual
+            # folds on the full B0039 z=12 slice (8978 init folds);
+            # m10/m14 are the only methods that get to feasibility.
+            extreme = init_n_neg > 5000 or init_min < -10.0
+            if extreme:
+                if c.objective == 'l2':
+                    return 'm10'
+                # m14 (anchor='l1') is the L1 winner. On large slices
+                # (>20K corners) the cluster-localized variant is
+                # ~5x faster with comparable L1.
+                if slice_pixels is not None and slice_pixels > 20000:
+                    return 'm14_schwarz'
+                return 'm14'
+            # Tier 2: moderate-to-dense — barrier dominates SLSQP.
+            if init_n_neg > 100 or init_min < -0.25:
+                return 'barrier'
+            # Tier 3: mild — SLSQP is fine and gives active-set certs.
+            return 'slsqp'
+        # jdet (no wall-breakers available)
+        if init_n_neg > 500 or init_min < -1.0:
             return 'barrier'
         return 'slsqp'
 
@@ -634,7 +680,7 @@ class DVFopt:
             phi_new, hist = out
         else:
             phi_new, hist = out, []
-        return phi_new, hist, len(hist) if hist else 1
+        return phi_new, hist, (len(hist) if hist else 1)
 
     # ---- solver: m10 (harmonic + ALM + barrier polish) ----
     def _run_m10(self, phi2):
@@ -669,6 +715,26 @@ class DVFopt:
                 verbose=c.verbose, record_history=True)
             return phi_new, [info], 1
         phi_new = iterative_2d_tri_refine_repair(
+            phi2, threshold=c.threshold, margin=c.margin,
+            anchor=c.objective, eps_l1=c.eps_l1,
+            verbose=c.verbose)
+        return phi_new, [], 1
+
+    # ---- solver: m14-Schwarz (cluster-localized refine-repair) ----
+    def _run_m14_schwarz(self, phi2):
+        c = self.config
+        if c.constraint != '2tri':
+            raise ValueError(f'm14_schwarz only implemented for '
+                             f'constraint=2tri; got {c.constraint!r}')
+        from dvfopt.core.wallbreakers import (
+            iterative_2d_tri_refine_repair_schwarz)
+        if c.record_history:
+            phi_new, info = iterative_2d_tri_refine_repair_schwarz(
+                phi2, threshold=c.threshold, margin=c.margin,
+                anchor=c.objective, eps_l1=c.eps_l1,
+                verbose=c.verbose, record_history=True)
+            return phi_new, [info], 1
+        phi_new = iterative_2d_tri_refine_repair_schwarz(
             phi2, threshold=c.threshold, margin=c.margin,
             anchor=c.objective, eps_l1=c.eps_l1,
             verbose=c.verbose)

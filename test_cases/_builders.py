@@ -4,12 +4,18 @@ These depend on both ``dvfopt`` (DVF generation, Jacobian computation) and
 ``laplacian`` (correspondence-based interpolation).
 """
 
+import contextlib
+import io
+import warnings
+
 import numpy as np
 
 from laplacian import solveLaplacianFromCorrespondences
 from dvfopt.dvf import generate_random_dvf, scale_dvf
 
-from test_cases._cases import SYNTHETIC_CASES, RANDOM_DVF_CASES
+from test_cases._cases import (
+    SYNTHETIC_CASES, RANDOM_DVF_CASES, CANONICAL_2TRI_2D_KEYS,
+)
 
 
 def make_deformation(case_key):
@@ -78,6 +84,64 @@ def load_slice(slice_idx, scale_factor=1.0,
     deformation = solveLaplacianFromCorrespondences((1, H_new, W_new), scaled_m, scaled_f)
 
     return deformation, scaled_m, scaled_f
+
+
+def _silent_make_deformation(case_key):
+    """Build a synthetic deformation with stdout redirected — used by the
+    canonical-suite loader so callers can call it from notebooks without
+    the laplacian solver's progress chatter."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        deformation, _, _ = make_deformation(case_key)
+    return deformation
+
+
+def canonical_2tri_2d(*, with_meta=True):
+    """Yield the canonical 2D 2-triangle benchmark suite.
+
+    Six synthetic correspondence-based cases promoted from notebook 14
+    (`14_l1-warmstart-2d-cases.ipynb`) — see
+    :data:`test_cases._cases.CANONICAL_2TRI_2D_KEYS` for the curated list.
+
+    Each iteration yields ``(name, phi_2hw, meta)`` where:
+
+    * ``name`` is the case key (e.g. ``'01a_10x10_crossing'``).
+    * ``phi_2hw`` is a ``(2, H, W)`` ``float64`` array with channels
+      ``[dy, dx]`` — the convention used by every 2-triangle solver.
+    * ``meta`` is a dict with the initial-fold stats and provenance:
+      ``init_n_neg``, ``init_min_T``, ``shape``, ``title``,
+      ``msample``, ``fsample``.
+
+    Use ``with_meta=False`` to get just ``(name, phi_2hw)`` pairs.
+
+    Examples
+    --------
+    >>> from test_cases import canonical_2tri_2d
+    >>> for name, phi, meta in canonical_2tri_2d():
+    ...     print(name, phi.shape, meta['init_n_neg'])
+    """
+    from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
+    out = []
+    for key in CANONICAL_2TRI_2D_KEYS:
+        deformation = _silent_make_deformation(key)
+        # (3, 1, H, W) -> (2, H, W) with channels [dy, dx]
+        phi = deformation[1:, 0].astype(np.float64).copy()
+        T1, T2 = _triangle_areas_2d(phi[0], phi[1])
+        n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+        min_T = float(min(T1.min(), T2.min()))
+        case = SYNTHETIC_CASES[key]
+        meta = dict(
+            shape=phi.shape[1:],
+            title=case['title'],
+            msample=np.asarray(case['msample']).copy(),
+            fsample=np.asarray(case['fsample']).copy(),
+            init_n_neg=n_neg,
+            init_min_T=min_T,
+        )
+        out.append((key, phi, meta) if with_meta else (key, phi))
+    return out
 
 
 def save_and_summarize(deformation, save_path):

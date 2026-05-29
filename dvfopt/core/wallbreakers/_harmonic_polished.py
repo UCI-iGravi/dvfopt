@@ -50,6 +50,7 @@ def iterative_2d_tri_harmonic_polished(
     threshold: float = None,
     margin: float = 1e-3,
     ring_pad: int = 2,
+    max_grow_iters: int = 8,
     mu_schedule: tuple = (1e-1, 1e-2, 1e-3, 1e-4, 1e-5),
     inner_maxiter: int = 300,
     anchor: str = 'l2',
@@ -71,6 +72,13 @@ def iterative_2d_tri_harmonic_polished(
         the polish's log-barrier singularity.
     ring_pad : int
         Initial cell-dilation of the harmonic patch ring.
+    max_grow_iters : int
+        Maximum extra dilation rounds inside the harmonic-extension
+        stage when the current patch still has residual folds. Default
+        ``8`` matches the original manuscript setting. Bump if your
+        slice has large non-convex fold cores whose dilated boundary
+        ring isn't convex at the default — the wallbreaker will then
+        try a larger ring before falling back to "best-effort patch".
     mu_schedule : sequence of float
         Continuation schedule for the barrier polish (smaller ``mu`` ->
         closer to the L2-optimum, but a wall at the constraint surface).
@@ -111,7 +119,7 @@ def iterative_2d_tri_harmonic_polished(
     # Stage 1: harmonic extension.
     seed, r1_info = harmonic_extension_2d(
         phi_in, threshold=threshold,
-        ring_pad=ring_pad, max_grow_iters=8,
+        ring_pad=ring_pad, max_grow_iters=max_grow_iters,
         margin=0.0, record_history=True)
     seed_min = _min_tri(seed)
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))

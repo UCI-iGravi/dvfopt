@@ -139,6 +139,40 @@ RANDOM_DVF_CASES = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Canonical 2D 2-triangle benchmark suite
+# ---------------------------------------------------------------------------
+# The six synthetic cases promoted from notebook 14 (`14_l1-warmstart-2d-
+# cases.ipynb`). All are derived from correspondence pairs via Laplacian
+# interpolation (so the anchor field is itself a smooth interpolant — the
+# folds are an emergent artifact of the interpolation, not hand-crafted).
+#
+# Suite properties (relevant for benchmarking feasibility recovery):
+#
+# | key                   | shape   | init n_neg | init min_T | character    |
+# |-----------------------|---------|-----------:|-----------:|--------------|
+# | 01a_10x10_crossing    | 10×10   |         24 | -0.744     | crossing     |
+# | 01b_10x10_opposite    | 10×10   |         10 | -0.587     | opposite     |
+# | 03a_10x10_opposite    | 10×10   |         23 | -0.814     | opposite     |
+# | 03b_10x10_crossing    | 10×10   |         28 | -0.700     | crossing     |
+# | 03c_20x20_opposite    | 20×20   |         58 | -0.809     | opposite     |
+# | 03d_20x20_crossing    | 20×20   |         72 | -0.740     | crossing     |
+#
+# The 20×40 cases (`01c`, `01d`) are intentionally excluded — full-grid
+# SLSQP scales poorly past 20×20 (a single 20×40 case takes ~25 min). Any
+# benchmark that needs them should switch to a windowed solver.
+#
+# Use the canonical list through `test_cases.canonical_2tri_2d()` (returns
+# a list of `(name, phi_2hw, meta)` triples).
+CANONICAL_2TRI_2D_KEYS = (
+    '01a_10x10_crossing',
+    '01b_10x10_opposite',
+    '03a_10x10_opposite',
+    '03b_10x10_crossing',
+    '03c_20x20_opposite',
+    '03d_20x20_crossing',
+)
+
 # Real-data slice definitions: (slice_idx, scale_factor, label_suffix)
 REAL_DATA_SLICES = {
     "02a_64x91": {"slice_idx": 90, "scale_factor": 0.2, "title": "Case 2a \u2014 slice 90 (64\u00d791)"},
