@@ -23,7 +23,7 @@ from concurrent.futures.process import BrokenProcessPool
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import label as cc_label, find_objects, sum_labels, binary_dilation
+from scipy.ndimage import label as cc_label, find_objects, binary_dilation
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..'))
@@ -59,13 +59,19 @@ EPS_L1 = 1e-4
 # Severe single-cell folds (min_tri ~ -1) need more degrees of freedom; one
 # more layer of dilation gives 5x5 cell bbox = ~32 movable variables.
 def _merge_for_n_neg(n_neg):
-    """Return MERGE_DILATION as a function of current fold-triangle count."""
-    if n_neg > 200:
-        return 2
+    """Return MERGE_DILATION as a function of current fold-triangle count.
+
+    Always 1. The earlier escalation to 2 for >200 folds turned out to be
+    the cause of the 7 stuck slices: it artificially fused dozens-to-
+    hundreds of small fold clumps into one giant unsolvable component.
+    The Schwarz-tiling experiment in notebooks/experiments/ confirmed
+    those slices have many small components, not one large one, and they
+    all converge with dilation=1 + the existing per-cell extra_dilation
+    escalation for genuine cluster-solve failure.
+    """
     return 1
 
 
-MERGE_DILATION = 2          # default / max; used only as the upper bound below.
 BBOX_PAD = 1
 MAX_CLUSTER_CELLS = 2000         # crops above this are skipped (over SLSQP cap)
 MAX_CLUSTER_PER_AXIS = 60
@@ -136,26 +142,6 @@ CLUSTER_COLUMNS = [
     'l1_nit', 'l1_t', 'l1_polished', 'l1_timed_out',
     'cluster_t', 'feasible', 'skipped_too_large',
 ]
-
-
-def _run_worker_with_timeout(target, args, timeout_s):
-    ctx = mp.get_context('spawn')
-    parent_conn, child_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=target, args=(*args, child_conn))
-    proc.start()
-    child_conn.close()
-    t0 = time.time()
-    if parent_conn.poll(timeout_s):
-        msg = parent_conn.recv()
-        proc.join(timeout=5)
-        if proc.is_alive():
-            proc.terminate(); proc.join(timeout=5)
-        return msg[0], msg[1:], {'wall_time': time.time() - t0}
-    proc.terminate()
-    proc.join(timeout=5)
-    if proc.is_alive():
-        proc.kill(); proc.join()
-    return 'timeout', None, {'wall_time': time.time() - t0}
 
 
 def init_csvs():
@@ -437,124 +423,6 @@ def enumerate_clusters_2d(phi_slice, max_axis, max_cells,
     return clusters
 
 
-def solve_one_cluster(c, phi_slice, phi_anchor_slice, z):
-    """phi_slice/phi_anchor_slice: (2, H, W). Mutates phi_slice on success."""
-    y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-    t_cluster = time.time()
-    row = {
-        'z': int(z), 'cluster_id': c['cluster_id'],
-        'y0': y0, 'y1': y1, 'x0': x0, 'x1': x1,
-        'crop_cells_y': c['crop_cells_y'], 'crop_cells_x': c['crop_cells_x'],
-        'component_cells': c['component_cells'],
-        'skipped_too_large': c['skipped_too_large'],
-    }
-    if c['skipped_too_large']:
-        row.update({'cluster_t': time.time() - t_cluster, 'feasible': False})
-        return row, None
-    # Voxel-corner slice (cells y0..y1 -> corners y0..y1+1)
-    vy = slice(y0, y1 + 1); vx = slice(x0, x1 + 1)
-    phi_crop = phi_slice[:, vy, vx].copy()
-    phi_anchor_crop = phi_anchor_slice[:, vy, vx].copy()
-    T1, T2 = _triangle_areas_2d(phi_crop[0], phi_crop[1])
-    init_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
-    init_min_tri = float(min(T1.min(), T2.min()))
-    row.update({'init_n_neg_tri': init_n_neg, 'init_min_tri': init_min_tri})
-    if init_n_neg == 0:
-        row.update({'after_l2_n_neg_tri': 0, 'after_l2_min_tri': init_min_tri,
-                    'after_l1_n_neg_tri': 0, 'after_l1_min_tri': init_min_tri,
-                    'l2_passes_run': 0, 'l2_total_nit': 0, 'l2_total_t': 0.0,
-                    'l2_any_timeout': False,
-                    'l1_nit': 0, 'l1_t': 0.0,
-                    'l1_polished': False, 'l1_timed_out': False,
-                    'cluster_t': time.time() - t_cluster, 'feasible': True})
-        return row, None
-    # --- Frozen-edge interior mask --------------------------------------
-    # The mask is pre-computed in enumerate_clusters_2d as exactly the
-    # voxel corners adjacent to a fold cell -- so SLSQP moves only what
-    # needs to move and every other corner stays frozen at its current
-    # (initially-valid) value.
-    interior_mask = c['interior_mask']
-    if not interior_mask.any():
-        # Too small to have any movable interior -- skip.
-        row.update({
-            'after_l2_n_neg_tri': init_n_neg, 'after_l2_min_tri': init_min_tri,
-            'l2_passes_run': 0, 'l2_total_nit': 0, 'l2_total_t': 0.0,
-            'l2_any_timeout': False,
-            'after_l1_n_neg_tri': init_n_neg, 'after_l1_min_tri': init_min_tri,
-            'l1_nit': 0, 'l1_t': 0.0,
-            'l1_polished': False, 'l1_timed_out': False,
-            'cluster_t': time.time() - t_cluster, 'feasible': False,
-        })
-        return row, None
-
-    # --- L2 multi-pass --------------------------------------------------
-    phi_work = phi_crop.copy()
-    l2_total_nit = 0; l2_total_t = 0.0
-    l2_passes_run = 0; l2_any_timeout = False
-    for p in range(L2_MAX_PASSES):
-        T1, T2 = _triangle_areas_2d(phi_work[0], phi_work[1])
-        if int((T1 <= 0).sum() + (T2 <= 0).sum()) == 0:
-            break
-        t0 = time.time()
-        status, payload, info = _run_worker_with_timeout(
-            _bench_worker.local_l2_2d_worker,
-            (phi_work, phi_anchor_crop, interior_mask, THRESHOLD, L2_PASS_MAX_ITER),
-            timeout_s=L2_PASS_TIMEOUT_S)
-        elapsed = time.time() - t0
-        l2_total_t += elapsed
-        l2_passes_run += 1
-        if status == 'ok':
-            phi_new, pass_info = payload
-            phi_work = phi_new
-            l2_total_nit += pass_info['nit']
-        elif status == 'timeout':
-            l2_any_timeout = True
-            break
-        else:
-            break
-    T1_l2, T2_l2 = _triangle_areas_2d(phi_work[0], phi_work[1])
-    after_l2_n_neg = int((T1_l2 <= 0).sum() + (T2_l2 <= 0).sum())
-    after_l2_min = float(min(T1_l2.min(), T2_l2.min()))
-    # --- L1 polish (only if L2 reached n_neg = 0) -----------------------
-    l1_nit = 0; l1_t = 0.0; l1_polished = False; l1_timed_out = False
-    after_l1_n_neg = after_l2_n_neg
-    after_l1_min = after_l2_min
-    phi_l1 = phi_work
-    if after_l2_n_neg == 0:
-        t0 = time.time()
-        status, payload, info = _run_worker_with_timeout(
-            _bench_worker.local_l1_2d_worker,
-            (phi_work, phi_anchor_crop, interior_mask,
-             THRESHOLD, EPS_L1, L1_POLISH_MAX_ITER),
-            timeout_s=L1_POLISH_TIMEOUT_S)
-        l1_t = time.time() - t0
-        if status == 'ok':
-            phi_candidate, pass_info = payload
-            T1c, T2c = _triangle_areas_2d(phi_candidate[0], phi_candidate[1])
-            n_neg_c = int((T1c <= 0).sum() + (T2c <= 0).sum())
-            L1_l2 = float(np.abs(phi_work - phi_anchor_crop).sum())
-            L1_c = float(np.abs(phi_candidate - phi_anchor_crop).sum())
-            if n_neg_c == 0 and L1_c < L1_l2 - 1e-9:
-                phi_l1 = phi_candidate
-                after_l1_n_neg = n_neg_c
-                after_l1_min = float(min(T1c.min(), T2c.min()))
-                l1_polished = True
-            l1_nit = pass_info['nit']
-        elif status == 'timeout':
-            l1_timed_out = True
-    row.update({
-        'after_l2_n_neg_tri': after_l2_n_neg, 'after_l2_min_tri': after_l2_min,
-        'l2_passes_run': l2_passes_run, 'l2_total_nit': l2_total_nit,
-        'l2_total_t': l2_total_t, 'l2_any_timeout': l2_any_timeout,
-        'after_l1_n_neg_tri': after_l1_n_neg, 'after_l1_min_tri': after_l1_min,
-        'l1_nit': l1_nit, 'l1_t': l1_t,
-        'l1_polished': l1_polished, 'l1_timed_out': l1_timed_out,
-        'cluster_t': time.time() - t_cluster,
-        'feasible': bool(after_l1_n_neg == 0),
-    })
-    return row, phi_l1
-
-
 def _partition_clusters_nonoverlapping(clusters):
     """Greedy graph-colour: pack clusters into rounds where no two
     clusters in the same round have *adjacent or overlapping* bboxes.
@@ -643,7 +511,6 @@ def process_one_slice(z, phi_full, phi_anchor_full, executor=None):
     # Outer loop: each full-grid cluster solve has no frozen edges so it
     # can introduce new folds at adjacent cells. Re-find clusters and
     # re-solve until n_neg = 0 or no improvement.
-    prev_n_neg = init_n_neg
     t_slice_start = time.time()
     # Per-cell extra-dilation: counts how many times a fold cell has
     # been in a cluster that failed to improve. Fed back into
@@ -665,7 +532,6 @@ def process_one_slice(z, phi_full, phi_anchor_full, executor=None):
         total_clusters += len(clusters)
         any_processed_this_pass = False
         rounds = _partition_clusters_nonoverlapping(clusters)
-        processed_in_outer = 0
         for r_idx, round_clusters in enumerate(rounds):
             if time.time() - t_slice_start > MAX_SLICE_TIME_S:
                 break
@@ -710,7 +576,6 @@ def process_one_slice(z, phi_full, phi_anchor_full, executor=None):
                     n_skipped += 1
                     continue
                 n_processed += 1
-                processed_in_outer += 1
                 any_processed_this_pass = True
                 if crow.get('l2_any_timeout'):
                     n_l2_timeout += 1
@@ -720,17 +585,21 @@ def process_one_slice(z, phi_full, phi_anchor_full, executor=None):
                 total_l1_t += float(crow.get('l1_t', 0.0) or 0.0)
                 if phi_l1 is not None:
                     _splice_interior(phi_slice, c, phi_l1)
-                # Update per-cell extra_dilation for cells in this
-                # cluster: cells in failing clusters get +1 (so next
-                # iter dilates them more); cells in succeeding clusters
-                # reset to 0.
-                y0, y1 = c['y0'], c['y1']
-                x0, x1 = c['x0'], c['x1']
-                if crow.get('feasible'):
-                    extra_dilation[y0:y1, x0:x1] = 0
-                else:
-                    extra_dilation[y0:y1, x0:x1] = np.minimum(
-                        extra_dilation[y0:y1, x0:x1] + 1, 4)
+                # Per-cell extra_dilation escalation is disabled: it was
+                # the same over-merging problem at the per-cell level --
+                # accumulated escalation merges nearby small failing
+                # clusters into bigger blobs that SLSQP can't crack. The
+                # Schwarz-tiling experiment confirmed constant dilation=1
+                # is strictly better. extra_dilation stays at 0.
+                # (Original behavior preserved as the +=1 branch below,
+                # commented out for reference.)
+                # y0, y1 = c['y0'], c['y1']
+                # x0, x1 = c['x0'], c['x1']
+                # if crow.get('feasible'):
+                #     extra_dilation[y0:y1, x0:x1] = 0
+                # else:
+                #     extra_dilation[y0:y1, x0:x1] = np.minimum(
+                #         extra_dilation[y0:y1, x0:x1] + 1, 4)
             # Heartbeat at the end of each round so the user sees progress.
             T1_now, T2_now = _triangle_areas_2d(phi_slice[0], phi_slice[1])
             n_now = int((T1_now <= 0).sum() + (T2_now <= 0).sum())
@@ -748,7 +617,6 @@ def process_one_slice(z, phi_full, phi_anchor_full, executor=None):
             break
         if not any_processed_this_pass:
             break
-        prev_n_neg = n_neg_now
     T1_f, T2_f = _triangle_areas_2d(phi_slice[0], phi_slice[1])
     after_l1_n_neg = int((T1_f <= 0).sum() + (T2_f <= 0).sum())
     after_l1_min_tri = float(min(T1_f.min(), T2_f.min()))

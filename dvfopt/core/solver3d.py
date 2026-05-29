@@ -306,7 +306,7 @@ def _serial_fix_voxel(
         )
         iter_times.append(elapsed)
         if not opt_success:
-            _log(verbose, 2,
+            _log(verbose, 1,
                  f"  [warn] SLSQP did not converge at win {sz}x{sy}x{sx} "
                  f"centre ({cz},{cy},{cx})")
 

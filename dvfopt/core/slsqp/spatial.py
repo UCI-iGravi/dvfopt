@@ -29,6 +29,40 @@ def argmin_quality(jacobian_matrix):
     return (int(idx[0]), int(idx[1]))
 
 
+def _bbox_window_nd(neg_field, center, pad, *,
+                    labeled=None, connectivity_full=True):
+    """Generic N-dimensional bounding-box window helper.
+
+    Used by both the 2D and 3D variants. ``neg_field`` is the negative-mask
+    field (already thresholded), and ``center`` is an integer index tuple
+    of matching dimensionality.
+
+    Returns ``(size_tuple, bbox_center_tuple)`` — each axis is at least 3.
+    """
+    if labeled is None:
+        if connectivity_full:
+            structure = np.ones((3,) * neg_field.ndim)
+            labeled, _ = label(neg_field, structure=structure)
+        else:
+            labeled, _ = label(neg_field)
+
+    region_label = labeled[center]
+    if region_label == 0:
+        return (3,) * neg_field.ndim, center
+
+    coords = np.where(labeled == region_label)
+    sizes = []
+    centers = []
+    for axis_coords, axis_len in zip(coords, neg_field.shape):
+        lo = max(int(axis_coords.min()) - pad, 0)
+        hi = min(int(axis_coords.max()) + pad, axis_len - 1)
+        sizes.append(max(hi - lo + 1, 3))
+        # Centre rounded UP so the window aligns with the bbox even when
+        # the size is even (hy = size // 2 rounds down).
+        centers.append((lo + hi + 1) // 2)
+    return tuple(sizes), tuple(centers)
+
+
 def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
                              labeled=None, pad=2):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
@@ -66,33 +100,9 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
     bbox_center : tuple of int
         ``(y, x)`` centre of the bounding box.
     """
-    if labeled is None:
-        neg_mask = jacobian_matrix[0] <= threshold - err_tol
-        labeled, _ = label(neg_mask)
-    region_label = labeled[center_yx[0], center_yx[1]]
-
-    if region_label == 0:
-        # Pixel is not negative (shouldn't happen, but be safe)
-        return (3, 3), center_yx
-
-    region_ys, region_xs = np.where(labeled == region_label)
-    # Bounding box of the connected negative region + pad pixel border,
-    # clamped to the grid so edge-touching regions don't go out of bounds.
-    H, W = jacobian_matrix.shape[1:]
-    y_min = max(int(region_ys.min()) - pad, 0)
-    y_max = min(int(region_ys.max()) + pad, H - 1)
-    x_min = max(int(region_xs.min()) - pad, 0)
-    x_max = min(int(region_xs.max()) + pad, W - 1)
-
-    # Rectangular window matching the bounding box (floor 3 per dim).
-    height = max(y_max - y_min + 1, 3)
-    width = max(x_max - x_min + 1, 3)
-
-    # Round centre UP so that the window [cy - hy, cy + hy_hi) aligns with the
-    # bbox.  hy = height // 2 rounds down, so the window extends further in the
-    # +y / +x direction.  Rounding the centre up compensates for this.
-    bbox_center = ((y_min + y_max + 1) // 2, (x_min + x_max + 1) // 2)
-    return (height, width), bbox_center
+    neg_field = jacobian_matrix[0] <= threshold - err_tol
+    return _bbox_window_nd(neg_field, tuple(center_yx), pad,
+                           labeled=labeled, connectivity_full=False)
 
 
 def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_tol):

@@ -10,7 +10,11 @@ from dvfopt.jacobian import (
     triangulated_shoelace_det2D,
 )
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.jacobian.triangle_sign import (
+    _triangle_areas_2d,
+    _corner_patch_areas_2d,
+    _triangle_areas_2d_full_coverage,
+)
 
 
 def _make_phi(dy, dx):
@@ -136,3 +140,84 @@ def test_internal_area_matches_sign_function():
     signs = triangle_sign_det2D(phi)
     assert np.array_equal(signs[0], np.sign(T1).astype(np.int8))
     assert np.array_equal(signs[1], np.sign(T2).astype(np.int8))
+
+
+# -----------------------------------------------------------------------------
+# Full-coverage variant: per-cell TR-BL split + two corner patch triangles
+# -----------------------------------------------------------------------------
+
+class TestCornerPatchAreas:
+    """The standard ``_triangle_areas_2d`` leaves vertices ``(0, 0)`` and
+    ``(H-1, W-1)`` each covered by exactly one triangle — a coverage gap.
+    The patch helpers close that gap."""
+
+    def test_identity_patches_are_half(self):
+        H, W = 5, 6
+        dy = np.zeros((H, W))
+        dx = np.zeros((H, W))
+        patches = _corner_patch_areas_2d(dy, dx)
+        np.testing.assert_allclose(patches, [0.5, 0.5])
+
+    def test_full_coverage_returns_three_arrays(self):
+        H, W = 5, 6
+        dy = np.zeros((H, W))
+        dx = np.zeros((H, W))
+        T1, T2, patches = _triangle_areas_2d_full_coverage(dy, dx)
+        assert T1.shape == (H - 1, W - 1)
+        assert T2.shape == (H - 1, W - 1)
+        assert patches.shape == (2,)
+        # Every entry of identity-field areas is +0.5.
+        np.testing.assert_allclose(T1, 0.5)
+        np.testing.assert_allclose(T2, 0.5)
+        np.testing.assert_allclose(patches, 0.5)
+
+    def test_patch_at_00_catches_fold_at_corner(self):
+        """Move only vertex (0,0) inward enough to fold the (0,0) corner.
+        The standard T2[0,0] catches this; the patch should too."""
+        H, W = 4, 4
+        dy = np.zeros((H, W))
+        dx = np.zeros((H, W))
+        # Push vertex (0, 0) far down-right so the patch triangle inverts.
+        dy[0, 0] = 3.0
+        dx[0, 0] = 3.0
+        patches = _corner_patch_areas_2d(dy, dx)
+        assert patches[0] < 0, "patch at (0,0) should detect the planted fold"
+
+    def test_patch_at_br_catches_fold_at_corner(self):
+        H, W = 4, 4
+        dy = np.zeros((H, W))
+        dx = np.zeros((H, W))
+        # Push vertex (H-1, W-1) far up-left to fold the BR patch triangle.
+        dy[H - 1, W - 1] = -3.0
+        dx[H - 1, W - 1] = -3.0
+        patches = _corner_patch_areas_2d(dy, dx)
+        assert patches[1] < 0, "patch at (H-1,W-1) should detect the planted fold"
+
+    def test_every_vertex_now_in_at_least_two_triangles(self):
+        """Verify coverage from production area formulas, not hand-coded tuples."""
+        for H, W in [(4, 4), (5, 6), (8, 10)]:
+            dy = np.zeros((H, W))
+            dx = np.zeros((H, W))
+            T1, T2, patches = _triangle_areas_2d_full_coverage(dy, dx)
+            baseline = np.concatenate([T1.ravel(), T2.ravel(), patches.ravel()])
+            eps = 1e-3
+            coverage = np.zeros((H, W), dtype=int)
+
+            for y in range(H):
+                for x in range(W):
+                    touched = np.zeros_like(baseline, dtype=bool)
+                    for arr_name in ("dy", "dx"):
+                        dy_p = dy.copy()
+                        dx_p = dx.copy()
+                        if arr_name == "dy":
+                            dy_p[y, x] += eps
+                        else:
+                            dx_p[y, x] += eps
+                        T1_p, T2_p, patches_p = _triangle_areas_2d_full_coverage(dy_p, dx_p)
+                        probe = np.concatenate([T1_p.ravel(), T2_p.ravel(), patches_p.ravel()])
+                        touched |= np.abs(probe - baseline) > 1e-12
+                    coverage[y, x] = int(touched.sum())
+
+            assert coverage.min() >= 2, (
+                f"{H}x{W}: weakest vertex still has only {coverage.min()} triangles"
+            )

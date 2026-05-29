@@ -11,10 +11,10 @@ import time
 import numpy as np
 import torch
 from scipy.ndimage import label
-from scipy.optimize import minimize
 
 from dvfopt._defaults import _log, _resolve_params
 from dvfopt.core.solver import _setup_accumulators, _print_summary
+from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
 
@@ -38,20 +38,9 @@ def _coerce_2d(deformation):
 # ============================================================
 # Numpy / scipy backend
 # ============================================================
-def _adjoint_central_diff(w, axis):
-    n = w.shape[axis]
-    if n == 1:
-        return np.zeros_like(w)
-    w_m = np.moveaxis(w, axis, 0)
-    out_m = np.zeros_like(w_m)
-    c_next = np.full(n, 0.5);  c_next[0] = 1.0
-    c_prev = np.full(n, 0.5);  c_prev[n - 1] = 1.0
-    bshape = [1] * w_m.ndim;  bshape[0] = n - 1
-    out_m[1:n] += c_next[:n - 1].reshape(bshape) * w_m[:n - 1]
-    out_m[0:n - 1] -= c_prev[1:n].reshape(bshape) * w_m[1:n]
-    out_m[0] -= w_m[0]
-    out_m[n - 1] += w_m[n - 1]
-    return np.moveaxis(out_m, 0, axis)
+# _adjoint_central_diff is the dimension-agnostic adjoint of np.gradient;
+# defined once in barrier_objective.
+from dvfopt.core.barrier_objective import _adjoint_central_diff  # noqa: E402
 
 
 def _split_phi_2d(phi_flat, grid_size):
@@ -89,31 +78,6 @@ def _jdet_grad_T_v_2d(phi_flat, grid_size, v):
     out[:n] = g_dx.ravel()
     out[n:] = g_dy.ravel()
     return out
-
-
-def _penalty_2d(phi_flat, phi_init_flat, grid_size, threshold, margin, lam):
-    diff = phi_flat - phi_init_flat
-    data = 0.5 * float(np.dot(diff, diff))
-    j = _jdet_2d_flat(phi_flat, grid_size)
-    target = threshold + margin
-    viol = np.maximum(0.0, target - j)
-    pen = lam * float(np.dot(viol, viol))
-    grad = diff.copy()
-    if np.any(viol > 0):
-        grad += _jdet_grad_T_v_2d(phi_flat, grid_size, -2.0 * lam * viol)
-    return data + pen, grad
-
-
-def _barrier_2d(phi_flat, phi_init_flat, grid_size, threshold, mu):
-    diff = phi_flat - phi_init_flat
-    data = 0.5 * float(np.dot(diff, diff))
-    j = _jdet_2d_flat(phi_flat, grid_size)
-    slack = j - threshold
-    if np.any(slack <= 0.0):
-        return np.inf, np.zeros_like(phi_flat)
-    bar = -mu * float(np.log(slack).sum())
-    grad = diff + _jdet_grad_T_v_2d(phi_flat, grid_size, -mu / slack)
-    return data + bar, grad
 
 
 def _pack_phi_2d(phi2):
@@ -178,42 +142,21 @@ def _optimize_patch_2d(phi, y0, y1, x0, x1, grid_shape,
     frozen_mask = _patch_frozen_mask_2d(y0, y1, x0, x1, grid_shape)
     bounds = _patch_bounds_2d(phi_flat, frozen_mask)
 
-    target = threshold + margin
-    j0 = _jdet_2d_flat(phi_flat, patch_size)
-    feasible = float(j0.min()) >= target
-
-    lam_steps = 0
-    mu_steps = 0
-
-    for lam in lam_schedule:
-        if feasible:
-            break
-        res = minimize(_penalty_2d, phi_flat,
-                       args=(phi_anchor, patch_size, threshold, margin, lam),
-                       jac=True, method="L-BFGS-B", bounds=bounds,
-                       options={"maxiter": max_minimize_iter, "gtol": 1e-6,
-                                "disp": verbose >= 3})
-        phi_flat = res.x
-        lam_steps += 1
-        j = _jdet_2d_flat(phi_flat, patch_size)
-        if float(j.min()) >= target:
-            feasible = True
-            break
-
-    if feasible:
-        for mu in mu_schedule:
-            res = minimize(_barrier_2d, phi_flat,
-                           args=(phi_anchor, patch_size, threshold, mu),
-                           jac=True, method="L-BFGS-B", bounds=bounds,
-                           options={"maxiter": max_minimize_iter, "gtol": 1e-6,
-                                    "disp": verbose >= 3})
-            phi_flat = res.x
-            mu_steps += 1
+    phi_flat, info = run_penalty_barrier_lbfgs(
+        phi_flat, phi_anchor,
+        constraint_values=lambda p: _jdet_2d_flat(p, patch_size),
+        constraint_adjoint=lambda p, v: _jdet_grad_T_v_2d(p, patch_size, v),
+        threshold=threshold, margin=margin,
+        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        max_iter=max_minimize_iter,
+        bounds=bounds, anchor='l2',
+        verbose=max(0, verbose - 2),
+    )
 
     phi_patch = _unpack_phi_2d(phi_flat, patch_size)
     phi[:, y0:y1 + 1, x0:x1 + 1] = phi_patch
 
-    return lam_steps, mu_steps
+    return info['lam_steps'], info['mu_steps']
 
 
 def iterative_2d_barrier(
@@ -267,12 +210,14 @@ def iterative_2d_barrier(
 
     if windowed:
         structure = np.ones((3, 3))  # 8-connectivity
+        converged = False
         for iteration in range(max_iterations):
             phi_flat = _pack_phi_2d(phi)
             j = _jdet_2d_flat(phi_flat, grid_size).reshape(H, W)
             neg_mask = j <= threshold - err_tol
             if not neg_mask.any():
                 _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
+                converged = True
                 break
 
             labeled, n_components = label(neg_mask, structure=structure)
@@ -306,45 +251,34 @@ def iterative_2d_barrier(
                  f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
                  f"L2={l2:.4f}  t={elapsed:.2f}s")
             if cur_neg == 0 and cur_min >= threshold - err_tol:
+                converged = True
                 break
+        if not converged:
+            _log(verbose, 1,
+                 f"[done] max_iterations={max_iterations} reached without "
+                 f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})")
     else:
-        # Full-grid mode
+        # Full-grid mode -- delegate to the unified penalty->barrier core.
         phi_flat = _pack_phi_2d(phi)
-        feasible = init_min >= target
-        cur_min = init_min
-        for k, lam in enumerate(lam_schedule):
-            if feasible: break
-            t0 = time.time()
-            res = minimize(_penalty_2d, phi_flat,
-                           args=(phi_init_flat, grid_size, threshold, margin, lam),
-                           jac=True, method="L-BFGS-B",
-                           options={"maxiter": max_minimize_iter, "gtol": 1e-6})
-            elapsed = time.time() - t0
-            iter_times.append(elapsed)
-            phi_flat = res.x
-            j = _jdet_2d_flat(phi_flat, grid_size)
-            cur_neg = int((j <= 0).sum()); cur_min = float(j.min())
-            l2 = float(np.linalg.norm(phi_flat - phi_init_flat))
-            num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-            _log(verbose, 1, f"[penalty {k+1}] lam={lam:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s")
-            if cur_min >= target: feasible = True; break
-
-        if feasible:
-            for k, mu in enumerate(mu_schedule):
-                t0 = time.time()
-                res = minimize(_barrier_2d, phi_flat,
-                               args=(phi_init_flat, grid_size, threshold, mu),
-                               jac=True, method="L-BFGS-B",
-                               options={"maxiter": max_minimize_iter, "gtol": 1e-6})
-                elapsed = time.time() - t0
-                iter_times.append(elapsed)
-                phi_flat = res.x
-                j = _jdet_2d_flat(phi_flat, grid_size)
-                cur_neg = int((j <= 0).sum()); cur_min = float(j.min())
-                l2 = float(np.linalg.norm(phi_flat - phi_init_flat))
-                num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-                _log(verbose, 1, f"[barrier {k+1}] mu={mu:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s")
-
+        phi_flat, info = run_penalty_barrier_lbfgs(
+            phi_flat, phi_init_flat,
+            constraint_values=lambda p: _jdet_2d_flat(p, grid_size),
+            constraint_adjoint=lambda p, v: _jdet_grad_T_v_2d(p, grid_size, v),
+            threshold=threshold, margin=margin,
+            lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+            max_iter=max_minimize_iter,
+            anchor='l2',
+            verbose=verbose, record_history=True,
+            log_prefix='',
+        )
+        # Reconstruct accumulator lists so _print_summary's iteration count
+        # and the returned arrays match the per-step bookkeeping that the
+        # in-line loop used to produce.
+        for step in info['history']:
+            num_neg_jac.append(step['n_neg'])
+            min_jdet_list.append(step['min_T'])
+            error_list.append(0.0)  # L2 per-step is not recorded by core
+            iter_times.append(step['wall_s'])
         phi = _unpack_phi_2d(phi_flat, grid_size)
 
     elapsed = time.time() - start

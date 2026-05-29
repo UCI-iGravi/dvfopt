@@ -49,18 +49,26 @@ def laplacianA1D(n, boundaryIndices):
     # Dirichlet points: diagonal = 1, no off-diagonal connections
     data[boundaryIndices] = 1.0
 
-    # Off-diagonal: connect (i) <-> (i±1), skip boundary rows and volume edges
-    # Left neighbour: row i, col i-1 for i in [1, n), excluding boundary rows
+    # Off-diagonal: connect (i) <-> (i±1), skip boundary rows AND boundary
+    # columns. Zeroing boundary *columns* (not just rows) makes the matrix
+    # symmetric, which is required for the CG solver. The removed
+    # A[i,b] = -1 entries are compensated in the RHS via
+    # propagate_dirichlet_rhs() in the calling code.
+
+    # Left neighbour: row i, col i-1 for i in [1, n), excluding both
+    # boundary rows and boundary columns
     rows_left = np.arange(1, n)
     valid_left = ~is_boundary[rows_left]
     r_left = rows_left[valid_left]
     c_left = r_left - 1
+    keep = ~is_boundary[c_left]; r_left = r_left[keep]; c_left = c_left[keep]
 
-    # Right neighbour: row i, col i+1 for i in [0, n-1), excluding boundary rows
+    # Right neighbour: row i, col i+1 for i in [0, n-1)
     rows_right = np.arange(0, n - 1)
     valid_right = ~is_boundary[rows_right]
     r_right = rows_right[valid_right]
     c_right = r_right + 1
+    keep = ~is_boundary[c_right]; r_right = r_right[keep]; c_right = c_right[keep]
 
     row = np.concatenate([np.arange(n), r_left, r_right])
     col = np.concatenate([np.arange(n), c_left, c_right])
@@ -116,27 +124,34 @@ def laplacianA2D(shape, boundaryIndices):
     data[boundaryIndices] = 1.0
 
     # Off-diagonal entries: connect to 4-connected neighbours, skipping
-    # boundary rows and volume-edge rows
+    # boundary rows AND boundary columns. Zeroing boundary *columns* makes
+    # the matrix symmetric, which is required for the CG solver. The removed
+    # A[i,b] = -1 entries are compensated in the RHS via
+    # propagate_dirichlet_rhs() in the calling code.
 
     # (r-1, c): valid when R > 0 and not boundary
     mask = (R > 0) & ~is_boundary
     r_up = ids[mask]
     c_up = r_up - n1
+    keep = ~is_boundary[c_up]; r_up = r_up[keep]; c_up = c_up[keep]
 
     # (r+1, c): valid when R < n0-1 and not boundary
     mask = (R < n0 - 1) & ~is_boundary
     r_dn = ids[mask]
     c_dn = r_dn + n1
+    keep = ~is_boundary[c_dn]; r_dn = r_dn[keep]; c_dn = c_dn[keep]
 
     # (r, c-1): valid when C > 0 and not boundary
     mask = (C > 0) & ~is_boundary
     r_lt = ids[mask]
     c_lt = r_lt - 1
+    keep = ~is_boundary[c_lt]; r_lt = r_lt[keep]; c_lt = c_lt[keep]
 
     # (r, c+1): valid when C < n1-1 and not boundary
     mask = (C < n1 - 1) & ~is_boundary
     r_rt = ids[mask]
     c_rt = r_rt + 1
+    keep = ~is_boundary[c_rt]; r_rt = r_rt[keep]; c_rt = c_rt[keep]
 
     n_offdiag = len(r_up) + len(r_dn) + len(r_lt) + len(r_rt)
     row = np.concatenate([ids, r_up, r_dn, r_lt, r_rt])

@@ -68,6 +68,65 @@ def _triangle_areas_2d(dy, dx):
     return T1, T2
 
 
+def _corner_patch_areas_2d(dy, dx):
+    """Two extra triangles needed for full vertex coverage of the TR-BL split.
+
+    The per-cell TR-BL scheme in :func:`_triangle_areas_2d` leaves
+    vertex ``(0, 0)`` (top-left grid corner) and vertex ``(H-1, W-1)``
+    (bottom-right grid corner) each covered by only one triangle —
+    a coverage gap. This helper returns two patch triangles using the
+    *opposite* (TL-BR) diagonal at cells ``(0, 0)`` and ``(H-2, W-2)``,
+    one per gap corner. Combining the standard areas with these patches
+    gives every vertex of the grid coverage of at least two triangles.
+
+    Sign convention matches :func:`_triangle_areas_2d`: positive = valid
+    under the +y-down convention.
+
+    Parameters
+    ----------
+    dy, dx : ndarray, shape ``(H, W)``
+
+    Returns
+    -------
+    ndarray of shape ``(2,)`` — ``[patch_TL, patch_BR]``.
+    """
+    H, W = dy.shape
+    ref_y, ref_x = _ref_grid(H, W)
+    def_x = ref_x + dx
+    def_y = ref_y + dy
+
+    # Patch triangle at cell (0, 0), vertices (TL, BR, TR) — winds so that
+    # an identity field gives +0.5 area. Vertex (0, 0) is A here.
+    Ax, Ay = def_x[0, 0], def_y[0, 0]
+    Bx, By = def_x[1, 1], def_y[1, 1]
+    Cx, Cy = def_x[0, 1], def_y[0, 1]
+    patch_tl = -0.5 * ((Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax))
+
+    # Patch triangle at cell (H-2, W-2), vertices (TL, BL, BR). Vertex
+    # (H-1, W-1) is C here.
+    Ax, Ay = def_x[H - 2, W - 2], def_y[H - 2, W - 2]
+    Bx, By = def_x[H - 1, W - 2], def_y[H - 1, W - 2]
+    Cx, Cy = def_x[H - 1, W - 1], def_y[H - 1, W - 1]
+    patch_br = -0.5 * ((Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax))
+
+    return np.array([patch_tl, patch_br])
+
+
+def _triangle_areas_2d_full_coverage(dy, dx):
+    """Standard per-cell triangles plus the two corner-patch triangles.
+
+    Returns ``(T1, T2, patches)`` where ``T1, T2`` are exactly
+    :func:`_triangle_areas_2d`'s output and ``patches`` is
+    :func:`_corner_patch_areas_2d`'s output. Together they form the
+    full-coverage 2-triangle check: every vertex of the ``(H, W)`` grid,
+    including the two diagonally-opposite corner vertices that the
+    standard scheme under-covers, is touched by at least two triangles.
+    """
+    T1, T2 = _triangle_areas_2d(dy, dx)
+    patches = _corner_patch_areas_2d(dy, dx)
+    return T1, T2, patches
+
+
 def _triangle_signs_2d(dy, dx):
     """Sign of each per-pixel triangle area in {-1, 0, +1}.
 

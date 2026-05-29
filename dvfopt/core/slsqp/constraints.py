@@ -141,12 +141,17 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
     exclude_bounds = not is_at_edge and not window_reached_max
     inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
 
-    nlc = NonlinearConstraint(
-        lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
-        threshold, np.inf,
-        jac=lambda phi1: jdet_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
-    )
-    constraints = [nlc]
+    # The strict 4-triangle-per-cell constraint (enforce_triangles) already
+    # implies Jdet >= threshold at the cell level — applying both is
+    # redundant and roughly doubles SLSQP's per-iteration cost. So when
+    # triangles are enforced, drop the pixel-Jdet constraint.
+    constraints = []
+    if not enforce_triangles:
+        constraints.append(NonlinearConstraint(
+            lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
+            threshold, np.inf,
+            jac=lambda phi1: jdet_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
+        ))
 
     if enforce_shoelace:
         constraints.append(NonlinearConstraint(
