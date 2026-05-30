@@ -24,7 +24,7 @@ Two modes:
   component, run penalty→barrier on each patch with a frozen
   Dirichlet ring, repeat until all folds are cleared. Cuts memory and
   compute drastically when folds are spatially clustered (the common
-  case). The patterned pattern is the same one used by
+  case). The pattern is the same one used by
   :mod:`dvfopt.core.iterative3d_barrier_torch` for the 3D Jdet path.
 
 The batched-non-overlapping-patches optimization from the Jdet path is
@@ -89,7 +89,6 @@ def _patch_corner_bbox(cz, cy, cx, pad, D, H, W):
 
 def _optimize_patch_3d_tet_torch(
     phi_full,
-    phi_init_full,
     z0,
     z1,
     y0,
@@ -109,9 +108,10 @@ def _optimize_patch_3d_tet_torch(
     """Run penalty → barrier on a single patch, splicing result into ``phi_full``.
 
     The patch spans corners ``(z0..z1, y0..y1, x0..x1)`` inclusive. The
-    outermost layer of corners within the patch is FROZEN to
-    ``phi_init_full`` (matches the Dirichlet-boundary semantics of the
-    existing 3D Jdet windowed solver); interior corners are free.
+    outermost layer of corners within the patch is FROZEN to the
+    *current* ``phi_full`` state (matching the existing 3D Jdet windowed
+    solver: subsequent outer rounds don't have to fight each other's
+    boundary choices); interior corners are free.
 
     Mutates ``phi_full`` in place (overwrites the patch range with the
     optimized result). Other regions of ``phi_full`` are untouched.
@@ -128,17 +128,13 @@ def _optimize_patch_3d_tet_torch(
         # Degenerate patch — no cells to optimize. Skip.
         return 0, 0
 
-    # phi_init_patch: the boundary-Dirichlet reference for this patch.
-    phi_init_patch = phi_init_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].detach().clone()
     # Start the variable at the CURRENT full-grid state — any prior outer
     # iter may have moved the boundary corners; we want those to be the
-    # locked values for this run.
+    # locked values for this run. The boundary-Dirichlet reference is
+    # taken from the same snapshot so the frozen ring stays put.
     phi_patch_var = (
         phi_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].detach().clone().requires_grad_(True)
     )
-    # Use the current state as the frozen-boundary reference too — this
-    # is what the existing 3D Jdet windowed solver does so subsequent
-    # outer iters don't have to fight each other's boundary choices.
     phi_init_patch = phi_patch_var.detach().clone()
 
     # Build the frozen-corner mask. The outermost layer in each axis is
@@ -387,19 +383,29 @@ def iterative_3d_tet_barrier_torch(
             with torch.no_grad():
                 V = volumes(phi_full)
                 fold_cells_mask = (V.min(dim=0).values < threshold_f).cpu().numpy()
-            n_fold = int(fold_cells_mask.sum())
+                # ``n_neg`` matches the canonical schema used by the
+                # final-stats logging below and by the rest of the
+                # wallbreaker family (tets with V <= 0). The
+                # cells-below-threshold count is preserved under
+                # ``n_fold_cells`` for windowed-mode diagnostics.
+                n_neg = int((V <= 0).sum().item())
+            n_fold_cells = int(fold_cells_mask.sum())
             if verbose >= 1:
-                print(f'[windowed outer {outer_iter}] fold cells: {n_fold}')
+                print(
+                    f'[windowed outer {outer_iter}] fold cells: {n_fold_cells}  '
+                    f'tets with V<=0: {n_neg}'
+                )
             if record_history:
                 history.append(
                     dict(
                         phase=f'outer_{outer_iter}_pre',
                         step=outer_iter,
-                        n_neg=n_fold,
+                        n_neg=n_neg,
+                        n_fold_cells=n_fold_cells,
                         min_T=float(V.min().item()),
                     )
                 )
-            if n_fold == 0:
+            if n_fold_cells == 0:
                 break
 
             labeled, n_comp = cc_label(fold_cells_mask, structure=struct)
@@ -418,7 +424,6 @@ def iterative_3d_tet_barrier_torch(
                 )
                 lam_steps, mu_steps = _optimize_patch_3d_tet_torch(
                     phi_full,
-                    phi_init,  # passed for signature consistency; not actually used as Dirichlet
                     z0,
                     z1,
                     y0,

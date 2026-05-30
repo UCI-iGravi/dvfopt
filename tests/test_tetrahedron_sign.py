@@ -423,6 +423,43 @@ class TestTetBarrierTorch:
         for h in history:
             assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T'
 
+    def test_windowed_n_neg_uses_canonical_tet_count(self):
+        """PR #15 review (e): ``n_neg`` in windowed-mode history must
+        mean "tets with V <= 0" (canonical schema), NOT "cells below
+        threshold". Before the fix the per-outer pre-record entries
+        used the cells count while the final-record used the tets
+        count, breaking downstream
+        :meth:`SolveInfo.from_legacy_history` consumers."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        phi = np.zeros((3, 6, 6, 6))
+        phi[1, 2, 2, 2] = 1.8
+        phi[2, 2, 2, 2] = 1.8
+
+        V0 = six_tet_volumes_3d(phi)
+        expected_tets_neg = int((V0 <= 0).sum())
+        # On this fixture the cell count is strictly less than the tet
+        # count (each folded cell contributes multiple folded tets), so
+        # the bug — if it returned — would surface as a mismatch here.
+        expected_cells_below = int((V0.min(axis=0) < 0.01).sum())
+        assert expected_tets_neg > expected_cells_below, (
+            'fixture should plant more folded tets than folded cells '
+            f'(tets={expected_tets_neg}, cells={expected_cells_below}) '
+            'so the schema-mismatch bug has something to surface'
+        )
+
+        _, history = iterative_3d_tet_barrier_torch(
+            phi, windowed=True, pad=2, verbose=0, device='cpu', record_history=True
+        )
+        pre_entry = next(h for h in history if h.get('phase', '').endswith('_pre'))
+        assert pre_entry['n_neg'] == expected_tets_neg, (
+            f'windowed pre-record n_neg={pre_entry["n_neg"]} should match '
+            f'tet-count {expected_tets_neg}, not cell-count {expected_cells_below}'
+        )
+        # The cell-count is still preserved under a different key.
+        assert pre_entry.get('n_fold_cells') == expected_cells_below
+
     def test_windowed_matches_full_grid_feasibility(self):
         """Both modes should reach feasibility on the same input. L2
         distances may differ slightly (windowed locks more boundary
