@@ -223,6 +223,116 @@ class TestFlatPack:
 # ---------------------------------------------------------------------------
 
 
+class TestTet6SparseJacobian:
+    """The sparse forward Jacobian (used by SLSQP) should match the
+    analytical adjoint (``J.T @ v``) and the finite-difference dense
+    Jacobian. This is the analogue of
+    ``test_tri_constraint_2d_sparse_jacobian_matches_dense``."""
+
+    def test_shape_and_nnz(self):
+        from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
+
+        D, H, W = 3, 4, 5
+        J = build_tet_sparse_jac(D, H, W)(np.zeros(3 * D * H * W))
+        n_constraints = 6 * (D - 1) * (H - 1) * (W - 1)
+        n_variables = 3 * D * H * W
+        assert J.shape == (n_constraints, n_variables)
+        assert J.nnz == 72 * (D - 1) * (H - 1) * (W - 1)
+
+    def test_transpose_matches_analytical_adjoint(self):
+        from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
+
+        rng = np.random.default_rng(0)
+        D, H, W = 3, 4, 5
+        phi = rng.normal(0, 0.05, 3 * D * H * W)
+        v = rng.normal(size=6 * (D - 1) * (H - 1) * (W - 1))
+        J = build_tet_sparse_jac(D, H, W)(phi)
+        sparse_adjoint = J.T @ v
+        ana = tet_grad_T_v(phi, D, H, W, v)
+        assert float(np.abs(sparse_adjoint - ana).max()) < 1e-14
+
+    def test_matches_finite_difference_dense(self):
+        from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
+
+        rng = np.random.default_rng(0)
+        D, H, W = 3, 4, 4
+        phi = rng.normal(0, 0.05, 3 * D * H * W)
+        J = build_tet_sparse_jac(D, H, W)(phi).toarray()
+
+        eps = 1e-6
+        n_vars = 3 * D * H * W
+        n_constr = 6 * (D - 1) * (H - 1) * (W - 1)
+        J_fd = np.zeros((n_constr, n_vars))
+        for i in range(n_vars):
+            p = phi.copy()
+            p[i] += eps
+            m = phi.copy()
+            m[i] -= eps
+            J_fd[:, i] = (tet_volumes_flat(p, D, H, W) - tet_volumes_flat(m, D, H, W)) / (2 * eps)
+        assert float(np.abs(J - J_fd).max()) < 1e-6
+
+    def test_constraint_jacobian_method(self):
+        """``Tet6Constraint3D.jacobian()`` should return the same thing
+        as the underlying ``build_tet_sparse_jac``."""
+        from dvfopt import Tet6Constraint3D
+
+        rng = np.random.default_rng(0)
+        c = Tet6Constraint3D(shape=(3, 4, 5))
+        phi = rng.normal(0, 0.05, c.n_variables)
+        J = c.jacobian(phi)
+        assert J.shape == (c.n_constraints, c.n_variables)
+        # Round-trip via the analytical adjoint.
+        v = rng.normal(size=c.n_constraints)
+        assert float(np.abs(J.T @ v - c.adjoint(phi, v)).max()) < 1e-14
+
+
+class TestSLSQPOnTet:
+    """End-to-end: direct scipy SLSQP using ``Tet6Constraint3D.jacobian()``
+    should clear a planted 3D fold. Today this is the only way to drive
+    SLSQP on tet — no Strategy is wired (3D SLSQP doesn't scale, so
+    there's no `SLSQPFullGrid3DStrategy`). When such a Strategy is
+    eventually added, this test guards the math underneath it."""
+
+    def test_clears_planted_fold(self):
+        from scipy.optimize import NonlinearConstraint, minimize
+
+        from dvfopt import Tet6Constraint3D
+
+        # Single-corner push that flips multiple tets meeting at that corner.
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+
+        c = Tet6Constraint3D(shape=(4, 4, 4))
+        flat_init = c.flatten(phi)
+        V_init = c.values(flat_init)
+        assert (V_init <= 0).any(), 'precondition: planted field should have folded tets'
+
+        threshold = 0.01
+        nlc = NonlinearConstraint(
+            lambda z: c.values(z),
+            lb=threshold,
+            ub=np.inf,
+            jac=lambda z: c.jacobian(z),
+        )
+
+        def obj(z):
+            diff = z - flat_init
+            return 0.5 * float(diff @ diff), diff
+
+        res = minimize(
+            obj,
+            flat_init,
+            method='SLSQP',
+            jac=True,
+            constraints=[nlc],
+            options={'maxiter': 300, 'ftol': 1e-8},
+        )
+        assert res.success, f'SLSQP did not converge: status={res.status}'
+        V_after = c.values(res.x)
+        assert V_after.min() >= threshold - 1e-6, f'final min V = {V_after.min()} below threshold'
+
+
 class TestTet6Constraint3D:
     """Verify the public Constraint surface (registry, shape, packing,
     barrier-strategy round-trip)."""

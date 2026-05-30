@@ -496,6 +496,23 @@ class Tet6Constraint3D(Constraint):
 
         return tet_grad_T_v(phi_flat, *self.shape, v)
 
+    def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
+        """Sparse forward Jacobian for the SLSQP path.
+
+        Note: the resulting matrix has ``6 * (D-1)(H-1)(W-1)`` rows and
+        ``3 * D * H * W`` columns — for a 32^3 voxel grid that's
+        ~1.8e5 × ~9.8e4 with ~2.2M non-zeros. SLSQP at this scale is
+        impractical (the active-set QP step dominates). Use barrier
+        for any realistic 3D problem; this exists for symmetry with
+        ``TriConstraint2D`` and for tiny-grid debugging.
+        """
+        from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
+
+        # Build the (rows, cols) pattern lazily — once per call. (Caching
+        # across calls is a future optimization; sparse build is ~ms on
+        # the tiny grids where SLSQP-on-tet makes sense.)
+        return build_tet_sparse_jac(*self.shape)(phi_flat)
+
 
 # ---------------------------------------------------------------------------
 # Registry — string label -> Constraint class

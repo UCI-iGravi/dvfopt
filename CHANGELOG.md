@@ -7,6 +7,23 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Sparse forward Jacobian for `Tet6Constraint3D`**, completing API
+  symmetry with `TriConstraint2D`. New public helper
+  `build_tet_sparse_jac(D, H, W)` in
+  [dvfopt/jacobian/tetrahedron_sign.py](dvfopt/jacobian/tetrahedron_sign.py)
+  returns a callable `jac(phi_flat) -> csr_matrix` of shape
+  `(6*(D-1)(H-1)(W-1), 3*D*H*W)`. The `Tet6Constraint3D.jacobian()`
+  method delegates to it. Verified against the analytical adjoint to
+  4e-16 and against a dense finite-difference Jacobian to 7e-11.
+  End-to-end SLSQP on a planted 3D fold (8 folded tets → 0, threshold
+  reached in 8 iterations) covered by a new test. Note: no
+  `SLSQPFullGrid3DStrategy` is wired yet — 3D SLSQP at realistic
+  problem sizes doesn't scale (active-set QP step dominates). Users
+  who want SLSQP-on-tet today call scipy's `NonlinearConstraint(...,
+  jac=Tet6Constraint3D.jacobian)` directly; see
+  [tests/test_tetrahedron_sign.py:TestSLSQPOnTet](tests/test_tetrahedron_sign.py)
+  for the pattern.
+
 - **`dvfopt.jacobian.tetrahedron_sign_torch`** — torch forward for the
   6-tet signed-volume check
   ([dvfopt/jacobian/tetrahedron_sign_torch.py](dvfopt/jacobian/tetrahedron_sign_torch.py)).
