@@ -36,6 +36,30 @@ follows [Semantic Versioning](https://semver.org/).
   `tet_volumes_flat`, `tet_grad_T_v`.
 
 ### Fixed
+- **CI test failure on Ubuntu (torch missing).** `dvfopt/core/iterative2d_barrier.py`
+  had an unconditional top-level `import torch`. CI installs only
+  `[dev]` (torch is in `[benchmarks]`), so the import failed at module
+  load and cascaded into ~50 unrelated test failures (every test that
+  used `JdetConstraint2D`, which imports this module for its CPU
+  helpers). The bug was masked on PR #10 by the prior lint failure that
+  stopped CI before tests ran. Fix:
+
+  - `import torch` is now wrapped in `try/except ImportError` with a
+    `torch = None` fallback. The numpy CPU path is unaffected; the
+    `iterative_2d_barrier_torch` public entry raises a clear
+    `ImportError` if called without torch installed.
+  - `dtype=torch.float32` default in `iterative_2d_barrier_torch` was
+    evaluated at module-import time; changed to `dtype=None`, resolved
+    to `torch.float32` inside the function.
+  - `TestBarrier2DTorch` ([tests/test_integration_2d_barrier.py](tests/test_integration_2d_barrier.py))
+    and `TestBarrier3DTorch` ([tests/test_integration_3d_barrier.py](tests/test_integration_3d_barrier.py))
+    now `pytest.importorskip('torch')` in `setup_method`, so they
+    skip cleanly on torch-less installs instead of crashing.
+  - [scripts/check_ci.py](scripts/check_ci.py) gained a new
+    "no-torch import smoke" job that uses an import-blocker to confirm
+    `dvfopt` + `JdetConstraint2D` + `iterative2d_barrier` all import
+    successfully without torch. Would have caught this class of bug.
+
 - **CI lint failure in [PR #10](https://github.com/UCI-iGravi/dvfopt/pull/10).**
   `ruff check` failed on Ubuntu (Python 3.10/3.11/3.12) with
   `RUF100: Unused noqa directive (non-enabled: F401)` at

@@ -56,6 +56,43 @@ def _benchmark_smoke() -> bool:
     return not failed
 
 
+_NO_TORCH_SIM_PY = '''
+import sys
+class _BlockTorch:
+    def find_spec(self, name, path=None, target=None):
+        if name == "torch" or name.startswith("torch."):
+            raise ImportError("torch blocked (simulating CI no-torch install)")
+        return None
+sys.meta_path.insert(0, _BlockTorch())
+'''
+
+
+def _import_smoke_no_torch(py: str) -> bool:
+    """Confirm dvfopt can be imported even when torch isn't installed.
+
+    Simulates the CI ``[dev]`` install (which doesn't include torch) by
+    blocking the import. Catches the regression class where a module is
+    unconditionally ``import torch``-ing at top level — would have caught
+    the PR #11 follow-up failure.
+    """
+    print('\n>>> no-torch import smoke')
+    code = (
+        _NO_TORCH_SIM_PY
+        + '\nimport dvfopt\n'
+        + 'from dvfopt.constraints import JdetConstraint2D\n'
+        + 'from dvfopt.core import iterative2d_barrier  # was the regression site\n'
+        + 'print("OK")\n'
+    )
+    proc = subprocess.run([py, '-c', code], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print('    FAIL — stderr:')
+        for line in (proc.stderr or '').splitlines()[-6:]:
+            print(f'      {line}')
+        return False
+    print('    PASS')
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -79,6 +116,7 @@ def main() -> int:
         )
     )
     results.append(_benchmark_smoke())
+    results.append(_import_smoke_no_torch(py))
     if not args.skip_tests:
         results.append(_run('Tests', [py, '-m', 'pytest', 'tests/', '-q']))
     else:

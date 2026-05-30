@@ -9,8 +9,18 @@ Mirrors the 3D versions but for ``(2, H, W)`` displacement fields where
 import time
 
 import numpy as np
-import torch
 from scipy.ndimage import label
+
+# Torch is an optional dependency (in the ``[benchmarks]`` extra, not in
+# ``[dev]`` / core). The numpy/scipy CPU path doesn't need it; only the
+# ``iterative_2d_barrier_torch`` public entry + its private helpers below
+# do. We fall back to ``torch = None`` so that callers using only the
+# numpy backend (and tests that ``pytest.importorskip('torch')`` the
+# torch class) can import this module on a torch-less install.
+try:
+    import torch
+except ImportError:
+    torch = None
 
 from dvfopt._defaults import _log, _resolve_params
 from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
@@ -696,7 +706,7 @@ def iterative_2d_barrier_torch(
     windowed=True,
     pad=2,
     device=None,
-    dtype=torch.float32,
+    dtype=None,  # resolved to torch.float32 inside (torch.X can't be a default — torch may be None at import)
 ):
     """GPU/CPU penalty->barrier solver for 2D fields via torch autograd.
 
@@ -715,6 +725,13 @@ def iterative_2d_barrier_torch(
         ``float16``/``bfloat16`` are not recommended — ~3-digit mantissa
         loses precision in the ``log(J - threshold)`` term.
     """
+    if torch is None:
+        raise ImportError(
+            "iterative_2d_barrier_torch requires torch (optional dependency). "
+            "Install with: pip install -e '.[benchmarks]'"
+        )
+    if dtype is None:
+        dtype = torch.float32
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
