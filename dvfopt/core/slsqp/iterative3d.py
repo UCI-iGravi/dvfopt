@@ -7,11 +7,11 @@ from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size_3d
 from dvfopt.core.slsqp.spatial3d import argmin_worst_voxel
-from dvfopt.core.solver import _setup_accumulators, _print_summary, _save_results
+from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
 from dvfopt.core.solver3d import (
     _init_phi_3d,
-    _update_metrics_3d,
     _serial_fix_voxel,
+    _update_metrics_3d,
 )
 
 
@@ -83,10 +83,13 @@ def iterative_3d(
     phi : ndarray, shape ``(3, D, H, W)``
         Corrected displacement field ``[dz, dy, dx]``.
     """
-    p = _resolve_params(threshold=threshold, err_tol=err_tol,
-                        max_iterations=max_iterations,
-                        max_per_index_iter=max_per_index_iter,
-                        max_minimize_iter=max_minimize_iter)
+    p = _resolve_params(
+        threshold=threshold,
+        err_tol=err_tol,
+        max_iterations=max_iterations,
+        max_per_index_iter=max_per_index_iter,
+        max_minimize_iter=max_minimize_iter,
+    )
     threshold = p["threshold"]
     err_tol = p["err_tol"]
     max_iterations = p["max_iterations"]
@@ -106,19 +109,19 @@ def iterative_3d(
     if max_window is None:
         max_window = (D, H, W)
     else:
-        max_window = (min(int(max_window[0]), D),
-                      min(int(max_window[1]), H),
-                      min(int(max_window[2]), W))
+        max_window = (
+            min(int(max_window[0]), D),
+            min(int(max_window[1]), H),
+            min(int(max_window[2]), W),
+        )
 
-    _log(verbose, 1,
-         f"[init] Grid {D}x{H}x{W}  |  threshold={threshold}  "
-         f"|  method={method_name}")
+    _log(verbose, 1, f"[init] Grid {D}x{H}x{W}  |  threshold={threshold}  |  method={method_name}")
 
     jacobian_matrix, init_neg, init_min = _update_metrics_3d(
-        phi, phi_init, num_neg_jac, min_jdet_list)
+        phi, phi_init, num_neg_jac, min_jdet_list
+    )
 
-    _log(verbose, 1,
-         f"[init] Neg-Jdet voxels: {init_neg}  |  min Jdet: {init_min:.6f}")
+    _log(verbose, 1, f"[init] Neg-Jdet voxels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
     prev_neg = init_neg
@@ -135,9 +138,11 @@ def iterative_3d(
     cur_voxel_cap = max_window_voxels
     best_neg_seen = init_neg
     iters_since_best = 0
-    _escalate_cap = (max_window_voxels is not None
-                     and max_window_voxels_ceiling is not None
-                     and max_window_voxels_ceiling > max_window_voxels)
+    _escalate_cap = (
+        max_window_voxels is not None
+        and max_window_voxels_ceiling is not None
+        and max_window_voxels_ceiling > max_window_voxels
+    )
 
     # Window-size oscillation guard (ported from 2D): per-voxel stall_counts
     # reset on any neg-count drop, so an alternating 12 -> 13 -> 12 pattern
@@ -147,8 +152,7 @@ def iterative_3d(
     iters_since_window_best = 0
     _OSCILLATION_STALL = 4
 
-    while (iteration < max_iterations
-           and (jacobian_matrix <= threshold - err_tol).any()):
+    while iteration < max_iterations and (jacobian_matrix <= threshold - err_tol).any():
         iteration += 1
 
         neg_index = argmin_worst_voxel(jacobian_matrix)
@@ -160,31 +164,48 @@ def iterative_3d(
         labeled_array, _ = label(neg_mask, structure=structure)
 
         # Purge stale stall_counts for voxels no longer below threshold.
-        stall_counts = {k: v for k, v in stall_counts.items()
-                        if jacobian_matrix[k[0], k[1], k[2]] <= threshold - err_tol}
+        stall_counts = {
+            k: v
+            for k, v in stall_counts.items()
+            if jacobian_matrix[k[0], k[1], k[2]] <= threshold - err_tol
+        }
 
-        jacobian_matrix, subvolume_size, per_index_iter, (cz, cy, cx) = \
-            _serial_fix_voxel(
-                neg_index, phi, phi_init, jacobian_matrix,
-                volume_shape, window_counts,
-                max_per_index_iter, max_minimize_iter,
-                max_window, threshold, err_tol, method_name, verbose,
-                error_list, num_neg_jac, min_jdet_list, iter_times,
-                min_window=global_min_window,
-                labeled_array=labeled_array,
-                max_window_voxels=cur_voxel_cap,
-            )
+        jacobian_matrix, subvolume_size, per_index_iter, (_cz, _cy, _cx) = _serial_fix_voxel(
+            neg_index,
+            phi,
+            phi_init,
+            jacobian_matrix,
+            volume_shape,
+            window_counts,
+            max_per_index_iter,
+            max_minimize_iter,
+            max_window,
+            threshold,
+            err_tol,
+            method_name,
+            verbose,
+            error_list,
+            num_neg_jac,
+            min_jdet_list,
+            iter_times,
+            min_window=global_min_window,
+            labeled_array=labeled_array,
+            max_window_voxels=cur_voxel_cap,
+        )
 
         sz, sy, sx = _unpack_size_3d(subvolume_size)
         cur_neg = int((jacobian_matrix <= threshold - err_tol).sum())
         cur_min = float(jacobian_matrix.min())
         cur_err = error_list[-1] if error_list else 0.0
-        _log(verbose, 1,
-             f"[iter {iteration:4d}]  fix ({neg_index[0]:3d},"
-             f"{neg_index[1]:3d},{neg_index[2]:3d})  "
-             f"win {sz}x{sy}x{sx}  neg_jdet {cur_neg:5d}  "
-             f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
-             f"sub-iters {per_index_iter}")
+        _log(
+            verbose,
+            1,
+            f"[iter {iteration:4d}]  fix ({neg_index[0]:3d},"
+            f"{neg_index[1]:3d},{neg_index[2]:3d})  "
+            f"win {sz}x{sy}x{sx}  neg_jdet {cur_neg:5d}  "
+            f"min_jdet {cur_min:+.6f}  L2 {cur_err:.4f}  "
+            f"sub-iters {per_index_iter}",
+        )
 
         # Per-voxel stall detection and de-escalation (same threshold as loop condition)
         neg_count = cur_neg
@@ -194,25 +215,25 @@ def iterative_3d(
             stall_counts[neg_index] = stall_counts.get(neg_index, 0) + 1
             mwz, mwy, mwx = max_window
             if stall_counts[neg_index] >= _STALL_THRESHOLD and (
-                    gsz < mwz or gsy < mwy or gsx < mwx):
-                global_min_window = (min(gsz + 2, mwz),
-                                     min(gsy + 2, mwy),
-                                     min(gsx + 2, mwx))
+                gsz < mwz or gsy < mwy or gsx < mwx
+            ):
+                global_min_window = (min(gsz + 2, mwz), min(gsy + 2, mwy), min(gsx + 2, mwx))
                 stall_counts[neg_index] = 0
-                _log(verbose, 1,
-                     f"  [escalate] voxel ({neg_index[0]},{neg_index[1]},"
-                     f"{neg_index[2]}) stalled {_STALL_THRESHOLD}x, "
-                     f"min window -> {global_min_window[0]}x"
-                     f"{global_min_window[1]}x{global_min_window[2]}")
+                _log(
+                    verbose,
+                    1,
+                    f"  [escalate] voxel ({neg_index[0]},{neg_index[1]},"
+                    f"{neg_index[2]}) stalled {_STALL_THRESHOLD}x, "
+                    f"min window -> {global_min_window[0]}x"
+                    f"{global_min_window[1]}x{global_min_window[2]}",
+                )
         else:
             stall_counts.pop(neg_index, None)
             consecutive_improving += 1
-            if consecutive_improving >= _DE_ESCALATE_AFTER and (
-                    gsz > 3 or gsy > 3 or gsx > 3):
+            if consecutive_improving >= _DE_ESCALATE_AFTER and (gsz > 3 or gsy > 3 or gsx > 3):
                 global_min_window = (3, 3, 3)
                 consecutive_improving = 0
-                _log(verbose, 1,
-                     "  [de-escalate] consistent improvement, min window -> 3x3x3")
+                _log(verbose, 1, "  [de-escalate] consistent improvement, min window -> 3x3x3")
         prev_neg = neg_count
 
         # Voxel-cap escalation: bump the cap when we fail to reach a new
@@ -226,39 +247,44 @@ def iterative_3d(
         else:
             iters_since_best += 1
             iters_since_window_best += 1
-            if (_escalate_cap
-                    and iters_since_best >= voxel_cap_stall_threshold
-                    and cur_voxel_cap < max_window_voxels_ceiling):
-                new_cap = min(int(cur_voxel_cap * voxel_cap_growth),
-                              max_window_voxels_ceiling)
+            if (
+                _escalate_cap
+                and iters_since_best >= voxel_cap_stall_threshold
+                and cur_voxel_cap < max_window_voxels_ceiling
+            ):
+                new_cap = min(int(cur_voxel_cap * voxel_cap_growth), max_window_voxels_ceiling)
                 if new_cap > cur_voxel_cap:
                     cur_voxel_cap = new_cap
                     iters_since_best = 0
-                    _log(verbose, 1,
-                         f"  [escalate-vox] no new best for "
-                         f"{voxel_cap_stall_threshold} iters, "
-                         f"voxel cap -> {cur_voxel_cap}")
+                    _log(
+                        verbose,
+                        1,
+                        f"  [escalate-vox] no new best for "
+                        f"{voxel_cap_stall_threshold} iters, "
+                        f"voxel cap -> {cur_voxel_cap}",
+                    )
 
             # Window-size oscillation escalation (orthogonal to per-voxel
             # stall and to voxel-cap escalation). Triggers on 1->2->1->2
             # patterns the per-voxel counter misses.
             gsz2, gsy2, gsx2 = global_min_window
             mwz, mwy, mwx = max_window
-            if (iters_since_window_best >= _OSCILLATION_STALL
-                    and (gsz2 < mwz or gsy2 < mwy or gsx2 < mwx)):
-                global_min_window = (min(gsz2 + 2, mwz),
-                                     min(gsy2 + 2, mwy),
-                                     min(gsx2 + 2, mwx))
+            if iters_since_window_best >= _OSCILLATION_STALL and (
+                gsz2 < mwz or gsy2 < mwy or gsx2 < mwx
+            ):
+                global_min_window = (min(gsz2 + 2, mwz), min(gsy2 + 2, mwy), min(gsx2 + 2, mwx))
                 iters_since_window_best = 0
-                _log(verbose, 1,
-                     f"  [escalate-osc] no new best for "
-                     f"{_OSCILLATION_STALL} iters, min window -> "
-                     f"{global_min_window[0]}x{global_min_window[1]}x"
-                     f"{global_min_window[2]}")
+                _log(
+                    verbose,
+                    1,
+                    f"  [escalate-osc] no new best for "
+                    f"{_OSCILLATION_STALL} iters, min window -> "
+                    f"{global_min_window[0]}x{global_min_window[1]}x"
+                    f"{global_min_window[2]}",
+                )
 
         if float(jacobian_matrix.min()) > threshold - err_tol:
-            _log(verbose, 1,
-                 f"[done] All Jdet > threshold after iter {iteration}")
+            _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
             break
 
     end_time = time.time()
@@ -268,23 +294,43 @@ def iterative_3d(
     final_neg = int((jacobian_matrix <= 0).sum())
     final_min = float(jacobian_matrix.min())
 
-    _print_summary(verbose, f"{method_name} — 3D", (D, H, W), iteration,
-                   init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed)
+    _print_summary(
+        verbose,
+        f"{method_name} — 3D",
+        (D, H, W),
+        iteration,
+        init_neg,
+        final_neg,
+        init_min,
+        final_min,
+        final_err,
+        elapsed,
+    )
 
     num_neg_jac.append(final_neg)
 
     if save_path is not None:
         _save_results(
-            save_path, method=method_name, threshold=threshold,
-            err_tol=err_tol, max_iterations=max_iterations,
+            save_path,
+            method=method_name,
+            threshold=threshold,
+            err_tol=err_tol,
+            max_iterations=max_iterations,
             max_per_index_iter=max_per_index_iter,
             max_minimize_iter=max_minimize_iter,
-            grid_shape=(D, H, W), elapsed=elapsed, final_err=final_err,
-            init_neg=init_neg, final_neg=final_neg, init_min=init_min,
-            final_min=final_min, iteration=iteration, phi=phi,
-            error_list=error_list, num_neg_jac=num_neg_jac,
-            iter_times=iter_times, min_jdet_list=min_jdet_list,
+            grid_shape=(D, H, W),
+            elapsed=elapsed,
+            final_err=final_err,
+            init_neg=init_neg,
+            final_neg=final_neg,
+            init_min=init_min,
+            final_min=final_min,
+            iteration=iteration,
+            phi=phi,
+            error_list=error_list,
+            num_neg_jac=num_neg_jac,
+            iter_times=iter_times,
+            min_jdet_list=min_jdet_list,
             window_counts=window_counts,
         )
 

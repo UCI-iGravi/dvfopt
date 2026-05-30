@@ -44,10 +44,10 @@ def _triangle_areas_2d(dy, dx):
 
     # Cell (y, x) has corners at pixels (x, y), (x+1, y), (x, y+1), (x+1, y+1).
     # Slice the warped grid to extract each corner over all cells.
-    x_tl, y_tl = def_x[:-1, :-1], def_y[:-1, :-1]   # (x,   y)
-    x_tr, y_tr = def_x[:-1, 1:],  def_y[:-1, 1:]    # (x+1, y)
-    x_bl, y_bl = def_x[1:, :-1],  def_y[1:, :-1]    # (x,   y+1)
-    x_br, y_br = def_x[1:, 1:],   def_y[1:, 1:]     # (x+1, y+1)
+    x_tl, y_tl = def_x[:-1, :-1], def_y[:-1, :-1]  # (x,   y)
+    x_tr, y_tr = def_x[:-1, 1:], def_y[:-1, 1:]  # (x+1, y)
+    x_bl, y_bl = def_x[1:, :-1], def_y[1:, :-1]  # (x,   y+1)
+    x_br, y_br = def_x[1:, 1:], def_y[1:, 1:]  # (x+1, y+1)
 
     # T1 at pixel (x+1, y): vertices A=(x+1, y), B=(x, y+1), C=(x+1, y+1)
     #   AB = BL - TR,  AC = BR - TR
@@ -199,6 +199,7 @@ def triangle_sign_constraint(phi_xy, submatrix_size, exclude_boundaries=False):
     ``exclude_boundaries=True``).
     """
     from dvfopt._defaults import _unpack_size
+
     sy, sx = _unpack_size(submatrix_size)
     pixels = sy * sx
     dx = phi_xy[:pixels].reshape((sy, sx))

@@ -55,36 +55,53 @@ pytest tests/test_iterative.py
 
 The 2D solver accepts `enforce_shoelace=True` (geometric quad-cell area) and `enforce_injectivity=True` (coordinate monotonicity) flags in addition to the default Jacobian determinant constraint. The 3D solver (`iterative_3d`) does not yet support these extra constraint modes — only the Jacobian determinant constraint is available in 3D.
 
-### Key entry points
+### Parameterized API (v0.2 — current)
 
-**SLSQP windowed solvers (Jdet constraint):**
+The public surface is organized around three orthogonal axes composed via `Solver`:
+
+```python
+from dvfopt import Solver, TriConstraint2D, L1Objective, BarrierStrategy
+result = Solver(
+    constraint=TriConstraint2D(shape=(H, W)),
+    objective=L1Objective(eps=1e-4),
+    strategy=BarrierStrategy(),
+).fit(phi)
+```
+
+**Constraints** ([dvfopt/constraints.py](dvfopt/constraints.py)) — `TriConstraint2D`, `TriConstraint2DFullCoverage`, `JdetConstraint2D`, `JdetConstraint3D`. Each provides `values()`, `adjoint(v)`, optional `jacobian()`, plus `flatten/unflatten` between `(C, *shape)` arrays and the flat decision vector. The pack convention is encoded in `Constraint.pack` (`PhiPack.DY_FIRST` for 2-tri, `PhiPack.DX_FIRST` for Jdet).
+
+**Objectives** ([dvfopt/objectives.py](dvfopt/objectives.py)) — `L1Objective(eps)`, `L2Objective()`, `NoneObjective()`. Wrap the shared `anchor_term` from `_barrier_core.py`. Composition (`+`, `*`) supported for research.
+
+**Strategies** ([dvfopt/strategies.py](dvfopt/strategies.py)) — `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `M10Strategy`, `M14Strategy`, `M14SchwarzStrategy`. Each is a dataclass with strategy-specific knobs. `requires_2tri` and `supports_3d` class attrs declare compatibility; `Solver.__init__` checks at construction.
+
+**Solver** ([dvfopt/solver.py](dvfopt/solver.py)) — composes the three; provides `from_spec(constraint='2tri', ...)` string-based construction and one-shot `correct_dvf(phi, ...)`. `auto_strategy(constraint, init_n_neg, init_min, objective_label)` encodes the strategy-selection heuristic.
+
+**DVFopt facade** ([dvfopt/unified.py](dvfopt/unified.py)) — per-slice orchestration over `Solver`: 2D/3D auto-detection, tabular reports, plots. Use when you want `DVFoptConfig` string-based config and per-slice analysis across a 3D volume.
+
+### Implementation modules (internal — strategies delegate to these)
+
+The legacy `iterative_*` functions are no longer part of the public API but remain as internal implementations the strategies call into:
+
+| Strategy | Delegates to |
+|---|---|
+| `BarrierStrategy` (any constraint) | `_barrier_core.run_penalty_barrier_lbfgs` |
+| `SLSQPFullGridStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_slsqp.iterative_2d_tri_slsqp` |
+| `SLSQPWindowedStrategy` (Jdet) | `dvfopt.core.slsqp.iterative.iterative_serial` / `iterative3d` |
+| `SchwarzStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_schwarz.iterative_2d_tri_schwarz` |
+| `M10Strategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_harmonic_polished` |
+| `M14Strategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair` |
+| `M14SchwarzStrategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` |
+
+### Building blocks (still public, still useful for custom pipelines)
 
 | Function | Module | Purpose |
 |----------|--------|---------|
-| `iterative_serial()` | `dvfopt.core.iterative` | Serial 2D iterative SLSQP (primary) |
-| `iterative_parallel()` | `dvfopt.core.parallel` | Parallel 2D variant |
-| `iterative_3d()` | `dvfopt.core.iterative3d` | 3D iterative SLSQP |
-
-**2D 2-triangle solvers** (the strict PL-bijectivity constraint; see `dvfopt/__init__.py` docstring for guidance on which to pick):
-
-| Function | Strategy | Use case |
-|----------|----------|----------|
-| `iterative_2d_tri_slsqp()` | Full-grid SLSQP + L1/L2 + warm-restart (notebook 14) | Mild folds, full-grid fits in memory |
-| `iterative_2d_tri_barrier()` | Penalty → log-barrier L-BFGS-B | Mild to moderate folds, all sizes |
-| `iterative_2d_tri_schwarz()` | Hybrid overlapping-tile Schwarz + per-cluster SLSQP | Many small clusters across a big slice |
-| `iterative_2d_tri_harmonic_polished()` (m10) | Harmonic seed + ALM + barrier polish | Dense folds, **100% feasibility guaranteed** |
-| `iterative_2d_tri_refine_repair()` (m14, anchor='l1' = m14_l1) | m10 seed + soft-penalty pull + repair + polish | Dense folds, **smallest L2/L1 cost** |
-| `iterative_2d_tri_refine_repair_schwarz()` (m14-Schwarz) | m14 per fold cluster + final global polish | Large slices (e.g. 320×456) with sparse-to-moderate folds — **~5x faster than global m14** |
-
-**Building blocks:**
-
-| Function | Module | Purpose |
-|----------|--------|---------|
-| `solve_cluster_2tri_2d()` | `dvfopt.core._cluster_2tri` | Per-cluster SLSQP with frozen-edge interior mask |
 | `harmonic_extension_2d()` (m02) | `dvfopt.core.wallbreakers._harmonic` | Laplacian extension over fold cores |
 | `augmented_lagrangian_2d()` (m03) | `dvfopt.core.wallbreakers._alm` | PHR-ALM with L-BFGS-B |
 | `l2_refine_2d()` (m12) | `dvfopt.core.wallbreakers._l2_refine` | Soft-penalty refinement of a feasible seed |
-| `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.tri_primitives` | Canonical 2-triangle constraint + adjoint |
+| `solve_cluster_2tri_2d()` | `dvfopt.core._cluster_2tri` | Per-cluster SLSQP with frozen-edge interior mask |
+| `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.tri_primitives` | Canonical 2-tri constraint + adjoint |
+| `anchor_term()` / `run_penalty_barrier_lbfgs()` | `dvfopt.core._barrier_core` | Shared anchor + penalty→barrier homotopy |
 
 **Other primitives:**
 

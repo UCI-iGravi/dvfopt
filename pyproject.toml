@@ -1,6 +1,6 @@
 [project]
 name = "dvfopt"
-version = "0.1.0"
+version = "0.3.0"
 description = "Correction of negative Jacobian determinants in deformation (displacement) fields"
 requires-python = ">=3.9"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
     "SimpleITK",
     "nibabel",
     "matplotlib",
+    "seaborn",
     "scikit-image",
     "joblib",
     "tqdm",
@@ -22,6 +23,72 @@ benchmarks = [
     "torch",
     "voxelmorph",
 ]
+dev = [
+    "pytest>=7",
+    "ruff>=0.4",
+    "pre-commit>=3",
+    "hypothesis>=6",
+    "nbformat>=5",
+    "pandas",
+]
 
 [tool.setuptools.packages.find]
 include = ["dvfopt*", "laplacian*", "test_cases*"]
+
+# ---------------------------------------------------------------------------
+# Ruff: lint + format. Run with `ruff check --fix` and `ruff format`.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = [
+    "archive/**",                    # historical, do not lint
+    ".venv/**",
+    "**/*.ipynb",                    # notebook cell scoping confuses static analysis
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear (likely bugs)
+    "W",    # pycodestyle warnings
+    "RUF",  # ruff-specific
+    "SIM",  # simplify
+    "PIE",  # picky-flake8
+]
+ignore = [
+    "E501",   # line-too-long — covered by formatter
+    "E701",   # one-line `if x: y` — common in math code
+    "E702",   # one-line `x = ...; y = ...` — common in numpy-heavy code
+    "E741",   # ambiguous variable name (intentional in math: i, l, m, ...)
+    "B008",   # function call in default arg — used for dataclass defaults
+    "B023",   # closure over loop variable — common in lazy strategy lambdas
+    "B028",   # warnings.warn without stacklevel
+    "SIM102", # collapsible if (sometimes the nested form is clearer)
+    "SIM108", # if/else -> ternary
+    "SIM105", # contextlib.suppress — try/except is often clearer
+    "UP007",  # X | Y typing on Python 3.9
+    "UP045",  # X | None typing on Python 3.9
+    "RUF001", # ambiguous unicode in strings (we use × and — in docstrings)
+    "RUF002", # ambiguous unicode in docstrings
+    "RUF003", # ambiguous unicode in comments
+    "RUF012", # mutable class attrs (intentional class-level defaults)
+    "RUF059", # unused unpacked variable (common in (val, _) idioms)
+]
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F401", "F811"]      # test fixtures often look unused
+"**/conftest.py" = ["F401"]
+"scripts/**" = ["E402", "F401"]    # probes are scratch code
+"notebooks/experiments/_run_*.py" = ["E402"]
+"benchmarks/_run_*.py" = ["E402"]
+"benchmarks/_full_volume_parallel.py" = ["E402"]
+"benchmarks/_*.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dvfopt", "laplacian", "test_cases"]
+
+[tool.ruff.format]
+quote-style = "preserve"  # don't auto-rewrite quotes (codebase uses both)

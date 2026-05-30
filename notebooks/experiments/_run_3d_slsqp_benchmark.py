@@ -20,7 +20,8 @@ sys.path.insert(0, _REPO)
 import numpy as np
 from scipy.ndimage import zoom
 
-from dvfopt import iterative_3d, jacobian_det3D, generate_random_dvf_3d, scale_dvf_3d
+from dvfopt import jacobian_det3D, generate_random_dvf_3d, scale_dvf_3d
+from dvfopt.core.slsqp.iterative3d import iterative_3d
 
 DATA_PATH = os.path.join(_REPO, 'data', 'corrected_correspondences_count_touching',
                          'registered_output', 'deformation3d.npy')

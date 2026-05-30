@@ -14,7 +14,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
 from test_cases import SYNTHETIC_CASES, make_deformation
-from dvfopt import iterative_serial, jacobian_det2D
+from dvfopt import jacobian_det2D
+from dvfopt.core.slsqp.iterative import iterative_serial
 from dvfopt.jacobian import shoelace_det2D, _monotonicity_diffs_2d
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "docs", "images")

@@ -1,0 +1,57 @@
+name: Tests
+
+"on":
+  push:
+    branches: [main, nightly]
+  pull_request:
+    branches: [main, nightly]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          # Editable install with dev extras (pytest, ruff, hypothesis).
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check dvfopt tests benchmarks
+
+      - name: Format check
+        run: python -m ruff format --check dvfopt tests benchmarks
+
+      - name: Tests
+        run: python -m pytest tests/ -q
+
+  benchmark-smoke:
+    # Smoke-test that the benchmark scripts can still import.
+    # (Doesn't actually run the long benchmarks.)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Import each benchmark script
+        run: |
+          for f in benchmarks/_run_*.py; do
+            python -c "import py_compile; py_compile.compile('$f', doraise=True)"
+          done

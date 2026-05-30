@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints import jacobian_constraint, _quality_map
+from dvfopt.core.slsqp.constraints import _quality_map, jacobian_constraint
+from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt.jacobian.shoelace import shoelace_constraint
-from dvfopt.jacobian.monotonicity import injectivity_constraint
 
 
 class TestJacobianConstraint:
@@ -87,7 +87,7 @@ class TestQualityMap:
         """When shoelace is enforced, folded quads reduce the quality map below Jdet."""
         H, W = 8, 8
         phi = np.zeros((2, H, W))
-        phi[1, :, 0] = 3.0   # dx: push left column right
+        phi[1, :, 0] = 3.0  # dx: push left column right
         phi[1, :, -1] = -3.0  # dx: push right column left
 
         qm_no_shoe = _quality_map(phi, enforce_shoelace=False)

@@ -1,8 +1,6 @@
 import numpy as np
-import pytest
 
 from benchmarks.two_triangle import registry
-import benchmarks.two_triangle.variants  # registers baseline
 
 
 def _make_tiny_2d_fold():

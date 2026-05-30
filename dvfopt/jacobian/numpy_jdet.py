@@ -62,13 +62,21 @@ def _numpy_jdet_3d(dz, dy, dx):
     ddz_dy = np.gradient(dz, axis=1)
     ddz_dz = np.gradient(dz, axis=0)
 
-    a11 = 1 + ddx_dx;  a12 = ddx_dy;      a13 = ddx_dz
-    a21 = ddy_dx;       a22 = 1 + ddy_dy;  a23 = ddy_dz
-    a31 = ddz_dx;       a32 = ddz_dy;      a33 = 1 + ddz_dz
+    a11 = 1 + ddx_dx
+    a12 = ddx_dy
+    a13 = ddx_dz
+    a21 = ddy_dx
+    a22 = 1 + ddy_dy
+    a23 = ddy_dz
+    a31 = ddz_dx
+    a32 = ddz_dy
+    a33 = 1 + ddz_dz
 
-    return (a11 * (a22 * a33 - a23 * a32)
-            - a12 * (a21 * a33 - a23 * a31)
-            + a13 * (a21 * a32 - a22 * a31))
+    return (
+        a11 * (a22 * a33 - a23 * a32)
+        - a12 * (a21 * a33 - a23 * a31)
+        + a13 * (a21 * a32 - a22 * a31)
+    )
 
 
 def jacobian_det3D(phi):

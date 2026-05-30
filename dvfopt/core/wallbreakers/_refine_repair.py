@@ -30,33 +30,37 @@ Promoted from ``notebooks/experiments/wall_breakers/methods/m14_l2_refine_repair
 and ``m14_l1.py``. With ``anchor='l1'`` the entire pipeline uses a
 smoothed-L1 anchor — this is the **m14_l1** variant in the manuscript.
 """
+
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.core.tri_primitives import tri_areas_flat as _tri_areas_flat
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
-from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
-from dvfopt.core.wallbreakers._harmonic_polished import (
-    iterative_2d_tri_harmonic_polished)
-from dvfopt.core.wallbreakers._l2_refine import l2_refine_2d
+from dvfopt.core.wallbreakers._common import (
+    barrier_anchored_objective as _barrier_anchored,
+)
 from dvfopt.core.wallbreakers._common import (
     min_tri as _min_tri,
-    barrier_anchored_objective as _barrier_anchored,
+)
+from dvfopt.core.wallbreakers._common import (
     resolved_safety_margin,
 )
+from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
+from dvfopt.core.wallbreakers._harmonic_polished import iterative_2d_tri_harmonic_polished
+from dvfopt.core.wallbreakers._l2_refine import l2_refine_2d
+from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 
 def iterative_2d_tri_refine_repair(
     phi_in: np.ndarray,
     *,
-    threshold: float = None,
+    threshold: Optional[float] = None,
     margin: float = 1e-3,
     anchor: str = 'l2',
     seed: np.ndarray = None,
@@ -112,52 +116,73 @@ def iterative_2d_tri_refine_repair(
     # Stage 1: m10 seed.
     if seed is None:
         seed = iterative_2d_tri_harmonic_polished(
-            phi_in, threshold=threshold, margin=margin,
-            anchor=anchor, eps_l1=eps_l1,
+            phi_in,
+            threshold=threshold,
+            margin=margin,
+            anchor=anchor,
+            eps_l1=eps_l1,
             max_grow_iters=max_grow_iters,
             time_budget_s=time_budget_s * 0.4,
-            verbose=verbose)
+            verbose=verbose,
+        )
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))
     seed_min = _min_tri(seed)
-    info['stage1_seed'] = dict(min_T=seed_min, L2=seed_L2,
-                                wall=time.time() - t0)
+    info['stage1_seed'] = dict(min_T=seed_min, L2=seed_L2, wall=time.time() - t0)
     if verbose:
-        print(f'  stage1 seed  min_T={seed_min:+.5f}  L2={seed_L2:.1f}  '
-              f'({time.time()-t0:.1f}s)', flush=True)
+        print(
+            f'  stage1 seed  min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
+            flush=True,
+        )
 
     # Stage 2: soft-penalty L2 pull.
     remaining = max(60.0, time_budget_s - (time.time() - t0))
     pulled = l2_refine_2d(
-        phi_in, seed=seed, threshold=threshold, margin=margin,
-        anchor=anchor, lam_schedule=lam_schedule,
+        phi_in,
+        seed=seed,
+        threshold=threshold,
+        margin=margin,
+        anchor=anchor,
+        lam_schedule=lam_schedule,
         inner_maxiter=inner_maxiter,
         time_budget_s=remaining * 0.5,
-        verbose=verbose, eps_l1=eps_l1,
-        require_feasibility=False)
+        verbose=verbose,
+        eps_l1=eps_l1,
+        require_feasibility=False,
+    )
     pulled_L2 = float(np.linalg.norm((pulled - phi_in).ravel()))
     pulled_min = _min_tri(pulled)
     T1p, T2p = _triangle_areas_2d(pulled[0], pulled[1])
     pulled_neg = int((np.minimum(T1p, T2p) <= 0).sum())
-    info['stage2_pull'] = dict(min_T=pulled_min, L2=pulled_L2,
-                                n_neg=pulled_neg, wall=time.time() - t0)
+    info['stage2_pull'] = dict(
+        min_T=pulled_min, L2=pulled_L2, n_neg=pulled_neg, wall=time.time() - t0
+    )
     if verbose:
-        print(f'  stage2 pull  min_T={pulled_min:+.5f}  L2={pulled_L2:.1f}  '
-              f'n_neg={pulled_neg}  ({time.time()-t0:.1f}s)', flush=True)
+        print(
+            f'  stage2 pull  min_T={pulled_min:+.5f}  L2={pulled_L2:.1f}  '
+            f'n_neg={pulled_neg}  ({time.time() - t0:.1f}s)',
+            flush=True,
+        )
 
     # Stage 3: harmonic repair of residual folds.
     if pulled_min < threshold:
         repaired = harmonic_extension_2d(
-            pulled, threshold=threshold, ring_pad=ring_pad,
-            max_grow_iters=max_grow_iters, margin=margin)
+            pulled,
+            threshold=threshold,
+            ring_pad=ring_pad,
+            max_grow_iters=max_grow_iters,
+            margin=margin,
+        )
     else:
         repaired = pulled
     repaired_min = _min_tri(repaired)
     repaired_L2 = float(np.linalg.norm((repaired - phi_in).ravel()))
-    info['stage3_repair'] = dict(min_T=repaired_min, L2=repaired_L2,
-                                  wall=time.time() - t0)
+    info['stage3_repair'] = dict(min_T=repaired_min, L2=repaired_L2, wall=time.time() - t0)
     if verbose:
-        print(f'  stage3 patch min_T={repaired_min:+.5f}  '
-              f'L2={repaired_L2:.1f}  ({time.time()-t0:.1f}s)', flush=True)
+        print(
+            f'  stage3 patch min_T={repaired_min:+.5f}  '
+            f'L2={repaired_L2:.1f}  ({time.time() - t0:.1f}s)',
+            flush=True,
+        )
 
     # If repair didn't reach feasibility, ALM nudge. Use the same
     # safety_margin formula as m10 so the two pipelines agree on the
@@ -165,10 +190,15 @@ def iterative_2d_tri_refine_repair(
     safety_margin = resolved_safety_margin(margin)
     if repaired_min < threshold + 1e-6:
         bumped = augmented_lagrangian_2d(
-            repaired, threshold=threshold + safety_margin, margin=1e-4,
-            anchor='none', outer_max=20, inner_maxiter=150,
+            repaired,
+            threshold=threshold + safety_margin,
+            margin=1e-4,
+            anchor='none',
+            outer_max=20,
+            inner_maxiter=150,
             time_budget_s=max(30.0, time_budget_s - (time.time() - t0)),
-            verbose=0)
+            verbose=0,
+        )
         if _min_tri(bumped) > repaired_min:
             repaired = bumped
             repaired_min = _min_tri(repaired)
@@ -189,26 +219,39 @@ def iterative_2d_tri_refine_repair(
         if time.time() - t0 > time_budget_s:
             break
         res = minimize(
-            _barrier_anchored, phi_flat, jac=True, method='L-BFGS-B',
+            _barrier_anchored,
+            phi_flat,
+            jac=True,
+            method='L-BFGS-B',
             args=(phi_in_flat, H, W, threshold, mu, anchor, eps_l1),
-            options=dict(maxiter=polish_maxiter, ftol=1e-12, gtol=1e-9))
+            options=dict(maxiter=polish_maxiter, ftol=1e-12, gtol=1e-9),
+        )
         phi_flat = res.x
         T = _tri_areas_flat(phi_flat, H, W)
-        polish_log.append(dict(
-            mu=mu, min_T=float(T.min()),
-            L2=float(np.linalg.norm(phi_flat - phi_in_flat)),
-            nit=int(res.nit), wall=time.time() - t0))
+        polish_log.append(
+            dict(
+                mu=mu,
+                min_T=float(T.min()),
+                L2=float(np.linalg.norm(phi_flat - phi_in_flat)),
+                nit=int(res.nit),
+                wall=time.time() - t0,
+            )
+        )
         if verbose:
-            print(f'  stage4 mu={mu:.1e}  min_T={T.min():+.5f}  '
-                  f'L2={float(np.linalg.norm(phi_flat - phi_in_flat)):.1f}  '
-                  f'nit={res.nit}  ({time.time()-t0:.1f}s)', flush=True)
+            print(
+                f'  stage4 mu={mu:.1e}  min_T={T.min():+.5f}  '
+                f'L2={float(np.linalg.norm(phi_flat - phi_in_flat)):.1f}  '
+                f'nit={res.nit}  ({time.time() - t0:.1f}s)',
+                flush=True,
+            )
 
-    phi_out = np.stack([phi_flat[:H * W].reshape(H, W),
-                        phi_flat[H * W:].reshape(H, W)])
+    phi_out = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
     info['stage4_polish'] = dict(
-        steps=len(polish_log), log_last3=polish_log[-3:],
+        steps=len(polish_log),
+        log_last3=polish_log[-3:],
         final_min_T=_min_tri(phi_out),
-        final_L2=float(np.linalg.norm((phi_out - phi_in).ravel())))
+        final_L2=float(np.linalg.norm((phi_out - phi_in).ravel())),
+    )
     info['final_min_T'] = _min_tri(phi_out)
     info['final_L2'] = float(np.linalg.norm((phi_out - phi_in).ravel()))
     return (phi_out, info) if record_history else phi_out

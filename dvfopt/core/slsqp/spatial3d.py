@@ -1,7 +1,6 @@
 """3D spatial helpers: sub-volume positioning, bounding windows, boundary masks."""
 
 import numpy as np
-from scipy.ndimage import label
 
 from dvfopt._defaults import _unpack_size_3d
 
@@ -76,8 +75,9 @@ def _clamp_to_voxel_budget(size, max_voxels, min_size=(3, 3, 3)):
     return (nz, ny, nx)
 
 
-def neg_jdet_bounding_window_3d(jacobian_matrix, center_zyx, threshold, err_tol,
-                                labeled_array=None, pad=2):
+def neg_jdet_bounding_window_3d(
+    jacobian_matrix, center_zyx, threshold, err_tol, labeled_array=None, pad=2
+):
     """Compute the smallest sub-volume enclosing the negative-Jdet region.
 
     The sub-volume is the bounding box of all voxels with
@@ -94,9 +94,11 @@ def neg_jdet_bounding_window_3d(jacobian_matrix, center_zyx, threshold, err_tol,
     bbox_center : tuple of int ``(z, y, x)``
     """
     from dvfopt.core.slsqp.spatial import _bbox_window_nd
+
     neg_field = jacobian_matrix <= threshold - err_tol
-    return _bbox_window_nd(neg_field, tuple(center_zyx), pad,
-                           labeled=labeled_array, connectivity_full=True)
+    return _bbox_window_nd(
+        neg_field, tuple(center_zyx), pad, labeled=labeled_array, connectivity_full=True
+    )
 
 
 def _frozen_boundary_mask_3d(cz, cy, cx, subvolume_size, volume_shape):
@@ -130,18 +132,16 @@ def _frozen_boundary_mask_3d(cz, cy, cx, subvolume_size, volume_shape):
     return mask
 
 
-
-def _frozen_edges_clean_3d(jacobian_matrix, cz, cy, cx, subvolume_size,
-                           threshold, err_tol, freeze_mask):
+def _frozen_edges_clean_3d(
+    jacobian_matrix, cz, cy, cx, subvolume_size, threshold, err_tol, freeze_mask
+):
     """Return True if frozen boundary voxels have positive Jdet."""
     if not freeze_mask.any():
         return True
     sz, sy, sx = _unpack_size_3d(subvolume_size)
     hz, hy, hx = sz // 2, sy // 2, sx // 2
     hz_hi, hy_hi, hx_hi = sz - hz, sy - hy, sx - hx
-    sub_jdet = jacobian_matrix[cz - hz:cz + hz_hi,
-                               cy - hy:cy + hy_hi,
-                               cx - hx:cx + hx_hi]
+    sub_jdet = jacobian_matrix[cz - hz : cz + hz_hi, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
     frozen_vals = sub_jdet[freeze_mask]
     return frozen_vals.min() > threshold - err_tol
 
@@ -161,9 +161,7 @@ def get_phi_sub_flat_3d(phi, cz, cy, cx, subvolume_size):
     hz, hy, hx = sz // 2, sy // 2, sx // 2
     hz_hi, hy_hi, hx_hi = sz - hz, sy - hy, sx - hx
 
-    slc = (slice(cz - hz, cz + hz_hi),
-           slice(cy - hy, cy + hy_hi),
-           slice(cx - hx, cx + hx_hi))
+    slc = (slice(cz - hz, cz + hz_hi), slice(cy - hy, cy + hy_hi), slice(cx - hx, cx + hx_hi))
 
     phi_dx = phi[2][slc]
     phi_dy = phi[1][slc]
@@ -179,9 +177,14 @@ def _edge_flags_3d(cz, cy, cx, subvolume_size, volume_shape, max_window):
 
     D, H, W = volume_shape
 
-    is_at_edge = (cz - hz == 0 or cz + hz_hi - 1 >= D - 1
-                  or cy - hy == 0 or cy + hy_hi - 1 >= H - 1
-                  or cx - hx == 0 or cx + hx_hi - 1 >= W - 1)
+    is_at_edge = (
+        cz - hz == 0
+        or cz + hz_hi - 1 >= D - 1
+        or cy - hy == 0
+        or cy + hy_hi - 1 >= H - 1
+        or cx - hx == 0
+        or cx + hx_hi - 1 >= W - 1
+    )
 
     max_sz, max_sy, max_sx = _unpack_size_3d(max_window)
     window_reached_max = sz >= max_sz and sy >= max_sy and sx >= max_sx

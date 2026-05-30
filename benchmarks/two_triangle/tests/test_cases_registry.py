@@ -1,9 +1,6 @@
-import numpy as np
 import pytest
 
 from benchmarks.two_triangle import registry
-import benchmarks.two_triangle.cases  # registers cases
-
 
 SYNTHETIC_2D = (
     "synth2d_single_cell_flip",
@@ -29,6 +26,7 @@ def test_synthetic_2d_case_registered(name):
 def test_synthetic_2d_case_has_initial_folds(name):
     """Every synthetic case must start with at least one fold to be useful."""
     from benchmarks.two_triangle.metrics import fold_counts
+
     fn = registry.get_case(name)
     dvf, _ = fn()
     fc = fold_counts(dvf, threshold=0.01)
@@ -57,6 +55,7 @@ def test_synthetic_3d_case_registered(name):
 @pytest.mark.parametrize("name", SYNTHETIC_3D)
 def test_synthetic_3d_case_has_initial_folds(name):
     from benchmarks.two_triangle.metrics import fold_counts
+
     fn = registry.get_case(name)
     dvf, _ = fn()
     fc = fold_counts(dvf, threshold=0.01)
@@ -64,9 +63,12 @@ def test_synthetic_3d_case_has_initial_folds(name):
 
 
 RANDOM_3D = (
-    "rand3d_grid16_low",  "rand3d_grid16_high",
-    "rand3d_grid24_low",  "rand3d_grid24_high",
-    "rand3d_grid32_low",  "rand3d_grid32_high",
+    "rand3d_grid16_low",
+    "rand3d_grid16_high",
+    "rand3d_grid24_low",
+    "rand3d_grid24_high",
+    "rand3d_grid32_low",
+    "rand3d_grid32_high",
 )
 
 
@@ -82,6 +84,7 @@ def test_random_3d_case_registered(name):
 @pytest.mark.parametrize("name", ("rand3d_grid16_high", "rand3d_grid32_high"))
 def test_random_3d_high_severity_has_folds(name):
     from benchmarks.two_triangle.metrics import fold_counts
+
     fn = registry.get_case(name)
     dvf, _ = fn()
     fc = fold_counts(dvf, threshold=0.01)

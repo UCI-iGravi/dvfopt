@@ -1,9 +1,10 @@
 """Decorator-based registries for benchmark variants and test cases."""
-from typing import Callable, Dict
 
-_VARIANTS: Dict[str, Callable] = {}
-_CASES: Dict[str, Callable] = {}
-_CASE_META: Dict[str, dict] = {}
+from typing import Callable
+
+_VARIANTS: dict[str, Callable] = {}
+_CASES: dict[str, Callable] = {}
+_CASE_META: dict[str, dict] = {}
 
 
 def register_variant(name: str) -> Callable:
@@ -12,6 +13,7 @@ def register_variant(name: str) -> Callable:
             raise ValueError(f"Variant {name!r} already registered")
         _VARIANTS[name] = fn
         return fn
+
     return deco
 
 
@@ -22,6 +24,7 @@ def register_case(name: str, *, category: str, dim: int, **extra) -> Callable:
         _CASES[name] = fn
         _CASE_META[name] = {"category": category, "dim": dim, **extra}
         return fn
+
     return deco
 
 

@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from dvfopt.core.solver3d import (
-    _init_phi_3d,
     _apply_result_3d,
+    _init_phi_3d,
     _patch_jacobian_3d,
     _serial_fix_voxel,
     _update_metrics_3d,
@@ -47,11 +47,13 @@ class TestApplyResult3D:
         sz, sy, sx = 3, 3, 3
         voxels = sz * sy * sx
         # Packing: [dx_flat, dy_flat, dz_flat]
-        result_x = np.concatenate([
-            np.full(voxels, 1.0),   # dx
-            np.full(voxels, 2.0),   # dy
-            np.full(voxels, 3.0),   # dz
-        ])
+        result_x = np.concatenate(
+            [
+                np.full(voxels, 1.0),  # dx
+                np.full(voxels, 2.0),  # dy
+                np.full(voxels, 3.0),  # dz
+            ]
+        )
         _apply_result_3d(phi, result_x, cz=4, cy=4, cx=4, sub_size=(3, 3, 3))
         np.testing.assert_array_equal(phi[2, 3:6, 3:6, 3:6], 1.0)  # dx
         np.testing.assert_array_equal(phi[1, 3:6, 3:6, 3:6], 2.0)  # dy
@@ -82,8 +84,7 @@ class TestPatchJacobian3D:
         _patch_jacobian_3d(jac_patched, phi, center=(4, 4, 4), sub_size=(3, 3, 3))
 
         # Interior of the patched region (skip 1-voxel boundary of sub-array)
-        np.testing.assert_allclose(
-            jac_patched[3:6, 3:6, 3:6], jac_full[3:6, 3:6, 3:6], atol=1e-12)
+        np.testing.assert_allclose(jac_patched[3:6, 3:6, 3:6], jac_full[3:6, 3:6, 3:6], atol=1e-12)
 
     def test_corner_patch(self):
         """Corner patch: grid-edge boundary matches, far boundary does not."""
@@ -94,8 +95,7 @@ class TestPatchJacobian3D:
         jac_patched = np.ones((6, 6, 6))
         _patch_jacobian_3d(jac_patched, phi, center=(1, 1, 1), sub_size=(3, 3, 3))
         # Sub-array is [0:4]; interior safe region excludes far boundary (index 3)
-        np.testing.assert_allclose(
-            jac_patched[0:3, 0:3, 0:3], jac_full[0:3, 0:3, 0:3], atol=1e-12)
+        np.testing.assert_allclose(jac_patched[0:3, 0:3, 0:3], jac_full[0:3, 0:3, 0:3], atol=1e-12)
 
     def test_mutates_in_place(self):
         phi = np.zeros((3, 6, 6, 6))
@@ -112,8 +112,7 @@ class TestUpdateMetrics3D:
         min_jdet = []
         error_list = []
 
-        jac, neg, mn = _update_metrics_3d(
-            phi, phi_init, num_neg, min_jdet, error_list)
+        _jac, neg, mn = _update_metrics_3d(phi, phi_init, num_neg, min_jdet, error_list)
         assert neg == 0
         np.testing.assert_allclose(mn, 1.0)
         np.testing.assert_allclose(error_list[0], 0.0)
@@ -128,9 +127,14 @@ class TestUpdateMetrics3D:
         min_jdet = []
         # Patch around center
         jac, _, _ = _update_metrics_3d(
-            phi, phi_init, num_neg, min_jdet,
+            phi,
+            phi_init,
+            num_neg,
+            min_jdet,
             jacobian_matrix=jac_full.copy(),
-            patch_center=(4, 4, 4), patch_size=(3, 3, 3))
+            patch_center=(4, 4, 4),
+            patch_size=(3, 3, 3),
+        )
 
         # Interior of patched region matches (skip sub-array boundary)
         np.testing.assert_allclose(jac[3:6, 3:6, 3:6], jac_full[3:6, 3:6, 3:6], atol=1e-12)

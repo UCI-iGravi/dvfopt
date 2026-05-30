@@ -25,29 +25,34 @@ Pipeline
 
 Promoted from ``notebooks/experiments/wall_breakers/methods/m10_harmonic_l2_polished.py``.
 """
+
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.core.tri_primitives import tri_areas_flat as _tri_areas_flat
-
-from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
 from dvfopt.core.wallbreakers._common import (
-    min_tri as _min_tri,
     barrier_anchored_objective as _barrier_anchored,
+)
+from dvfopt.core.wallbreakers._common import (
+    min_tri as _min_tri,
+)
+from dvfopt.core.wallbreakers._common import (
     resolved_safety_margin,
 )
+from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 
 
 def iterative_2d_tri_harmonic_polished(
     phi_in: np.ndarray,
     *,
-    threshold: float = None,
+    threshold: Optional[float] = None,
     margin: float = 1e-3,
     ring_pad: int = 2,
     max_grow_iters: int = 8,
@@ -118,53 +123,74 @@ def iterative_2d_tri_harmonic_polished(
 
     # Stage 1: harmonic extension.
     seed, r1_info = harmonic_extension_2d(
-        phi_in, threshold=threshold,
-        ring_pad=ring_pad, max_grow_iters=max_grow_iters,
-        margin=0.0, record_history=True)
+        phi_in,
+        threshold=threshold,
+        ring_pad=ring_pad,
+        max_grow_iters=max_grow_iters,
+        margin=0.0,
+        record_history=True,
+    )
     seed_min = _min_tri(seed)
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))
-    info['stage1_harmonic'] = dict(min_T=seed_min, L2=seed_L2,
-                                    wall=time.time() - t0,
-                                    patches=r1_info.get('patches'))
+    info['stage1_harmonic'] = dict(
+        min_T=seed_min, L2=seed_L2, wall=time.time() - t0, patches=r1_info.get('patches')
+    )
     if verbose:
-        print(f'  stage1 harmonic min_T={seed_min:+.5f}  L2={seed_L2:.1f}  '
-              f'({time.time()-t0:.1f}s)', flush=True)
+        print(
+            f'  stage1 harmonic min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
+            flush=True,
+        )
 
     # Stage 2: ALM cleanup if seed not strictly interior.
     safety_margin = resolved_safety_margin(margin)
     if seed_min < threshold + safety_margin:
         remaining = max(60.0, time_budget_s * 0.35)
         seed = augmented_lagrangian_2d(
-            seed, threshold=threshold + safety_margin, margin=1e-4,
-            anchor=anchor, outer_max=30, inner_maxiter=150,
-            time_budget_s=remaining, verbose=0)
-        info['stage2_alm'] = dict(min_T=_min_tri(seed),
-                                   L2=float(np.linalg.norm(
-                                       (seed - phi_in).ravel())),
-                                   wall=time.time() - t0)
+            seed,
+            threshold=threshold + safety_margin,
+            margin=1e-4,
+            anchor=anchor,
+            outer_max=30,
+            inner_maxiter=150,
+            time_budget_s=remaining,
+            verbose=0,
+        )
+        info['stage2_alm'] = dict(
+            min_T=_min_tri(seed),
+            L2=float(np.linalg.norm((seed - phi_in).ravel())),
+            wall=time.time() - t0,
+        )
         if verbose:
-            print(f'  stage2 ALM     min_T={_min_tri(seed):+.5f}  '
-                  f'L2={info["stage2_alm"]["L2"]:.1f}  '
-                  f'({time.time()-t0:.1f}s)', flush=True)
+            print(
+                f'  stage2 ALM     min_T={_min_tri(seed):+.5f}  '
+                f'L2={info["stage2_alm"]["L2"]:.1f}  '
+                f'({time.time() - t0:.1f}s)',
+                flush=True,
+            )
     else:
         info['stage2_alm'] = {'skipped': 'seed-already-feasible'}
 
     cur_min = _min_tri(seed)
     if cur_min <= threshold + 1e-6:
         seed_bump = augmented_lagrangian_2d(
-            seed, threshold=threshold + safety_margin, margin=1e-4,
-            anchor='none', outer_max=10, inner_maxiter=100,
-            time_budget_s=60.0, verbose=0)
+            seed,
+            threshold=threshold + safety_margin,
+            margin=1e-4,
+            anchor='none',
+            outer_max=10,
+            inner_maxiter=100,
+            time_budget_s=60.0,
+            verbose=0,
+        )
         if _min_tri(seed_bump) > _min_tri(seed):
             seed = seed_bump
         cur_min = _min_tri(seed)
         info['stage2b_alm_bump'] = dict(
-            min_T=cur_min,
-            L2=float(np.linalg.norm((seed - phi_in).ravel())))
+            min_T=cur_min, L2=float(np.linalg.norm((seed - phi_in).ravel()))
+        )
 
     if cur_min <= threshold:
-        info['stage3_polish'] = {
-            'skipped': f'min_T={cur_min:.5f} not strict-feasible'}
+        info['stage3_polish'] = {'skipped': f'min_T={cur_min:.5f} not strict-feasible'}
         info['final_min_T'] = cur_min
         return (seed, info) if record_history else seed
 
@@ -176,27 +202,32 @@ def iterative_2d_tri_harmonic_polished(
         if time.time() - t0 > time_budget_s:
             break
         res = minimize(
-            _barrier_anchored, phi_flat, jac=True, method='L-BFGS-B',
+            _barrier_anchored,
+            phi_flat,
+            jac=True,
+            method='L-BFGS-B',
             args=(phi_in_flat, H, W, threshold, mu, anchor, eps_l1),
-            options=dict(maxiter=inner_maxiter, ftol=1e-12, gtol=1e-9))
+            options=dict(maxiter=inner_maxiter, ftol=1e-12, gtol=1e-9),
+        )
         phi_flat = res.x
         T = _tri_areas_flat(phi_flat, H, W)
         min_T = float(T.min())
-        phi_cur = np.stack([phi_flat[:H * W].reshape(H, W),
-                            phi_flat[H * W:].reshape(H, W)])
+        phi_cur = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
         L2 = float(np.linalg.norm((phi_cur - phi_in).ravel()))
-        polish_log.append(dict(mu=mu, min_T=min_T, L2=L2,
-                                nit=int(res.nit), wall=time.time() - t0))
+        polish_log.append(dict(mu=mu, min_T=min_T, L2=L2, nit=int(res.nit), wall=time.time() - t0))
         if verbose:
-            print(f'  stage3 mu={mu:.1e}  min_T={min_T:+.5f}  L2={L2:.1f}  '
-                  f'nit={res.nit}  ({time.time()-t0:.1f}s)', flush=True)
+            print(
+                f'  stage3 mu={mu:.1e}  min_T={min_T:+.5f}  L2={L2:.1f}  '
+                f'nit={res.nit}  ({time.time() - t0:.1f}s)',
+                flush=True,
+            )
 
-    phi_out = np.stack([phi_flat[:H * W].reshape(H, W),
-                        phi_flat[H * W:].reshape(H, W)])
-    info['stage3_polish'] = dict(steps=len(polish_log),
-                                  final_min_T=_min_tri(phi_out),
-                                  final_L2=float(np.linalg.norm(
-                                      (phi_out - phi_in).ravel())),
-                                  log_last3=polish_log[-3:])
+    phi_out = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
+    info['stage3_polish'] = dict(
+        steps=len(polish_log),
+        final_min_T=_min_tri(phi_out),
+        final_L2=float(np.linalg.norm((phi_out - phi_in).ravel())),
+        log_last3=polish_log[-3:],
+    )
     info['final_min_T'] = _min_tri(phi_out)
     return (phi_out, info) if record_history else phi_out

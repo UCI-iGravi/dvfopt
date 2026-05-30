@@ -11,19 +11,30 @@ for backward compatibility.
 import time
 
 import numpy as np
-from scipy.optimize import minimize, NonlinearConstraint
+from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import _log, _unpack_size
-from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
-from dvfopt.jacobian.shoelace import _shoelace_areas_2d, _all_triangle_areas_2d
-from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.core.objective import objective_euc
 from dvfopt.core.slsqp.constraints import _build_constraints
+from dvfopt.jacobian.monotonicity import injectivity_constraint
+from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
+from dvfopt.jacobian.shoelace import _all_triangle_areas_2d, _shoelace_areas_2d
 
 
-def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
-                    method_name, verbose, enforce_shoelace, enforce_injectivity,
-                    injectivity_threshold=None, enforce_triangles=False):
+def _full_grid_step(
+    phi,
+    phi_init,
+    H,
+    W,
+    threshold,
+    max_minimize_iter,
+    method_name,
+    verbose,
+    enforce_shoelace,
+    enforce_injectivity,
+    injectivity_threshold=None,
+    enforce_triangles=False,
+):
     """Optimize the entire H×W grid at once.
 
     Used as a fallback when the square sub-window (capped at
@@ -44,29 +55,34 @@ def _full_grid_step(phi, phi_init, H, W, threshold, max_minimize_iter,
     constraints = [NonlinearConstraint(jac_con, threshold, np.inf)]
 
     if enforce_shoelace:
+
         def shoe_con(phi_xy):
             dx = phi_xy[:pixels].reshape(H, W)
             dy = phi_xy[pixels:].reshape(H, W)
             return _shoelace_areas_2d(dy, dx).flatten()
+
         constraints.append(NonlinearConstraint(shoe_con, threshold, np.inf))
 
     if enforce_triangles:
+
         def tri_con(phi_xy):
             dx = phi_xy[:pixels].reshape(H, W)
             dy = phi_xy[pixels:].reshape(H, W)
             A = _all_triangle_areas_2d(dy, dx)
             return A.reshape(A.shape[0], -1).ravel()
+
         constraints.append(NonlinearConstraint(tri_con, threshold, np.inf))
 
     if enforce_injectivity:
-        constraints.append(NonlinearConstraint(
-            lambda phi_xy: injectivity_constraint(phi_xy, (H, W), exclude_boundaries=False),
-            inj_lb, np.inf,
-        ))
+        constraints.append(
+            NonlinearConstraint(
+                lambda phi_xy: injectivity_constraint(phi_xy, (H, W), exclude_boundaries=False),
+                inj_lb,
+                np.inf,
+            )
+        )
 
-    _log(verbose, 1,
-         f"  [full-grid] Optimizing entire {H}x{W} grid "
-         f"({2 * pixels} variables)")
+    _log(verbose, 1, f"  [full-grid] Optimizing entire {H}x{W} grid ({2 * pixels} variables)")
 
     result = minimize(
         lambda phi1: objective_euc(phi1, phi_init_flat),
@@ -97,7 +113,11 @@ def _optimize_single_window(
 ):
     """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed, success)``."""
     constraints = _build_constraints(
-        phi_sub_flat, submatrix_size, is_at_edge, window_reached_max, threshold,
+        phi_sub_flat,
+        submatrix_size,
+        is_at_edge,
+        window_reached_max,
+        threshold,
         enforce_shoelace=enforce_shoelace,
         enforce_injectivity=enforce_injectivity,
         injectivity_threshold=injectivity_threshold,
@@ -140,14 +160,18 @@ def _apply_result(phi, result_x, cy, cx, sub_size, write_size=None):
         wr_sy, wr_sx = _unpack_size(write_size)
         hy, hx = wr_sy // 2, wr_sx // 2
         hy_hi, hx_hi = wr_sy - hy, wr_sx - hx
-        phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-            result_x[:pixels].reshape(opt_sy, opt_sx)[1:-1, 1:-1]
-        phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-            result_x[pixels:].reshape(opt_sy, opt_sx)[1:-1, 1:-1]
+        phi[1, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi] = result_x[:pixels].reshape(
+            opt_sy, opt_sx
+        )[1:-1, 1:-1]
+        phi[0, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi] = result_x[pixels:].reshape(
+            opt_sy, opt_sx
+        )[1:-1, 1:-1]
     else:
         hy, hx = opt_sy // 2, opt_sx // 2
         hy_hi, hx_hi = opt_sy - hy, opt_sx - hx
-        phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-            result_x[:pixels].reshape(opt_sy, opt_sx)
-        phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi] = \
-            result_x[pixels:].reshape(opt_sy, opt_sx)
+        phi[1, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi] = result_x[:pixels].reshape(
+            opt_sy, opt_sx
+        )
+        phi[0, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi] = result_x[pixels:].reshape(
+            opt_sy, opt_sx
+        )

@@ -5,6 +5,7 @@ the 3D Laplacian solver is heavier and the failure modes we want to
 exercise (single-vertex folds, 6-tet bowties) are easier to specify
 explicitly. Mirrors the patterns from notebooks 12a and 12c.
 """
+
 import numpy as np
 
 from benchmarks.two_triangle.registry import register_case
@@ -20,9 +21,7 @@ def synth3d_single_tet_flip():
     dvf[0, 2, 2, 2] = -2.0  # dz
     dvf[1, 2, 2, 2] = -2.0  # dy
     dvf[2, 2, 2, 2] = -2.0  # dx
-    return dvf, {"title": "Single-tet vertex flip (5x5x5)",
-                 "expected_folds": "small",
-                 "dim": 3}
+    return dvf, {"title": "Single-tet vertex flip (5x5x5)", "expected_folds": "small", "dim": 3}
 
 
 @register_case("synth3d_6tet_bowtie", category="synthetic_3d", dim=3)
@@ -35,8 +34,6 @@ def synth3d_6tet_bowtie():
     """
     D, H, W = 6, 6, 6
     dvf = np.zeros((3, D, H, W), dtype=np.float64)
-    dvf[2, 2, 2, 2] = +2.0   # vertex A: dx +2 -> lands on B
-    dvf[2, 2, 2, 3] = -2.0   # vertex B: dx -2 -> lands on A
-    return dvf, {"title": "6-tet bowtie (6x6x6)",
-                 "expected_folds": "moderate",
-                 "dim": 3}
+    dvf[2, 2, 2, 2] = +2.0  # vertex A: dx +2 -> lands on B
+    dvf[2, 2, 2, 3] = -2.0  # vertex B: dx -2 -> lands on A
+    return dvf, {"title": "6-tet bowtie (6x6x6)", "expected_folds": "moderate", "dim": 3}

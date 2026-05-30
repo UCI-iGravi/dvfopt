@@ -22,19 +22,18 @@ so this core takes them as callables. The anchor mode (``'l2' / 'l1' /
 'none'``) lifts out of the tri-barrier file so the other solvers can
 trivially gain non-L2 anchors.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
-
 # Schedules shared across all CPU barrier solvers.
-DEFAULT_LAM_SCHEDULE: Tuple[float, ...] = (
-    1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
-DEFAULT_MU_SCHEDULE: Tuple[float, ...] = (1e-1, 1e-2, 1e-3, 1e-4)
+DEFAULT_LAM_SCHEDULE: tuple[float, ...] = (1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
+DEFAULT_MU_SCHEDULE: tuple[float, ...] = (1e-1, 1e-2, 1e-3, 1e-4)
 
 
 def anchor_term(diff: np.ndarray, kind: str, eps_l1: float = 1e-4):
@@ -53,10 +52,16 @@ def anchor_term(diff: np.ndarray, kind: str, eps_l1: float = 1e-4):
 
 
 def _penalty_objective(
-    phi_flat, lam,
+    phi_flat,
+    lam,
     *,
-    phi_anchor, constraint_values, constraint_adjoint,
-    target, active_mask, anchor, eps_l1,
+    phi_anchor,
+    constraint_values,
+    constraint_adjoint,
+    target,
+    active_mask,
+    anchor,
+    eps_l1,
 ):
     """Smooth quadratic exterior penalty on negative-T cells."""
     diff = phi_flat - phi_anchor
@@ -73,10 +78,16 @@ def _penalty_objective(
 
 
 def _barrier_objective(
-    phi_flat, mu,
+    phi_flat,
+    mu,
     *,
-    phi_anchor, constraint_values, constraint_adjoint,
-    threshold, active_mask, anchor, eps_l1,
+    phi_anchor,
+    constraint_values,
+    constraint_adjoint,
+    threshold,
+    active_mask,
+    anchor,
+    eps_l1,
 ):
     """Log-barrier interior penalty. Returns ``(+inf, zeros)`` on infeasible iterates
     so L-BFGS-B's line search rejects the step."""
@@ -114,8 +125,8 @@ def run_penalty_barrier_lbfgs(
     constraint_adjoint: Callable[[np.ndarray, np.ndarray], np.ndarray],
     threshold: float,
     margin: float = 1e-3,
-    lam_schedule: Tuple[float, ...] = DEFAULT_LAM_SCHEDULE,
-    mu_schedule: Tuple[float, ...] = DEFAULT_MU_SCHEDULE,
+    lam_schedule: tuple[float, ...] = DEFAULT_LAM_SCHEDULE,
+    mu_schedule: tuple[float, ...] = DEFAULT_MU_SCHEDULE,
     max_iter: int = 300,
     active_mask: Optional[np.ndarray] = None,
     anchor: str = 'l2',
@@ -183,7 +194,9 @@ def run_penalty_barrier_lbfgs(
         res = minimize(
             lambda p, lam_=lam: _penalty_objective(p, lam_, target=target, **obj_kwargs),
             phi_flat,
-            jac=True, method='L-BFGS-B', bounds=bounds,
+            jac=True,
+            method='L-BFGS-B',
+            bounds=bounds,
             options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
         )
         phi_flat = res.x
@@ -192,13 +205,23 @@ def run_penalty_barrier_lbfgs(
         cur_min = _min_active(T, active_mask)
         cur_neg = int((T <= 0).sum())
         if record_history:
-            history.append(dict(phase='penalty', step=lam_steps,
-                                lam=float(lam), n_neg=cur_neg, min_T=cur_min,
-                                wall_s=time.time() - t0))
+            history.append(
+                dict(
+                    phase='penalty',
+                    step=lam_steps,
+                    lam=float(lam),
+                    n_neg=cur_neg,
+                    min_T=cur_min,
+                    wall_s=time.time() - t0,
+                )
+            )
         if verbose >= 1:
-            print(f'{log_prefix}[penalty {lam_steps}] lam={lam:g}  '
-                  f'neg={cur_neg}  min_T={cur_min:+.6f}  '
-                  f'({time.time()-t0:.2f}s)', flush=True)
+            print(
+                f'{log_prefix}[penalty {lam_steps}] lam={lam:g}  '
+                f'neg={cur_neg}  min_T={cur_min:+.6f}  '
+                f'({time.time() - t0:.2f}s)',
+                flush=True,
+            )
         if cur_min >= target:
             feasible = True
             break
@@ -208,10 +231,11 @@ def run_penalty_barrier_lbfgs(
         for mu in mu_schedule:
             t0 = time.time()
             res = minimize(
-                lambda p, mu_=mu: _barrier_objective(
-                    p, mu_, threshold=threshold, **obj_kwargs),
+                lambda p, mu_=mu: _barrier_objective(p, mu_, threshold=threshold, **obj_kwargs),
                 phi_flat,
-                jac=True, method='L-BFGS-B', bounds=bounds,
+                jac=True,
+                method='L-BFGS-B',
+                bounds=bounds,
                 options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
             )
             # Only accept the step if the barrier objective is finite; an
@@ -223,13 +247,23 @@ def run_penalty_barrier_lbfgs(
             cur_min = _min_active(T, active_mask)
             cur_neg = int((T <= 0).sum())
             if record_history:
-                history.append(dict(phase='barrier', step=mu_steps,
-                                    mu=float(mu), n_neg=cur_neg, min_T=cur_min,
-                                    wall_s=time.time() - t0))
+                history.append(
+                    dict(
+                        phase='barrier',
+                        step=mu_steps,
+                        mu=float(mu),
+                        n_neg=cur_neg,
+                        min_T=cur_min,
+                        wall_s=time.time() - t0,
+                    )
+                )
             if verbose >= 1:
-                print(f'{log_prefix}[barrier {mu_steps}] mu={mu:g}  '
-                      f'neg={cur_neg}  min_T={cur_min:+.6f}  '
-                      f'({time.time()-t0:.2f}s)', flush=True)
+                print(
+                    f'{log_prefix}[barrier {mu_steps}] mu={mu:g}  '
+                    f'neg={cur_neg}  min_T={cur_min:+.6f}  '
+                    f'({time.time() - t0:.2f}s)',
+                    flush=True,
+                )
 
     return phi_flat, {
         'feasible': feasible,

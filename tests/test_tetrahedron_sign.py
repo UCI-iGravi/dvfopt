@@ -1,0 +1,315 @@
+"""Tests for the 6-tet per-voxel sign helper.
+
+The winding signs in ``_TET_SIGN`` are easy to get wrong (six tets, two
+plausible windings each, plus a global ±1 from the +y-down image
+convention). These tests pin the convention to:
+
+1. **Identity field** → every tet has signed volume exactly ``+1/6``.
+2. **Volume sum** → for any field, the 6 tet volumes per cell sum to
+   the cell's signed volume under the chosen decomposition. On the
+   identity field this sum is exactly ``+1`` per cell.
+3. **Single-voxel fold** → punching a large negative displacement at
+   one voxel flips at least one tet in the surrounding cells.
+4. **Small random fields stay feasible.**
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from dvfopt.jacobian.tetrahedron_sign import (
+    six_tet_fold_classification,
+    six_tet_volumes_3d,
+    tet_grad_T_v,
+    tet_volumes_flat,
+)
+
+
+class TestIdentity:
+    def test_all_tets_positive_one_sixth(self):
+        phi = np.zeros((3, 4, 5, 6))
+        V = six_tet_volumes_3d(phi)
+        assert V.shape == (6, 3, 4, 5)
+        assert np.allclose(V, 1 / 6)
+
+    def test_volume_sum_per_cell_is_unity(self):
+        """6 tets covering a unit cube → total volume 1."""
+        phi = np.zeros((3, 4, 5, 6))
+        V = six_tet_volumes_3d(phi)
+        total = V.sum(axis=0)
+        assert np.allclose(total, 1.0)
+
+    def test_classification_returns_zero(self):
+        phi = np.zeros((3, 4, 5, 6))
+        n = six_tet_fold_classification(phi)
+        assert n.shape == (3, 4, 5)
+        assert (n == 0).all()
+
+
+class TestSmallRandomFeasible:
+    def test_no_flips_on_small_jitter(self):
+        rng = np.random.default_rng(0)
+        for seed in range(5):
+            rng = np.random.default_rng(seed)
+            phi = rng.normal(0, 0.05, (3, 4, 5, 5))
+            V = six_tet_volumes_3d(phi)
+            assert (V > 0).all(), f'seed={seed}: unexpected flip on tiny jitter'
+
+
+class TestFoldedField:
+    def test_punched_fold_produces_flips(self):
+        phi = np.zeros((3, 5, 6, 6))
+        # Deep fold at the center: collapse via large negative dy/dx
+        phi[1, 1:4, 2:4, 2:4] -= 1.8
+        phi[2, 1:4, 2:4, 2:4] -= 1.8
+        V = six_tet_volumes_3d(phi)
+        assert (V <= 0).any()
+
+    def test_classification_max_is_six(self):
+        """A whole-cell collapse (all 8 corners pulled inward) should
+        give that cell all 6 tets flipped.
+
+        A single-corner displacement only affects tets that touch that
+        corner — max 4 of the 6 — so this test deliberately collapses
+        every corner of the central cell.
+        """
+        phi = np.zeros((3, 5, 6, 6))
+        # Collapse the cell at (z=2, y=3, x=3) by pulling its 8 corners
+        # heavily toward each other.
+        for oz in (0, 1):
+            for oy in (0, 1):
+                for ox in (0, 1):
+                    sgn_y = 1 if oy == 0 else -1
+                    sgn_x = 1 if ox == 0 else -1
+                    phi[1, 2 + oz, 3 + oy, 3 + ox] = sgn_y * -3.0
+                    phi[2, 2 + oz, 3 + oy, 3 + ox] = sgn_x * -3.0
+        n = six_tet_fold_classification(phi)
+        assert n.max() == 6, f'max-tet-flips per cell was {n.max()}, expected 6'
+
+    def test_isolated_perturbation_partial_flip(self):
+        """A small single-corner perturbation should flip only a few
+        tets (not all 6 of any one cell)."""
+        phi = np.zeros((3, 4, 5, 5))
+        phi[1, 1, 1, 1] = -0.3  # tiny single-vertex tweak
+        n = six_tet_fold_classification(phi)
+        # The neighboring cells should NOT have any tet flipped (jitter
+        # too small to break feasibility).
+        assert (n == 0).all() or n.max() < 6
+
+
+class TestTorchBackend:
+    """Verify the torch forward matches the numpy forward and that
+    autograd through it agrees with the analytical adjoint.
+
+    Skipped if torch isn't installed (torch is in the ``benchmarks``
+    extra, not the core deps)."""
+
+    def setup_method(self):
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            pytest.skip('torch not available')
+
+    def test_identity_matches_numpy(self):
+        import torch
+
+        from dvfopt.jacobian.tetrahedron_sign_torch import six_tet_volumes_3d_torch
+
+        phi_pt = torch.zeros((3, 4, 5, 5), dtype=torch.float64)
+        V = six_tet_volumes_3d_torch(phi_pt).numpy()
+        assert np.allclose(V, 1 / 6)
+
+    def test_random_parity_with_numpy(self):
+        import torch
+
+        from dvfopt.jacobian.tetrahedron_sign_torch import six_tet_volumes_3d_torch
+
+        rng = np.random.default_rng(0)
+        phi_np = rng.normal(0, 0.05, (3, 4, 5, 5))
+        phi_pt = torch.from_numpy(phi_np.copy()).double()
+        V_np = six_tet_volumes_3d(phi_np)
+        V_pt = six_tet_volumes_3d_torch(phi_pt).numpy()
+        assert float(np.abs(V_np - V_pt).max()) < 1e-13
+
+    def test_autograd_matches_analytical_adjoint(self):
+        """Autograd through the torch forward should match the closed-form
+        analytical adjoint from the numpy path."""
+        import torch
+
+        from dvfopt.jacobian.tetrahedron_sign_torch import six_tet_volumes_3d_torch
+
+        rng = np.random.default_rng(0)
+        D, H, W = 3, 4, 5
+        phi_np = rng.normal(0, 0.05, (3, D, H, W))
+        v = rng.normal(size=(6 * (D - 1) * (H - 1) * (W - 1)))
+
+        phi_pt = torch.from_numpy(phi_np.copy()).double().requires_grad_(True)
+        V_pt = six_tet_volumes_3d_torch(phi_pt)
+        v_pt = torch.from_numpy(v.reshape(V_pt.shape).copy())
+        autograd_grad = torch.autograd.grad(V_pt, phi_pt, grad_outputs=v_pt)[0].numpy()
+        # autograd returns (3, D, H, W) in [dz, dy, dx]; convert to flat [dx, dy, dz]
+        autograd_flat = np.concatenate(
+            [autograd_grad[2].ravel(), autograd_grad[1].ravel(), autograd_grad[0].ravel()]
+        )
+        phi_flat = np.concatenate(
+            [phi_np[2].ravel(), phi_np[1].ravel(), phi_np[0].ravel()]
+        )
+        ana = tet_grad_T_v(phi_flat, D, H, W, v)
+        assert float(np.abs(autograd_flat - ana).max()) < 1e-10
+
+
+class TestShape:
+    @pytest.mark.parametrize('shape', [(3, 3, 3), (3, 4, 5), (5, 4, 4)])
+    def test_output_shape(self, shape):
+        D, H, W = shape
+        phi = np.zeros((3, D, H, W))
+        V = six_tet_volumes_3d(phi)
+        assert V.shape == (6, D - 1, H - 1, W - 1)
+        n = six_tet_fold_classification(phi)
+        assert n.shape == (D - 1, H - 1, W - 1)
+
+
+# ---------------------------------------------------------------------------
+# Flat-pack primitives (the constraint-system entry points)
+# ---------------------------------------------------------------------------
+
+
+class TestFlatPack:
+    """Verify the flat-pack ``[dx, dy, dz]`` versions agree with the
+    array versions, and that the analytical adjoint matches FD."""
+
+    def test_tet_volumes_flat_matches_six_tet_volumes_3d(self):
+        rng = np.random.default_rng(0)
+        D, H, W = 3, 4, 5
+        phi = rng.normal(0, 0.05, (3, D, H, W))  # (3, D, H, W) [dz, dy, dx]
+        # Flat-pack is [dx, dy, dz].
+        phi_flat = np.concatenate([phi[2].ravel(), phi[1].ravel(), phi[0].ravel()])
+        V_flat = tet_volumes_flat(phi_flat, D, H, W)
+        V_array = six_tet_volumes_3d(phi)
+        np.testing.assert_allclose(V_flat, V_array.ravel())
+
+    def test_tet_volumes_flat_identity(self):
+        D, H, W = 3, 4, 5
+        phi_flat = np.zeros(3 * D * H * W)
+        V = tet_volumes_flat(phi_flat, D, H, W)
+        assert V.shape == (6 * (D - 1) * (H - 1) * (W - 1),)
+        assert np.allclose(V, 1 / 6)
+
+    @pytest.mark.parametrize('seed', [0, 1, 2, 7])
+    def test_adjoint_matches_finite_differences(self, seed):
+        """Gradcheck: analytical J^T @ v vs central-difference J^T @ v."""
+        rng = np.random.default_rng(seed)
+        D, H, W = 3, 4, 5
+        phi_flat = rng.normal(0, 0.05, 3 * D * H * W)
+        n_v = phi_flat.size
+        n_c = 6 * (D - 1) * (H - 1) * (W - 1)
+        v = rng.normal(size=n_c)
+
+        ana = tet_grad_T_v(phi_flat, D, H, W, v)
+
+        eps = 1e-6
+        num = np.zeros(n_v)
+        for i in range(n_v):
+            p = phi_flat.copy()
+            p[i] += eps
+            m = phi_flat.copy()
+            m[i] -= eps
+            num[i] = float(
+                np.dot((tet_volumes_flat(p, D, H, W) - tet_volumes_flat(m, D, H, W)) / (2 * eps), v)
+            )
+
+        err = float(np.abs(ana - num).max())
+        assert err < 1e-6, f'seed={seed}: gradcheck err={err:.2e}'
+
+
+# ---------------------------------------------------------------------------
+# End-to-end via Tet6Constraint3D
+# ---------------------------------------------------------------------------
+
+
+class TestTet6Constraint3D:
+    """Verify the public Constraint surface (registry, shape, packing,
+    barrier-strategy round-trip)."""
+
+    def test_registry(self):
+        from dvfopt import make_constraint
+        from dvfopt.constraints import Tet6Constraint3D
+
+        c = make_constraint('6tet', (3, 4, 5))
+        assert isinstance(c, Tet6Constraint3D)
+        c2 = make_constraint('6tet_3d', (3, 4, 5))
+        assert isinstance(c2, Tet6Constraint3D)
+
+    def test_shape_consistency(self):
+        from dvfopt import Tet6Constraint3D
+
+        D, H, W = 3, 4, 5
+        c = Tet6Constraint3D(shape=(D, H, W))
+        assert c.n_variables == 3 * D * H * W
+        assert c.n_constraints == 6 * (D - 1) * (H - 1) * (W - 1)
+
+    def test_flatten_unflatten_round_trip(self):
+        from dvfopt import Tet6Constraint3D
+
+        rng = np.random.default_rng(0)
+        c = Tet6Constraint3D(shape=(3, 4, 5))
+        phi = rng.normal(0, 0.1, (3, 3, 4, 5))
+        np.testing.assert_array_equal(c.unflatten(c.flatten(phi)), phi)
+
+    def test_identity_feasible(self):
+        from dvfopt import Tet6Constraint3D
+
+        c = Tet6Constraint3D(shape=(3, 4, 5))
+        phi = np.zeros((3, 3, 4, 5))
+        flat = c.flatten(phi)
+        V = c.values(flat)
+        assert np.allclose(V, 1 / 6)
+
+    def test_auto_strategy_routes_to_barrier(self):
+        """``auto_strategy`` must route ``Tet6Constraint3D`` to barrier
+        (it's the only strategy that supports tet today). Regression:
+        early versions fell through to ``slsqp_windowed`` which doesn't
+        accept tet constraints."""
+        from dvfopt import Tet6Constraint3D
+        from dvfopt.solver import auto_strategy
+
+        c = Tet6Constraint3D(shape=(4, 5, 5))
+        # Across a range of fold densities, tet should always go barrier.
+        for n_neg, init_min in [(1, -0.05), (200, -0.5), (10000, -5.0)]:
+            label = auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l2')
+            assert label == 'barrier', f'n_neg={n_neg}: got {label!r}, expected barrier'
+
+    def test_auto_dispatch_via_correct_dvf(self):
+        """End-to-end: ``correct_dvf(constraint='6tet', strategy='auto')``
+        should reach feasibility, not crash."""
+        from dvfopt import correct_dvf
+
+        rng = np.random.default_rng(0)
+        phi = rng.normal(0, 0.05, (3, 4, 5, 5))
+        phi[1, 2, 2:4, 2:4] -= 1.0
+        phi[2, 2, 2:4, 2:4] -= 1.0
+        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='auto')
+        assert result.feasible
+        assert result.info.strategy_name == 'BarrierStrategy'
+
+    def test_end_to_end_barrier_reaches_feasibility(self):
+        """A small folded 3D field should be feasibilised by barrier
+        through the Tet6Constraint3D pipeline."""
+        from dvfopt import BarrierStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        rng = np.random.default_rng(0)
+        phi = rng.normal(0, 0.05, (3, 4, 5, 5))
+        # Inject a modest fold.
+        phi[1, 2, 2:4, 2:4] -= 1.0
+        phi[2, 2, 2:4, 2:4] -= 1.0
+
+        c = Tet6Constraint3D(shape=(4, 5, 5))
+        assert c.values(c.flatten(phi)).min() <= 0, 'precondition: should start folded'
+
+        solver = Solver(constraint=c, objective=L2Objective(), strategy=BarrierStrategy())
+        result = solver.fit(phi)
+        assert result.feasible, 'barrier should reach feasibility on this small case'
+        # And the corrected field should produce strictly positive volumes.
+        V_after = c.values(c.flatten(result.corrected))
+        assert V_after.min() > 0.0

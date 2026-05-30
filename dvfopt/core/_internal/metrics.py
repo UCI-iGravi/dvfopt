@@ -10,14 +10,23 @@ for backward compatibility.
 import numpy as np
 
 from dvfopt._defaults import _unpack_size
-from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 from dvfopt.core.slsqp.constraints import _quality_map
+from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 
 
-def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
-                    num_neg_jac, min_jdet_list, error_list=None,
-                    jacobian_matrix=None, patch_center=None, patch_size=None,
-                    enforce_triangles=False):
+def _update_metrics(
+    phi,
+    phi_init,
+    enforce_shoelace,
+    enforce_injectivity,
+    num_neg_jac,
+    min_jdet_list,
+    error_list=None,
+    jacobian_matrix=None,
+    patch_center=None,
+    patch_size=None,
+    enforce_triangles=False,
+):
     """Recompute Jacobian/quality matrices and append to accumulator lists.
 
     Parameters
@@ -45,9 +54,17 @@ def _update_metrics(phi, phi_init, enforce_shoelace, enforce_injectivity,
     else:
         jac = jacobian_det2D(phi)
     use_q = enforce_shoelace or enforce_injectivity or enforce_triangles
-    qm = _quality_map(phi, enforce_shoelace, enforce_injectivity,
-                      enforce_triangles=enforce_triangles,
-                      jacobian_matrix=jac) if use_q else jac
+    qm = (
+        _quality_map(
+            phi,
+            enforce_shoelace,
+            enforce_injectivity,
+            enforce_triangles=enforce_triangles,
+            jacobian_matrix=jac,
+        )
+        if use_q
+        else jac
+    )
     cur_neg = int((jac <= 0).sum())
     cur_min = float(jac.min())
     num_neg_jac.append(cur_neg)
@@ -84,12 +101,10 @@ def _patch_jacobian_2d(jacobian_matrix, phi, center, sub_size):
     cx0 = max(wx0 - 1, 0)
     cx1 = min(wx1 + 1, W)
 
-    jdet_comp = _numpy_jdet_2d(phi[0, cy0:cy1, cx0:cx1],
-                                phi[1, cy0:cy1, cx0:cx1])
+    jdet_comp = _numpy_jdet_2d(phi[0, cy0:cy1, cx0:cx1], phi[1, cy0:cy1, cx0:cx1])
 
     # Trim to write-back region
     ty0 = wy0 - cy0
     tx0 = wx0 - cx0
-    jacobian_matrix[0, wy0:wy1, wx0:wx1] = \
-        jdet_comp[ty0:ty0 + wy1 - wy0, tx0:tx0 + wx1 - wx0]
+    jacobian_matrix[0, wy0:wy1, wx0:wx1] = jdet_comp[ty0 : ty0 + wy1 - wy0, tx0 : tx0 + wx1 - wx0]
     return jacobian_matrix

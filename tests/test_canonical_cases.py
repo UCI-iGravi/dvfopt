@@ -5,8 +5,9 @@ feasibility baseline; this test pins their stats so any change to the
 correspondence-based laplacian interpolation that silently shifts the
 init fold count will fail loudly.
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -16,17 +17,28 @@ from test_cases import (
     canonical_2tri_2d,
 )
 
-
 # The init-fold stats are pinned to what notebook 14 reports. If
 # anyone changes the Laplacian solver / interpolation convention and
 # the numbers shift, this test breaks loudly.
 EXPECTED = {
-    '01a_10x10_crossing': dict(shape=(10, 10), init_n_neg=24, init_min_T_lo=-0.75, init_min_T_hi=-0.74),
-    '01b_10x10_opposite': dict(shape=(10, 10), init_n_neg=10, init_min_T_lo=-0.59, init_min_T_hi=-0.58),
-    '03a_10x10_opposite': dict(shape=(10, 10), init_n_neg=23, init_min_T_lo=-0.82, init_min_T_hi=-0.81),
-    '03b_10x10_crossing': dict(shape=(10, 10), init_n_neg=28, init_min_T_lo=-0.71, init_min_T_hi=-0.69),
-    '03c_20x20_opposite': dict(shape=(20, 20), init_n_neg=58, init_min_T_lo=-0.81, init_min_T_hi=-0.80),
-    '03d_20x20_crossing': dict(shape=(20, 20), init_n_neg=72, init_min_T_lo=-0.75, init_min_T_hi=-0.73),
+    '01a_10x10_crossing': dict(
+        shape=(10, 10), init_n_neg=24, init_min_T_lo=-0.75, init_min_T_hi=-0.74
+    ),
+    '01b_10x10_opposite': dict(
+        shape=(10, 10), init_n_neg=10, init_min_T_lo=-0.59, init_min_T_hi=-0.58
+    ),
+    '03a_10x10_opposite': dict(
+        shape=(10, 10), init_n_neg=23, init_min_T_lo=-0.82, init_min_T_hi=-0.81
+    ),
+    '03b_10x10_crossing': dict(
+        shape=(10, 10), init_n_neg=28, init_min_T_lo=-0.71, init_min_T_hi=-0.69
+    ),
+    '03c_20x20_opposite': dict(
+        shape=(20, 20), init_n_neg=58, init_min_T_lo=-0.81, init_min_T_hi=-0.80
+    ),
+    '03d_20x20_crossing': dict(
+        shape=(20, 20), init_n_neg=72, init_min_T_lo=-0.75, init_min_T_hi=-0.73
+    ),
 }
 
 
@@ -51,7 +63,7 @@ def test_canonical_no_meta_shape():
     assert len(pairs) == len(CANONICAL_2TRI_2D_KEYS)
     for item in pairs:
         assert len(item) == 2
-        name, phi = item
+        _name, phi = item
         assert phi.ndim == 3 and phi.shape[0] == 2
 
 
@@ -64,7 +76,8 @@ def test_benchmark_harness_identity_fn_reports_failure():
     import benchmark_utils
 
     rows = benchmark_utils.benchmark_canonical_2tri_2d(
-        lambda phi: phi, label='identity', verbose=False)
+        lambda phi: phi, label='identity', verbose=False
+    )
     assert len(rows) == 6
     assert all(not r['feasible'] for r in rows)
     # No-op should preserve init stats.
@@ -82,7 +95,6 @@ def test_benchmark_harness_catches_exceptions():
     def broken(phi):
         raise RuntimeError('intentional')
 
-    rows = benchmark_utils.benchmark_canonical_2tri_2d(
-        broken, label='broken', verbose=False)
+    rows = benchmark_utils.benchmark_canonical_2tri_2d(broken, label='broken', verbose=False)
     assert all(r['error'].startswith('RuntimeError') for r in rows)
     assert all(not r['feasible'] for r in rows)

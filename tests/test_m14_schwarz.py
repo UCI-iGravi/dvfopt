@@ -1,4 +1,5 @@
 """Tests for iterative_2d_tri_refine_repair_schwarz (m14-Schwarz)."""
+
 from __future__ import annotations
 
 import warnings
@@ -6,7 +7,7 @@ import warnings
 import numpy as np
 import pytest
 
-from dvfopt import iterative_2d_tri_refine_repair_schwarz
+from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
 from dvfopt.core.wallbreakers._m14_schwarz import (
     _fold_clusters,
     _stats,
@@ -16,9 +17,9 @@ from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 def _plant_fold(arr, cy, cx, amp=0.8):
     arr[cy, cx] += amp
-    arr[cy+1, cx] -= amp
-    arr[cy, cx+1] -= amp
-    arr[cy+1, cx+1] += amp
+    arr[cy + 1, cx] -= amp
+    arr[cy, cx + 1] -= amp
+    arr[cy + 1, cx + 1] += amp
 
 
 def _synth_sparse(seed=0, H=30, W=30):
@@ -32,7 +33,6 @@ def _synth_sparse(seed=0, H=30, W=30):
 
 
 class TestFoldClusters:
-
     def test_no_folds_returns_empty(self):
         H, W = 6, 6
         phi = np.zeros((2, H, W))
@@ -42,7 +42,7 @@ class TestFoldClusters:
 
     def test_sparse_three_clusters(self):
         phi = _synth_sparse(0)
-        bboxes, fold_mask = _fold_clusters(phi, merge_dilation=2)
+        bboxes, _fold_mask = _fold_clusters(phi, merge_dilation=2)
         assert len(bboxes) == 3
         for b in bboxes:
             assert b['n_folds'] >= 1
@@ -62,13 +62,11 @@ class TestFoldClusters:
 
 
 class TestSmoke:
-
     def test_identity_field_passes_through(self):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = np.zeros((2, 8, 8))
-            out = iterative_2d_tri_refine_repair_schwarz(
-                phi, threshold=0.01, verbose=0)
+            out = iterative_2d_tri_refine_repair_schwarz(phi, threshold=0.01, verbose=0)
         np.testing.assert_allclose(out, phi, atol=1e-9)
 
     def test_sparse_synthetic_reaches_feasibility(self):
@@ -76,8 +74,8 @@ class TestSmoke:
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
             out = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(), threshold=0.01, anchor='l1', verbose=0,
-                max_outer_iters=2)
+                phi.copy(), threshold=0.01, anchor='l1', verbose=0, max_outer_iters=2
+            )
         T1, T2 = _triangle_areas_2d(out[0], out[1])
         n_neg = int((np.minimum(T1, T2) <= 0).sum())
         min_T = float(min(T1.min(), T2.min()))
@@ -88,9 +86,14 @@ class TestSmoke:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
-            out, info = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(), threshold=0.01, anchor='l1', verbose=0,
-                max_outer_iters=2, record_history=True)
+            _out, info = iterative_2d_tri_refine_repair_schwarz(
+                phi.copy(),
+                threshold=0.01,
+                anchor='l1',
+                verbose=0,
+                max_outer_iters=2,
+                record_history=True,
+            )
         # Three planted clusters at this seed.
         assert info['init']['n_neg'] > 0
         assert 'cluster_runs' in info
@@ -100,53 +103,56 @@ class TestSmoke:
 
 
 class TestFallback:
-
     def test_single_large_cluster_falls_back(self):
         """A near-saturated 8x8 should trigger the size-ratio fallback."""
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             rng = np.random.default_rng(3)
-            phi = np.stack([rng.normal(0, 0.6, (8, 8)),
-                            rng.normal(0, 0.6, (8, 8))])
+            phi = np.stack([rng.normal(0, 0.6, (8, 8)), rng.normal(0, 0.6, (8, 8))])
             T1, T2 = _triangle_areas_2d(phi[0], phi[1])
             n_neg_init = int((np.minimum(T1, T2) <= 0).sum())
             if n_neg_init == 0:
                 pytest.skip('seed produced no folds')
             out, info = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(), threshold=0.01, anchor='l1',
-                fallback_size_ratio=0.5, verbose=0,
-                record_history=True)
+                phi.copy(),
+                threshold=0.01,
+                anchor='l1',
+                fallback_size_ratio=0.5,
+                verbose=0,
+                record_history=True,
+            )
         T1, T2 = _triangle_areas_2d(out[0], out[1])
         assert int((np.minimum(T1, T2) <= 0).sum()) == 0
         assert info['fallback_to_global']
 
 
 class TestUnifiedAPI:
-
     def test_solver_m14_schwarz_routes(self):
         from dvfopt import DVFopt, DVFoptConfig
+
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
-            cfg = DVFoptConfig(solver='m14_schwarz', constraint='2tri',
-                                objective='l1', verbose=0)
+            cfg = DVFoptConfig(solver='m14_schwarz', constraint='2tri', objective='l1', verbose=0)
             res = DVFopt(cfg).fit(phi)
         assert res.feasible
         assert res.slice_results[0].solver_used == 'm14_schwarz'
 
     def test_auto_routes_large_extreme_to_schwarz(self):
-        """The auto resolver should pick m14_schwarz for large slices
-        in the extreme-density tier when objective != 'l2'."""
-        from dvfopt import DVFopt, DVFoptConfig
-        opt = DVFopt(DVFoptConfig(solver='auto', constraint='2tri',
-                                    objective='l1', verbose=0))
-        assert opt._resolve_solver(6000, -15.0, slice_pixels=145920) \
-            == 'm14_schwarz'
-        # Small extreme dense → falls back to plain m14 (no Schwarz benefit).
-        assert opt._resolve_solver(6000, -15.0, slice_pixels=3600) == 'm14'
+        """The auto resolver picks m14_schwarz for large slices in the
+        extreme-density tier when objective != 'l2'."""
+        from dvfopt.constraints import TriConstraint2D
+        from dvfopt.solver import auto_strategy
+
+        c_big = TriConstraint2D((320, 456))
+        c_small = TriConstraint2D((60, 60))
+        assert auto_strategy(c_big, 6000, -15.0, objective_label='l1') == 'm14_schwarz'
+        # Small extreme dense — falls back to plain m14.
+        assert auto_strategy(c_small, 6000, -15.0, objective_label='l1') == 'm14'
 
     def test_auto_l2_still_picks_m10_on_extreme(self):
-        from dvfopt import DVFopt, DVFoptConfig
-        opt = DVFopt(DVFoptConfig(solver='auto', constraint='2tri',
-                                    objective='l2', verbose=0))
-        assert opt._resolve_solver(6000, -15.0, slice_pixels=145920) == 'm10'
+        from dvfopt.constraints import TriConstraint2D
+        from dvfopt.solver import auto_strategy
+
+        c_big = TriConstraint2D((320, 456))
+        assert auto_strategy(c_big, 6000, -15.0, objective_label='l2') == 'm10'

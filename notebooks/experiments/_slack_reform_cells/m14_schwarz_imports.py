@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import label as cc_label, binary_dilation, generate_binary_structure
 
-from dvfopt import iterative_2d_tri_refine_repair
+from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 from _m14_schwarz_proto import m14_schwarz, _stats, _fold_clusters

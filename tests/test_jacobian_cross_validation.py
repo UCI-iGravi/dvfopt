@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import SimpleITK as sitk
 
+from dvfopt.dvf.generation import generate_random_dvf, generate_random_dvf_3d
 from dvfopt.jacobian.numpy_jdet import (
     _numpy_jdet_2d,
     _numpy_jdet_3d,
@@ -17,10 +18,9 @@ from dvfopt.jacobian.numpy_jdet import (
     jacobian_det3D,
 )
 from dvfopt.jacobian.sitk_jdet import sitk_jacobian_determinant
-from dvfopt.dvf.generation import generate_random_dvf, generate_random_dvf_3d
-
 
 # ── Reference implementation (manual central differences) ───────────────
+
 
 def _reference_jdet_2d(dy, dx):
     """Manual central-difference Jacobian determinant (interior only).
@@ -63,9 +63,15 @@ def _reference_jdet_3d(dz, dy, dx):
                 ddz_dy = (dz[k, i + 1, j] - dz[k, i - 1, j]) / 2.0
                 ddz_dz = (dz[k + 1, i, j] - dz[k - 1, i, j]) / 2.0
 
-                a11 = 1 + ddx_dx; a12 = ddx_dy;     a13 = ddx_dz
-                a21 = ddy_dx;     a22 = 1 + ddy_dy;  a23 = ddy_dz
-                a31 = ddz_dx;     a32 = ddz_dy;      a33 = 1 + ddz_dz
+                a11 = 1 + ddx_dx
+                a12 = ddx_dy
+                a13 = ddx_dz
+                a21 = ddy_dx
+                a22 = 1 + ddy_dy
+                a23 = ddy_dz
+                a31 = ddz_dx
+                a32 = ddz_dy
+                a33 = 1 + ddz_dz
 
                 jdet[k - 1, i - 1, j - 1] = (
                     a11 * (a22 * a33 - a23 * a32)
@@ -83,7 +89,7 @@ def _sitk_jdet_2d(dy, dx):
     """
     H, W = dy.shape
     phi = np.zeros((3, 1, H, W), dtype=np.float64)
-    phi[0, 0] = 0.0   # dz = 0
+    phi[0, 0] = 0.0  # dz = 0
     phi[1, 0] = dy
     phi[2, 0] = dx
     jdet_3d = sitk_jacobian_determinant(phi)  # (1, H, W)
@@ -92,12 +98,14 @@ def _sitk_jdet_2d(dy, dx):
 
 # ── Helper to build test fields ────────────────────────────────────────
 
+
 def _make_smooth_2d(H, W, seed):
     """Generate a smooth 2D displacement field via low-frequency random + zoom."""
     rng = np.random.default_rng(seed)
     small_dy = rng.standard_normal((4, 4))
     small_dx = rng.standard_normal((4, 4))
     from scipy.ndimage import zoom
+
     dy = zoom(small_dy, (H / 4, W / 4), order=3)
     dx = zoom(small_dx, (H / 4, W / 4), order=3)
     return dy, dx
@@ -108,12 +116,14 @@ def _make_smooth_3d(D, H, W, seed):
     rng = np.random.default_rng(seed)
     small = rng.standard_normal((3, 3, 3, 3))
     from scipy.ndimage import zoom
+
     factors = (1, D / 3, H / 3, W / 3)
     big = zoom(small, factors, order=3)
     return big[0], big[1], big[2]
 
 
 # ── 2D: numpy vs manual reference ──────────────────────────────────────
+
 
 class TestNumpyVsReference2D:
     """Compare numpy Jdet against the explicit loop reference on interior pixels."""
@@ -154,6 +164,7 @@ class TestNumpyVsReference2D:
 
 
 # ── 2D: numpy vs SimpleITK ────────────────────────────────────────────
+
 
 class TestNumpyVsSimpleITK2D:
     """Compare numpy Jdet against SimpleITK's DisplacementFieldJacobianDeterminant.
@@ -221,6 +232,7 @@ class TestNumpyVsSimpleITK2D:
 
 # ── 3D: numpy vs manual reference ──────────────────────────────────────
 
+
 class TestNumpyVsReference3D:
     """Compare numpy 3D Jdet against the explicit loop reference on interior voxels."""
 
@@ -264,6 +276,7 @@ class TestNumpyVsReference3D:
 
 # ── 3D: numpy vs SimpleITK ────────────────────────────────────────────
 
+
 class TestNumpyVsSimpleITK3D:
     """Compare numpy 3D Jdet against SimpleITK on interior voxels."""
 
@@ -300,7 +313,7 @@ class TestNumpyVsSimpleITK3D:
         """3D folding field — both methods should agree on negative values."""
         D, H, W = 8, 8, 8
         phi = np.zeros((3, D, H, W))
-        phi[2, :, :, 0] = 5.0   # push x=0 plane right
+        phi[2, :, :, 0] = 5.0  # push x=0 plane right
         phi[2, :, :, -1] = -5.0  # push x=W-1 plane left
         np_jdet = jacobian_det3D(phi)[1:-1, 1:-1, 1:-1]
         sitk_jdet = sitk_jacobian_determinant(phi)[1:-1, 1:-1, 1:-1]
@@ -311,13 +324,14 @@ class TestNumpyVsSimpleITK3D:
 
 # ── Analytic sanity checks (all three methods agree) ───────────────────
 
+
 class TestAnalyticCases:
     """Verify all methods produce the analytically known Jacobian determinant."""
 
     def test_2d_pure_shear(self):
         """dx = gamma * y, dy = 0 → Jdet = 1 everywhere."""
         H, W = 15, 15
-        yy, xx = np.mgrid[:H, :W].astype(float)
+        yy, _xx = np.mgrid[:H, :W].astype(float)
         gamma = 0.3
         dx = gamma * yy
         dy = np.zeros_like(dx)

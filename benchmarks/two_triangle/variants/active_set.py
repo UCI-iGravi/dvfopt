@@ -10,17 +10,17 @@ Implementation: build a NonlinearConstraint that wraps a closure over a
 mutable index mask. Refresh the mask once per outer iteration (the inner
 SLSQP step uses a fixed mask).
 """
-import numpy as np
-from scipy.optimize import NonlinearConstraint
-import scipy.sparse
 
+import numpy as np
+import scipy.sparse
+from scipy.optimize import NonlinearConstraint
+
+from benchmarks.two_triangle._iterative_loop import run_minimal_iterative_2d
+from benchmarks.two_triangle.registry import register_variant
+from benchmarks.two_triangle.result import SolverResult
 from dvfopt._defaults import _unpack_size
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d
-
-from benchmarks.two_triangle.registry import register_variant
-from benchmarks.two_triangle._iterative_loop import run_minimal_iterative_2d
-from benchmarks.two_triangle.result import SolverResult
 
 
 def _is_3d(dvf):
@@ -30,16 +30,23 @@ def _is_3d(dvf):
 def _make_active_set_builder(active_factor: float):
     """Returns a constraint_builder closure compatible with _iterative_loop."""
 
-    def _builder(phi_sub_flat, sub_size, is_at_edge, win_at_max, threshold,
-                 enforce_shoelace=False, enforce_injectivity=False,
-                 enforce_triangles=True):
+    def _builder(
+        phi_sub_flat,
+        sub_size,
+        is_at_edge,
+        win_at_max,
+        threshold,
+        enforce_shoelace=False,
+        enforce_injectivity=False,
+        enforce_triangles=True,
+    ):
         sy, sx = _unpack_size(sub_size)
         pixels = sy * sx
 
         # Compute current jdet + triangle areas to seed the active mask.
         dx = phi_sub_flat[:pixels].reshape(sy, sx)
         dy = phi_sub_flat[pixels:].reshape(sy, sx)
-        cur_jdet = _numpy_jdet_2d(dy, dx)
+        _numpy_jdet_2d(dy, dx)
         active_thr = active_factor * threshold
 
         cur_tri = _all_triangle_areas_2d(dy, dx)  # (4, sy-1, sx-1)
@@ -67,8 +74,7 @@ def _make_active_set_builder(active_factor: float):
                     tri = _all_triangle_areas_2d(d_y, d_x).flatten()
                     return tri[idx]
 
-                constraints.append(
-                    NonlinearConstraint(tri_active, threshold, np.inf))
+                constraints.append(NonlinearConstraint(tri_active, threshold, np.inf))
 
         # Edge-freeze (same as default builder when interior only).
         exclude_bounds = not is_at_edge and not win_at_max
@@ -84,11 +90,12 @@ def _make_active_set_builder(active_factor: float):
                 fixed.extend([idx, idx + y_off])
             fixed = np.array(fixed)
             from scipy.optimize import LinearConstraint
+
             A_eq = scipy.sparse.csr_matrix(
                 (np.ones(len(fixed)), (np.arange(len(fixed)), fixed)),
-                shape=(len(fixed), phi_sub_flat.size))
-            constraints.append(
-                LinearConstraint(A_eq, phi_sub_flat[fixed], phi_sub_flat[fixed]))
+                shape=(len(fixed), phi_sub_flat.size),
+            )
+            constraints.append(LinearConstraint(A_eq, phi_sub_flat[fixed], phi_sub_flat[fixed]))
 
         return constraints
 
@@ -96,16 +103,26 @@ def _make_active_set_builder(active_factor: float):
 
 
 @register_variant("active_set")
-def active_set(dvf: np.ndarray, *, threshold: float = 0.01,
-                max_iterations: int = 100, active_factor: float = 5.0,
-                enforce_triangles: bool = True,
-                timeout_s: float = 600.0, **_unused) -> SolverResult:
+def active_set(
+    dvf: np.ndarray,
+    *,
+    threshold: float = 0.01,
+    max_iterations: int = 100,
+    active_factor: float = 5.0,
+    enforce_triangles: bool = True,
+    timeout_s: float = 600.0,
+    **_unused,
+) -> SolverResult:
     if _is_3d(dvf):
         from benchmarks.two_triangle.variants.baseline_serial import baseline_serial
-        r = baseline_serial(dvf, threshold=threshold,
-                            max_iterations=max_iterations,
-                            enforce_triangles=enforce_triangles,
-                            timeout_s=timeout_s)
+
+        r = baseline_serial(
+            dvf,
+            threshold=threshold,
+            max_iterations=max_iterations,
+            enforce_triangles=enforce_triangles,
+            timeout_s=timeout_s,
+        )
         r.meta["variant"] = "active_set"
         r.meta["fallback"] = "baseline_3d"
         return r
@@ -113,8 +130,11 @@ def active_set(dvf: np.ndarray, *, threshold: float = 0.01,
     phi_initial = np.stack([dvf[1, 0], dvf[2, 0]])
     builder = _make_active_set_builder(active_factor=active_factor)
     r = run_minimal_iterative_2d(
-        phi_initial, threshold=threshold, max_iterations=max_iterations,
-        enforce_triangles=enforce_triangles, timeout_s=timeout_s,
+        phi_initial,
+        threshold=threshold,
+        max_iterations=max_iterations,
+        enforce_triangles=enforce_triangles,
+        timeout_s=timeout_s,
         constraint_builder=builder,
         variant_name="active_set",
     )

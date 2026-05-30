@@ -17,22 +17,23 @@ Jacobian (vectorised over the crop) is provided to SLSQP, which roughly
 10-100× the per-iteration cost over scipy's default finite-difference
 column sweep for crops of a few hundred variables.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Tuple
+from typing import Optional
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.optimize import minimize, NonlinearConstraint
+from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
-
 # ---------------------------------------------------------------------------
 # Interior pack/unpack
 # ---------------------------------------------------------------------------
+
 
 def _interior_pack_unpack_2d(phi_win, interior_mask):
     """Build pack/unpack closures restricted to ``interior_mask`` corners.
@@ -60,6 +61,7 @@ def _interior_pack_unpack_2d(phi_win, interior_mask):
 # ---------------------------------------------------------------------------
 # Analytical 2-tri constraint Jacobian (interior vars only)
 # ---------------------------------------------------------------------------
+
 
 def _make_2tri_jac_2d(phi_win, interior_mask):
     """Return a callable ``jac(z) -> (n_constr, n_vars)`` Jacobian.
@@ -89,8 +91,8 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
 
     cy_idx = np.arange(Hc, dtype=np.int64)[:, None]
     cx_idx = np.arange(Wc, dtype=np.int64)[None, :]
-    col_TL_dy = int_pos[cy_idx,     cx_idx]
-    col_TR_dy = int_pos[cy_idx,     cx_idx + 1]
+    col_TL_dy = int_pos[cy_idx, cx_idx]
+    col_TR_dy = int_pos[cy_idx, cx_idx + 1]
     col_BL_dy = int_pos[cy_idx + 1, cx_idx]
     col_BR_dy = int_pos[cy_idx + 1, cx_idx + 1]
     col_TL_dx = np.where(col_TL_dy >= 0, col_TL_dy + n_int, -1)
@@ -98,26 +100,33 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
     col_BL_dx = np.where(col_BL_dy >= 0, col_BL_dy + n_int, -1)
     col_BR_dx = np.where(col_BR_dy >= 0, col_BR_dy + n_int, -1)
 
-    rows_T1 = (cy_idx * Wc + cx_idx).astype(np.int64) * np.ones((Hc, Wc),
-                                                                 dtype=np.int64)
+    rows_T1 = (cy_idx * Wc + cx_idx).astype(np.int64) * np.ones((Hc, Wc), dtype=np.int64)
     rows_T2 = rows_T1 + n_cells
 
     partials = []
     for rows_arr, col_arr in [
-        (rows_T1, col_TR_dy), (rows_T1, col_TR_dx),
-        (rows_T1, col_BL_dy), (rows_T1, col_BL_dx),
-        (rows_T1, col_BR_dy), (rows_T1, col_BR_dx),
-        (rows_T2, col_TL_dy), (rows_T2, col_TL_dx),
-        (rows_T2, col_TR_dy), (rows_T2, col_TR_dx),
-        (rows_T2, col_BL_dy), (rows_T2, col_BL_dx),
+        (rows_T1, col_TR_dy),
+        (rows_T1, col_TR_dx),
+        (rows_T1, col_BL_dy),
+        (rows_T1, col_BL_dx),
+        (rows_T1, col_BR_dy),
+        (rows_T1, col_BR_dx),
+        (rows_T2, col_TL_dy),
+        (rows_T2, col_TL_dx),
+        (rows_T2, col_TR_dy),
+        (rows_T2, col_TR_dx),
+        (rows_T2, col_BL_dy),
+        (rows_T2, col_BL_dx),
     ]:
         col_flat = col_arr.ravel()
         valid = col_flat >= 0
-        partials.append({
-            'rows': rows_arr.ravel()[valid],
-            'cols': col_flat[valid],
-            'valid': valid,
-        })
+        partials.append(
+            {
+                'rows': rows_arr.ravel()[valid],
+                'cols': col_flat[valid],
+                'valid': valid,
+            }
+        )
 
     iy_local = iy
     ix_local = ix
@@ -130,10 +139,14 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
         phi_base[1][iy_local, ix_local] = z[n_int:]
         def_x = ref_x + phi_base[1]
         def_y = ref_y + phi_base[0]
-        TL_x = def_x[:-1, :-1]; TL_y = def_y[:-1, :-1]
-        TR_x = def_x[:-1, 1:];  TR_y = def_y[:-1, 1:]
-        BL_x = def_x[1:,  :-1]; BL_y = def_y[1:,  :-1]
-        BR_x = def_x[1:,  1:];  BR_y = def_y[1:,  1:]
+        TL_x = def_x[:-1, :-1]
+        TL_y = def_y[:-1, :-1]
+        TR_x = def_x[:-1, 1:]
+        TR_y = def_y[:-1, 1:]
+        BL_x = def_x[1:, :-1]
+        BL_y = def_y[1:, :-1]
+        BR_x = def_x[1:, 1:]
+        BR_y = def_y[1:, 1:]
 
         dT1_TR_x = 0.5 * (BR_y - BL_y)
         dT1_TR_y = 0.5 * (BL_x - BR_x)
@@ -149,8 +162,18 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
         dT2_TR_y = 0.5 * (TL_x - BL_x)
 
         vals = [
-            dT1_TR_y, dT1_TR_x, dT1_BL_y, dT1_BL_x, dT1_BR_y, dT1_BR_x,
-            dT2_TL_y, dT2_TL_x, dT2_TR_y, dT2_TR_x, dT2_BL_y, dT2_BL_x,
+            dT1_TR_y,
+            dT1_TR_x,
+            dT1_BL_y,
+            dT1_BL_x,
+            dT1_BR_y,
+            dT1_BR_x,
+            dT2_TL_y,
+            dT2_TL_x,
+            dT2_TR_y,
+            dT2_TR_x,
+            dT2_BL_y,
+            dT2_BL_x,
         ]
         # Build a CSR Jacobian directly from the (row, col, val) triplets.
         # Dense (n_constr, n_vars) for a 30x30 crop is ~21 MB with only
@@ -158,11 +181,8 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
         # downstream QP solve scipy.optimize.SLSQP does internally.
         rows_concat = np.concatenate([p['rows'] for p in partials])
         cols_concat = np.concatenate([p['cols'] for p in partials])
-        data_concat = np.concatenate([
-            v.ravel()[p['valid']] for p, v in zip(partials, vals)])
-        return sp.csr_matrix(
-            (data_concat, (rows_concat, cols_concat)),
-            shape=(n_constr, n_vars))
+        data_concat = np.concatenate([v.ravel()[p['valid']] for p, v in zip(partials, vals)])
+        return sp.csr_matrix((data_concat, (rows_concat, cols_concat)), shape=(n_constr, n_vars))
 
     return jac
 
@@ -182,17 +202,18 @@ def _seed_perturb(z_init, z_anchor, sigma=1e-3, seed=42):
 # Per-cluster solver
 # ---------------------------------------------------------------------------
 
+
 def solve_cluster_2tri_2d(
     phi_win: np.ndarray,
     phi_anchor_win: np.ndarray,
     interior_mask: np.ndarray,
     *,
-    threshold: float = None,
+    threshold: Optional[float] = None,
     eps_l1: float = 1e-4,
     l2_max_passes: int = 12,
     l2_max_iter: int = 80,
     l1_max_iter: int = 120,
-) -> Tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict]:
     """Multi-pass L2-SLSQP + L1-polish on one fold cluster (2D).
 
     Parameters
@@ -249,27 +270,43 @@ def solve_cluster_2tri_2d(
     }
 
     if init_n_neg == 0:
-        info.update({
-            'after_l2_n_neg': 0, 'after_l2_min': init_min_tri,
-            'after_l1_n_neg': 0, 'after_l1_min': init_min_tri,
-            'l2_passes_run': 0, 'l2_total_nit': 0, 'l2_total_t': 0.0,
-            'l1_polished': False, 'l1_nit': 0, 'l1_t': 0.0,
-            'cluster_t': time.time() - t0,
-            'feasible': True,
-        })
+        info.update(
+            {
+                'after_l2_n_neg': 0,
+                'after_l2_min': init_min_tri,
+                'after_l1_n_neg': 0,
+                'after_l1_min': init_min_tri,
+                'l2_passes_run': 0,
+                'l2_total_nit': 0,
+                'l2_total_t': 0.0,
+                'l1_polished': False,
+                'l1_nit': 0,
+                'l1_t': 0.0,
+                'cluster_t': time.time() - t0,
+                'feasible': True,
+            }
+        )
         return phi_win.copy(), info
 
     pack, unpack, n_int = _interior_pack_unpack_2d(phi_win, interior_mask)
     if n_int == 0:
         # No movable corners — can't fix anything.
-        info.update({
-            'after_l2_n_neg': init_n_neg, 'after_l2_min': init_min_tri,
-            'after_l1_n_neg': init_n_neg, 'after_l1_min': init_min_tri,
-            'l2_passes_run': 0, 'l2_total_nit': 0, 'l2_total_t': 0.0,
-            'l1_polished': False, 'l1_nit': 0, 'l1_t': 0.0,
-            'cluster_t': time.time() - t0,
-            'feasible': False,
-        })
+        info.update(
+            {
+                'after_l2_n_neg': init_n_neg,
+                'after_l2_min': init_min_tri,
+                'after_l1_n_neg': init_n_neg,
+                'after_l1_min': init_min_tri,
+                'l2_passes_run': 0,
+                'l2_total_nit': 0,
+                'l2_total_t': 0.0,
+                'l1_polished': False,
+                'l1_nit': 0,
+                'l1_t': 0.0,
+                'cluster_t': time.time() - t0,
+                'feasible': False,
+            }
+        )
         return phi_win.copy(), info
 
     z_anchor = pack(phi_anchor_win)
@@ -308,9 +345,14 @@ def solve_cluster_2tri_2d(
             z_init = z_init + rng.normal(scale=sigma, size=z_init.shape)
             perturb_seed += 1
         t_pass = time.time()
-        res = minimize(obj_l2, z_init, jac=True, method='SLSQP',
-                       constraints=[nl],
-                       options={'maxiter': l2_max_iter, 'disp': False})
+        res = minimize(
+            obj_l2,
+            z_init,
+            jac=True,
+            method='SLSQP',
+            constraints=[nl],
+            options={'maxiter': l2_max_iter, 'disp': False},
+        )
         l2_total_t += time.time() - t_pass
         l2_passes_run += 1
         phi_new = unpack(res.x, phi_work)
@@ -345,10 +387,14 @@ def solve_cluster_2tri_2d(
             return float(s.sum()), d / s
 
         t_pass = time.time()
-        res = minimize(obj_l1, z_init, jac=True, method='SLSQP',
-                       constraints=[nl],
-                       options={'maxiter': l1_max_iter, 'ftol': 1e-9,
-                                'disp': False})
+        res = minimize(
+            obj_l1,
+            z_init,
+            jac=True,
+            method='SLSQP',
+            constraints=[nl],
+            options={'maxiter': l1_max_iter, 'ftol': 1e-9, 'disp': False},
+        )
         l1_t = time.time() - t_pass
         l1_nit = int(res.nit)
         phi_candidate = unpack(res.x, phi_work)
@@ -362,13 +408,20 @@ def solve_cluster_2tri_2d(
             after_l1_min = float(min(T1c.min(), T2c.min()))
             l1_polished = True
 
-    info.update({
-        'after_l2_n_neg': after_l2_n_neg, 'after_l2_min': after_l2_min,
-        'l2_passes_run': l2_passes_run, 'l2_total_nit': l2_total_nit,
-        'l2_total_t': l2_total_t,
-        'after_l1_n_neg': after_l1_n_neg, 'after_l1_min': after_l1_min,
-        'l1_polished': l1_polished, 'l1_nit': l1_nit, 'l1_t': l1_t,
-        'cluster_t': time.time() - t0,
-        'feasible': bool(after_l1_n_neg == 0),
-    })
+    info.update(
+        {
+            'after_l2_n_neg': after_l2_n_neg,
+            'after_l2_min': after_l2_min,
+            'l2_passes_run': l2_passes_run,
+            'l2_total_nit': l2_total_nit,
+            'l2_total_t': l2_total_t,
+            'after_l1_n_neg': after_l1_n_neg,
+            'after_l1_min': after_l1_min,
+            'l1_polished': l1_polished,
+            'l1_nit': l1_nit,
+            'l1_t': l1_t,
+            'cluster_t': time.time() - t0,
+            'feasible': bool(after_l1_n_neg == 0),
+        }
+    )
     return phi_out, info

@@ -13,12 +13,11 @@ The main entry points are:
           plot_problematic_triangles(phi_xy, title=f"iter {k}")
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Polygon
 
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d, triangle_sign_det2D
-
+from dvfopt.jacobian.triangle_sign import triangle_sign_det2D
 
 # Triangle vertex templates (reference-grid offsets), mirroring the
 # whiteboard convention: T1 at pixel (x, y) uses (x, y), (x-1, y+1),
@@ -34,10 +33,10 @@ def _fill_color(area, threshold=0.0):
     (valid), blue = negative (flip), gray at the collapse boundary.
     """
     if area < -threshold:
-        return "#64b5f6"   # soft blue — flip
+        return "#64b5f6"  # soft blue — flip
     if area <= threshold:
-        return "#bdbdbd"   # gray — collapse
-    return "#ef5350"       # soft red — valid
+        return "#bdbdbd"  # gray — collapse
+    return "#ef5350"  # soft red — valid
 
 
 def _triangle_vertices(x, y, offsets, dy, dx):
@@ -79,12 +78,10 @@ def _plot_neighborhood(ax, x, y, dy, dx, radius=2):
     # Warped grid: connect warped neighbors with thin blue lines
     for yi in range(y0, y1 + 1):
         pts = [(xi + dx[yi, xi], yi + dy[yi, xi]) for xi in range(x0, x1 + 1)]
-        ax.plot([p[0] for p in pts], [p[1] for p in pts],
-                color="#5b7fb5", lw=0.6, zorder=2)
+        ax.plot([p[0] for p in pts], [p[1] for p in pts], color="#5b7fb5", lw=0.6, zorder=2)
     for xi in range(x0, x1 + 1):
         pts = [(xi + dx[yi, xi], yi + dy[yi, xi]) for yi in range(y0, y1 + 1)]
-        ax.plot([p[0] for p in pts], [p[1] for p in pts],
-                color="#5b7fb5", lw=0.6, zorder=2)
+        ax.plot([p[0] for p in pts], [p[1] for p in pts], color="#5b7fb5", lw=0.6, zorder=2)
 
 
 def _format_inputs(x, y, offsets, labels, dy, dx):
@@ -129,7 +126,7 @@ def plot_triangle_debug(phi_xy, x, y, ax=None, show_formula=True):
     """
     dy = phi_xy[0]
     dx = phi_xy[1]
-    H, W = dy.shape
+    _H, _W = dy.shape
 
     t1_verts = _triangle_vertices(x, y, _T1_OFFSETS, dy, dx)
     t2_verts = _triangle_vertices(x, y, _T2_OFFSETS, dy, dx)
@@ -143,7 +140,9 @@ def plot_triangle_debug(phi_xy, x, y, ax=None, show_formula=True):
 
     if ax is None:
         fig, (ax_grid, ax_text) = plt.subplots(
-            1, 2, figsize=(11, 5.5),
+            1,
+            2,
+            figsize=(11, 5.5),
             gridspec_kw={"width_ratios": [1.1, 1.4]},
         )
     else:
@@ -161,26 +160,48 @@ def plot_triangle_debug(phi_xy, x, y, ax=None, show_formula=True):
     ]:
         if verts is None:
             continue
-        poly = Polygon(verts, closed=True, facecolor=_fill_color(area),
-                       edgecolor="black", lw=1.6, alpha=0.7, zorder=3)
+        poly = Polygon(
+            verts,
+            closed=True,
+            facecolor=_fill_color(area),
+            edgecolor="black",
+            lw=1.6,
+            alpha=0.7,
+            zorder=3,
+        )
         ax_grid.add_patch(poly)
         cx = sum(v[0] for v in verts) / 3
         cy = sum(v[1] for v in verts) / 3
-        ax_grid.text(cx, cy, f"{label_color}\n{area:+.3f}",
-                     ha="center", va="center", fontsize=9, fontweight="bold",
-                     color="#222")
+        ax_grid.text(
+            cx,
+            cy,
+            f"{label_color}\n{area:+.3f}",
+            ha="center",
+            va="center",
+            fontsize=9,
+            fontweight="bold",
+            color="#222",
+        )
 
     # Mark the anchor pixel
     wx = x + dx[y, x]
     wy = y + dy[y, x]
     ax_grid.plot(wx, wy, "o", color="#222", markersize=6, zorder=4)
-    ax_grid.annotate(f"(x={x}, y={y})", (wx, wy), textcoords="offset points",
-                     xytext=(8, 6), fontsize=9, color="#222")
+    ax_grid.annotate(
+        f"(x={x}, y={y})",
+        (wx, wy),
+        textcoords="offset points",
+        xytext=(8, 6),
+        fontsize=9,
+        color="#222",
+    )
 
-    ax_grid.invert_yaxis()   # image convention: +y down
+    ax_grid.invert_yaxis()  # image convention: +y down
     ax_grid.set_aspect("equal")
-    ax_grid.set_title(f"pixel (x={x}, y={y}) — T1 sign={np.sign(t1_area or 0):+.0f}  "
-                      f"T2 sign={np.sign(t2_area or 0):+.0f}")
+    ax_grid.set_title(
+        f"pixel (x={x}, y={y}) — T1 sign={np.sign(t1_area or 0):+.0f}  "
+        f"T2 sign={np.sign(t2_area or 0):+.0f}"
+    )
     ax_grid.set_xlabel("x (→)")
     ax_grid.set_ylabel("y (↓)")
 
@@ -205,24 +226,25 @@ def plot_triangle_debug(phi_xy, x, y, ax=None, show_formula=True):
                 lines.append("")
                 continue
             AB, AC, cross = _triangle_raw_cross(verts)
-            lines.append(
-                f"  AB = ({AB[0]:+.3f}, {AB[1]:+.3f})   "
-                f"AC = ({AC[0]:+.3f}, {AC[1]:+.3f})"
-            )
+            lines.append(f"  AB = ({AB[0]:+.3f}, {AB[1]:+.3f})   AC = ({AC[0]:+.3f}, {AC[1]:+.3f})")
             lines.append(
                 f"  cross = AB.x*AC.y - AB.y*AC.x "
                 f"= {AB[0]:+.3f}*{AC[1]:+.3f} - {AB[1]:+.3f}*{AC[0]:+.3f} "
                 f"= {cross:+.4f}"
             )
-            verdict = ("FLIP" if area < 0 else
-                       "COLLAPSE" if area == 0 else "VALID")
-            lines.append(
-                f"  area = -0.5 * cross = {area:+.4f}   [{verdict}]"
-            )
+            verdict = "FLIP" if area < 0 else "COLLAPSE" if area == 0 else "VALID"
+            lines.append(f"  area = -0.5 * cross = {area:+.4f}   [{verdict}]")
             lines.append("")
-        ax_text.text(0.0, 1.0, "\n".join(lines), family="monospace",
-                     fontsize=9, va="top", ha="left",
-                     transform=ax_text.transAxes)
+        ax_text.text(
+            0.0,
+            1.0,
+            "\n".join(lines),
+            family="monospace",
+            fontsize=9,
+            va="top",
+            ha="left",
+            transform=ax_text.transAxes,
+        )
 
     return fig
 
@@ -244,9 +266,9 @@ def find_problematic_pixels(phi_xy):
     return sorted(bad)
 
 
-def plot_problematic_triangles(phi_xy, title=None, max_plots=12,
-                               figsize_per_plot=(9.5, 4.5),
-                               show_formula=True):
+def plot_problematic_triangles(
+    phi_xy, title=None, max_plots=12, figsize_per_plot=(9.5, 4.5), show_formula=True
+):
     """Render a page of per-pixel debug plots, one per problematic pixel.
 
     Intended as a debug toggle inside iterative solvers::
@@ -282,12 +304,12 @@ def plot_problematic_triangles(phi_xy, title=None, max_plots=12,
         bad = bad[:max_plots]
 
     figs = []
-    for (x, y) in bad:
+    for x, y in bad:
         fig = plot_triangle_debug(phi_xy, x, y, show_formula=show_formula)
         if title:
             fig.suptitle(f"{title}   pixel (x={x}, y={y})", fontsize=11)
-            fig.tight_layout(rect=(0, 0, 1, 0.96))
-        else:
-            fig.tight_layout()
+        # Skip tight_layout; if the figure was created with
+        # constrained_layout=True (under the package theme), tight_layout
+        # would emit a "figure layout has changed to tight" warning.
         figs.append(fig)
     return figs

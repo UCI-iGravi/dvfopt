@@ -1,102 +1,114 @@
 """dvfopt — Deformation Vector Field Optimizer.
 
 Correction of negative Jacobian determinants in 2D (and 3D) deformation
-(displacement) fields via SLSQP-based optimisation.
+(displacement) fields. The package is organized around three orthogonal
+axes:
+
+* :class:`Constraint`  — what makes a configuration "feasible"
+  (2-triangle areas, Jacobian determinant, 6-tet, ...).
+* :class:`Objective`   — what to minimize subject to feasibility
+  (L1, L2, or none = feasibility-only).
+* :class:`Strategy`    — how to actually optimize
+  (barrier, SLSQP, m10/m14 wallbreakers, ...).
+
+A :class:`Solver` composes one of each. Most users want the high-level
+facade::
+
+    from dvfopt import Solver, correct_dvf
+
+    # one-shot
+    result = correct_dvf(phi_in, constraint='2tri', objective='l1',
+                          strategy='auto')
+
+    # explicit composition
+    solver = Solver.from_spec(constraint='2tri', objective='l1',
+                               strategy='m14_schwarz',
+                               shape=(320, 456))
+    result = solver.fit(phi_in)
+    print(f'feasible={result.feasible}  L1={result.info.get("L1")}')
+
+For per-slice processing across a 3D volume + tabular reports + plots,
+use the higher-level facade :class:`DVFopt` / :class:`DVFoptConfig`.
 
 Public API
 ----------
-SLSQP-based correctors (Jdet constraint, windowed)::
 
-    from dvfopt import iterative_serial, iterative_parallel, iterative_3d
+**Core composables**::
 
-2D 2-triangle correctors (in increasing capability on dense folds)::
+    from dvfopt import (
+        Solver, correct_dvf, auto_strategy,
+        Constraint, TriConstraint2D, TriConstraint2DFullCoverage,
+        JdetConstraint2D, JdetConstraint3D, make_constraint,
+        Objective, L1Objective, L2Objective, NoneObjective, make_objective,
+        Strategy, BarrierStrategy, SLSQPFullGridStrategy,
+        SLSQPWindowedStrategy, SchwarzStrategy, M10Strategy, M14Strategy,
+        M14SchwarzStrategy, make_strategy,
+    )
 
-    iterative_2d_tri_slsqp         # full-grid SLSQP + L1/L2 + warm-restart (notebook 14)
-    iterative_2d_tri_barrier       # penalty -> log-barrier L-BFGS-B
-    iterative_2d_tri_schwarz       # hybrid overlapping-tile Schwarz + per-cluster SLSQP
-    iterative_2d_tri_harmonic_polished   # m10: harmonic seed + ALM + barrier polish
-                                          # ("always-feasibility baseline")
-    iterative_2d_tri_refine_repair       # m14: m10 seed + soft-penalty pull
-                                          # + repair + polish. anchor='l1' = m14_l1.
-    iterative_2d_tri_refine_repair_schwarz  # m14-Schwarz: cluster-localized m14
-                                             # for large slices with sparse folds
-
-2-triangle building blocks (use directly if assembling your own pipeline)::
-
-    solve_cluster_2tri_2d          # per-cluster SLSQP with frozen-edge interior mask
-    harmonic_extension_2d          # m02 — Laplacian extension over fold cores
-    augmented_lagrangian_2d        # m03 — PHR-ALM with L-BFGS-B
-    l2_refine_2d                   # m12 — soft-quadratic penalty refinement
-
-Unified high-level API (lazy-imports torch)::
+**High-level facade (3D volume, tabular reports)**::
 
     from dvfopt import DVFopt, DVFoptConfig
 
-Jacobian computation::
+**Constraint primitives**::
 
-    from dvfopt import jacobian_det2D, jacobian_det3D, sitk_jacobian_determinant
+    from dvfopt import (
+        jacobian_det2D, jacobian_det3D, sitk_jacobian_determinant,
+        shoelace_det2D, triangle_det2D,
+    )
 
-DVF utilities::
+**DVF utilities + I/O**::
 
-    from dvfopt import generate_random_dvf, scale_dvf
+    from dvfopt import generate_random_dvf, scale_dvf, load_nii_images
 
-Laplacian interpolation (separate ``laplacian`` package)::
+Strategy selection guide
+------------------------
 
-    from laplacian import solveLaplacianFromCorrespondences, sliceToSlice3DLaplacian, laplacianA3D
+Inside the 2-triangle constraint family (the canonical case), pick the
+strategy by initial fold density:
 
-Visualisation (imports matplotlib)::
+* **Mild folds** (``n_neg <= 100``): :class:`SLSQPFullGridStrategy`
+  (KKT semantics, smallest L1 with ``L1Objective``).
+* **Moderate-to-dense** (100 < n_neg < 5000): :class:`BarrierStrategy`
+  — dominates SLSQP by 100x at this density.
+* **Many small fold clusters across a big slice**: :class:`SchwarzStrategy`.
+* **Extreme density** (n_neg > 5000, e.g. full B0039 z=12 slice with
+  8978 folds): the wallbreakers reach feasibility where barrier
+  doesn't:
+  - :class:`M10Strategy` — L2-optimal, fast, larger L1
+  - :class:`M14Strategy` — m10 seed + refinement, smallest L1
+  - :class:`M14SchwarzStrategy` — m14 with cluster-localized domain
+    decomposition; ~5x faster than m14 on large slices
 
-    from dvfopt.viz import plot_deformations, plot_grid_before_after
+For Jdet (no wallbreakers): :class:`BarrierStrategy` for dense,
+:class:`SLSQPWindowedStrategy` for mild. 3D Jdet supported by both.
 
-Which 2D 2-triangle corrector to pick?
---------------------------------------
-* Mild folds, full-grid problem fits in memory: ``iterative_2d_tri_slsqp``
-  with ``anchor='l1'`` — simplest, smallest L1 deviation.
-* Need the strict 100%-feasibility guarantee even on dense slices
-  (e.g. B0039 z=12): ``iterative_2d_tri_harmonic_polished`` (fast,
-  larger L2) or ``iterative_2d_tri_refine_repair(anchor='l1')`` (slower,
-  ~half the L2, ~80% less L1).
-* Many small fold clusters across a large slice: ``iterative_2d_tri_schwarz``.
-* Large slice (e.g. full 320x456) with sparse-to-moderate folds:
-  ``iterative_2d_tri_refine_repair_schwarz`` — m14 with cluster-localized
-  domain decomposition. ~5x faster than global m14 on the full B0039
-  z=12 slice with ~11% lower L1.
+The :func:`auto_strategy` helper encodes this routing as a function.
 """
 
 # -- Package metadata -------------------------------------------------------
-__version__ = "0.1.0"
+__version__ = "0.3.0"  # 6-tet 3D constraint + visualization theme + 2tri default flip
 
-# -- Core solvers ------------------------------------------------------------
-from dvfopt.core import (
-    iterative_serial,
-    iterative_parallel,
-    iterative_3d,
-)
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
-from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
-from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
-from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
-
-# Wall-breaker methods promoted from notebooks/experiments/wall_breakers
-# are imported lazily — they're large modules used by a minority of
-# callers, and pulling them at package-load adds a noticeable import-time
-# cost to the SLSQP-only path. The lazy-attribute hook below routes
-# ``dvfopt.iterative_2d_tri_harmonic_polished`` and friends to the
-# subpackage on first access.
-
-# -- Jacobian computation ---------------------------------------------------
-from dvfopt.jacobian import (
-    jacobian_det2D,
-    jacobian_det3D,
-    sitk_jacobian_determinant,
-    shoelace_det2D,
-    shoelace_constraint,
-    triangle_det2D,
-    triangle_constraint,
-    injectivity_constraint,
+# -- New API: constraints, objectives, strategies, solver -------------------
+# -- Logging ----------------------------------------------------------------
+# A package-level logger ``dvfopt`` is set up with a NullHandler. Callers
+# enable output via ``dvfopt.enable_default_handler()`` (simple stderr) or
+# attach their own handlers to the ``dvfopt`` logger.
+# -- Defaults ---------------------------------------------------------------
+from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import enable_default_handler, logger
+from dvfopt.constraints import (
+    Constraint,
+    JdetConstraint2D,
+    JdetConstraint3D,
+    PhiPack,
+    Tet6Constraint3D,
+    TriConstraint2D,
+    TriConstraint2DFullCoverage,
+    make_constraint,
+    register_constraint,
 )
 
-# -- DVF generation / scaling ------------------------------------------------
+# -- DVF generation / scaling ----------------------------------------------
 from dvfopt.dvf import (
     generate_random_dvf,
     generate_random_dvf_3d,
@@ -104,34 +116,149 @@ from dvfopt.dvf import (
     scale_dvf_3d,
 )
 
-# -- I/O ---------------------------------------------------------------------
+# -- Exceptions --------------------------------------------------------------
+from dvfopt.exceptions import (
+    BudgetExhaustedError,
+    DVFoptError,
+    FeasibilityError,
+    IncompatibleConstraintError,
+    SolverConfigError,
+)
+
+# -- I/O --------------------------------------------------------------------
 from dvfopt.io import load_nii_images
 
-# -- Defaults ----------------------------------------------------------------
-from dvfopt._defaults import DEFAULT_PARAMS
+# -- Jacobian primitives ----------------------------------------------------
+from dvfopt.jacobian import (
+    injectivity_constraint,
+    jacobian_det2D,
+    jacobian_det3D,
+    shoelace_constraint,
+    shoelace_det2D,
+    sitk_jacobian_determinant,
+    triangle_constraint,
+    triangle_det2D,
+)
+from dvfopt.objectives import (
+    L1Objective,
+    L2Objective,
+    NoneObjective,
+    Objective,
+    ScaledObjective,
+    SumObjective,
+    make_objective,
+)
+from dvfopt.solver import (
+    PhaseInfo,
+    SolveInfo,
+    Solver,
+    SolveResult,
+    auto_strategy,
+    correct_dvf,
+)
+from dvfopt.strategies import (
+    BarrierStrategy,
+    M10Strategy,
+    M14SchwarzStrategy,
+    M14Strategy,
+    SchwarzStrategy,
+    SLSQPFullGridStrategy,
+    SLSQPWindowedStrategy,
+    Strategy,
+    make_strategy,
+    register_strategy,
+)
 
-# -- Lazy attributes ---------------------------------------------------------
-# ``dvfopt.unified`` pulls in the barrier solver, which imports torch at
-# module load. Defer that cost so ``import dvfopt`` is cheap for callers
-# that only need the SLSQP path. The wall-breaker subpackage is similarly
-# heavy (scipy.sparse, scipy.ndimage, scipy.optimize) and only a minority
-# of callers need it.
+# -- Validation helpers ------------------------------------------------------
+# All package entry points route input through these. Surfaced publicly
+# so callers can use them on their own data before constructing a Solver.
+from dvfopt.validation import (
+    coerce_to_ndarray,
+    validate_dvf,
+    validate_finite,
+    validate_spatial_min_size,
+)
+
+# -- Lazy attributes: high-level facade --------------------------------------
+# ``dvfopt.unified`` pulls in torch at import time. Defer that cost so
+# ``import dvfopt`` is cheap for callers that only need the SLSQP path.
 _LAZY_UNIFIED = {'DVFopt', 'DVFoptConfig', 'Result', 'SliceResult'}
-_LAZY_WALLBREAKERS = {
-    'iterative_2d_tri_harmonic_polished',         # m10
-    'iterative_2d_tri_refine_repair',             # m14 (anchor='l1' = m14_l1)
-    'iterative_2d_tri_refine_repair_schwarz',     # m14-Schwarz (cluster-localized)
-    'harmonic_extension_2d',                      # m02 building block
-    'augmented_lagrangian_2d',                    # m03 building block
-    'l2_refine_2d',                               # m12 building block
-}
 
 
 def __getattr__(name):
     if name in _LAZY_UNIFIED:
         from dvfopt import unified
+
         return getattr(unified, name)
-    if name in _LAZY_WALLBREAKERS:
-        from dvfopt.core import wallbreakers
-        return getattr(wallbreakers, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    'DEFAULT_PARAMS',
+    'BarrierStrategy',
+    # Defaults
+    'BudgetExhaustedError',
+    # Composables
+    'Constraint',
+    # High-level facade (lazy)
+    'DVFopt',
+    'DVFoptConfig',
+    'DVFoptError',
+    'FeasibilityError',
+    'IncompatibleConstraintError',
+    'JdetConstraint2D',
+    'JdetConstraint3D',
+    'L1Objective',
+    'L2Objective',
+    'M10Strategy',
+    'M14SchwarzStrategy',
+    'M14Strategy',
+    'NoneObjective',
+    'Objective',
+    'PhaseInfo',
+    'PhiPack',
+    'Result',
+    'SLSQPFullGridStrategy',
+    'SLSQPWindowedStrategy',
+    'ScaledObjective',
+    'SchwarzStrategy',
+    'SliceResult',
+    'SolveInfo',
+    'SolveResult',
+    'Solver',
+    'SolverConfigError',
+    'Strategy',
+    'SumObjective',
+    'Tet6Constraint3D',
+    'TriConstraint2D',
+    'TriConstraint2DFullCoverage',
+    'auto_strategy',
+    'coerce_to_ndarray',
+    'correct_dvf',
+    'enable_default_handler',
+    # DVF utilities
+    'generate_random_dvf',
+    'generate_random_dvf_3d',
+    'injectivity_constraint',
+    # Jacobian primitives
+    'jacobian_det2D',
+    'jacobian_det3D',
+    # I/O
+    'load_nii_images',
+    'logger',
+    'make_constraint',
+    'make_objective',
+    'make_strategy',
+    'register_constraint',
+    'register_strategy',
+    'scale_dvf',
+    'scale_dvf_3d',
+    'shoelace_constraint',
+    'shoelace_det2D',
+    'sitk_jacobian_determinant',
+    'triangle_constraint',
+    'triangle_det2D',
+    'validate_dvf',
+    'validate_finite',
+    'validate_spatial_min_size',
+]

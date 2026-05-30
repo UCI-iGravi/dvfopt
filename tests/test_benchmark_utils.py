@@ -1,16 +1,15 @@
 """Tests for benchmark notebook utility helpers."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import numpy as np
-
 
 benchmarks_dir = Path(__file__).resolve().parents[1] / "benchmarks"
 if str(benchmarks_dir) not in sys.path:
     sys.path.insert(0, str(benchmarks_dir))
 
-import benchmark_utils
+import benchmark_utils  # noqa: E402 — requires sys.path patched above
 
 
 def test_results_to_rows_keeps_flat_results_shape():
@@ -27,16 +26,26 @@ def test_results_to_rows_keeps_flat_results_shape():
 
     rows, cols = benchmark_utils.results_to_rows(results)
 
-    assert cols == ["case", "n_neg_init", "n_neg_final", "min_jdet_init", "min_jdet", "l2_err", "time"]
-    assert rows == [{
-        "case": "case-a",
-        "n_neg_init": 4,
-        "n_neg_final": 0,
-        "min_jdet_init": -0.25,
-        "min_jdet": 0.2,
-        "l2_err": 1.234568,
-        "time": 0.333333,
-    }]
+    assert cols == [
+        "case",
+        "n_neg_init",
+        "n_neg_final",
+        "min_jdet_init",
+        "min_jdet",
+        "l2_err",
+        "time",
+    ]
+    assert rows == [
+        {
+            "case": "case-a",
+            "n_neg_init": 4,
+            "n_neg_final": 0,
+            "min_jdet_init": -0.25,
+            "min_jdet": 0.2,
+            "l2_err": 1.234568,
+            "time": 0.333333,
+        }
+    ]
 
 
 def test_results_to_rows_flattens_nested_method_results():

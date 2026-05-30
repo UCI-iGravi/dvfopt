@@ -30,14 +30,16 @@ interior, only the boundary ring.
 
 Promoted from ``notebooks/experiments/wall_breakers/methods/m02_harmonic_extension.py``.
 """
+
 from __future__ import annotations
+
+from typing import Optional
 
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from scipy.ndimage import (
-    label as cc_label, binary_dilation, find_objects, generate_binary_structure,
-    binary_erosion)
+from scipy.ndimage import binary_dilation, binary_erosion, generate_binary_structure
+from scipy.ndimage import label as cc_label
 
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
@@ -52,9 +54,9 @@ def _cells_to_corner_mask(cell_mask: np.ndarray, H: int, W: int) -> np.ndarray:
     """Promote a ``(H-1, W-1)`` cell mask to a ``(H, W)`` corner mask."""
     corner = np.zeros((H, W), dtype=bool)
     cy, cx = np.where(cell_mask)
-    corner[cy,     cx]     = True
-    corner[cy,     cx + 1] = True
-    corner[cy + 1, cx]     = True
+    corner[cy, cx] = True
+    corner[cy, cx + 1] = True
+    corner[cy + 1, cx] = True
     corner[cy + 1, cx + 1] = True
     return corner
 
@@ -100,7 +102,8 @@ def _solve_laplace_patch(values: np.ndarray, free_mask: np.ndarray) -> np.ndarra
             continue
         # Among in-bounds neighbours, split by free vs Dirichlet.
         k_in = np.where(in_bounds)[0]
-        yy_in = yy[k_in]; xx_in = xx[k_in]
+        yy_in = yy[k_in]
+        xx_in = xx[k_in]
         is_free = free_mask[yy_in, xx_in]
 
         # Off-diagonal contribution for free->free edges.
@@ -131,13 +134,16 @@ def _solve_laplace_patch(values: np.ndarray, free_mask: np.ndarray) -> np.ndarra
     return out
 
 
-def harmonic_extension_2d(phi_in: np.ndarray, *,
-                          threshold: float = None,
-                          ring_pad: int = 2,
-                          max_grow_iters: int = 6,
-                          merge_dilation: int = 2,
-                          margin: float = 0.0,
-                          record_history: bool = False):
+def harmonic_extension_2d(
+    phi_in: np.ndarray,
+    *,
+    threshold: Optional[float] = None,
+    ring_pad: int = 2,
+    max_grow_iters: int = 6,
+    merge_dilation: int = 2,
+    margin: float = 0.0,
+    record_history: bool = False,
+):
     """Harmonic extension over each (dilated) fold component.
 
     Parameters
@@ -166,6 +172,7 @@ def harmonic_extension_2d(phi_in: np.ndarray, *,
     dict with keys ``phi_out`` (corrected field) and ``info`` (patch records).
     """
     from dvfopt._defaults import DEFAULT_PARAMS
+
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     H, W = phi_in.shape[1], phi_in.shape[2]
@@ -199,29 +206,37 @@ def harmonic_extension_2d(phi_in: np.ndarray, *,
             phi_trial = np.stack([new_dy, new_dx])
 
             T1, T2 = _triangle_areas_2d(phi_trial[0], phi_trial[1])
-            patch_T_min = (np.minimum(T1, T2)[patch_cells].min()
-                           if patch_cells.any() else np.inf)
+            patch_T_min = np.minimum(T1, T2)[patch_cells].min() if patch_cells.any() else np.inf
 
             if patch_T_min >= accept_thr:
                 phi_out = phi_trial
-                patch_records.append({
-                    'comp_id': comp_id, 'grow': grow,
-                    'n_cells': int(patch_cells.sum()),
-                    'patch_T_min': float(patch_T_min),
-                })
+                patch_records.append(
+                    {
+                        'comp_id': comp_id,
+                        'grow': grow,
+                        'n_cells': int(patch_cells.sum()),
+                        'patch_T_min': float(patch_T_min),
+                    }
+                )
                 break
 
             last_min = patch_T_min
             cur_cells = binary_dilation(cur_cells, iterations=1)
         else:
             phi_out = phi_trial
-            patch_records.append({
-                'comp_id': comp_id, 'grow': max_grow_iters, 'failed': True,
-                'patch_T_min': float(last_min),
-                'n_cells': int(patch_cells.sum()),
-            })
+            patch_records.append(
+                {
+                    'comp_id': comp_id,
+                    'grow': max_grow_iters,
+                    'failed': True,
+                    'patch_T_min': float(last_min),
+                    'n_cells': int(patch_cells.sum()),
+                }
+            )
 
-    info = {'patches': len(patch_records),
-            'n_components': int(n_comp),
-            'records_first5': patch_records[:5]}
+    info = {
+        'patches': len(patch_records),
+        'n_components': int(n_comp),
+        'records_first5': patch_records[:5],
+    }
     return (phi_out, info) if record_history else phi_out

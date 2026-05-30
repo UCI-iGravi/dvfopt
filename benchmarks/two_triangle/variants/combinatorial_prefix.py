@@ -11,29 +11,30 @@ This is a deliberately simple heuristic — it won't fix all isolated flips
 makes things worse on its own (each damping step is rejected if it
 introduces new folds).
 """
+
 import time
 import traceback
 
 import numpy as np
 import pandas as pd
 
+from benchmarks.two_triangle.metrics import (
+    fold_counts,
+    l2_displacement,
+    smoothness,
+)
+from benchmarks.two_triangle.registry import register_variant
+from benchmarks.two_triangle.result import SolverResult
 from dvfopt.core.slsqp.iterative import iterative_serial
 from dvfopt.core.slsqp.iterative3d import iterative_3d
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d
-
-from benchmarks.two_triangle.registry import register_variant
-from benchmarks.two_triangle.result import SolverResult
-from benchmarks.two_triangle.metrics import (
-    fold_counts, l2_displacement, smoothness,
-)
 
 
 def _is_3d(dvf):
     return dvf.ndim == 4 and dvf.shape[0] == 3 and dvf.shape[1] > 1
 
 
-def _prefix_pass_2d(phi: np.ndarray, threshold: float,
-                    max_halvings: int = 6) -> np.ndarray:
+def _prefix_pass_2d(phi: np.ndarray, threshold: float, max_halvings: int = 6) -> np.ndarray:
     """Damp displacements at single-vertex flip cells.
 
     For each cell with exactly one negative triangle area, identify the
@@ -42,7 +43,7 @@ def _prefix_pass_2d(phi: np.ndarray, threshold: float,
     if any new fold is introduced anywhere.
     """
     phi = phi.copy()
-    H, W = phi.shape[1:]
+    _H, _W = phi.shape[1:]
     for _ in range(max_halvings):
         tri = _all_triangle_areas_2d(phi[0], phi[1])  # (4, H-1, W-1)
         bad = tri < threshold
@@ -65,8 +66,7 @@ def _prefix_pass_2d(phi: np.ndarray, threshold: float,
                     phi[:, vy, vx] *= 0.5
                     new_tri = _all_triangle_areas_2d(phi[0], phi[1])
                     new_cell_min = new_tri[:, cy, cx].min()
-                    no_new_folds = (new_tri >= threshold).sum() >= (
-                        tri >= threshold).sum()
+                    no_new_folds = (new_tri >= threshold).sum() >= (tri >= threshold).sum()
                     if new_cell_min > best_min and no_new_folds:
                         best_min = new_cell_min
                         best_delta = (vy, vx)
@@ -91,11 +91,15 @@ def _prefix_pass_3d(dvf: np.ndarray, threshold: float) -> np.ndarray:
 
 
 @register_variant("combinatorial_prefix")
-def combinatorial_prefix(dvf: np.ndarray, *, threshold: float = 0.01,
-                          max_iterations: int = 100,
-                          enforce_triangles: bool = True,
-                          timeout_s: float = 600.0,
-                          **_unused) -> SolverResult:
+def combinatorial_prefix(
+    dvf: np.ndarray,
+    *,
+    threshold: float = 0.01,
+    max_iterations: int = 100,
+    enforce_triangles: bool = True,
+    timeout_s: float = 600.0,
+    **_unused,
+) -> SolverResult:
     is_3d = _is_3d(dvf)
     phi_initial = dvf.copy()
     t0 = time.perf_counter()
@@ -108,14 +112,19 @@ def combinatorial_prefix(dvf: np.ndarray, *, threshold: float = 0.01,
     else:
         phi_can = np.stack([phi_initial[1, 0], phi_initial[2, 0]])
     fc = fold_counts(phi_can, threshold=threshold)
-    rows.append({
-        "outer_iter": 0, "time_s": 0.0,
-        "fold_count_jdet": fc["fold_count_jdet"],
-        "fold_count_tri": fc["fold_count_tri"],
-        "max_violation": fc["max_violation"],
-        "l2_disp": 0.0, "smoothness": smoothness(phi_can),
-        "n_active_windows": 0, "inner_iters": 0,
-    })
+    rows.append(
+        {
+            "outer_iter": 0,
+            "time_s": 0.0,
+            "fold_count_jdet": fc["fold_count_jdet"],
+            "fold_count_tri": fc["fold_count_tri"],
+            "max_violation": fc["max_violation"],
+            "l2_disp": 0.0,
+            "smoothness": smoothness(phi_can),
+            "n_active_windows": 0,
+            "inner_iters": 0,
+        }
+    )
 
     # --- Prefix pass ---
     if is_3d:
@@ -130,28 +139,35 @@ def combinatorial_prefix(dvf: np.ndarray, *, threshold: float = 0.01,
         phi_pref_can = phi_pref_2d
 
     fc = fold_counts(phi_pref_can, threshold=threshold)
-    rows.append({
-        "outer_iter": 1, "time_s": time.perf_counter() - t0,
-        "fold_count_jdet": fc["fold_count_jdet"],
-        "fold_count_tri": fc["fold_count_tri"],
-        "max_violation": fc["max_violation"],
-        "l2_disp": l2_displacement(phi_pref_can, phi_can),
-        "smoothness": smoothness(phi_pref_can),
-        "n_active_windows": 0, "inner_iters": 0,
-    })
+    rows.append(
+        {
+            "outer_iter": 1,
+            "time_s": time.perf_counter() - t0,
+            "fold_count_jdet": fc["fold_count_jdet"],
+            "fold_count_tri": fc["fold_count_tri"],
+            "max_violation": fc["max_violation"],
+            "l2_disp": l2_displacement(phi_pref_can, phi_can),
+            "smoothness": smoothness(phi_pref_can),
+            "n_active_windows": 0,
+            "inner_iters": 0,
+        }
+    )
 
     # --- Baseline call on residual ---
     if max_iterations > 0:
         try:
             if is_3d:
-                phi_post = iterative_3d(dvf_pref, threshold=threshold,
-                                        max_iterations=max_iterations,
-                                        verbose=0)
+                phi_post = iterative_3d(
+                    dvf_pref, threshold=threshold, max_iterations=max_iterations, verbose=0
+                )
             else:
-                phi_post = iterative_serial(dvf_pref, threshold=threshold,
-                                            max_iterations=max_iterations,
-                                            verbose=0,
-                                            enforce_triangles=enforce_triangles)
+                phi_post = iterative_serial(
+                    dvf_pref,
+                    threshold=threshold,
+                    max_iterations=max_iterations,
+                    verbose=0,
+                    enforce_triangles=enforce_triangles,
+                )
         except Exception:
             err = traceback.format_exc()
             phi_post = phi_pref_can
@@ -164,21 +180,31 @@ def combinatorial_prefix(dvf: np.ndarray, *, threshold: float = 0.01,
         phi_post_can = phi_post
 
     fc = fold_counts(phi_post_can, threshold=threshold)
-    rows.append({
-        "outer_iter": 2, "time_s": time.perf_counter() - t0,
-        "fold_count_jdet": fc["fold_count_jdet"],
-        "fold_count_tri": fc["fold_count_tri"],
-        "max_violation": fc["max_violation"],
-        "l2_disp": l2_displacement(phi_post_can, phi_can),
-        "smoothness": smoothness(phi_post_can),
-        "n_active_windows": 0, "inner_iters": 0,
-    })
+    rows.append(
+        {
+            "outer_iter": 2,
+            "time_s": time.perf_counter() - t0,
+            "fold_count_jdet": fc["fold_count_jdet"],
+            "fold_count_tri": fc["fold_count_tri"],
+            "max_violation": fc["max_violation"],
+            "l2_disp": l2_displacement(phi_post_can, phi_can),
+            "smoothness": smoothness(phi_post_can),
+            "n_active_windows": 0,
+            "inner_iters": 0,
+        }
+    )
 
-    converged = (err is None and fc["fold_count_jdet"] == 0
-                 and fc["fold_count_tri"] == 0)
+    converged = err is None and fc["fold_count_jdet"] == 0 and fc["fold_count_tri"] == 0
     return SolverResult(
-        phi_final=phi_post_can, trajectory=pd.DataFrame(rows),
-        converged=converged, timed_out=False, error=err,
-        meta={"variant": "combinatorial_prefix", "is_3d": is_3d,
-              "threshold": threshold, "max_iterations": max_iterations},
+        phi_final=phi_post_can,
+        trajectory=pd.DataFrame(rows),
+        converged=converged,
+        timed_out=False,
+        error=err,
+        meta={
+            "variant": "combinatorial_prefix",
+            "is_3d": is_3d,
+            "threshold": threshold,
+            "max_iterations": max_iterations,
+        },
     )

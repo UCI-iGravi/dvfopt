@@ -20,14 +20,14 @@ class TestObjectiveEuc:
         """Value = 0.5 * (3^2 + 4^2) = 0.5 * 25 = 12.5, not the L2 norm 5.0."""
         phi = np.array([3.0, 4.0])
         phi_init = np.array([0.0, 0.0])
-        val, grad = objective_euc(phi, phi_init)
+        val, _grad = objective_euc(phi, phi_init)
         np.testing.assert_allclose(val, 12.5)
 
     def test_gradient_equals_diff(self):
         """Gradient = (phi - phi_init), not the unit vector diff/||diff||."""
         phi = np.array([3.0, 4.0])
         phi_init = np.array([0.0, 0.0])
-        val, grad = objective_euc(phi, phi_init)
+        _val, grad = objective_euc(phi, phi_init)
         np.testing.assert_allclose(grad, np.array([3.0, 4.0]))
 
     def test_gradient_direction(self):
@@ -35,7 +35,7 @@ class TestObjectiveEuc:
         rng = np.random.default_rng(123)
         phi = rng.standard_normal(20)
         phi_init = rng.standard_normal(20)
-        val, grad = objective_euc(phi, phi_init)
+        _val, grad = objective_euc(phi, phi_init)
         diff = phi - phi_init
         # grad should be parallel to diff
         cos_sim = np.dot(grad, diff) / (np.linalg.norm(grad) * np.linalg.norm(diff))
@@ -46,9 +46,8 @@ class TestObjectiveEuc:
         rng = np.random.default_rng(456)
         phi = rng.standard_normal(50)
         phi_init = rng.standard_normal(50)
-        val, grad = objective_euc(phi, phi_init)
-        np.testing.assert_allclose(np.linalg.norm(grad),
-                                   np.linalg.norm(phi - phi_init), atol=1e-12)
+        _val, grad = objective_euc(phi, phi_init)
+        np.testing.assert_allclose(np.linalg.norm(grad), np.linalg.norm(phi - phi_init), atol=1e-12)
 
     def test_symmetry(self):
         """Objective is symmetric: 0.5||a-b||^2 == 0.5||b-a||^2."""

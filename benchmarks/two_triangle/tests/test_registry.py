@@ -1,4 +1,5 @@
 import pytest
+
 from benchmarks.two_triangle import registry
 
 
@@ -28,6 +29,7 @@ def test_duplicate_variant_raises():
         return None
 
     with pytest.raises(ValueError, match="already registered"):
+
         @registry.register_variant("dup_variant")
         def _b(phi, **kw):
             return None

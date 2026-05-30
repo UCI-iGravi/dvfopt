@@ -71,23 +71,29 @@ def jdet_constraint_jacobian_3d(phi_flat, subvolume_size, freeze_mask=None):
     shape = (sz, sy, sx)
 
     dx = phi_flat[:voxels].reshape(shape)
-    dy = phi_flat[voxels:2 * voxels].reshape(shape)
-    dz = phi_flat[2 * voxels:].reshape(shape)
+    dy = phi_flat[voxels : 2 * voxels].reshape(shape)
+    dz = phi_flat[2 * voxels :].reshape(shape)
 
-    a11 = 1 + np.gradient(dx, axis=2);  a12 = np.gradient(dx, axis=1);  a13 = np.gradient(dx, axis=0)
-    a21 = np.gradient(dy, axis=2);       a22 = 1 + np.gradient(dy, axis=1);  a23 = np.gradient(dy, axis=0)
-    a31 = np.gradient(dz, axis=2);       a32 = np.gradient(dz, axis=1);       a33 = 1 + np.gradient(dz, axis=0)
+    a11 = 1 + np.gradient(dx, axis=2)
+    a12 = np.gradient(dx, axis=1)
+    a13 = np.gradient(dx, axis=0)
+    a21 = np.gradient(dy, axis=2)
+    a22 = 1 + np.gradient(dy, axis=1)
+    a23 = np.gradient(dy, axis=0)
+    a31 = np.gradient(dz, axis=2)
+    a32 = np.gradient(dz, axis=1)
+    a33 = 1 + np.gradient(dz, axis=0)
 
     # Cofactors of F at every voxel (full grids, not just one voxel).
-    C11 =  a22 * a33 - a23 * a32
+    C11 = a22 * a33 - a23 * a32
     C12 = -(a21 * a33 - a23 * a31)
-    C13 =  a21 * a32 - a22 * a31
+    C13 = a21 * a32 - a22 * a31
     C21 = -(a12 * a33 - a13 * a32)
-    C22 =  a11 * a33 - a13 * a31
+    C22 = a11 * a33 - a13 * a31
     C23 = -(a11 * a32 - a12 * a31)
-    C31 =  a12 * a23 - a13 * a22
+    C31 = a12 * a23 - a13 * a22
     C32 = -(a11 * a23 - a13 * a21)
-    C33 =  a11 * a22 - a12 * a21
+    C33 = a11 * a22 - a12 * a21
 
     # Cached sparse gradient operators -- one per axis, geometry only.
     G_x = gradient_operator(shape, axis=2)
@@ -95,9 +101,9 @@ def jdet_constraint_jacobian_3d(phi_flat, subvolume_size, freeze_mask=None):
     G_z = gradient_operator(shape, axis=0)
 
     # Build each (N, N) channel block, then horizontally stack to (N, 3N).
-    M_dx = (scale_rows(C11, G_x) + scale_rows(C12, G_y) + scale_rows(C13, G_z))
-    M_dy = (scale_rows(C21, G_x) + scale_rows(C22, G_y) + scale_rows(C23, G_z))
-    M_dz = (scale_rows(C31, G_x) + scale_rows(C32, G_y) + scale_rows(C33, G_z))
+    M_dx = scale_rows(C11, G_x) + scale_rows(C12, G_y) + scale_rows(C13, G_z)
+    M_dy = scale_rows(C21, G_x) + scale_rows(C22, G_y) + scale_rows(C23, G_z)
+    M_dz = scale_rows(C31, G_x) + scale_rows(C32, G_y) + scale_rows(C33, G_z)
 
     J = scipy.sparse.hstack([M_dx, M_dy, M_dz], format="csr")
 

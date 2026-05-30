@@ -29,8 +29,7 @@ def argmin_quality(jacobian_matrix):
     return (int(idx[0]), int(idx[1]))
 
 
-def _bbox_window_nd(neg_field, center, pad, *,
-                    labeled=None, connectivity_full=True):
+def _bbox_window_nd(neg_field, center, pad, *, labeled=None, connectivity_full=True):
     """Generic N-dimensional bounding-box window helper.
 
     Used by both the 2D and 3D variants. ``neg_field`` is the negative-mask
@@ -63,8 +62,7 @@ def _bbox_window_nd(neg_field, center, pad, *,
     return tuple(sizes), tuple(centers)
 
 
-def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
-                             labeled=None, pad=2):
+def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol, labeled=None, pad=2):
     """Compute the smallest window enclosing the negative-Jdet region around *center_yx*.
 
     The window is the bounding box of all pixels with Jdet <= *threshold* - *err_tol*
@@ -101,8 +99,9 @@ def neg_jdet_bounding_window(jacobian_matrix, center_yx, threshold, err_tol,
         ``(y, x)`` centre of the bounding box.
     """
     neg_field = jacobian_matrix[0] <= threshold - err_tol
-    return _bbox_window_nd(neg_field, tuple(center_yx), pad,
-                           labeled=labeled, connectivity_full=False)
+    return _bbox_window_nd(
+        neg_field, tuple(center_yx), pad, labeled=labeled, connectivity_full=False
+    )
 
 
 def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_tol):
@@ -121,12 +120,14 @@ def _frozen_edges_clean(jacobian_matrix, cy, cx, submatrix_size, threshold, err_
     y1 = min(cy + hy_hi - 1, H - 1)
     x0 = max(cx - hx, 0)
     x1 = min(cx + hx_hi - 1, W - 1)
-    edge_vals = np.concatenate([
-        jacobian_matrix[0, y0, x0:x1 + 1].ravel(),
-        jacobian_matrix[0, y1, x0:x1 + 1].ravel(),
-        jacobian_matrix[0, y0:y1 + 1, x0].ravel(),
-        jacobian_matrix[0, y0:y1 + 1, x1].ravel(),
-    ])
+    edge_vals = np.concatenate(
+        [
+            jacobian_matrix[0, y0, x0 : x1 + 1].ravel(),
+            jacobian_matrix[0, y1, x0 : x1 + 1].ravel(),
+            jacobian_matrix[0, y0 : y1 + 1, x0].ravel(),
+            jacobian_matrix[0, y0 : y1 + 1, x1].ravel(),
+        ]
+    )
     return edge_vals.min() > threshold - err_tol
 
 
@@ -135,8 +136,8 @@ def get_phi_sub_flat(phi, cz, cy, cx, shape, submatrix_size):
     sy, sx = _unpack_size(submatrix_size)
     hy, hx = sy // 2, sx // 2
     hy_hi, hx_hi = sy - hy, sx - hx
-    phix = phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
-    phiy = phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
+    phix = phi[1, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
+    phiy = phi[0, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
     return np.concatenate([phix.flatten(), phiy.flatten()])
 
 
@@ -164,16 +165,15 @@ def get_phi_sub_flat_padded(phi, cz, cy, cx, shape, submatrix_size):
     hy_hi, hx_hi = sy - hy, sx - hx
     H, W = shape[1], shape[2]
 
-    can_pad = (cy - hy - 1 >= 0 and cy + hy_hi + 1 <= H and
-               cx - hx - 1 >= 0 and cx + hx_hi + 1 <= W)
+    can_pad = cy - hy - 1 >= 0 and cy + hy_hi + 1 <= H and cx - hx - 1 >= 0 and cx + hx_hi + 1 <= W
 
     if can_pad:
-        phix = phi[1, cy - hy - 1:cy + hy_hi + 1, cx - hx - 1:cx + hx_hi + 1]
-        phiy = phi[0, cy - hy - 1:cy + hy_hi + 1, cx - hx - 1:cx + hx_hi + 1]
+        phix = phi[1, cy - hy - 1 : cy + hy_hi + 1, cx - hx - 1 : cx + hx_hi + 1]
+        phiy = phi[0, cy - hy - 1 : cy + hy_hi + 1, cx - hx - 1 : cx + hx_hi + 1]
         actual_size = (sy + 2, sx + 2)
     else:
-        phix = phi[1, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
-        phiy = phi[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi]
+        phix = phi[1, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
+        phiy = phi[0, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
         actual_size = (sy, sx)
 
     return np.concatenate([phix.flatten(), phiy.flatten()]), actual_size
@@ -186,8 +186,9 @@ def _window_bounds(cy, cx, submatrix_size):
     return (cy - hy, cy + hy_hi - 1, cx - hx, cx + hx_hi - 1)
 
 
-def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
-                             near_cent_dict, pixel_bbox_centers=None):
+def _select_non_overlapping(
+    neg_pixels, pixel_window_sizes, slice_shape, near_cent_dict, pixel_bbox_centers=None
+):
     """Greedily select non-overlapping windows using an occupancy grid.
 
     Uses a 2D boolean grid for O(window_area) overlap checks instead of
@@ -214,10 +215,10 @@ def _select_non_overlapping(neg_pixels, pixel_window_sizes, slice_shape,
         px0 = max(x0 - 1, 0)
         px1 = min(x1 + 1, W - 1)
 
-        if occupied[py0:py1 + 1, px0:px1 + 1].any():
+        if occupied[py0 : py1 + 1, px0 : px1 + 1].any():
             continue
 
-        occupied[py0:py1 + 1, px0:px1 + 1] = True
+        occupied[py0 : py1 + 1, px0 : px1 + 1] = True
         selected.append((neg_idx, (cz, cy, cx), ws))
 
     return selected
@@ -229,12 +230,11 @@ def _edge_flags(cy, cx, submatrix_size, slice_shape, max_window):
     hy, hx = sy // 2, sx // 2
     hy_hi, hx_hi = sy - hy, sx - hx
     start_y = cy - hy
-    end_y = cy + hy_hi - 1          # inclusive last pixel
+    end_y = cy + hy_hi - 1  # inclusive last pixel
     start_x = cx - hx
     end_x = cx + hx_hi - 1
     max_y, max_x = slice_shape[1:]
-    is_at_edge = (start_y == 0 or end_y >= max_y - 1
-                  or start_x == 0 or end_x >= max_x - 1)
+    is_at_edge = start_y == 0 or end_y >= max_y - 1 or start_x == 0 or end_x >= max_x - 1
     max_sy, max_sx = _unpack_size(max_window)
     window_reached_max = sy >= max_sy and sx >= max_sx
     return is_at_edge, window_reached_max

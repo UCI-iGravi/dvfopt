@@ -5,24 +5,23 @@ import scipy.sparse
 from scipy.optimize import LinearConstraint, NonlinearConstraint
 
 from dvfopt._defaults import _unpack_size
-from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
-from dvfopt.jacobian.shoelace import (
-    _shoelace_areas_2d,
-    shoelace_det2D,
-    shoelace_constraint,
-    _all_triangle_areas_2d,
-    triangle_constraint,
-)
-from dvfopt.jacobian.monotonicity import (
-    _monotonicity_diffs_2d,
-    _diagonal_monotonicity_diffs_2d,
-    injectivity_constraint,
-)
 from dvfopt.core.slsqp.gradients import (
+    injectivity_constraint_jacobian_2d,
     jdet_constraint_jacobian_2d,
     shoelace_constraint_jacobian_2d,
     triangle_constraint_jacobian_2d,
-    injectivity_constraint_jacobian_2d,
+)
+from dvfopt.jacobian.monotonicity import (
+    _diagonal_monotonicity_diffs_2d,
+    _monotonicity_diffs_2d,
+    injectivity_constraint,
+)
+from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
+from dvfopt.jacobian.shoelace import (
+    _all_triangle_areas_2d,
+    shoelace_constraint,
+    shoelace_det2D,
+    triangle_constraint,
 )
 
 
@@ -39,9 +38,9 @@ def jacobian_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
         return jdet.flatten()
 
 
-def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
-                 enforce_triangles=False,
-                 jacobian_matrix=None):
+def _quality_map(
+    phi, enforce_shoelace, enforce_injectivity=False, enforce_triangles=False, jacobian_matrix=None
+):
     """Per-pixel quality metric combining gradient-Jdet and optional extras.
 
     When all ``enforce_*`` flags are ``False``, returns
@@ -66,22 +65,22 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
         # All 4 triangle areas per cell, reduce to per-cell minimum, then
         # spread to all 4 incident vertices (same pattern as shoelace).
         tri = _all_triangle_areas_2d(phi[0], phi[1])  # (4, H-1, W-1)
-        cell_min = tri.min(axis=0)                     # (H-1, W-1)
+        cell_min = tri.min(axis=0)  # (H-1, W-1)
         spread = np.full((1, H, W), np.inf)
         spread[0, :-1, :-1] = np.minimum(spread[0, :-1, :-1], cell_min)
-        spread[0, :-1, 1:]  = np.minimum(spread[0, :-1, 1:],  cell_min)
-        spread[0, 1:,  :-1] = np.minimum(spread[0, 1:,  :-1], cell_min)
-        spread[0, 1:,  1:]  = np.minimum(spread[0, 1:,  1:],  cell_min)
+        spread[0, :-1, 1:] = np.minimum(spread[0, :-1, 1:], cell_min)
+        spread[0, 1:, :-1] = np.minimum(spread[0, 1:, :-1], cell_min)
+        spread[0, 1:, 1:] = np.minimum(spread[0, 1:, 1:], cell_min)
         result = np.minimum(result, spread)
 
     if enforce_shoelace:
-        areas = shoelace_det2D(phi)           # (1, H-1, W-1)
+        areas = shoelace_det2D(phi)  # (1, H-1, W-1)
         shoe = np.full((1, H, W), np.inf)
         a = areas[0]
         shoe[0, :-1, :-1] = np.minimum(shoe[0, :-1, :-1], a)
-        shoe[0, :-1, 1:]  = np.minimum(shoe[0, :-1, 1:],  a)
-        shoe[0, 1:,  :-1] = np.minimum(shoe[0, 1:,  :-1], a)
-        shoe[0, 1:,  1:]  = np.minimum(shoe[0, 1:,  1:],  a)
+        shoe[0, :-1, 1:] = np.minimum(shoe[0, :-1, 1:], a)
+        shoe[0, 1:, :-1] = np.minimum(shoe[0, 1:, :-1], a)
+        shoe[0, 1:, 1:] = np.minimum(shoe[0, 1:, 1:], a)
         result = np.minimum(result, shoe)
 
     if enforce_injectivity:
@@ -92,10 +91,10 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
         mono = np.full((1, H, W), np.inf)
         # h_mono is (H, W-1): gap between col j and col j+1
         mono[0, :, :-1] = np.minimum(mono[0, :, :-1], h_mono)
-        mono[0, :, 1:]  = np.minimum(mono[0, :, 1:],  h_mono)
+        mono[0, :, 1:] = np.minimum(mono[0, :, 1:], h_mono)
         # v_mono is (H-1, W): gap between row i and row i+1
         mono[0, :-1, :] = np.minimum(mono[0, :-1, :], v_mono)
-        mono[0, 1:,  :] = np.minimum(mono[0, 1:,  :], v_mono)
+        mono[0, 1:, :] = np.minimum(mono[0, 1:, :], v_mono)
         # d1 is (H-1, W-1): involves (r, c+1) and (r+1, c)
         mono[0, :-1, 1:] = np.minimum(mono[0, :-1, 1:], d1)
         mono[0, 1:, :-1] = np.minimum(mono[0, 1:, :-1], d1)
@@ -107,10 +106,17 @@ def _quality_map(phi, enforce_shoelace, enforce_injectivity=False,
     return result
 
 
-def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
-                       window_reached_max, threshold, enforce_shoelace=False,
-                       enforce_injectivity=False, injectivity_threshold=None,
-                       enforce_triangles=False):
+def _build_constraints(
+    phi_sub_flat,
+    submatrix_size,
+    is_at_edge,
+    window_reached_max,
+    threshold,
+    enforce_shoelace=False,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
+    enforce_triangles=False,
+):
     """Build SLSQP constraints for a sub-window optimisation.
 
     Returns a list of constraint objects suitable for
@@ -147,32 +153,50 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
     # triangles are enforced, drop the pixel-Jdet constraint.
     constraints = []
     if not enforce_triangles:
-        constraints.append(NonlinearConstraint(
-            lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
-            threshold, np.inf,
-            jac=lambda phi1: jdet_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
-        ))
+        constraints.append(
+            NonlinearConstraint(
+                lambda phi1: jacobian_constraint(phi1, submatrix_size, exclude_bounds),
+                threshold,
+                np.inf,
+                jac=lambda phi1: jdet_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
+            )
+        )
 
     if enforce_shoelace:
-        constraints.append(NonlinearConstraint(
-            lambda phi1: shoelace_constraint(phi1, submatrix_size, exclude_bounds),
-            threshold, np.inf,
-            jac=lambda phi1: shoelace_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
-        ))
+        constraints.append(
+            NonlinearConstraint(
+                lambda phi1: shoelace_constraint(phi1, submatrix_size, exclude_bounds),
+                threshold,
+                np.inf,
+                jac=lambda phi1: shoelace_constraint_jacobian_2d(
+                    phi1, submatrix_size, exclude_bounds
+                ),
+            )
+        )
 
     if enforce_triangles:
-        constraints.append(NonlinearConstraint(
-            lambda phi1: triangle_constraint(phi1, submatrix_size, exclude_bounds),
-            threshold, np.inf,
-            jac=lambda phi1: triangle_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
-        ))
+        constraints.append(
+            NonlinearConstraint(
+                lambda phi1: triangle_constraint(phi1, submatrix_size, exclude_bounds),
+                threshold,
+                np.inf,
+                jac=lambda phi1: triangle_constraint_jacobian_2d(
+                    phi1, submatrix_size, exclude_bounds
+                ),
+            )
+        )
 
     if enforce_injectivity:
-        constraints.append(NonlinearConstraint(
-            lambda phi1: injectivity_constraint(phi1, submatrix_size, exclude_bounds),
-            inj_lb, np.inf,
-            jac=lambda phi1: injectivity_constraint_jacobian_2d(phi1, submatrix_size, exclude_bounds),
-        ))
+        constraints.append(
+            NonlinearConstraint(
+                lambda phi1: injectivity_constraint(phi1, submatrix_size, exclude_bounds),
+                inj_lb,
+                np.inf,
+                jac=lambda phi1: injectivity_constraint_jacobian_2d(
+                    phi1, submatrix_size, exclude_bounds
+                ),
+            )
+        )
 
     if exclude_bounds:
         sy, sx = _unpack_size(submatrix_size)
@@ -192,7 +216,8 @@ def _build_constraints(phi_sub_flat, submatrix_size, is_at_edge,
         n_fixed = len(fixed_indices)
         A_eq = scipy.sparse.csr_matrix(
             (np.ones(n_fixed), (np.arange(n_fixed), fixed_indices)),
-            shape=(n_fixed, phi_sub_flat.size))
+            shape=(n_fixed, phi_sub_flat.size),
+        )
 
         constraints.append(LinearConstraint(A_eq, fixed_values, fixed_values))
 

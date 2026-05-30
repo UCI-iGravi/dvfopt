@@ -35,12 +35,13 @@ def _shoelace_areas_from_positions(def_x, def_y):
     -------
     ndarray, shape ``(H-1, W-1)``
     """
-    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]   # TL
-    x1, y1 = def_x[:-1, 1:],  def_y[:-1, 1:]     # TR
-    x2, y2 = def_x[1:, 1:],   def_y[1:, 1:]      # BR
-    x3, y3 = def_x[1:, :-1],  def_y[1:, :-1]     # BL
-    return 0.5 * ((x0*y1 - x1*y0) + (x1*y2 - x2*y1)
-                  + (x2*y3 - x3*y2) + (x3*y0 - x0*y3))
+    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]  # TL
+    x1, y1 = def_x[:-1, 1:], def_y[:-1, 1:]  # TR
+    x2, y2 = def_x[1:, 1:], def_y[1:, 1:]  # BR
+    x3, y3 = def_x[1:, :-1], def_y[1:, :-1]  # BL
+    return 0.5 * (
+        (x0 * y1 - x1 * y0) + (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y0 - x0 * y3)
+    )
 
 
 def _shoelace_areas_2d(dy, dx):
@@ -87,6 +88,7 @@ def shoelace_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
 # Triangulated shoelace — TL-BR diagonal split (per-triangle signed areas)
 # ---------------------------------------------------------------------------
 
+
 def _triangulated_shoelace_areas_2d(dy, dx):
     """Signed areas of the two triangles formed by splitting each quad
     along its TL-BR diagonal.
@@ -111,10 +113,10 @@ def _triangulated_shoelace_areas_2d(dy, dx):
     def_x = ref_x + dx
     def_y = ref_y + dy
 
-    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]    # TL
-    x1, y1 = def_x[:-1, 1:],  def_y[:-1, 1:]     # TR
-    x2, y2 = def_x[1:, 1:],   def_y[1:, 1:]      # BR
-    x3, y3 = def_x[1:, :-1],  def_y[1:, :-1]     # BL
+    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]  # TL
+    x1, y1 = def_x[:-1, 1:], def_y[:-1, 1:]  # TR
+    x2, y2 = def_x[1:, 1:], def_y[1:, 1:]  # BR
+    x3, y3 = def_x[1:, :-1], def_y[1:, :-1]  # BL
 
     # T1 = signed area of (TL, TR, BR)
     T1 = 0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0))
@@ -137,8 +139,7 @@ def triangulated_shoelace_det2D(phi_xy):
     return np.stack([T1, T2])
 
 
-def triangulated_shoelace_constraint(phi_xy, submatrix_size,
-                                     exclude_boundaries=True):
+def triangulated_shoelace_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     """Flatten both triangle areas for the SLSQP constraint vector.
 
     Layout: ``[T1(r, c) for (r, c) in cells] + [T2(r, c) for (r, c) in cells]``,
@@ -158,6 +159,7 @@ def triangulated_shoelace_constraint(phi_xy, submatrix_size,
 # ---------------------------------------------------------------------------
 # Strict both-diagonal triangle criterion (4 triangles per cell)
 # ---------------------------------------------------------------------------
+
 
 def _all_triangle_areas_2d(dy, dx):
     """Signed areas of all 4 triangles per cell, both diagonal splits.
@@ -191,10 +193,10 @@ def _all_triangle_areas_2d(dy, dx):
     def_x = ref_x + dx
     def_y = ref_y + dy
 
-    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]   # TL
-    x1, y1 = def_x[:-1, 1:],  def_y[:-1, 1:]    # TR
-    x2, y2 = def_x[1:, 1:],   def_y[1:, 1:]     # BR
-    x3, y3 = def_x[1:, :-1],  def_y[1:, :-1]    # BL
+    x0, y0 = def_x[:-1, :-1], def_y[:-1, :-1]  # TL
+    x1, y1 = def_x[:-1, 1:], def_y[:-1, 1:]  # TR
+    x2, y2 = def_x[1:, 1:], def_y[1:, 1:]  # BR
+    x3, y3 = def_x[1:, :-1], def_y[1:, :-1]  # BL
 
     T1 = 0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0))
     T2 = 0.5 * ((x2 - x0) * (y3 - y0) - (x3 - x0) * (y2 - y0))

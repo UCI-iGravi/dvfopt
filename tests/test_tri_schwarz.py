@@ -8,7 +8,8 @@ plain per-cluster runner couldn't crack.
 import numpy as np
 import pytest
 
-from dvfopt import iterative_2d_tri_schwarz, solve_cluster_2tri_2d
+from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
+from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 
@@ -19,13 +20,13 @@ def _fold_count(phi):
 
 def _planted_fold(H=10, W=10, seed=0):
     rng = np.random.default_rng(seed)
-    return np.stack([rng.normal(0, 0.3, (H, W)),
-                     rng.normal(0, 0.3, (H, W))])
+    return np.stack([rng.normal(0, 0.3, (H, W)), rng.normal(0, 0.3, (H, W))])
 
 
 # ---------------------------------------------------------------------------
 # solve_cluster_2tri_2d
 # ---------------------------------------------------------------------------
+
 
 class TestSolveCluster2tri2D:
     def test_no_initial_folds_short_circuits(self):
@@ -34,7 +35,7 @@ class TestSolveCluster2tri2D:
         anchor = phi.copy()
         im = np.zeros((H, W), dtype=bool)
         im[1:-1, 1:-1] = True
-        out, info = solve_cluster_2tri_2d(phi, anchor, im)
+        _out, info = solve_cluster_2tri_2d(phi, anchor, im)
         assert info['feasible'] is True
         assert info['init_n_neg'] == 0
         assert info['l2_passes_run'] == 0
@@ -46,8 +47,7 @@ class TestSolveCluster2tri2D:
         im = np.zeros((H, W), dtype=bool)
         im[1:-1, 1:-1] = True
         assert _fold_count(phi) > 0, "test setup needs folds"
-        out, info = solve_cluster_2tri_2d(phi, anchor, im,
-                                           l2_max_passes=8, l2_max_iter=80)
+        out, info = solve_cluster_2tri_2d(phi, anchor, im, l2_max_passes=8, l2_max_iter=80)
         assert out.shape == phi.shape
         # On a small contained fold, the cluster solver should converge.
         assert info['feasible'] is True
@@ -58,7 +58,7 @@ class TestSolveCluster2tri2D:
         phi = _planted_fold(H, W, seed=2)
         anchor = phi.copy()
         im = np.zeros((H, W), dtype=bool)  # no movable corners
-        out, info = solve_cluster_2tri_2d(phi, anchor, im)
+        _out, info = solve_cluster_2tri_2d(phi, anchor, im)
         # With no movable corners and existing folds, it must report infeasible.
         if info['init_n_neg'] > 0:
             assert info['feasible'] is False
@@ -69,19 +69,30 @@ class TestSolveCluster2tri2D:
         anchor = phi.copy()
         im = np.zeros((H, W), dtype=bool)
         im[1:-1, 1:-1] = True
-        _, info = solve_cluster_2tri_2d(phi, anchor, im,
-                                         l2_max_passes=4, l2_max_iter=50)
-        for k in ('init_n_neg', 'init_min_tri', 'after_l2_n_neg',
-                  'after_l2_min', 'after_l1_n_neg', 'after_l1_min',
-                  'l2_passes_run', 'l2_total_nit', 'l2_total_t',
-                  'l1_polished', 'l1_nit', 'l1_t',
-                  'cluster_t', 'feasible'):
+        _, info = solve_cluster_2tri_2d(phi, anchor, im, l2_max_passes=4, l2_max_iter=50)
+        for k in (
+            'init_n_neg',
+            'init_min_tri',
+            'after_l2_n_neg',
+            'after_l2_min',
+            'after_l1_n_neg',
+            'after_l1_min',
+            'l2_passes_run',
+            'l2_total_nit',
+            'l2_total_t',
+            'l1_polished',
+            'l1_nit',
+            'l1_t',
+            'cluster_t',
+            'feasible',
+        ):
             assert k in info, f"missing info key: {k}"
 
 
 # ---------------------------------------------------------------------------
 # iterative_2d_tri_schwarz — full-slice entry point
 # ---------------------------------------------------------------------------
+
 
 class TestIterative2DTriSchwarz:
     def test_identity_unchanged(self):
@@ -100,17 +111,23 @@ class TestIterative2DTriSchwarz:
         """A 30x30 random field with a large fold cluster should exercise
         the Schwarz branch when large_span/area are set small."""
         rng = np.random.default_rng(99)
-        phi = np.stack([rng.normal(0, 0.4, (30, 30)),
-                        rng.normal(0, 0.4, (30, 30))])
+        phi = np.stack([rng.normal(0, 0.4, (30, 30)), rng.normal(0, 0.4, (30, 30))])
         init = _fold_count(phi)
         if init == 0:
             pytest.skip("synthetic field has no folds — adjust seed")
         # Force Schwarz routing for any moderately-sized component.
         out = iterative_2d_tri_schwarz(
-            phi, max_outer=15, verbose=0,
-            large_span=5, large_area=20,    # very low -> almost always Schwarz
-            tile=8, overlap=2, schwarz_max_sweeps=4,
-            l2_passes=6, l2_iter=60, l1_iter=80,
+            phi,
+            max_outer=15,
+            verbose=0,
+            large_span=5,
+            large_area=20,  # very low -> almost always Schwarz
+            tile=8,
+            overlap=2,
+            schwarz_max_sweeps=4,
+            l2_passes=6,
+            l2_iter=60,
+            l1_iter=80,
         )
         # Schwarz route should clear at least as well as plain (we don't
         # require == 0 here because small synthetic random fields can have
@@ -133,11 +150,9 @@ class TestIterative2DTriSchwarz:
 
     def test_record_history(self):
         phi = _planted_fold(H=10, W=10, seed=13)
-        out, hist = iterative_2d_tri_schwarz(
-            phi, max_outer=5, verbose=0, record_history=True)
+        out, hist = iterative_2d_tri_schwarz(phi, max_outer=5, verbose=0, record_history=True)
         assert out.shape == phi.shape
         assert isinstance(hist, list)
         for h in hist:
-            for k in ('outer', 'n_neg', 'min_tri',
-                      'n_components', 'n_large', 'n_small', 'wall_s'):
+            for k in ('outer', 'n_neg', 'min_tri', 'n_components', 'n_large', 'n_small', 'wall_s'):
                 assert k in h

@@ -1,4 +1,5 @@
 import numpy as np
+
 from benchmarks.two_triangle import metrics
 
 

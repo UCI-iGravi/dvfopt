@@ -30,7 +30,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from _m14_schwarz_proto import m14_schwarz, _stats
-from dvfopt import iterative_2d_tri_refine_repair
+from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 

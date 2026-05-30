@@ -109,6 +109,6 @@ class TestScaleDvf3D:
 
         new_D, new_H, new_W = 8, 12, 16
         scaled = scale_dvf_3d(dvf, (new_D, new_H, new_W))
-        np.testing.assert_allclose(scaled[0], 2.0, atol=1e-6)   # dz * 2
-        np.testing.assert_allclose(scaled[1], 2.0, atol=1e-6)   # dy * 2
-        np.testing.assert_allclose(scaled[2], 2.0, atol=1e-6)   # dx * 2
+        np.testing.assert_allclose(scaled[0], 2.0, atol=1e-6)  # dz * 2
+        np.testing.assert_allclose(scaled[1], 2.0, atol=1e-6)  # dy * 2
+        np.testing.assert_allclose(scaled[2], 2.0, atol=1e-6)  # dx * 2

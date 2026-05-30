@@ -16,7 +16,7 @@ class TestNumpyVsSitk2D:
     def test_identity_field(self):
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
         jdet_np = jacobian_det2D(d[[1, 2], 0])[0]  # (H, W)
-        jdet_sitk = sitk_jacobian_determinant(d)     # (1, H, W)
+        jdet_sitk = sitk_jacobian_determinant(d)  # (1, H, W)
         # Interior should both be 1.0
         np.testing.assert_allclose(jdet_np[1:-1, 1:-1], 1.0, atol=1e-10)
         np.testing.assert_allclose(jdet_sitk[0, 1:-1, 1:-1], 1.0, atol=1e-10)
@@ -33,8 +33,7 @@ class TestNumpyVsSitk2D:
         jdet_sitk = sitk_jacobian_determinant(d)[0]
 
         # Interior pixels (central diff in both) should be very close
-        np.testing.assert_allclose(
-            jdet_np[2:-2, 2:-2], jdet_sitk[2:-2, 2:-2], atol=1e-6)
+        np.testing.assert_allclose(jdet_np[2:-2, 2:-2], jdet_sitk[2:-2, 2:-2], atol=1e-6)
 
     def test_random_field_interior_agrees(self):
         rng = np.random.default_rng(42)
@@ -45,8 +44,7 @@ class TestNumpyVsSitk2D:
         jdet_np = jacobian_det2D(d[[1, 2], 0])[0]
         jdet_sitk = sitk_jacobian_determinant(d)[0]
 
-        np.testing.assert_allclose(
-            jdet_np[2:-2, 2:-2], jdet_sitk[2:-2, 2:-2], atol=1e-6)
+        np.testing.assert_allclose(jdet_np[2:-2, 2:-2], jdet_sitk[2:-2, 2:-2], atol=1e-6)
 
 
 class TestNumpyVsSitk3D:
@@ -69,4 +67,5 @@ class TestNumpyVsSitk3D:
         jdet_sitk = sitk_jacobian_determinant(d)
 
         np.testing.assert_allclose(
-            jdet_np[2:-2, 2:-2, 2:-2], jdet_sitk[2:-2, 2:-2, 2:-2], atol=1e-5)
+            jdet_np[2:-2, 2:-2, 2:-2], jdet_sitk[2:-2, 2:-2, 2:-2], atol=1e-5
+        )

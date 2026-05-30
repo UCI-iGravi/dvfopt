@@ -3,16 +3,16 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.spatial import (
-    get_nearest_center,
-    argmin_quality,
-    neg_jdet_bounding_window,
-    _frozen_edges_clean,
-    get_phi_sub_flat,
-    _edge_flags,
-    _select_non_overlapping,
-)
 from dvfopt._defaults import _unpack_size
+from dvfopt.core.slsqp.spatial import (
+    _edge_flags,
+    _frozen_edges_clean,
+    _select_non_overlapping,
+    argmin_quality,
+    get_nearest_center,
+    get_phi_sub_flat,
+    neg_jdet_bounding_window,
+)
 
 
 class TestNearestCenter:
@@ -78,7 +78,7 @@ class TestNegJdetBoundingWindow:
     def test_larger_negative_region(self):
         jac = np.ones((1, 12, 12))
         jac[0, 4:7, 4:7] = -0.5  # 3x3 block
-        (h, w), (cy, cx) = neg_jdet_bounding_window(jac, (5, 5), 0.01, 1e-5)
+        (h, w), (_cy, _cx) = neg_jdet_bounding_window(jac, (5, 5), 0.01, 1e-5)
         # Should be larger than 3x3 to include the 1px positive border
         assert h >= 5
         assert w >= 5
@@ -86,7 +86,7 @@ class TestNegJdetBoundingWindow:
     def test_non_negative_pixel_returns_3x3(self):
         """If the center pixel is somehow not negative, return default 3x3."""
         jac = np.ones((1, 10, 10))
-        (h, w), center = neg_jdet_bounding_window(jac, (5, 5), 0.01, 1e-5)
+        (h, w), _center = neg_jdet_bounding_window(jac, (5, 5), 0.01, 1e-5)
         assert (h, w) == (3, 3)
 
 
@@ -94,14 +94,14 @@ class TestFrozenEdgesClean:
     def test_clean_edges(self):
         """All-positive Jdet → frozen edges are clean."""
         jac = np.ones((1, 10, 10))
-        assert _frozen_edges_clean(jac, 5, 5, 3, 0.01, 1e-5) == True
+        assert _frozen_edges_clean(jac, 5, 5, 3, 0.01, 1e-5)
 
     def test_dirty_edges(self):
         """Negative Jdet on the edge ring → not clean."""
         jac = np.ones((1, 10, 10))
         # Place negative value on the edge of a 3x3 window centered at (5,5)
         jac[0, 4, 4] = -0.5  # top-left corner of window
-        assert _frozen_edges_clean(jac, 5, 5, 3, 0.01, 1e-5) == False
+        assert not _frozen_edges_clean(jac, 5, 5, 3, 0.01, 1e-5)
 
 
 class TestGetPhiSubFlat:
@@ -117,7 +117,7 @@ class TestGetPhiSubFlat:
         rng = np.random.default_rng(42)
         phi = rng.standard_normal((2, 10, 10))
         flat = get_phi_sub_flat(phi, 0, 5, 5, (1, 10, 10), (3, 5))
-        sy, sx = 3, 5
+        _sy, _sx = 3, 5
         expected_dx = phi[1, 4:7, 3:8].flatten()  # cy=5, hy=1, hx=2
         expected_dy = phi[0, 4:7, 3:8].flatten()
         np.testing.assert_array_equal(flat, np.concatenate([expected_dx, expected_dy]))

@@ -6,6 +6,18 @@ __pycache__/
 # C extensions
 *.so
 
+# Benchmark + experiment outputs — regenerated artifacts.
+# Use `git add -f path/foo.csv` to commit one explicitly when needed.
+benchmarks/results/*.csv
+benchmarks/results/*.png
+notebooks/experiments/output_demo/
+
+# Ruff / pre-commit cache.
+.ruff_cache/
+
+# Hypothesis state.
+.hypothesis/
+
 # Distribution / packaging
 .Python
 build/
