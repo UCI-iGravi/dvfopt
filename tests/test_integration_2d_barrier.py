@@ -74,6 +74,9 @@ class TestBarrier2DNumpy:
 
 
 class TestBarrier2DTorch:
+    def setup_method(self):
+        pytest.importorskip('torch')
+
     def test_identity_unchanged(self):
         from dvfopt.core.iterative2d_barrier import iterative_2d_barrier_torch
 

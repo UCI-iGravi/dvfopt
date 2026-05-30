@@ -106,10 +106,7 @@ class TestTorchBackend:
     extra, not the core deps)."""
 
     def setup_method(self):
-        try:
-            import torch  # noqa: F401
-        except ImportError:
-            pytest.skip('torch not available')
+        pytest.importorskip('torch')
 
     def test_identity_matches_numpy(self):
         import torch
@@ -152,9 +149,7 @@ class TestTorchBackend:
         autograd_flat = np.concatenate(
             [autograd_grad[2].ravel(), autograd_grad[1].ravel(), autograd_grad[0].ravel()]
         )
-        phi_flat = np.concatenate(
-            [phi_np[2].ravel(), phi_np[1].ravel(), phi_np[0].ravel()]
-        )
+        phi_flat = np.concatenate([phi_np[2].ravel(), phi_np[1].ravel(), phi_np[0].ravel()])
         ana = tet_grad_T_v(phi_flat, D, H, W, v)
         assert float(np.abs(autograd_flat - ana).max()) < 1e-10
 

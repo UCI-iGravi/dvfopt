@@ -92,6 +92,9 @@ class TestBarrier3DNumpy:
 
 
 class TestBarrier3DTorch:
+    def setup_method(self):
+        pytest.importorskip('torch')
+
     def test_identity_unchanged(self):
         from dvfopt.core.iterative3d_barrier_torch import iterative_3d_barrier_torch
 
