@@ -52,6 +52,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: Import each benchmark script
         run: |
-          for f in benchmarks/_run_*.py; do
+          # Legacy run scripts live under benchmarks/scripts/ after the
+          # 2026 workspace reorganization (commit b637ec4 / PR #19).
+          for f in benchmarks/scripts/_run_*.py; do
             python -c "import py_compile; py_compile.compile('$f', doraise=True)"
           done
