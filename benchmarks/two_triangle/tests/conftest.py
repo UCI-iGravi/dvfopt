@@ -1,4 +1,5 @@
 """Pytest config: add repo root to sys.path so tests can import dvfopt etc."""
+
 import sys
 from pathlib import Path
 

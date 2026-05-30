@@ -11,14 +11,12 @@ Previously untested module — these guard the public contract:
 import numpy as np
 import pytest
 
-from dvfopt.core.iterative2d_tri_barrier import (iterative_2d_tri_barrier,
-                                                 _tri_areas_flat)
+from dvfopt.core.iterative2d_tri_barrier import _tri_areas_flat, iterative_2d_tri_barrier
 
 
 def _planted_fold(H=12, W=12, seed=0):
     rng = np.random.default_rng(seed)
-    return np.stack([rng.normal(0, 0.3, (H, W)),
-                     rng.normal(0, 0.3, (H, W))])
+    return np.stack([rng.normal(0, 0.3, (H, W)), rng.normal(0, 0.3, (H, W))])
 
 
 class TestReturnShape:
@@ -55,21 +53,18 @@ class TestFeasibility:
         assert n_neg_init > 0, "test setup needs an initial fold"
 
         phi_corr = iterative_2d_tri_barrier(phi, verbose=0, record_history=False)
-        phi_flat_corr = np.concatenate([phi_corr[0].ravel(),
-                                        phi_corr[1].ravel()])
+        phi_flat_corr = np.concatenate([phi_corr[0].ravel(), phi_corr[1].ravel()])
         T1 = _tri_areas_flat(phi_flat_corr, H, W)
         n_neg_final = int((T1 <= 0).sum())
         # The seed-3 14x14 field has enough room to fully resolve.
-        assert n_neg_final == 0, \
-            f"expected all folds eliminated, got {n_neg_final}"
+        assert n_neg_final == 0, f"expected all folds eliminated, got {n_neg_final}"
 
 
 class TestAnchorModes:
     @pytest.mark.parametrize("anchor", ["l2", "l1", "none"])
     def test_anchor_does_not_crash(self, anchor):
         phi = _planted_fold(H=10, W=10, seed=1)
-        out = iterative_2d_tri_barrier(phi, anchor=anchor, verbose=0,
-                                       record_history=False)
+        out = iterative_2d_tri_barrier(phi, anchor=anchor, verbose=0, record_history=False)
         assert out.shape == phi.shape
         assert np.all(np.isfinite(out))
 

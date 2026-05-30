@@ -9,9 +9,9 @@ Verifies that the iterative solver:
 import numpy as np
 import pytest
 
-from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+from dvfopt.core.solver import _init_phi, _setup_accumulators, _update_metrics
 from dvfopt.dvf.generation import generate_random_dvf
-from dvfopt.core.solver import _init_phi, _update_metrics, _setup_accumulators
+from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 
 class TestConvergenceProperties:
@@ -93,8 +93,7 @@ class TestUpdateMetricsAccumulation:
         error_list = []
 
         for _ in range(5):
-            _update_metrics(phi, phi_init, False, False,
-                            num_neg, min_jdet, error_list)
+            _update_metrics(phi, phi_init, False, False, num_neg, min_jdet, error_list)
 
         assert len(num_neg) == 5
         assert len(min_jdet) == 5
@@ -107,13 +106,11 @@ class TestUpdateMetricsAccumulation:
         num_neg = []
         min_jdet = []
 
-        _update_metrics(phi, phi_init, False, False,
-                        num_neg, min_jdet, error_list)
+        _update_metrics(phi, phi_init, False, False, num_neg, min_jdet, error_list)
         e0 = error_list[-1]
 
         phi[0, 3, 3] = 1.0  # introduce displacement
-        _update_metrics(phi, phi_init, False, False,
-                        num_neg, min_jdet, error_list)
+        _update_metrics(phi, phi_init, False, False, num_neg, min_jdet, error_list)
         e1 = error_list[-1]
 
         assert e1 > e0

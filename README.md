@@ -1,32 +1,134 @@
-# Deformation Field Correction
+# dvfopt — Deformation Vector Field Optimizer
 
-Correct **negative Jacobian determinants** (folding) in 2D and 3D displacement fields produced by image registration. Three correction methods are provided — a fast heuristic, a full-grid constrained optimizer, and an iterative windowed optimizer — all ensuring the corrected field stays as close as possible to the original while eliminating folding.
+Correct **negative Jacobian determinants** (folding) in 2D and 3D displacement fields produced by image registration. The package is organized around three composable axes — **constraint**, **objective**, **strategy** — so any combination of feasibility check, what to minimize, and how to optimize can be selected explicitly or via string spec.
 
-## Table of Contents
+```python
+from dvfopt import correct_dvf
 
-- [Background](#background)
-- [Problem Formulation](#problem-formulation)
-- [Jacobian Determinant](#jacobian-determinant)
-- [Correction Methods](#correction-methods)
-  - [Heuristic (NMVF)](#1-heuristic-neighborhood-mean-vector-filter)
-  - [Full-Grid SLSQP](#2-full-grid-slsqp)
-  - [Iterative SLSQP](#3-iterative-slsqp)
-  - [Hybrid Parallel](#hybrid-parallel-variant)
-- [Constraints](#constraints)
-   - [Why Positive Jacobian Is Not Global Injectivity](#why-positive-jacobian-is-not-global-injectivity)
-   - [Optional: Injectivity — Axis-Aligned and Anti-Diagonal Monotonicity](#optional-injectivity-monotonicity)
-- [Convergence](#convergence)
-  - [Constraint Convergence](#constraint-convergence)
-- [3D Extension](#3d-extension)
-- [Data Conventions](#data-conventions)
-- [Project Structure](#project-structure)
-- [Test Cases](#test-cases)
-- [Installation](#installation)
-- [Usage](#usage)
+# Auto strategy selection by fold density. Returns SolveResult.
+result = correct_dvf(phi, constraint='2tri', objective='l1', strategy='auto')
+phi_corrected = result.corrected
+print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
+```
+
+## What's in the package
+
+| Layer | What it does | Where |
+|---|---|---|
+| **`Solver`** | Composes constraint + objective + strategy, validates input, runs | [dvfopt/solver.py](dvfopt/solver.py) |
+| **`Constraint`** | `TriConstraint2DFullCoverage` (default `'2tri'`) / `TriConstraint2D` (`'2tri_standard'`) / `JdetConstraint2D` / `JdetConstraint3D` / `Tet6Constraint3D` — feasibility check + analytical adjoint + sparse Jacobian. The 2-tri default is full-coverage (includes 2 corner patches) so every grid vertex sits in ≥ 2 triangles | [dvfopt/constraints.py](dvfopt/constraints.py) |
+| **`Objective`** | `L1Objective` / `L2Objective` / `NoneObjective` — what to minimize subject to feasibility (composable via `+` / `*`) | [dvfopt/objectives.py](dvfopt/objectives.py) |
+| **`Strategy`** | `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `M10Strategy`, `M14Strategy`, `M14SchwarzStrategy` — how to actually optimize | [dvfopt/strategies/](dvfopt/strategies/) |
+| **`DVFopt`** (facade) | Per-slice orchestration for 3D volumes, tabular reports, plots | [dvfopt/unified.py](dvfopt/unified.py) |
+| **Validation** | `validate_dvf`, accepts `(2,H,W)`, `(3,H,W)`, `(2,1,H,W)`, `(3,1,H,W)`, lists, NaN/Inf rejection | [dvfopt/validation.py](dvfopt/validation.py) |
+| **Visualization** | Themed plots, including `plot_fold_overview` (2D money-shot with per-triangle classification) and `plot_fold_overview_3d` (3D money-shot with per-tetrahedron classification) | [dvfopt/viz/](dvfopt/viz/) |
+| **Jacobian primitives** | `jacobian_det2D` / `jacobian_det3D`, `triangle_sign_areas2D`, `six_tet_volumes_3d`, SimpleITK wrapper, shoelace + injectivity constraints | [dvfopt/jacobian/](dvfopt/jacobian/) |
+
+## Strategy selection — quick guide
+
+| Initial fold density (2-tri constraint) | Recommended strategy |
+|---|---|
+| Mild — `n_neg ≤ 100` | `SLSQPFullGridStrategy` (KKT semantics, smallest L1 with `L1Objective`) |
+| Moderate-to-dense — 100 < `n_neg` < 5000 | `BarrierStrategy` (dominates SLSQP by ~100x at this density) |
+| Many small fold clusters | `SchwarzStrategy` |
+| Extreme — `n_neg` > 5000 (e.g. full B0039 z=12 with 8978 folds) | `M10Strategy` (L2-optimal, fast) → `M14Strategy` (m10 seed + refinement, smallest L1) → `M14SchwarzStrategy` (~5× faster on large slices) |
+
+For **Jdet** (no wallbreaker family): `BarrierStrategy` for dense, `SLSQPWindowedStrategy` for mild. Both support 3D.
+
+The `auto_strategy(constraint, init_n_neg, init_min, objective_label)` helper encodes this routing as a function — `strategy='auto'` in `correct_dvf` calls it.
+
+### 3D constraint choice: `6tet` vs `jdet_3d`
+
+Both check 3D feasibility, but they discretise differently:
+
+| | `'jdet_3d'` (per-voxel Jdet) | `'6tet'` (six tets per voxel) |
+|---|---|---|
+| **What it checks** | Sign of `det(I + ∇φ)` via central differences at each voxel | Signed volume of each of 6 tets that share the cell's main diagonal |
+| **Constraints per voxel cell** | 1 | 6 |
+| **Smooth at fold boundary?** | No — central-difference Jdet has discontinuous gradient when neighbouring voxels swap | Yes — each tet volume is a smooth polynomial in φ |
+| **Sensitivity** | Misses sub-voxel folds that don't show up at the central-difference stencil (same blindness as in 2D) | Catches them — each tet directly inspects the warped corners |
+| **SLSQP path** | Available (sparse Jacobian wired) | Not yet — barrier only |
+| **Cost per evaluation** | 1 numpy gradient | ~6× more constraint values + a per-tet cross-product adjoint |
+
+**When to use which:**
+
+- **`'jdet_3d'`** for the classical post-hoc correction problem when registration is already mostly clean and you want fastest convergence + the SLSQP option. This is the original method generalised to 3D.
+- **`'6tet'`** when you suspect sub-voxel folds, when `jdet_3d` reports "feasible" but the warped grid still looks wrong, or when you want the 3D analogue of the 2D 2-triangle check. The 6× larger constraint vector is essentially free in barrier (the analytical adjoint is one vectorised numpy pass).
+
+A practical pattern: run `'jdet_3d'` first; if `result.feasible == True` but `min(six_tet_volumes_3d(result.corrected)) <= 0` (you can check directly), re-run with `'6tet'`.
+
+## Quick start
+
+### One-shot correction
+
+```python
+from dvfopt import correct_dvf
+result = correct_dvf(
+    phi,                       # (2, H, W) | (3, H, W) | (3, 1, H, W) | (3, D, H, W)
+    constraint='2tri',         # default: full-coverage (T1, T2, + 2 corner patches)
+                               # | '2tri_standard' (TR-BL only, no patches) | 'jdet' | 'jdet_3d' | '6tet'
+    objective='l1',            # | 'l2' | 'none' (feasibility-only)
+    strategy='auto',           # or 'barrier' | 'slsqp_fullgrid' | 'm14_schwarz' | ...
+)
+```
+
+### Explicit composition
+
+```python
+from dvfopt import Solver, TriConstraint2D, L1Objective, M14SchwarzStrategy
+solver = Solver(
+    constraint=TriConstraint2D(shape=(320, 456)),
+    objective=L1Objective(eps=1e-4),
+    strategy=M14SchwarzStrategy(pad=4),
+)
+result = solver.fit(phi)
+print(f'feasible={result.feasible}, L1={result.info.get("L1"):.4f}')
+```
+
+### Per-slice 3D volume (high-level facade)
+
+```python
+from dvfopt import DVFopt, DVFoptConfig
+opt = DVFopt(DVFoptConfig(
+    constraint='2tri', solver='m14_schwarz',
+    objective='l1', threshold=0.01,
+))
+result = opt.fit(deformation)            # (3, D, H, W) or (2, H, W)
+print(result.summary())                  # text report
+print(result.to_dataframe())             # per-slice tabular
+```
+
+### Visualizing folds
+
+```python
+from dvfopt.viz import plot_fold_overview, plot_fold_overview_3d
+fig = plot_fold_overview(phi)            # 4-panel 2D: Jdet + warped grid + dist + per-axis counts
+fig = plot_fold_overview_3d(phi)         # 4-panel 3D: scatter + worst slice + dist + per-axis projections
+```
+
+Both apply the package theme automatically (`apply_theme()`), use the curated `PALETTE` colors, and accept `save_path=...`. The 2D plot color-codes each folded triangle as orange (single-triangle flip) vs deep red (both-triangle flip); the 3D plot embeds a histogram of how many of the 6 voxel-tetrahedra are flipped per cell.
+
+## Methods overview (one-line each)
+
+| Strategy | What it does | When to use |
+|---|---|---|
+| `BarrierStrategy` | Exterior penalty → log-barrier L-BFGS-B homotopy. Analytical sparse-adjoint for the constraint Jacobian | Default for dense folds; only solver with full 3D support across constraint families |
+| `SLSQPFullGridStrategy` | One SLSQP call over the full grid with the constraint Jacobian | Mild folds where KKT semantics matter |
+| `SLSQPWindowedStrategy` | Find worst-Jdet voxel, expand bounding box around connected negative region, SLSQP on that sub-window with frozen edges, repeat | Mild folds + classical post-hoc correction (the original method, kept as a baseline) |
+| `SchwarzStrategy` | Domain decomposition: cluster folds, solve each cluster with overlapping halos, average overlaps | Many small clusters where full-grid SLSQP wastes work |
+| `M10Strategy` | Harmonic Laplacian extension into fold cores, then L2-polished refinement | Extreme density where barrier stalls |
+| `M14Strategy` | m10 seed + L2 refinement + repair phase | After m10, when you want smallest L1 |
+| `M14SchwarzStrategy` | m14 with cluster-localized domain decomposition | Large slices where m14 itself becomes the bottleneck (~5× speedup) |
+
+## Manuscript-grade math: see [Methods Reference](#methods-reference) (below)
+
+The "Methods Reference" section that follows preserves the original derivations: problem formulation, Jacobian determinant (2D + 3D), the heuristic NMVF method, SLSQP variants, constraint convergence, 3D extension, data conventions, and the test-case gallery. **Background reading for the API above — not needed for everyday use.**
 
 ---
 
-## Background
+## Methods Reference
+
+### Background
 
 Deformable image registration computes a displacement field $\phi$ that maps each pixel in a fixed image to its corresponding location in a moving image. When the Jacobian determinant of $\phi$ becomes negative at a pixel, the mapping **folds** — meaning the deformed grid crosses over itself both locally and globally, creating a physically implausible transformation.
 
@@ -658,47 +760,11 @@ pip install -e .  # Install dvfopt package in editable mode
 
 ### Dependencies
 
-`numpy`, `scipy` (SLSQP optimizer, sparse LGMRES), `SimpleITK` (Jacobian computation), `nibabel` (NIfTI I/O), `matplotlib` (visualization).
+Runtime: `numpy`, `scipy` (SLSQP, sparse LGMRES, L-BFGS-B), `SimpleITK` (Jdet wrapper), `nibabel` (NIfTI I/O), `matplotlib` + `seaborn` (visualization), `scikit-image`, `joblib`, `tqdm`.
 
-## Usage
+Optional (`pip install -e ".[benchmarks]"`): `itk-elastix`, `opencv-python`, `timm`, `torch`, `voxelmorph` — needed only by `benchmarks/`.
 
-### Iterative SLSQP (Recommended)
-
-```python
-from dvfopt import iterative_parallel, jacobian_det2D
-
-# deformation: (3, 1, H, W) numpy array with channels [dz, dy, dx]
-phi_corrected = iterative_parallel(
-    deformation,
-    method="SLSQP",
-    verbose=1,
-    max_workers=4,               # parallel workers (None = auto)
-    enforce_shoelace=False,      # optional shoelace constraint
-    enforce_injectivity=False,   # optional injectivity constraint
-)
-
-# Verify
-jdet = jacobian_det2D(phi_corrected)
-assert jdet.min() > 0
-```
-
-### Heuristic (Fast)
-
-```python
-# See heuristic-neg-jacobian.ipynb
-phi_corrected = heuristic_negative_jacobian_correction(deformation, max_iter=1000)
-```
-
-### 3D Volumes
-
-```python
-from dvfopt import iterative_3d, jacobian_det3D
-
-# deformation: (3, D, H, W) numpy array
-phi_corrected = iterative_3d(deformation, method="SLSQP", verbose=1)
-```
-
-### Output Format
+### Output Format (when persisting a correction)
 
 Corrections save to a directory containing:
 

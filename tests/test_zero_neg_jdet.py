@@ -50,13 +50,14 @@ def _assert_has_negative_jdet(deformation):
 # Simple hand-crafted fields
 # ---------------------------------------------------------------------------
 
+
 class TestSimpleCases:
     """Small, hand-crafted deformation fields with known folds."""
 
     def test_single_spike(self):
         """One pixel with a large displacement spike that folds locally."""
         d = np.zeros((3, 1, 8, 8), dtype=np.float64)
-        d[2, 0, 4, 4] = 4.0   # large dx spike at center
+        d[2, 0, 4, 4] = 4.0  # large dx spike at center
         _assert_has_negative_jdet(d)
 
         phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
@@ -65,8 +66,8 @@ class TestSimpleCases:
     def test_two_opposing_spikes(self):
         """Two adjacent pixels pushing in opposite directions."""
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
-        d[2, 0, 5, 4] = 3.0    # push right
-        d[2, 0, 5, 5] = -3.0   # push left
+        d[2, 0, 5, 4] = 3.0  # push right
+        d[2, 0, 5, 5] = -3.0  # push left
         _assert_has_negative_jdet(d)
 
         phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
@@ -75,8 +76,8 @@ class TestSimpleCases:
     def test_horizontal_shear(self):
         """Opposing dy displacements on adjacent rows create a horizontal shear fold."""
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
-        d[1, 0, 3, :] = 3.0    # row 3 moves down
-        d[1, 0, 4, :] = -3.0   # row 4 moves up
+        d[1, 0, 3, :] = 3.0  # row 3 moves down
+        d[1, 0, 4, :] = -3.0  # row 4 moves up
         _assert_has_negative_jdet(d)
 
         phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
@@ -112,6 +113,7 @@ class TestSimpleCases:
 # ---------------------------------------------------------------------------
 # Edge cases: grid geometry
 # ---------------------------------------------------------------------------
+
 
 class TestGridEdgeCases:
     """Minimal grids, non-square grids, and boundary-touching folds."""
@@ -180,8 +182,8 @@ class TestGridEdgeCases:
     def test_fold_along_entire_top_edge(self):
         """Negative Jdet along the entire top row."""
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
-        d[1, 0, 0, :] = 3.0    # top row pushed down
-        d[1, 0, 1, :] = -3.0   # second row pulled up
+        d[1, 0, 0, :] = 3.0  # top row pushed down
+        d[1, 0, 1, :] = -3.0  # second row pulled up
         _assert_has_negative_jdet(d)
 
         phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
@@ -190,8 +192,8 @@ class TestGridEdgeCases:
     def test_fold_along_entire_left_edge(self):
         """Negative Jdet along the entire left column."""
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
-        d[2, 0, :, 0] = 3.0    # left column pushed right
-        d[2, 0, :, 1] = -3.0   # second column pulled left
+        d[2, 0, :, 0] = 3.0  # left column pushed right
+        d[2, 0, :, 1] = -3.0  # second column pulled left
         _assert_has_negative_jdet(d)
 
         phi = iterative_serial(d, verbose=0, threshold=THRESHOLD, max_iterations=500)
@@ -201,6 +203,7 @@ class TestGridEdgeCases:
 # ---------------------------------------------------------------------------
 # Edge cases: displacement patterns
 # ---------------------------------------------------------------------------
+
 
 class TestDisplacementEdgeCases:
     """Adversarial displacement patterns."""
@@ -266,8 +269,8 @@ class TestDisplacementEdgeCases:
     def test_both_dx_and_dy_fold(self):
         """Fold caused by simultaneous dx and dy displacements (mixed mode)."""
         d = np.zeros((3, 1, 10, 10), dtype=np.float64)
-        d[2, 0, 5, 5] = 3.0   # dx
-        d[1, 0, 5, 5] = 3.0   # dy
+        d[2, 0, 5, 5] = 3.0  # dx
+        d[1, 0, 5, 5] = 3.0  # dy
         d[2, 0, 6, 6] = -3.0  # dx
         d[1, 0, 6, 6] = -3.0  # dy
         _assert_has_negative_jdet(d)
@@ -280,6 +283,7 @@ class TestDisplacementEdgeCases:
 # Parallel solver: same zero-neg-Jdet guarantee
 # ---------------------------------------------------------------------------
 
+
 class TestParallelZeroNegJdet:
     """Parallel solver should also produce zero negative Jacobians."""
 
@@ -290,7 +294,11 @@ class TestParallelZeroNegJdet:
         _assert_has_negative_jdet(d)
 
         phi = iterative_parallel(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=500, max_workers=1,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=500,
+            max_workers=1,
         )
         _assert_no_neg_jdet(phi)
 
@@ -303,7 +311,11 @@ class TestParallelZeroNegJdet:
         _assert_has_negative_jdet(d)
 
         phi = iterative_parallel(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=500, max_workers=1,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=500,
+            max_workers=1,
         )
         _assert_no_neg_jdet(phi)
 
@@ -311,6 +323,7 @@ class TestParallelZeroNegJdet:
 # ---------------------------------------------------------------------------
 # Constraint modes: shoelace and injectivity must also yield zero neg Jdet
 # ---------------------------------------------------------------------------
+
 
 class TestConstraintModes:
     """All constraint modes should yield zero negative Jacobians."""
@@ -326,8 +339,12 @@ class TestConstraintModes:
         d = self._field()
         _assert_has_negative_jdet(d)
         phi = iterative_serial(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=500,
-            enforce_shoelace=False, enforce_injectivity=False,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=500,
+            enforce_shoelace=False,
+            enforce_injectivity=False,
         )
         _assert_no_neg_jdet(phi)
 
@@ -335,8 +352,12 @@ class TestConstraintModes:
         d = self._field()
         _assert_has_negative_jdet(d)
         phi = iterative_serial(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=500,
-            enforce_shoelace=True, enforce_injectivity=False,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=500,
+            enforce_shoelace=True,
+            enforce_injectivity=False,
         )
         _assert_no_neg_jdet(phi)
 
@@ -344,8 +365,12 @@ class TestConstraintModes:
         d = self._field()
         _assert_has_negative_jdet(d)
         phi = iterative_serial(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=1000,
-            enforce_shoelace=False, enforce_injectivity=True,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=1000,
+            enforce_shoelace=False,
+            enforce_injectivity=True,
         )
         _assert_no_neg_jdet(phi)
 
@@ -353,8 +378,12 @@ class TestConstraintModes:
         d = self._field()
         _assert_has_negative_jdet(d)
         phi = iterative_serial(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=1000,
-            enforce_shoelace=True, enforce_injectivity=True,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=1000,
+            enforce_shoelace=True,
+            enforce_injectivity=True,
         )
         _assert_no_neg_jdet(phi)
 
@@ -363,15 +392,19 @@ class TestConstraintModes:
 # Synthetic test cases from test_cases package
 # ---------------------------------------------------------------------------
 
+
 class TestSyntheticCases:
     """Run the solver on the project's built-in synthetic test cases."""
 
-    @pytest.mark.parametrize("case_key", [
-        "01a_10x10_crossing",
-        "01b_10x10_opposite",
-        "03a_10x10_opposite",
-        "03b_10x10_crossing",
-    ])
+    @pytest.mark.parametrize(
+        "case_key",
+        [
+            "01a_10x10_crossing",
+            "01b_10x10_opposite",
+            "03a_10x10_opposite",
+            "03b_10x10_crossing",
+        ],
+    )
     def test_synthetic_case(self, case_key):
         from test_cases import make_deformation
 
@@ -383,14 +416,20 @@ class TestSyntheticCases:
             pytest.skip(f"Case {case_key} has no negative Jdet (min={jdet_before.min():.4f})")
 
         phi = iterative_serial(
-            deformation, verbose=0, threshold=THRESHOLD, max_iterations=500,
+            deformation,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=500,
         )
         _assert_no_neg_jdet(phi)
 
-    @pytest.mark.parametrize("case_key", [
-        "01e_20x20_random_spirals",
-        "01f_20x20_random_seed_42",
-    ])
+    @pytest.mark.parametrize(
+        "case_key",
+        [
+            "01e_20x20_random_spirals",
+            "01f_20x20_random_seed_42",
+        ],
+    )
     def test_random_dvf_case(self, case_key):
         from test_cases import make_random_dvf
 
@@ -401,6 +440,9 @@ class TestSyntheticCases:
             pytest.skip(f"Case {case_key} has no negative Jdet (min={jdet_before.min():.4f})")
 
         phi = iterative_serial(
-            deformation, verbose=0, threshold=THRESHOLD, max_iterations=1000,
+            deformation,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=1000,
         )
         _assert_no_neg_jdet(phi)

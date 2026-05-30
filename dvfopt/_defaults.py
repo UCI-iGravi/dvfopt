@@ -41,8 +41,7 @@ def _adaptive_maxiter(n_variables, max_minimize_iter):
     better chance of converging.  The budget is clamped to
     ``[max_minimize_iter, 10 * max_minimize_iter]``.
     """
-    return min(max(max_minimize_iter, n_variables // 10),
-               10 * max_minimize_iter)
+    return min(max(max_minimize_iter, n_variables // 10), 10 * max_minimize_iter)
 
 
 def _unpack_size_3d(subvolume_size):

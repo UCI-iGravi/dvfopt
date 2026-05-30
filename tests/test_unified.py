@@ -1,163 +1,157 @@
-"""Smoke tests for the DVFopt unified high-level API.
+"""Smoke tests for the DVFopt high-level facade.
 
-These guard against the bugs identified in the unified.py code review:
-- ``record_history=False`` previously unpacked an ndarray into (phi_new, hist),
-  silently overwriting dx with dy.
-- ``_run_trust_constr`` previously raised UnboundLocalError when
-  ``max_outer_iters=0`` produced an empty range.
-- ``_resolve_solver`` previously used a Jdet-scaled cutoff for 2tri.
-- ``_run_slsqp`` silently ignored ``mode``, ``objective``, ``use_continuation``,
-  ``record_history``; it should warn instead.
+DVFopt is a thin per-slice orchestrator on top of the parameterized
+:class:`dvfopt.solver.Solver`. These tests cover:
+
+* the facade's input-shape dispatch (``(2, H, W)``, ``(3, H, W)``,
+  ``(3, D, H, W)``);
+* ``record_history`` plumbing (regression for the dx/dy unpack bug);
+* the strategy auto-resolver thresholds (now driven by
+  :func:`dvfopt.solver.auto_strategy`);
+* invalid-config rejection at construction time;
+* end-to-end barrier reducing folds.
 """
-
-import warnings
 
 import numpy as np
 import pytest
 
 from dvfopt import DVFopt, DVFoptConfig
+from dvfopt.constraints import JdetConstraint2D, TriConstraint2D
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.solver import auto_strategy
 
 
 def _planted_fold_2d(H=12, W=12, seed=0):
-    """Build a (2, H, W) field with a few negative triangles."""
     rng = np.random.default_rng(seed)
-    phi = np.stack([rng.normal(0, 0.3, (H, W)),
-                    rng.normal(0, 0.3, (H, W))])
-    return phi
+    return np.stack([rng.normal(0, 0.3, (H, W)), rng.normal(0, 0.3, (H, W))])
 
 
 class TestRecordHistoryRoundTrip:
-    """Bug regression: `record_history=False` must not corrupt dx."""
+    """Regression: ``record_history=False`` must not corrupt dx."""
 
     @pytest.mark.parametrize("record_history", [True, False])
     def test_2tri_barrier_preserves_two_channels(self, record_history):
         phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=record_history, verbose=0)
+        cfg = DVFoptConfig(
+            solver="barrier", constraint="2tri", record_history=record_history, verbose=0
+        )
         res = DVFopt(cfg).fit(phi)
-
         assert res.corrected.shape == phi.shape
-        # dx must remain a real displacement, not a copy of dy. If the bug
-        # is back, dx (channel 1) ends up equal to dy (channel 0).
+        # If the unpack-bug regresses, dx would equal dy.
         assert not np.allclose(res.corrected[0], res.corrected[1])
 
     def test_history_present_when_recorded(self):
         phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=True, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=True, verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert len(res.slice_results[0].history) > 0
 
     def test_history_empty_when_disabled(self):
         phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=False, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert res.slice_results[0].history == []
 
 
-class TestTrustConstrEdgeCases:
-    def test_zero_outer_iters_no_unbound_local(self):
-        """Regression: max_outer_iters=0 previously raised UnboundLocalError."""
-        phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="trust-constr", constraint="2tri",
-                           max_outer_iters=0, verbose=0)
-        res = DVFopt(cfg).fit(phi)
-        assert res.slice_results[0].n_outer_iters == 0
+class TestAutoStrategy:
+    """Auto-strategy heuristic — now in :func:`dvfopt.solver.auto_strategy`.
 
+    The DVFopt facade calls ``auto_strategy`` when ``solver='auto'`` and
+    forwards the resolved label into ``Strategy`` construction.
+    """
 
-class TestResolveSolverHeuristic:
     def test_2tri_uses_smaller_severe_threshold(self):
-        """The 2tri severe-fold cutoff is -0.25 (not the Jdet -1.0)."""
-        opt = DVFopt(DVFoptConfig(solver="auto", constraint="2tri", verbose=0))
-        # init_min between -0.25 and -1.0 is severe for 2tri but would be
-        # "mild" under the old Jdet heuristic.
-        assert opt._resolve_solver(init_n_neg=5, init_min=-0.5) == "barrier"
-        assert opt._resolve_solver(init_n_neg=5, init_min=-0.1) == "slsqp"
+        c = TriConstraint2D((12, 12))
+        # init_min between -0.25 and -1.0 is severe for 2tri.
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.5) == "barrier"
+        # init_min above -0.25 with few folds is mild.
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.1) == "slsqp"
 
-    def test_jdet_keeps_minus_one_threshold(self):
-        opt = DVFopt(DVFoptConfig(solver="auto", constraint="jdet", verbose=0))
-        assert opt._resolve_solver(init_n_neg=5, init_min=-0.5) == "slsqp"
-        assert opt._resolve_solver(init_n_neg=5, init_min=-1.5) == "barrier"
+    def test_jdet_uses_minus_one_threshold(self):
+        c = JdetConstraint2D((12, 12))
+        # init_min between -0.25 and -1.0 is still mild for Jdet.
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.5) == "slsqp_windowed"
+        assert auto_strategy(c, init_n_neg=5, init_min=-1.5) == "barrier"
 
     def test_count_overrides_min(self):
-        opt = DVFopt(DVFoptConfig(solver="auto", constraint="2tri", verbose=0))
-        assert opt._resolve_solver(init_n_neg=600, init_min=-0.01) == "barrier"
+        c = TriConstraint2D((12, 12))
+        # n_neg > 100 routes to barrier for 2tri regardless of min_T.
+        assert auto_strategy(c, init_n_neg=600, init_min=-0.01) == "barrier"
+
+    def test_extreme_picks_wallbreaker(self):
+        c_small = TriConstraint2D((20, 20))
+        # Smaller slice (<20K corners) still picks m14 instead of m14_schwarz.
+        assert auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='l1') == "m14"
+        # Large slice (>20K corners) routes to m14_schwarz.
+        c_big = TriConstraint2D((320, 456))
+        assert (
+            auto_strategy(c_big, init_n_neg=6000, init_min=-15, objective_label='l1')
+            == "m14_schwarz"
+        )
+        # L2 objective routes to m10 (L2-optimal in ALM phase).
+        assert auto_strategy(c_big, init_n_neg=6000, init_min=-15, objective_label='l2') == "m10"
 
     def test_explicit_solver_passthrough(self):
-        opt = DVFopt(DVFoptConfig(solver="slsqp", constraint="2tri", verbose=0))
-        assert opt._resolve_solver(init_n_neg=99999, init_min=-99.0) == "slsqp"
-
-
-class TestSlsqpWarnings:
-    def test_full_grid_emits_warning(self):
-        """For constraint='jdet' + mode='full-grid', DVFopt still falls
-        back to windowed and warns. (For constraint='2tri' + mode='full-grid'
-        the package now has a real full-grid path via iterative_2d_tri_slsqp,
-        so no warning fires there — covered separately.)"""
-        # Build a Jdet-infeasible field so _run_slsqp actually fires.
-        rng = np.random.default_rng(7)
-        phi = np.stack([rng.normal(0, 0.6, (12, 12)),
-                        rng.normal(0, 0.6, (12, 12))])
-        cfg = DVFoptConfig(solver="slsqp", mode="full-grid", verbose=0,
-                           constraint="jdet")
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            DVFopt(cfg).fit(phi)
-        msgs = [str(w.message) for w in caught]
-        assert any("only supports mode='windowed'" in m for m in msgs), \
-            f"expected windowed-only warning, got: {msgs}"
-
-    def test_2tri_full_grid_uses_tri_slsqp_no_warning(self):
-        """constraint='2tri' + mode='full-grid' now routes to the new
-        iterative_2d_tri_slsqp path — should not emit the windowed-only
-        warning."""
+        """When ``solver != 'auto'``, DVFopt honors the user's choice
+        even if auto_strategy would have picked something else."""
         phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="slsqp", mode="full-grid", verbose=0,
-                           constraint="2tri", objective="l1",
-                           slsqp_max_iter=40)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            DVFopt(cfg).fit(phi)
-        msgs = [str(w.message) for w in caught]
-        assert not any("only supports mode='windowed'" in m for m in msgs), \
-            f"unexpected windowed-only warning fired: {msgs}"
+        cfg = DVFoptConfig(
+            solver="slsqp", constraint="2tri", verbose=0, strategy_kwargs={"max_iter": 40}
+        )
+        res = DVFopt(cfg).fit(phi)
+        # Facade should have used slsqp even on a planted-fold input.
+        assert res.slice_results[0].solver_used == "slsqp"
 
-    def test_non_l2_objective_emits_warning(self):
+    def test_solver_accepts_strategy_instance(self):
+        """DVFoptConfig.solver also accepts a Strategy instance — used
+        when callers need non-default strategy knobs."""
+        from dvfopt import BarrierStrategy
+
         phi = _planted_fold_2d()
-        cfg = DVFoptConfig(solver="slsqp", objective="l1", verbose=0,
-                           constraint="2tri")
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            DVFopt(cfg).fit(phi)
-        msgs = [str(w.message) for w in caught]
-        assert any("objective='l2'" in m for m in msgs)
+        strat = BarrierStrategy(max_iter=200, margin=1e-3)
+        cfg = DVFoptConfig(solver=strat, constraint="2tri", verbose=0)
+        res = DVFopt(cfg).fit(phi)
+        assert res.feasible
+        # solver_used should reflect the class name when an instance was
+        # passed (rather than a string label).
+        assert res.slice_results[0].solver_used == "BarrierStrategy"
+
+
+class TestConfigValidation:
+    """DVFopt rejects bad config keys at construction."""
+
+    def test_invalid_constraint(self):
+        with pytest.raises(ValueError):
+            DVFopt(DVFoptConfig(constraint='bogus'))
+
+    def test_invalid_solver(self):
+        with pytest.raises(ValueError):
+            DVFopt(DVFoptConfig(solver='bogus'))
+
+    def test_invalid_objective(self):
+        with pytest.raises(ValueError):
+            DVFopt(DVFoptConfig(objective='bogus'))
 
 
 class TestInputShapeDispatch:
     def test_2hw_input_returns_2hw_output(self):
         phi = _planted_fold_2d(H=10, W=10)
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=False, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert res.corrected.shape == (2, 10, 10)
 
     def test_3hw_input_returns_3hw_output(self):
         phi2 = _planted_fold_2d(H=10, W=10)
         phi = np.stack([np.zeros_like(phi2[0]), phi2[0], phi2[1]])
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=False, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert res.corrected.shape == (3, 10, 10)
         # dz should remain zero throughout (only dy, dx are touched).
         np.testing.assert_array_equal(res.corrected[0], 0.0)
 
     def test_already_feasible_short_circuits(self):
-        # An identity field has no folds.
         phi = np.zeros((2, 8, 8))
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=False, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert res.feasible
         assert res.slice_results[0].solver_used == "none"
@@ -172,13 +166,8 @@ class TestBarrierReducesFolds:
         init_neg = int(((T1_init <= 0) | (T2_init <= 0)).sum())
         assert init_neg > 0, "test setup needs an initial fold"
 
-        cfg = DVFoptConfig(solver="barrier", constraint="2tri",
-                           record_history=False, verbose=0)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
         res = DVFopt(cfg).fit(phi)
-        T1_final, T2_final = _triangle_areas_2d(res.corrected[0],
-                                                res.corrected[1])
+        T1_final, T2_final = _triangle_areas_2d(res.corrected[0], res.corrected[1])
         final_neg = int(((T1_final <= 0) | (T2_final <= 0)).sum())
-        # For this seeded 14x14 field with a moderate fold count, the
-        # barrier solver should fully resolve.
-        assert final_neg == 0, \
-            f"expected barrier to clear all folds, got {final_neg} remaining"
+        assert final_neg == 0, f"expected barrier to clear all folds, got {final_neg} remaining"

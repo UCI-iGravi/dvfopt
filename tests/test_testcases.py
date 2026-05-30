@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from test_cases import (
-    SYNTHETIC_CASES,
     RANDOM_DVF_CASES,
+    SYNTHETIC_CASES,
     make_deformation,
     make_random_dvf,
 )
@@ -14,7 +14,7 @@ from test_cases import (
 class TestMakeDeformation:
     @pytest.mark.parametrize("case_key", list(SYNTHETIC_CASES.keys()))
     def test_output_shape(self, case_key):
-        deformation, msample, fsample = make_deformation(case_key)
+        deformation, _msample, _fsample = make_deformation(case_key)
         H, W = SYNTHETIC_CASES[case_key]["resolution"]
         assert deformation.shape == (3, 1, H, W)
 
@@ -26,7 +26,7 @@ class TestMakeDeformation:
 
     @pytest.mark.parametrize("case_key", list(SYNTHETIC_CASES.keys()))
     def test_returns_correspondences(self, case_key):
-        deformation, msample, fsample = make_deformation(case_key)
+        _deformation, msample, fsample = make_deformation(case_key)
         expected_ms = SYNTHETIC_CASES[case_key]["msample"]
         expected_fs = SYNTHETIC_CASES[case_key]["fsample"]
         np.testing.assert_array_equal(msample, expected_ms)

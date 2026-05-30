@@ -1,6 +1,7 @@
 """Tests for dvfopt._defaults — parameter resolution and size unpacking."""
 
 import pytest
+
 from dvfopt._defaults import (
     DEFAULT_PARAMS,
     _resolve_params,

@@ -13,8 +13,8 @@ import torch
 from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core.solver import _setup_accumulators, _print_summary
 from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
+from dvfopt.core.solver import _print_summary, _setup_accumulators
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
 
@@ -25,8 +25,8 @@ def _coerce_2d(deformation):
     if arr.ndim == 4:
         H, W = arr.shape[-2:]
         phi = np.empty((2, H, W), dtype=np.float64)
-        phi[0] = arr[1, 0]   # dy
-        phi[1] = arr[2, 0]   # dx
+        phi[0] = arr[1, 0]  # dy
+        phi[1] = arr[2, 0]  # dx
     elif arr.ndim == 3 and arr.shape[0] == 2:
         H, W = arr.shape[-2:]
         phi = arr.copy()
@@ -66,14 +66,13 @@ def _jdet_grad_T_v_2d(phi_flat, grid_size, v):
     ddy_dy = np.gradient(dy, axis=0)
     ddx_dy = np.gradient(dx, axis=0)
     ddy_dx = np.gradient(dy, axis=1)
-    a11 = 1 + ddx_dx;  a22 = 1 + ddy_dy
+    a11 = 1 + ddx_dx
+    a22 = 1 + ddy_dy
     # J = a11*a22 - ddx_dy*ddy_dx
     # Cofactors: dJ/da11 = a22; dJ/da22 = a11; dJ/d(ddx_dy) = -ddy_dx; dJ/d(ddy_dx) = -ddx_dy
     # dx column: contributes via a11 (∂/∂x) and ddx_dy (∂/∂y).
-    g_dx = (_adjoint_central_diff(a22 * v2, axis=1)
-            + _adjoint_central_diff(-ddy_dx * v2, axis=0))
-    g_dy = (_adjoint_central_diff(a11 * v2, axis=0)
-            + _adjoint_central_diff(-ddx_dy * v2, axis=1))
+    g_dx = _adjoint_central_diff(a22 * v2, axis=1) + _adjoint_central_diff(-ddy_dx * v2, axis=0)
+    g_dy = _adjoint_central_diff(a11 * v2, axis=0) + _adjoint_central_diff(-ddx_dy * v2, axis=1)
     out = np.empty(2 * n)
     out[:n] = g_dx.ravel()
     out[n:] = g_dy.ravel()
@@ -89,8 +88,8 @@ def _unpack_phi_2d(phi_flat, grid_size):
     H, W = grid_size
     n = H * W
     phi2 = np.empty((2, H, W), dtype=phi_flat.dtype)
-    phi2[1] = phi_flat[:n].reshape(H, W)   # dx
-    phi2[0] = phi_flat[n:].reshape(H, W)   # dy
+    phi2[1] = phi_flat[:n].reshape(H, W)  # dx
+    phi2[0] = phi_flat[n:].reshape(H, W)  # dy
     return phi2
 
 
@@ -108,10 +107,14 @@ def _patch_frozen_mask_2d(y0, y1, x0, x1, grid_shape):
     H, W = grid_shape
     Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
     mask = np.zeros((Hp, Wp), dtype=bool)
-    if y0 > 0:     mask[0, :] = True
-    if y1 < H - 1: mask[-1, :] = True
-    if x0 > 0:     mask[:, 0] = True
-    if x1 < W - 1: mask[:, -1] = True
+    if y0 > 0:
+        mask[0, :] = True
+    if y1 < H - 1:
+        mask[-1, :] = True
+    if x0 > 0:
+        mask[:, 0] = True
+    if x1 < W - 1:
+        mask[:, -1] = True
     return mask
 
 
@@ -128,11 +131,22 @@ def _patch_bounds_2d(phi_flat_patch, frozen_mask):
     return bounds
 
 
-def _optimize_patch_2d(phi, y0, y1, x0, x1, grid_shape,
-                      threshold, margin, lam_schedule, mu_schedule,
-                      max_minimize_iter, verbose):
+def _optimize_patch_2d(
+    phi,
+    y0,
+    y1,
+    x0,
+    x1,
+    grid_shape,
+    threshold,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    verbose,
+):
     """Run penalty->barrier on a 2D patch. Mutates phi (2,H,W) in place."""
-    phi_patch = phi[:, y0:y1 + 1, x0:x1 + 1].copy()
+    phi_patch = phi[:, y0 : y1 + 1, x0 : x1 + 1].copy()
     Hp, Wp = phi_patch.shape[1:]
     patch_size = (Hp, Wp)
 
@@ -143,18 +157,22 @@ def _optimize_patch_2d(phi, y0, y1, x0, x1, grid_shape,
     bounds = _patch_bounds_2d(phi_flat, frozen_mask)
 
     phi_flat, info = run_penalty_barrier_lbfgs(
-        phi_flat, phi_anchor,
+        phi_flat,
+        phi_anchor,
         constraint_values=lambda p: _jdet_2d_flat(p, patch_size),
         constraint_adjoint=lambda p, v: _jdet_grad_T_v_2d(p, patch_size, v),
-        threshold=threshold, margin=margin,
-        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        threshold=threshold,
+        margin=margin,
+        lam_schedule=lam_schedule,
+        mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
-        bounds=bounds, anchor='l2',
+        bounds=bounds,
+        anchor='l2',
         verbose=max(0, verbose - 2),
     )
 
     phi_patch = _unpack_phi_2d(phi_flat, patch_size)
-    phi[:, y0:y1 + 1, x0:x1 + 1] = phi_patch
+    phi[:, y0 : y1 + 1, x0 : x1 + 1] = phi_patch
 
     return info['lam_steps'], info['mu_steps']
 
@@ -188,8 +206,10 @@ def iterative_2d_barrier(
     p = _resolve_params(threshold=threshold, err_tol=err_tol)
     threshold = p["threshold"]
     err_tol = p["err_tol"]
-    if verbose is True: verbose = 1
-    elif verbose is False: verbose = 0
+    if verbose is True:
+        verbose = 1
+    elif verbose is False:
+        verbose = 0
 
     error_list, num_neg_jac, iter_times, min_jdet_list, window_counts = _setup_accumulators()
 
@@ -199,13 +219,15 @@ def iterative_2d_barrier(
     phi_init_flat = _pack_phi_2d(phi_init_2d)
 
     j0 = _jdet_2d_flat(_pack_phi_2d(phi), grid_size)
-    init_neg = int((j0 <= 0).sum());  init_min = float(j0.min())
-    num_neg_jac.append(init_neg);  min_jdet_list.append(init_min)
+    init_neg = int((j0 <= 0).sum())
+    init_min = float(j0.min())
+    num_neg_jac.append(init_neg)
+    min_jdet_list.append(init_min)
     mode = "windowed" if windowed else "full-grid"
     _log(verbose, 1, f"[init] Grid {H}x{W}  threshold={threshold}  margin={margin}  mode={mode}")
     _log(verbose, 1, f"[init] Neg-Jdet: {init_neg}  min Jdet: {init_min:.6f}")
 
-    target = threshold + margin
+    threshold + margin
     start = time.time()
 
     if windowed:
@@ -216,7 +238,7 @@ def iterative_2d_barrier(
             j = _jdet_2d_flat(phi_flat, grid_size).reshape(H, W)
             neg_mask = j <= threshold - err_tol
             if not neg_mask.any():
-                _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
+                _log(verbose, 1, f"[iter {iteration + 1}] No neg-Jdet remain — exiting")
                 converged = True
                 break
 
@@ -231,9 +253,19 @@ def iterative_2d_barrier(
                 y0, y1, x0, x1 = _patch_bbox_2d(coords, pad, (H, W))
                 window_counts[(y1 - y0 + 1, x1 - x0 + 1)] += 1
                 lam_steps, mu_steps = _optimize_patch_2d(
-                    phi, y0, y1, x0, x1, (H, W),
-                    threshold, margin, lam_schedule, mu_schedule,
-                    max_minimize_iter, verbose)
+                    phi,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                    (H, W),
+                    threshold,
+                    margin,
+                    lam_schedule,
+                    mu_schedule,
+                    max_minimize_iter,
+                    verbose,
+                )
                 total_lam += lam_steps
                 total_mu += mu_steps
 
@@ -242,33 +274,46 @@ def iterative_2d_barrier(
 
             phi_flat = _pack_phi_2d(phi)
             j = _jdet_2d_flat(phi_flat, grid_size)
-            cur_neg = int((j <= 0).sum()); cur_min = float(j.min())
+            cur_neg = int((j <= 0).sum())
+            cur_min = float(j.min())
             l2 = float(np.linalg.norm(phi_flat - phi_init_flat))
-            num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-            _log(verbose, 1,
-                 f"[iter {iteration+1}] comps={n_components:4d}  "
-                 f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
-                 f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                 f"L2={l2:.4f}  t={elapsed:.2f}s")
+            num_neg_jac.append(cur_neg)
+            min_jdet_list.append(cur_min)
+            error_list.append(l2)
+            _log(
+                verbose,
+                1,
+                f"[iter {iteration + 1}] comps={n_components:4d}  "
+                f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
+                f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                f"L2={l2:.4f}  t={elapsed:.2f}s",
+            )
             if cur_neg == 0 and cur_min >= threshold - err_tol:
                 converged = True
                 break
         if not converged:
-            _log(verbose, 1,
-                 f"[done] max_iterations={max_iterations} reached without "
-                 f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})")
+            _log(
+                verbose,
+                1,
+                f"[done] max_iterations={max_iterations} reached without "
+                f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})",
+            )
     else:
         # Full-grid mode -- delegate to the unified penalty->barrier core.
         phi_flat = _pack_phi_2d(phi)
         phi_flat, info = run_penalty_barrier_lbfgs(
-            phi_flat, phi_init_flat,
+            phi_flat,
+            phi_init_flat,
             constraint_values=lambda p: _jdet_2d_flat(p, grid_size),
             constraint_adjoint=lambda p, v: _jdet_grad_T_v_2d(p, grid_size, v),
-            threshold=threshold, margin=margin,
-            lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+            threshold=threshold,
+            margin=margin,
+            lam_schedule=lam_schedule,
+            mu_schedule=mu_schedule,
             max_iter=max_minimize_iter,
             anchor='l2',
-            verbose=verbose, record_history=True,
+            verbose=verbose,
+            record_history=True,
             log_prefix='',
         )
         # Reconstruct accumulator lists so _print_summary's iteration count
@@ -286,9 +331,18 @@ def iterative_2d_barrier(
     final_neg = int((_jdet_2d_flat(phi_flat, grid_size) <= 0).sum())
     final_min = float(_jdet_2d_flat(phi_flat, grid_size).min())
     final_err = float(np.linalg.norm(phi_flat - phi_init_flat))
-    _print_summary(verbose, f"Penalty->Barrier L-BFGS-B - 2D ({mode})", (H, W),
-                   len(iter_times), init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed)
+    _print_summary(
+        verbose,
+        f"Penalty->Barrier L-BFGS-B - 2D ({mode})",
+        (H, W),
+        len(iter_times),
+        init_neg,
+        final_neg,
+        init_min,
+        final_min,
+        final_err,
+        elapsed,
+    )
     return phi
 
 
@@ -297,7 +351,8 @@ def iterative_2d_barrier(
 # ============================================================
 def _jdet_2d_torch(phi):
     """phi shape (2, H, W) with phi[0]=dy, phi[1]=dx."""
-    dy = phi[0];  dx = phi[1]
+    dy = phi[0]
+    dx = phi[1]
     ddx_dx = torch.gradient(dx, dim=1)[0]
     ddy_dy = torch.gradient(dy, dim=0)[0]
     ddx_dy = torch.gradient(dx, dim=0)[0]
@@ -308,7 +363,8 @@ def _jdet_2d_torch(phi):
 def _jdet_2d_torch_batched(phi_b):
     """Batched Jdet. phi_b shape (K, 2, H, W) with phi_b[:,0]=dy, phi_b[:,1]=dx.
     Returns (K, H, W). torch.gradient along dim=2/3 treats dim=0 (K) as batch."""
-    dy = phi_b[:, 0];  dx = phi_b[:, 1]   # (K, H, W)
+    dy = phi_b[:, 0]
+    dx = phi_b[:, 1]  # (K, H, W)
     ddx_dx = torch.gradient(dx, dim=2)[0]
     ddy_dy = torch.gradient(dy, dim=1)[0]
     ddx_dy = torch.gradient(dx, dim=1)[0]
@@ -339,13 +395,22 @@ def _group_nonoverlapping_2d(bboxes, max_batch=32):
     return batches
 
 
-def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
-                              threshold_f, margin, lam_schedule, mu_schedule,
-                              max_minimize_iter, device, dtype):
+def _optimize_batch_2d_torch(
+    phi_full,
+    bboxes,
+    grid_shape,
+    threshold_f,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    device,
+    dtype,
+):
     """Batched penalty->barrier on K non-overlapping interior 2D patches.
     Shares a single LBFGS optimizer across K patches via (K, 2, Hmax, Wmax)
     tensor with per-patch frozen/active masks."""
-    H, W = grid_shape
+    _H, _W = grid_shape
     K = len(bboxes)
     Hmax = max(y1 - y0 + 1 for (y0, y1, x0, x1) in bboxes)
     Wmax = max(x1 - x0 + 1 for (y0, y1, x0, x1) in bboxes)
@@ -356,10 +421,12 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
 
     for k, (y0, y1, x0, x1) in enumerate(bboxes):
         Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
-        phi_batch_init[k, :, :Hp, :Wp] = phi_full[:, y0:y1 + 1, x0:x1 + 1]
+        phi_batch_init[k, :, :Hp, :Wp] = phi_full[:, y0 : y1 + 1, x0 : x1 + 1]
         pf = torch.zeros((Hp, Wp), dtype=torch.bool, device=device)
-        pf[0, :] = True;  pf[-1, :] = True
-        pf[:, 0] = True;  pf[:, -1] = True
+        pf[0, :] = True
+        pf[-1, :] = True
+        pf[:, 0] = True
+        pf[:, -1] = True
         cell_frozen[k, :Hp, :Wp] = pf
         active_cell[k, :Hp, :Wp] = ~pf
 
@@ -402,9 +469,15 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
             loss.backward()
             return loss
 
-        opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=mi,
-                                 tolerance_grad=1e-6, tolerance_change=tol_change,
-                                 history_size=hs, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS(
+            [phi_var],
+            lr=1.0,
+            max_iter=mi,
+            tolerance_grad=1e-6,
+            tolerance_change=tol_change,
+            history_size=hs,
+            line_search_fn="strong_wolfe",
+        )
         opt.step(closure)
         lam_steps += 1
         if lam_idx % 2 == 1 or lam_idx == n_lam - 1:
@@ -418,6 +491,7 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
         active_bar_f = active_bar.to(dtype=dtype)
         prev_l2 = None
         for mu in mu_schedule:
+
             def closure_bar():
                 if phi_var.grad is not None:
                     phi_var.grad.zero_()
@@ -436,9 +510,15 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
                 loss.backward()
                 return loss
 
-            opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=max_minimize_iter,
-                                     tolerance_grad=1e-6, tolerance_change=tol_change,
-                                     history_size=20, line_search_fn="strong_wolfe")
+            opt = torch.optim.LBFGS(
+                [phi_var],
+                lr=1.0,
+                max_iter=max_minimize_iter,
+                tolerance_grad=1e-6,
+                tolerance_change=tol_change,
+                history_size=20,
+                line_search_fn="strong_wolfe",
+            )
             opt.step(closure_bar)
             mu_steps += 1
             with torch.no_grad():
@@ -452,14 +532,26 @@ def _optimize_batch_2d_torch(phi_full, bboxes, grid_shape,
         phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
         for k, (y0, y1, x0, x1) in enumerate(bboxes):
             Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
-            phi_full[:, y0:y1 + 1, x0:x1 + 1] = phi_eff[k, :, :Hp, :Wp]
+            phi_full[:, y0 : y1 + 1, x0 : x1 + 1] = phi_eff[k, :, :Hp, :Wp]
 
     return lam_steps, mu_steps
 
 
-def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
-                              threshold_f, margin, lam_schedule, mu_schedule,
-                              max_minimize_iter, device, dtype):
+def _optimize_patch_2d_torch(
+    phi_full,
+    y0,
+    y1,
+    x0,
+    x1,
+    grid_shape,
+    threshold_f,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    device,
+    dtype,
+):
     """Run penalty->barrier on a 2D patch via torch LBFGS.
 
     *phi_full* is a CPU/GPU tensor shape (2, H, W). The patch region is
@@ -468,15 +560,19 @@ def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
     H, W = grid_shape
     Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
 
-    phi_patch_init = phi_full[:, y0:y1 + 1, x0:x1 + 1].detach().clone()
+    phi_patch_init = phi_full[:, y0 : y1 + 1, x0 : x1 + 1].detach().clone()
     phi_patch_var = phi_patch_init.detach().clone().requires_grad_(True)
 
     # Frozen mask: patch boundary voxels not touching grid boundary.
     frozen = torch.zeros((Hp, Wp), dtype=torch.bool, device=device)
-    if y0 > 0:     frozen[0, :] = True
-    if y1 < H - 1: frozen[-1, :] = True
-    if x0 > 0:     frozen[:, 0] = True
-    if x1 < W - 1: frozen[:, -1] = True
+    if y0 > 0:
+        frozen[0, :] = True
+    if y1 < H - 1:
+        frozen[-1, :] = True
+    if x0 > 0:
+        frozen[:, 0] = True
+    if x1 < W - 1:
+        frozen[:, -1] = True
     frozen_b = frozen.unsqueeze(0)  # broadcast to (2, Hp, Wp)
     # Interior mask for Jdet-based sums (see 3D solver for rationale).
     active = ~frozen  # (Hp, Wp)
@@ -519,9 +615,15 @@ def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
             loss.backward()
             return loss
 
-        opt = torch.optim.LBFGS([phi_patch_var], lr=1.0, max_iter=mi,
-                                 tolerance_grad=1e-6, tolerance_change=tol_change,
-                                 history_size=hs, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS(
+            [phi_patch_var],
+            lr=1.0,
+            max_iter=mi,
+            tolerance_grad=1e-6,
+            tolerance_change=tol_change,
+            history_size=hs,
+            line_search_fn="strong_wolfe",
+        )
         opt.step(closure)
         lam_steps += 1
         # Skip GPU->CPU .item() sync on even lam indices (check odd + last).
@@ -537,6 +639,7 @@ def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
         active_f = active.to(dtype=phi_patch_var.dtype)
         prev_l2 = None
         for mu in mu_schedule:
+
             def closure():
                 if phi_patch_var.grad is not None:
                     phi_patch_var.grad.zero_()
@@ -555,9 +658,15 @@ def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
                 loss.backward()
                 return loss
 
-            opt = torch.optim.LBFGS([phi_patch_var], lr=1.0, max_iter=max_minimize_iter,
-                                     tolerance_grad=1e-6, tolerance_change=tol_change,
-                                     history_size=20, line_search_fn="strong_wolfe")
+            opt = torch.optim.LBFGS(
+                [phi_patch_var],
+                lr=1.0,
+                max_iter=max_minimize_iter,
+                tolerance_grad=1e-6,
+                tolerance_change=tol_change,
+                history_size=20,
+                line_search_fn="strong_wolfe",
+            )
             opt.step(closure)
             mu_steps += 1
             with torch.no_grad():
@@ -570,7 +679,7 @@ def _optimize_patch_2d_torch(phi_full, y0, y1, x0, x1, grid_shape,
     # Write back using the masked combination (so frozen voxels stay exact).
     with torch.no_grad():
         phi_eff = torch.where(frozen_b, phi_patch_init, phi_patch_var)
-        phi_full[:, y0:y1 + 1, x0:x1 + 1] = phi_eff
+        phi_full[:, y0 : y1 + 1, x0 : x1 + 1] = phi_eff
     return lam_steps, mu_steps
 
 
@@ -613,8 +722,10 @@ def iterative_2d_barrier_torch(
     p = _resolve_params(threshold=threshold, err_tol=err_tol)
     threshold_f = float(p["threshold"])
     err_tol_f = float(p["err_tol"])
-    if verbose is True: verbose = 1
-    elif verbose is False: verbose = 0
+    if verbose is True:
+        verbose = 1
+    elif verbose is False:
+        verbose = 0
 
     error_list, num_neg_jac, iter_times, min_jdet_list, window_counts = _setup_accumulators()
 
@@ -625,10 +736,15 @@ def iterative_2d_barrier_torch(
         j0 = _jdet_2d_torch(phi_init)
         init_neg = int((j0 <= 0).sum().item())
         init_min = float(j0.min().item())
-    num_neg_jac.append(init_neg);  min_jdet_list.append(init_min)
+    num_neg_jac.append(init_neg)
+    min_jdet_list.append(init_min)
     mode = "windowed" if windowed else "full-grid"
-    _log(verbose, 1, f"[init] Grid {H}x{W}  threshold={threshold_f}  margin={margin}  "
-                     f"device={device}  mode={mode}")
+    _log(
+        verbose,
+        1,
+        f"[init] Grid {H}x{W}  threshold={threshold_f}  margin={margin}  "
+        f"device={device}  mode={mode}",
+    )
     _log(verbose, 1, f"[init] Neg-Jdet: {init_neg}  min Jdet: {init_min:.6f}")
 
     target = threshold_f + margin
@@ -644,7 +760,7 @@ def iterative_2d_barrier_torch(
                 neg_mask_t = j <= threshold_f - err_tol_f
                 any_neg = bool(neg_mask_t.any().item())
             if not any_neg:
-                _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
+                _log(verbose, 1, f"[iter {iteration + 1}] No neg-Jdet remain — exiting")
                 break
             neg_mask = neg_mask_t.cpu().numpy()
             labeled, n_components = label(neg_mask, structure=structure)
@@ -665,7 +781,7 @@ def iterative_2d_barrier_torch(
                 y0, y1, x0, x1 = _patch_bbox_2d(coords, pad, (H, W))
                 window_counts[(y1 - y0 + 1, x1 - x0 + 1)] += 1
                 Hp, Wp = y1 - y0 + 1, x1 - x0 + 1
-                is_interior = (y0 > 0 and y1 < H - 1 and x0 > 0 and x1 < W - 1)
+                is_interior = y0 > 0 and y1 < H - 1 and x0 > 0 and x1 < W - 1
                 # Active voxel count = (Hp-2)*(Wp-2) for interior patches (rim-frozen).
                 n_active_est = max(0, (Hp - 2) * (Wp - 2))
                 if is_interior and n_active_est < 3000:
@@ -676,25 +792,55 @@ def iterative_2d_barrier_torch(
             for batch in _group_nonoverlapping_2d(small_bboxes, max_batch=32):
                 if len(batch) >= 2:
                     lam_steps, mu_steps = _optimize_batch_2d_torch(
-                        phi_full, batch, (H, W),
-                        threshold_f, margin, lam_schedule, mu_schedule,
-                        max_minimize_iter, device, dtype)
+                        phi_full,
+                        batch,
+                        (H, W),
+                        threshold_f,
+                        margin,
+                        lam_schedule,
+                        mu_schedule,
+                        max_minimize_iter,
+                        device,
+                        dtype,
+                    )
                     total_lam += lam_steps
                     total_mu += mu_steps
                 else:
                     (y0, y1, x0, x1) = batch[0]
                     lam_steps, mu_steps = _optimize_patch_2d_torch(
-                        phi_full, y0, y1, x0, x1, (H, W),
-                        threshold_f, margin, lam_schedule, mu_schedule,
-                        max_minimize_iter, device, dtype)
+                        phi_full,
+                        y0,
+                        y1,
+                        x0,
+                        x1,
+                        (H, W),
+                        threshold_f,
+                        margin,
+                        lam_schedule,
+                        mu_schedule,
+                        max_minimize_iter,
+                        device,
+                        dtype,
+                    )
                     total_lam += lam_steps
                     total_mu += mu_steps
 
-            for (y0, y1, x0, x1) in large_bboxes:
+            for y0, y1, x0, x1 in large_bboxes:
                 lam_steps, mu_steps = _optimize_patch_2d_torch(
-                    phi_full, y0, y1, x0, x1, (H, W),
-                    threshold_f, margin, lam_schedule, mu_schedule,
-                    max_minimize_iter, device, dtype)
+                    phi_full,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                    (H, W),
+                    threshold_f,
+                    margin,
+                    lam_schedule,
+                    mu_schedule,
+                    max_minimize_iter,
+                    device,
+                    dtype,
+                )
                 total_lam += lam_steps
                 total_mu += mu_steps
 
@@ -706,12 +852,17 @@ def iterative_2d_barrier_torch(
                 cur_neg = int((j <= 0).sum().item())
                 cur_min = float(j.min().item())
                 l2 = float(torch.linalg.norm(phi_full - phi_init).item())
-            num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-            _log(verbose, 1,
-                 f"[iter {iteration+1}] comps={n_components:4d}  "
-                 f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
-                 f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                 f"L2={l2:.4f}  t={elapsed:.2f}s")
+            num_neg_jac.append(cur_neg)
+            min_jdet_list.append(cur_min)
+            error_list.append(l2)
+            _log(
+                verbose,
+                1,
+                f"[iter {iteration + 1}] comps={n_components:4d}  "
+                f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
+                f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                f"L2={l2:.4f}  t={elapsed:.2f}s",
+            )
             if cur_neg == 0 and cur_min >= threshold_f - err_tol_f:
                 break
 
@@ -722,10 +873,12 @@ def iterative_2d_barrier_torch(
         cur_min = init_min
         tol_change = 1e-9 if dtype == torch.float64 else 1e-7
         for k, lam in enumerate(lam_schedule):
-            if feasible: break
+            if feasible:
+                break
 
             def closure():
-                if phi_var.grad is not None: phi_var.grad.zero_()
+                if phi_var.grad is not None:
+                    phi_var.grad.zero_()
                 diff = phi_var - phi_init
                 data = 0.5 * (diff * diff).sum()
                 j = _jdet_2d_torch(phi_var)
@@ -735,26 +888,43 @@ def iterative_2d_barrier_torch(
                 loss.backward()
                 return loss
 
-            opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=max_minimize_iter,
-                                     tolerance_grad=1e-6, tolerance_change=tol_change,
-                                     history_size=20, line_search_fn="strong_wolfe")
+            opt = torch.optim.LBFGS(
+                [phi_var],
+                lr=1.0,
+                max_iter=max_minimize_iter,
+                tolerance_grad=1e-6,
+                tolerance_change=tol_change,
+                history_size=20,
+                line_search_fn="strong_wolfe",
+            )
             t0 = time.time()
             opt.step(closure)
             elapsed = time.time() - t0
             iter_times.append(elapsed)
             with torch.no_grad():
                 j = _jdet_2d_torch(phi_var)
-                cur_neg = int((j <= 0).sum().item());  cur_min = float(j.min().item())
+                cur_neg = int((j <= 0).sum().item())
+                cur_min = float(j.min().item())
                 l2 = float(torch.linalg.norm(phi_var - phi_init).item())
-            num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-            _log(verbose, 1, f"[penalty {k+1}] lam={lam:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s")
-            if cur_min >= target: feasible = True; break
+            num_neg_jac.append(cur_neg)
+            min_jdet_list.append(cur_min)
+            error_list.append(l2)
+            _log(
+                verbose,
+                1,
+                f"[penalty {k + 1}] lam={lam:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s",
+            )
+            if cur_min >= target:
+                feasible = True
+                break
 
         if feasible:
             prev_l2 = None
             for k, mu in enumerate(mu_schedule):
+
                 def closure():
-                    if phi_var.grad is not None: phi_var.grad.zero_()
+                    if phi_var.grad is not None:
+                        phi_var.grad.zero_()
                     diff = phi_var - phi_init
                     data = 0.5 * (diff * diff).sum()
                     j = _jdet_2d_torch(phi_var)
@@ -768,21 +938,34 @@ def iterative_2d_barrier_torch(
                     loss.backward()
                     return loss
 
-                opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=max_minimize_iter,
-                                         tolerance_grad=1e-6, tolerance_change=tol_change,
-                                         history_size=20, line_search_fn="strong_wolfe")
+                opt = torch.optim.LBFGS(
+                    [phi_var],
+                    lr=1.0,
+                    max_iter=max_minimize_iter,
+                    tolerance_grad=1e-6,
+                    tolerance_change=tol_change,
+                    history_size=20,
+                    line_search_fn="strong_wolfe",
+                )
                 t0 = time.time()
                 opt.step(closure)
                 elapsed = time.time() - t0
                 iter_times.append(elapsed)
                 with torch.no_grad():
                     j = _jdet_2d_torch(phi_var)
-                    cur_neg = int((j <= 0).sum().item());  cur_min = float(j.min().item())
+                    cur_neg = int((j <= 0).sum().item())
+                    cur_min = float(j.min().item())
                     l2 = float(torch.linalg.norm(phi_var - phi_init).item())
-                num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-                _log(verbose, 1, f"[barrier {k+1}] mu={mu:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s")
+                num_neg_jac.append(cur_neg)
+                min_jdet_list.append(cur_min)
+                error_list.append(l2)
+                _log(
+                    verbose,
+                    1,
+                    f"[barrier {k + 1}] mu={mu:g}  neg={cur_neg}  min_J={cur_min:+.6f}  L2={l2:.4f}  t={elapsed:.2f}s",
+                )
                 if prev_l2 is not None and abs(l2 - prev_l2) / max(prev_l2, 1e-9) < 1e-5:
-                    _log(verbose, 1, f"[barrier early-exit] dL2/L2 < 1e-5, stopping mu schedule")
+                    _log(verbose, 1, "[barrier early-exit] dL2/L2 < 1e-5, stopping mu schedule")
                     break
                 prev_l2 = l2
 
@@ -795,7 +978,16 @@ def iterative_2d_barrier_torch(
         final_min = float(j_final.min().item())
         final_err = float(torch.linalg.norm(phi_var_final - phi_init).item())
     phi_out = phi_var_final.detach().cpu().numpy()
-    _print_summary(verbose, f"Penalty->Barrier L-BFGS torch - 2D ({mode})", (H, W),
-                   len(iter_times), init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed)
+    _print_summary(
+        verbose,
+        f"Penalty->Barrier L-BFGS torch - 2D ({mode})",
+        (H, W),
+        len(iter_times),
+        init_neg,
+        final_neg,
+        init_min,
+        final_min,
+        final_err,
+        elapsed,
+    )
     return phi_out

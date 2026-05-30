@@ -28,22 +28,24 @@ SLSQP.
 Both branches call :func:`dvfopt.core._cluster_2tri.solve_cluster_2tri_2d`
 for the actual SLSQP work.
 """
+
 from __future__ import annotations
 
 import time
-from typing import List, Tuple
+from typing import Optional
 
 import numpy as np
-from scipy.ndimage import label as cc_label, binary_dilation, find_objects
+from scipy.ndimage import binary_dilation, find_objects
+from scipy.ndimage import label as cc_label
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
-
 # ---------------------------------------------------------------------------
 # Geometry helpers
 # ---------------------------------------------------------------------------
+
 
 def _fold_components(phi, merge_dilation=1):
     """Connected components of the cell-fold mask.
@@ -55,8 +57,7 @@ def _fold_components(phi, merge_dilation=1):
     fold = np.minimum(T1, T2) <= 0
     if not fold.any():
         return []
-    mask = (binary_dilation(fold, iterations=merge_dilation)
-            if merge_dilation > 0 else fold)
+    mask = binary_dilation(fold, iterations=merge_dilation) if merge_dilation > 0 else fold
     labels, _ = cc_label(mask)
     comps = []
     for sl in find_objects(labels):
@@ -82,9 +83,7 @@ def _make_tiles(bbox, H, W, tile, overlap):
     return sorted(out)
 
 
-def _solve_crop(phi, phi_anchor, y0, y1, x0, x1, *,
-                 threshold, eps_l1,
-                 l2_passes, l2_iter, l1_iter):
+def _solve_crop(phi, phi_anchor, y0, y1, x0, x1, *, threshold, eps_l1, l2_passes, l2_iter, l1_iter):
     """Solve one crop with a rectangular frozen-edge interior mask.
 
     Splices the interior-corner updates back into ``phi`` in place.
@@ -95,12 +94,17 @@ def _solve_crop(phi, phi_anchor, y0, y1, x0, x1, *,
         return {'feasible': False}
     im = np.zeros((sy + 1, sx + 1), dtype=bool)
     im[1:-1, 1:-1] = True
-    phi_win = phi[:, y0:y1 + 1, x0:x1 + 1].copy()
-    anc_win = phi_anchor[:, y0:y1 + 1, x0:x1 + 1].copy()
+    phi_win = phi[:, y0 : y1 + 1, x0 : x1 + 1].copy()
+    anc_win = phi_anchor[:, y0 : y1 + 1, x0 : x1 + 1].copy()
     phi_out, info = solve_cluster_2tri_2d(
-        phi_win, anc_win, im,
-        threshold=threshold, eps_l1=eps_l1,
-        l2_max_passes=l2_passes, l2_max_iter=l2_iter, l1_max_iter=l1_iter,
+        phi_win,
+        anc_win,
+        im,
+        threshold=threshold,
+        eps_l1=eps_l1,
+        l2_max_passes=l2_passes,
+        l2_max_iter=l2_iter,
+        l1_max_iter=l1_iter,
     )
     if info.get('feasible'):
         yy, xx = np.where(im)
@@ -108,9 +112,7 @@ def _solve_crop(phi, phi_anchor, y0, y1, x0, x1, *,
     return info
 
 
-def _solve_region_schwarz(phi, phi_anchor, bbox, *,
-                          threshold, eps_l1,
-                          tile, overlap, max_sweeps):
+def _solve_region_schwarz(phi, phi_anchor, bbox, *, threshold, eps_l1, tile, overlap, max_sweeps):
     """Overlapping-tile multiplicative Schwarz on one large component's bbox.
 
     Light per-tile budget — Schwarz relies on repeated sweeps to
@@ -126,29 +128,39 @@ def _solve_region_schwarz(phi, phi_anchor, bbox, *,
         if not sub.any():
             return
         ys, xs = np.where(sub)
-        rbox = (int(ys.min()), int(ys.max()) + 1,
-                int(xs.min()), int(xs.max()) + 1)
+        rbox = (int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1)
         tiles = _make_tiles(rbox, H, W, tile, overlap)
         if sweep % 2 == 1:
             tiles = tiles[::-1]
-        for (y0, y1, x0, x1) in tiles:
-            phi_win = phi[:, y0:y1 + 1, x0:x1 + 1]
+        for y0, y1, x0, x1 in tiles:
+            phi_win = phi[:, y0 : y1 + 1, x0 : x1 + 1]
             t1w, t2w = _triangle_areas_2d(phi_win[0], phi_win[1])
             if not (np.minimum(t1w, t2w) <= 0).any():
                 continue
-            _solve_crop(phi, phi_anchor, y0, y1, x0, x1,
-                        threshold=threshold, eps_l1=eps_l1,
-                        l2_passes=4, l2_iter=30, l1_iter=40)
+            _solve_crop(
+                phi,
+                phi_anchor,
+                y0,
+                y1,
+                x0,
+                x1,
+                threshold=threshold,
+                eps_l1=eps_l1,
+                l2_passes=4,
+                l2_iter=30,
+                l1_iter=40,
+            )
 
 
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 def iterative_2d_tri_schwarz(
     deformation_2hw: np.ndarray,
     *,
-    threshold: float = None,
+    threshold: Optional[float] = None,
     eps_l1: float = 1e-4,
     max_outer: int = 30,
     large_span: int = 40,
@@ -211,8 +223,7 @@ def iterative_2d_tri_schwarz(
 
     if deformation_2hw.ndim == 4:
         if deformation_2hw.shape[0] == 3:
-            deformation_2hw = np.stack([deformation_2hw[1, 0],
-                                        deformation_2hw[2, 0]])
+            deformation_2hw = np.stack([deformation_2hw[1, 0], deformation_2hw[2, 0]])
         else:
             deformation_2hw = deformation_2hw[:, 0]
 
@@ -230,8 +241,10 @@ def iterative_2d_tri_schwarz(
     init_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
     init_min = float(min(T1.min(), T2.min()))
     if verbose >= 1:
-        print(f'[2d-tri-schwarz init] grid {H}x{W}  threshold={threshold}  '
-              f'n_neg={init_n_neg}  min_tri={init_min:+.4f}')
+        print(
+            f'[2d-tri-schwarz init] grid {H}x{W}  threshold={threshold}  '
+            f'n_neg={init_n_neg}  min_tri={init_min:+.4f}'
+        )
 
     t_start = time.time()
     converged = False
@@ -245,25 +258,41 @@ def iterative_2d_tri_schwarz(
             break
         t_outer = time.time()
         n_large = n_small = 0
-        for (cy0, cy1, cx0, cx1) in comps:
+        for cy0, cy1, cx0, cx1 in comps:
             span = max(cy1 - cy0, cx1 - cx0)
             area = (cy1 - cy0) * (cx1 - cx0)
             if span > large_span or area > large_area:
-                _solve_region_schwarz(phi, phi_anchor,
-                                      (cy0, cy1, cx0, cx1),
-                                      threshold=threshold, eps_l1=eps_l1,
-                                      tile=tile, overlap=overlap,
-                                      max_sweeps=schwarz_max_sweeps)
+                _solve_region_schwarz(
+                    phi,
+                    phi_anchor,
+                    (cy0, cy1, cx0, cx1),
+                    threshold=threshold,
+                    eps_l1=eps_l1,
+                    tile=tile,
+                    overlap=overlap,
+                    max_sweeps=schwarz_max_sweeps,
+                )
                 n_large += 1
             else:
                 boost = int(pad_boost[cy0:cy1, cx0:cx1].max())
                 pad = 1 + boost
-                y0 = max(0, cy0 - pad); y1 = min(H - 1, cy1 + pad)
-                x0 = max(0, cx0 - pad); x1 = min(W - 1, cx1 + pad)
-                info = _solve_crop(phi, phi_anchor, y0, y1, x0, x1,
-                                    threshold=threshold, eps_l1=eps_l1,
-                                    l2_passes=l2_passes,
-                                    l2_iter=l2_iter, l1_iter=l1_iter)
+                y0 = max(0, cy0 - pad)
+                y1 = min(H - 1, cy1 + pad)
+                x0 = max(0, cx0 - pad)
+                x1 = min(W - 1, cx1 + pad)
+                info = _solve_crop(
+                    phi,
+                    phi_anchor,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                    threshold=threshold,
+                    eps_l1=eps_l1,
+                    l2_passes=l2_passes,
+                    l2_iter=l2_iter,
+                    l1_iter=l1_iter,
+                )
                 if info.get('feasible'):
                     pad_boost[cy0:cy1, cx0:cx1] = 0
                 else:
@@ -275,26 +304,36 @@ def iterative_2d_tri_schwarz(
         final_min = float(min(T1.min(), T2.min()))
         elapsed = time.time() - t_outer
         if record_history:
-            history.append(dict(outer=outer, n_neg=final_n_neg,
-                                min_tri=final_min,
-                                n_components=len(comps),
-                                n_large=n_large, n_small=n_small,
-                                wall_s=elapsed))
+            history.append(
+                dict(
+                    outer=outer,
+                    n_neg=final_n_neg,
+                    min_tri=final_min,
+                    n_components=len(comps),
+                    n_large=n_large,
+                    n_small=n_small,
+                    wall_s=elapsed,
+                )
+            )
         if verbose >= 1:
-            print(f'  outer {outer:2d}: n_neg={final_n_neg:5d}  '
-                  f'min_tri={final_min:+.4f}  '
-                  f'comps={len(comps):3d} (large={n_large} small={n_small})  '
-                  f'({elapsed:.1f}s)')
+            print(
+                f'  outer {outer:2d}: n_neg={final_n_neg:5d}  '
+                f'min_tri={final_min:+.4f}  '
+                f'comps={len(comps):3d} (large={n_large} small={n_small})  '
+                f'({elapsed:.1f}s)'
+            )
         if final_n_neg == 0:
             converged = True
             break
 
     if verbose >= 1:
         status = 'converged' if converged else f'max_outer={max_outer} reached'
-        print(f'[2d-tri-schwarz done] {status}  '
-              f'n_neg {init_n_neg} -> {final_n_neg}  '
-              f'min_tri {init_min:+.4f} -> {final_min:+.4f}  '
-              f'total_t={time.time()-t_start:.1f}s')
+        print(
+            f'[2d-tri-schwarz done] {status}  '
+            f'n_neg {init_n_neg} -> {final_n_neg}  '
+            f'min_tri {init_min:+.4f} -> {final_min:+.4f}  '
+            f'total_t={time.time() - t_start:.1f}s'
+        )
 
     if record_history:
         return phi, history

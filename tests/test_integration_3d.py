@@ -7,9 +7,8 @@ after correction, zero negative Jacobian determinants remain.
 import numpy as np
 import pytest
 
-from dvfopt.jacobian.numpy_jdet import jacobian_det3D
 from dvfopt.dvf.generation import generate_random_dvf_3d
-
+from dvfopt.jacobian.numpy_jdet import jacobian_det3D
 
 THRESHOLD = 0.01
 
@@ -104,8 +103,8 @@ class TestMaxWindowVoxels:
     def test_cap_respected_and_corrects(self, monkeypatch):
         """With a tight voxel cap the solver should still fix a small fold,
         and no window passed to the SLSQP inner call may exceed the cap."""
-        from dvfopt.core.slsqp import iterative3d as it3
         from dvfopt.core import solver3d as s3
+        from dvfopt.core.slsqp import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5
@@ -118,17 +117,16 @@ class TestMaxWindowVoxels:
             sz, sy, sx = subvolume_size
             v = int(sz) * int(sy) * int(sx)
             max_obs["v"] = max(max_obs["v"], v)
-            return orig_opt(phi_sub_flat, phi_init_sub_flat,
-                           subvolume_size, *a, **kw)
+            return orig_opt(phi_sub_flat, phi_init_sub_flat, subvolume_size, *a, **kw)
 
         monkeypatch.setattr(s3, "_optimize_single_window_3d", spy)
 
         CAP = 80
-        phi = it3.iterative_3d(d, verbose=0, threshold=THRESHOLD,
-                               max_iterations=200, max_window_voxels=CAP)
+        phi = it3.iterative_3d(
+            d, verbose=0, threshold=THRESHOLD, max_iterations=200, max_window_voxels=CAP
+        )
         _assert_no_neg_jdet_3d(phi)
-        assert max_obs["v"] <= CAP, \
-            f"A window of {max_obs['v']} voxels exceeded cap {CAP}"
+        assert max_obs["v"] <= CAP, f"A window of {max_obs['v']} voxels exceeded cap {CAP}"
 
     def test_cap_with_aspect_preserved(self):
         """Budget shrink should preserve aspect ratio (no axis collapse)."""
@@ -138,8 +136,9 @@ class TestMaxWindowVoxels:
         d = np.zeros((3, 4, 4, 20), dtype=np.float64)
         d[2, 2, 2, 10] = 3.5
         assert jacobian_det3D(d).min() < THRESHOLD
-        phi = iterative_3d(d, verbose=0, threshold=THRESHOLD,
-                           max_iterations=200, max_window_voxels=60)
+        phi = iterative_3d(
+            d, verbose=0, threshold=THRESHOLD, max_iterations=200, max_window_voxels=60
+        )
         _assert_no_neg_jdet_3d(phi)
 
     def test_no_cap_equivalent_to_default(self):
@@ -148,10 +147,10 @@ class TestMaxWindowVoxels:
 
         d = np.zeros((3, 5, 5, 5), dtype=np.float64)
         d[2, 2, 2, 2] = 3.0
-        phi_a = iterative_3d(d, verbose=0, threshold=THRESHOLD,
-                             max_iterations=200)
-        phi_b = iterative_3d(d, verbose=0, threshold=THRESHOLD,
-                             max_iterations=200, max_window_voxels=None)
+        phi_a = iterative_3d(d, verbose=0, threshold=THRESHOLD, max_iterations=200)
+        phi_b = iterative_3d(
+            d, verbose=0, threshold=THRESHOLD, max_iterations=200, max_window_voxels=None
+        )
         np.testing.assert_allclose(phi_a, phi_b, atol=1e-12)
 
 
@@ -160,8 +159,8 @@ class TestVoxelCapEscalation:
 
     def test_ceiling_is_respected(self, monkeypatch):
         """The escalated cap must never exceed the ceiling."""
-        from dvfopt.core.slsqp import iterative3d as it3
         from dvfopt.core import solver3d as s3
+        from dvfopt.core.slsqp import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5
@@ -179,20 +178,23 @@ class TestVoxelCapEscalation:
 
         CEIL = 120
         phi = it3.iterative_3d(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=200,
-            max_window_voxels=40, max_window_voxels_ceiling=CEIL,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=200,
+            max_window_voxels=40,
+            max_window_voxels_ceiling=CEIL,
             voxel_cap_stall_threshold=2,
         )
         # Correctness first.
         _assert_no_neg_jdet_3d(phi)
         # Never exceed the hard ceiling.
-        assert max_obs["v"] <= CEIL, \
-            f"Max window {max_obs['v']} > ceiling {CEIL}"
+        assert max_obs["v"] <= CEIL, f"Max window {max_obs['v']} > ceiling {CEIL}"
 
     def test_no_escalation_when_ceiling_none(self, monkeypatch):
         """Without a ceiling the initial cap must stay in force."""
-        from dvfopt.core.slsqp import iterative3d as it3
         from dvfopt.core import solver3d as s3
+        from dvfopt.core.slsqp import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5
@@ -209,9 +211,12 @@ class TestVoxelCapEscalation:
 
         CAP = 60
         it3.iterative_3d(
-            d, verbose=0, threshold=THRESHOLD, max_iterations=50,
-            max_window_voxels=CAP, max_window_voxels_ceiling=None,
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            max_iterations=50,
+            max_window_voxels=CAP,
+            max_window_voxels_ceiling=None,
             voxel_cap_stall_threshold=2,
         )
-        assert max_obs["v"] <= CAP, \
-            f"Max window {max_obs['v']} exceeded static cap {CAP}"
+        assert max_obs["v"] <= CAP, f"Max window {max_obs['v']} exceeded static cap {CAP}"

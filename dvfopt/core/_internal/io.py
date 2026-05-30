@@ -36,9 +36,19 @@ def _init_phi(deformation_i):
     return phi, phi_init, H, W
 
 
-def _print_summary(verbose, method_label, grid_shape, iteration,
-                   init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed, extra_lines=""):
+def _print_summary(
+    verbose,
+    method_label,
+    grid_shape,
+    iteration,
+    init_neg,
+    final_neg,
+    init_min,
+    final_min,
+    final_err,
+    elapsed,
+    extra_lines="",
+):
     """Print the end-of-run summary block shared by all iterative solvers."""
     grid_str = " x ".join(str(d) for d in grid_shape)
     _log(verbose, 1, "")
@@ -57,12 +67,32 @@ def _print_summary(verbose, method_label, grid_shape, iteration,
     _log(verbose, 1, "=" * 60)
 
 
-def _save_results(save_path, *, method, threshold, err_tol, max_iterations,
-                  max_per_index_iter, max_minimize_iter,
-                  grid_shape, elapsed, final_err, init_neg, final_neg,
-                  init_min, final_min, iteration, phi, error_list,
-                  num_neg_jac, iter_times, min_jdet_list, window_counts,
-                  extra_settings="", extra_results=""):
+def _save_results(
+    save_path,
+    *,
+    method,
+    threshold,
+    err_tol,
+    max_iterations,
+    max_per_index_iter,
+    max_minimize_iter,
+    grid_shape,
+    elapsed,
+    final_err,
+    init_neg,
+    final_neg,
+    init_min,
+    final_min,
+    iteration,
+    phi,
+    error_list,
+    num_neg_jac,
+    iter_times,
+    min_jdet_list,
+    window_counts,
+    extra_settings="",
+    extra_results="",
+):
     """Write correction results to *save_path*.
 
     Parameters

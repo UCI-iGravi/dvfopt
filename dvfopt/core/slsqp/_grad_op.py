@@ -14,6 +14,7 @@ differences at the boundaries, both with unit spacing:
 * ``j == n-1``:      ``f[-1] - f[-2]``             (coefficients ``-1, 1``)
 * ``n == 1``:        zero operator (no gradient).
 """
+
 from __future__ import annotations
 
 import functools
@@ -50,21 +51,36 @@ def gradient_operator(shape, axis):
     p_low = flat[pa == 0]
     p_high = flat[pa == n - 1]
 
-    rows = np.concatenate([
-        p_int, p_int,
-        p_low, p_low,
-        p_high, p_high,
-    ])
-    cols = np.concatenate([
-        p_int - stride, p_int + stride,
-        p_low,          p_low + stride,
-        p_high - stride, p_high,
-    ])
-    vals = np.concatenate([
-        np.full(p_int.size, -0.5), np.full(p_int.size, 0.5),
-        np.full(p_low.size, -1.0), np.full(p_low.size, 1.0),
-        np.full(p_high.size, -1.0), np.full(p_high.size, 1.0),
-    ])
+    rows = np.concatenate(
+        [
+            p_int,
+            p_int,
+            p_low,
+            p_low,
+            p_high,
+            p_high,
+        ]
+    )
+    cols = np.concatenate(
+        [
+            p_int - stride,
+            p_int + stride,
+            p_low,
+            p_low + stride,
+            p_high - stride,
+            p_high,
+        ]
+    )
+    vals = np.concatenate(
+        [
+            np.full(p_int.size, -0.5),
+            np.full(p_int.size, 0.5),
+            np.full(p_low.size, -1.0),
+            np.full(p_low.size, 1.0),
+            np.full(p_high.size, -1.0),
+            np.full(p_high.size, 1.0),
+        ]
+    )
     return scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(N, N))
 
 

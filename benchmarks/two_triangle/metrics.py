@@ -3,6 +3,7 @@
 Reuses dvfopt primitives (jacobian_det2D/3D, triangle_sign_count_negatives) by
 import — never modifies them.
 """
+
 import numpy as np
 
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
@@ -68,4 +69,4 @@ def smoothness(phi: np.ndarray) -> float:
         lap = np.zeros_like(phi)
         for ax in (1, 2):
             lap += np.gradient(np.gradient(phi, axis=ax), axis=ax)
-    return float(np.sqrt(np.sum(lap ** 2)))
+    return float(np.sqrt(np.sum(lap**2)))

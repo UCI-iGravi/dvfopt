@@ -26,8 +26,8 @@ def _two_circle_volumes():
     moving = np.zeros((D, H, W), dtype=np.float32)
 
     yy, xx = np.mgrid[:H, :W]
-    fixed[0] = ((yy - 16) ** 2 + (xx - 16) ** 2 <= 8 ** 2).astype(np.float32)
-    moving[0] = ((yy - 16) ** 2 + (xx - 18) ** 2 <= 8 ** 2).astype(np.float32)
+    fixed[0] = ((yy - 16) ** 2 + (xx - 16) ** 2 <= 8**2).astype(np.float32)
+    moving[0] = ((yy - 16) ** 2 + (xx - 18) ** 2 <= 8**2).astype(np.float32)
     return fixed, moving
 
 
@@ -35,8 +35,11 @@ class TestSliceToSlice3DLaplacian:
     def test_runs_with_default_settings(self):
         fixed, moving = _two_circle_volumes()
         out = sliceToSlice3DLaplacian(
-            fixed, moving,
-            rtol=1e-2, maxiter=50, log_fn=lambda *_a, **_k: None,
+            fixed,
+            moving,
+            rtol=1e-2,
+            maxiter=50,
+            log_fn=lambda *_a, **_k: None,
         )
         # Returned shape is (nd, D, H, W) with nd=3 channels [dz, dy, dx].
         assert out.ndim == 4
@@ -47,8 +50,11 @@ class TestSliceToSlice3DLaplacian:
         """Regression: previously the output buffer was hardcoded float32."""
         fixed, moving = _two_circle_volumes()
         out = sliceToSlice3DLaplacian(
-            fixed, moving,
-            rtol=1e-2, maxiter=50, solver_dtype="float64",
+            fixed,
+            moving,
+            rtol=1e-2,
+            maxiter=50,
+            solver_dtype="float64",
             log_fn=lambda *_a, **_k: None,
         )
         assert out.dtype == np.float64
@@ -56,8 +62,11 @@ class TestSliceToSlice3DLaplacian:
     def test_solver_dtype_float32_path(self):
         fixed, moving = _two_circle_volumes()
         out = sliceToSlice3DLaplacian(
-            fixed, moving,
-            rtol=1e-2, maxiter=50, solver_dtype="float32",
+            fixed,
+            moving,
+            rtol=1e-2,
+            maxiter=50,
+            solver_dtype="float32",
             log_fn=lambda *_a, **_k: None,
         )
         assert out.dtype == np.float32
@@ -66,8 +75,11 @@ class TestSliceToSlice3DLaplacian:
         """sliceToSlice3DLaplacian operates in-plane; dz should be zero."""
         fixed, moving = _two_circle_volumes()
         out = sliceToSlice3DLaplacian(
-            fixed, moving,
-            rtol=1e-2, maxiter=50, solver_dtype="float64",
+            fixed,
+            moving,
+            rtol=1e-2,
+            maxiter=50,
+            solver_dtype="float64",
             log_fn=lambda *_a, **_k: None,
         )
         np.testing.assert_array_equal(out[0], 0.0)

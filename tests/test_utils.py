@@ -5,8 +5,8 @@ import pytest
 
 from dvfopt.utils.checkerboard import create_checkerboard
 
-
 # ── Checkerboard ─────────────────────────────────────────────────────────
+
 
 class TestCheckerboard:
     def test_output_shape(self):

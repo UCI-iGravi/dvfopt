@@ -20,7 +20,8 @@ from scipy.ndimage import label
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from test_cases._builders import load_slice
-from dvfopt import iterative_serial, jacobian_det2D
+from dvfopt import jacobian_det2D
+from dvfopt.core.slsqp.iterative import iterative_serial
 
 MPOINTS = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..",

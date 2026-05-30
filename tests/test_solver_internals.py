@@ -3,14 +3,14 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.solver import (
-    _init_phi,
-    _apply_result,
-    _patch_jacobian_2d,
-    _update_metrics,
-    _setup_accumulators,
-)
 from dvfopt.core.slsqp.constraints import _build_constraints
+from dvfopt.core.solver import (
+    _apply_result,
+    _init_phi,
+    _patch_jacobian_2d,
+    _setup_accumulators,
+    _update_metrics,
+)
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 
@@ -28,7 +28,7 @@ class TestInitPhi:
         d = np.zeros((3, 1, 5, 5), dtype=np.float64)
         d[1, 0] = 1.0  # dy channel
         d[2, 0] = 2.0  # dx channel
-        phi, phi_init, _, _ = _init_phi(d)
+        phi, _phi_init, _, _ = _init_phi(d)
         np.testing.assert_array_equal(phi[0], 1.0)  # dy
         np.testing.assert_array_equal(phi[1], 2.0)  # dx
 
@@ -85,8 +85,7 @@ class TestPatchJacobian2D:
         _patch_jacobian_2d(jac_patched, phi, center=(6, 6), sub_size=(5, 5))
 
         # The patched region (and its border) should match
-        np.testing.assert_allclose(
-            jac_patched[0, 3:10, 3:10], jac_full[0, 3:10, 3:10], atol=1e-12)
+        np.testing.assert_allclose(jac_patched[0, 3:10, 3:10], jac_full[0, 3:10, 3:10], atol=1e-12)
 
     def test_patch_at_corner(self):
         """Patching near grid corner should not crash."""
@@ -97,8 +96,7 @@ class TestPatchJacobian2D:
         jac_patched = np.ones((1, 8, 8))
         _patch_jacobian_2d(jac_patched, phi, center=(1, 1), sub_size=(3, 3))
         # Region around (1,1) should match full
-        np.testing.assert_allclose(
-            jac_patched[0, 0:4, 0:4], jac_full[0, 0:4, 0:4], atol=1e-12)
+        np.testing.assert_allclose(jac_patched[0, 0:4, 0:4], jac_full[0, 0:4, 0:4], atol=1e-12)
 
     def test_mutates_in_place(self):
         phi = np.zeros((2, 8, 8))
@@ -115,8 +113,7 @@ class TestUpdateMetrics:
         min_jdet = []
         error_list = []
 
-        _update_metrics(phi, phi_init, False, False,
-                        num_neg, min_jdet, error_list)
+        _update_metrics(phi, phi_init, False, False, num_neg, min_jdet, error_list)
 
         assert len(num_neg) == 1
         assert len(min_jdet) == 1
@@ -141,8 +138,7 @@ class TestUpdateMetrics:
         num_neg = []
         min_jdet = []
 
-        jac, qm, neg, mn = _update_metrics(
-            phi, phi_init, False, False, num_neg, min_jdet)
+        jac, _qm, _neg, _mn = _update_metrics(phi, phi_init, False, False, num_neg, min_jdet)
         assert jac.shape == (1, 6, 6)
 
 
@@ -152,8 +148,8 @@ class TestBuildConstraints:
         sy, sx = 5, 5
         phi_flat = np.zeros(2 * sy * sx)
         constraints = _build_constraints(
-            phi_flat, (sy, sx), is_at_edge=False,
-            window_reached_max=False, threshold=0.01)
+            phi_flat, (sy, sx), is_at_edge=False, window_reached_max=False, threshold=0.01
+        )
         # Should have Jdet constraint + boundary freeze constraint
         assert len(constraints) >= 2
 
@@ -163,11 +159,12 @@ class TestBuildConstraints:
         rng = np.random.default_rng(42)
         phi_flat = rng.standard_normal(2 * sy * sx) * 0.1
         constraints = _build_constraints(
-            phi_flat, (sy, sx), is_at_edge=False,
-            window_reached_max=False, threshold=0.01)
+            phi_flat, (sy, sx), is_at_edge=False, window_reached_max=False, threshold=0.01
+        )
 
         # Find LinearConstraint (boundary freeze)
         from scipy.optimize import LinearConstraint
+
         linear_cs = [c for c in constraints if isinstance(c, LinearConstraint)]
         assert len(linear_cs) == 1
 
@@ -183,29 +180,26 @@ class TestBuildConstraints:
         sy, sx = 5, 5
         phi_flat = np.zeros(2 * sy * sx)
         constraints = _build_constraints(
-            phi_flat, (sy, sx), is_at_edge=True,
-            window_reached_max=False, threshold=0.01)
+            phi_flat, (sy, sx), is_at_edge=True, window_reached_max=False, threshold=0.01
+        )
 
         from scipy.optimize import LinearConstraint
+
         linear_cs = [c for c in constraints if isinstance(c, LinearConstraint)]
         assert len(linear_cs) == 0
 
     def test_shoelace_adds_constraint(self):
         sy, sx = 6, 6
         phi_flat = np.zeros(2 * sy * sx)
-        c_no = _build_constraints(phi_flat, (sy, sx), False, False, 0.01,
-                                  enforce_shoelace=False)
-        c_yes = _build_constraints(phi_flat, (sy, sx), False, False, 0.01,
-                                   enforce_shoelace=True)
+        c_no = _build_constraints(phi_flat, (sy, sx), False, False, 0.01, enforce_shoelace=False)
+        c_yes = _build_constraints(phi_flat, (sy, sx), False, False, 0.01, enforce_shoelace=True)
         assert len(c_yes) > len(c_no)
 
     def test_injectivity_adds_constraint(self):
         sy, sx = 6, 6
         phi_flat = np.zeros(2 * sy * sx)
-        c_no = _build_constraints(phi_flat, (sy, sx), False, False, 0.01,
-                                  enforce_injectivity=False)
-        c_yes = _build_constraints(phi_flat, (sy, sx), False, False, 0.01,
-                                   enforce_injectivity=True)
+        c_no = _build_constraints(phi_flat, (sy, sx), False, False, 0.01, enforce_injectivity=False)
+        c_yes = _build_constraints(phi_flat, (sy, sx), False, False, 0.01, enforce_injectivity=True)
         assert len(c_yes) > len(c_no)
 
 

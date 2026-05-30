@@ -45,12 +45,11 @@ def identity_deformation_3d():
 # with diverging defaults (scale=0.3 vs 0.4). Now lives here.
 # ---------------------------------------------------------------------------
 
-def planted_fold(H: int = 10, W: int = 10, *,
-                 seed: int = 0, scale: float = 0.4) -> np.ndarray:
+
+def planted_fold(H: int = 10, W: int = 10, *, seed: int = 0, scale: float = 0.4) -> np.ndarray:
     """Return a ``(2, H, W)`` field with channels ``[dy, dx]`` and a
     planted fold (probabilistically). ``scale=0.4`` typically produces
     a few-to-dozen negative triangles on a 10×10 grid.
     """
     rng = np.random.default_rng(seed)
-    return np.stack([rng.normal(0, scale, (H, W)),
-                     rng.normal(0, scale, (H, W))])
+    return np.stack([rng.normal(0, scale, (H, W)), rng.normal(0, scale, (H, W))])

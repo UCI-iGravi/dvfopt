@@ -2,22 +2,21 @@
 
 import csv
 import json
-import os
 import time
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import TwoSlopeNorm
 
 from dvfopt import jacobian_det2D, jacobian_det3D
 from dvfopt._defaults import DEFAULT_PARAMS
 
-
 # ---------------------------------------------------------------------------
 # Output directory management
 # ---------------------------------------------------------------------------
+
 
 def get_output_dir(method, notebook_name, base="output"):
     """Create and return an output directory for a benchmark run.
@@ -133,8 +132,13 @@ def log_run_header(method, notebook_name, output_dir, extra=None):
         for k, v in extra.items():
             print(f"  {k:<11s}: {v}")
     print("=" * 72)
-    return {"benchmark": notebook_name, "method": method, "timestamp": ts,
-            "output_dir": str(output_dir), **(extra or {})}
+    return {
+        "benchmark": notebook_name,
+        "method": method,
+        "timestamp": ts,
+        "output_dir": str(output_dir),
+        **(extra or {}),
+    }
 
 
 def log_run_footer(summary, results):
@@ -153,8 +157,10 @@ def log_run_footer(summary, results):
     total_time = sum(r.get("time", 0) for r in results.values())
     print()
     print("-" * 72)
-    print(f"  Cases: {total_cases}  |  Converged: {converged}/{total_cases}  "
-          f"|  Total time: {total_time:.2f}s")
+    print(
+        f"  Cases: {total_cases}  |  Converged: {converged}/{total_cases}  "
+        f"|  Total time: {total_time:.2f}s"
+    )
     print("-" * 72)
     summary["total_cases"] = total_cases
     summary["converged"] = converged
@@ -207,8 +213,7 @@ def results_to_rows(results, extra_cols=None):
     rows : list[dict]
     columns : list[str]
     """
-    base_cols = ["case", "n_neg_init", "n_neg_final", "min_jdet_init",
-                 "min_jdet", "l2_err", "time"]
+    base_cols = ["case", "n_neg_init", "n_neg_final", "min_jdet_init", "min_jdet", "l2_err", "time"]
     extra = extra_cols or []
     # Some notebooks store the standard CSV metrics under shorter keys such as
     # ``neg`` and ``l2`` inside per-method result dicts.
@@ -242,19 +247,11 @@ def results_to_rows(results, extra_cols=None):
     rows = []
     for label, r in results.items():
         # Split method-specific result dicts from shared case-level metadata.
-        method_results = {
-            name: value
-            for name, value in r.items()
-            if _is_method_result(value)
-        }
+        method_results = {name: value for name, value in r.items() if _is_method_result(value)}
         if method_results:
             include_method = True
             # Shared metadata is copied into every per-method CSV row.
-            common_data = {
-                name: value
-                for name, value in r.items()
-                if name not in method_results
-            }
+            common_data = {name: value for name, value in r.items() if name not in method_results}
             for method, payload in method_results.items():
                 merged = {**common_data, **payload}
                 row = {"case": label, "method": method}
@@ -268,17 +265,14 @@ def results_to_rows(results, extra_cols=None):
             row[c] = _round_if_float(_get_value(r, c))
         rows.append(row)
 
-    columns = (
-        ["case", "method"] + base_cols[1:] + extra
-        if include_method
-        else base_cols + extra
-    )
+    columns = ["case", "method", *base_cols[1:], *extra] if include_method else base_cols + extra
     return rows, columns
 
 
 # ---------------------------------------------------------------------------
 # Metric collection
 # ---------------------------------------------------------------------------
+
 
 def run_correction(dvf, solver, verbose=0, **solver_kwargs):
     """Run a Jacobian correction solver and collect standard metrics.
@@ -377,8 +371,10 @@ def run_correction_3d(dvf, solver, verbose=0, **solver_kwargs):
 # Plotting helpers
 # ---------------------------------------------------------------------------
 
-def plot_jac_heatmaps(jac_grid, col_labels, row_labels=("Before", "After"),
-                      title=None, figscale=2.5):
+
+def plot_jac_heatmaps(
+    jac_grid, col_labels, row_labels=("Before", "After"), title=None, figscale=2.5
+):
     """Grid of Jacobian determinant heatmaps with diverging colormap.
 
     Parameters
@@ -397,15 +393,15 @@ def plot_jac_heatmaps(jac_grid, col_labels, row_labels=("Before", "After"),
     n_rows = len(jac_grid)
     n_cols = len(jac_grid[0])
 
-    fig, axes = plt.subplots(n_rows, n_cols,
-                             figsize=(figscale * n_cols, figscale * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(figscale * n_cols, figscale * n_rows))
     if n_rows == 1:
         axes = axes[np.newaxis, :]
     if n_cols == 1:
         axes = axes[:, np.newaxis]
 
-    all_vals = np.concatenate([jac_grid[r][c].ravel()
-                               for r in range(n_rows) for c in range(n_cols)])
+    all_vals = np.concatenate(
+        [jac_grid[r][c].ravel() for r in range(n_rows) for c in range(n_cols)]
+    )
     vmin = min(float(all_vals.min()), -0.01)
     vmax = max(float(all_vals.max()), 0.01)
     norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
@@ -467,8 +463,7 @@ def plot_correction_magnitude(phi_pairs, labels, title=None, figscale=2.5):
     return fig
 
 
-def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5,
-                         colors=None):
+def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5, colors=None):
     """Overlaid Jacobian determinant distribution histograms.
 
     Parameters
@@ -485,8 +480,7 @@ def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5,
         Colours for each series (cycles if shorter than series count).
         Defaults to ``["tab:red", "tab:blue", ...]``.
     """
-    default_colors = ["tab:red", "tab:blue", "tab:gray", "tab:green",
-                      "tab:orange"]
+    default_colors = ["tab:red", "tab:blue", "tab:gray", "tab:green", "tab:orange"]
     if colors is None:
         colors = default_colors
 
@@ -503,8 +497,7 @@ def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5,
         hi = float(all_vals.max()) + 0.1
         bins = np.linspace(lo, hi, 40)
         for j, (name, jac) in enumerate(group):
-            ax.hist(jac.ravel(), bins=bins, alpha=0.5, label=name,
-                    color=colors[j % len(colors)])
+            ax.hist(jac.ravel(), bins=bins, alpha=0.5, label=name, color=colors[j % len(colors)])
         ax.axvline(0, color="black", linewidth=0.8, linestyle="--")
         ax.set_title(labels[i], fontsize=font)
         ax.set_xlabel("Jdet")
@@ -522,11 +515,10 @@ def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5,
 # Canonical 2-triangle benchmark harness
 # ---------------------------------------------------------------------------
 
-def benchmark_canonical_2tri_2d(method_fn, *,
-                                 label=None,
-                                 threshold=None,
-                                 err_tol=1e-5,
-                                 verbose=True):
+
+def benchmark_canonical_2tri_2d(
+    method_fn, *, label=None, threshold=None, err_tol=1e-5, verbose=True
+):
     """Run ``method_fn`` over every canonical 2D 2-tri case and report results.
 
     Parameters
@@ -584,14 +576,22 @@ def benchmark_canonical_2tri_2d(method_fn, *,
             wall = time.perf_counter() - t0
 
         row = dict(
-            case=name, shape=tuple(meta['shape']), method=label,
+            case=name,
+            shape=tuple(meta['shape']),
+            method=label,
             init_n_neg=meta['init_n_neg'],
             init_min_T=meta['init_min_T'],
-            wall_s=wall, error=err,
+            wall_s=wall,
+            error=err,
         )
         if phi_out is None:
-            row.update(final_n_neg=-1, final_min_T=float('nan'),
-                       feasible=False, l1=float('nan'), l2=float('nan'))
+            row.update(
+                final_n_neg=-1,
+                final_min_T=float('nan'),
+                feasible=False,
+                l1=float('nan'),
+                l2=float('nan'),
+            )
         else:
             T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
             n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
@@ -607,12 +607,13 @@ def benchmark_canonical_2tri_2d(method_fn, *,
         rows.append(row)
         if verbose:
             tag = 'OK' if row.get('feasible') else ('ERR' if err else 'FAIL')
-            print(f'  [{tag:>4}] {name:<22} {label:<22} '
-                  f'wall={row["wall_s"]:6.2f}s  '
-                  f'n_neg={row["final_n_neg"]:>4}  '
-                  f'min_T={row["final_min_T"]:+.4f}  '
-                  f'L1={row["l1"]:>8.3f}  L2={row["l2"]:>7.3f}'
-                  + (f'  {err}' if err else ''))
+            print(
+                f'  [{tag:>4}] {name:<22} {label:<22} '
+                f'wall={row["wall_s"]:6.2f}s  '
+                f'n_neg={row["final_n_neg"]:>4}  '
+                f'min_T={row["final_min_T"]:+.4f}  '
+                f'L1={row["l1"]:>8.3f}  L2={row["l2"]:>7.3f}' + (f'  {err}' if err else '')
+            )
     return rows
 
 
@@ -636,6 +637,7 @@ def benchmark_methods_table(methods, *, threshold=None, verbose=True):
     for label, fn in methods:
         if verbose:
             print(f'=== {label} ===')
-        out.extend(benchmark_canonical_2tri_2d(
-            fn, label=label, threshold=threshold, verbose=verbose))
+        out.extend(
+            benchmark_canonical_2tri_2d(fn, label=label, threshold=threshold, verbose=verbose)
+        )
     return out

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d, _build_constraints_3d
+from dvfopt.core.slsqp.constraints3d import _build_constraints_3d, jacobian_constraint_3d
 
 
 class TestJacobianConstraint3D:
@@ -62,6 +62,7 @@ class TestBuildConstraints3D:
         constraints = _build_constraints_3d(phi_flat, (sz, sy, sx), mask, 0.01)
 
         from scipy.optimize import LinearConstraint
-        lc = [c for c in constraints if isinstance(c, LinearConstraint)][0]
+
+        lc = next(c for c in constraints if isinstance(c, LinearConstraint))
         frozen_vals = lc.A.toarray() @ phi_flat
         np.testing.assert_allclose(frozen_vals, lc.lb)

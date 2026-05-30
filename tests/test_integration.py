@@ -6,8 +6,8 @@ These tests are slower (seconds each) but verify the full pipeline works end-to-
 import numpy as np
 import pytest
 
-from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
 from dvfopt.dvf.generation import generate_random_dvf
+from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
 
 
 class TestIterativeSolver2D:
@@ -29,7 +29,10 @@ class TestIterativeSolver2D:
         )
 
         phi = iterative_serial(
-            deformation, verbose=0, threshold=0.01, max_iterations=500,
+            deformation,
+            verbose=0,
+            threshold=0.01,
+            max_iterations=500,
         )
         jdet_after = jacobian_det2D(phi)
         assert jdet_after.min() >= 0.01 - 1e-5, (
@@ -67,8 +70,11 @@ class TestIterativeSolver2D:
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_serial(
-            deformation, verbose=0, threshold=0.01,
-            max_iterations=500, enforce_shoelace=True,
+            deformation,
+            verbose=0,
+            threshold=0.01,
+            max_iterations=500,
+            enforce_shoelace=True,
         )
         jdet_after = jacobian_det2D(phi)
         assert jdet_after.min() >= 0.01 - 1e-5
@@ -79,8 +85,11 @@ class TestIterativeSolver2D:
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_serial(
-            deformation, verbose=0, threshold=0.01,
-            max_iterations=1000, enforce_injectivity=True,
+            deformation,
+            verbose=0,
+            threshold=0.01,
+            max_iterations=1000,
+            enforce_injectivity=True,
         )
         jdet_after = jacobian_det2D(phi)
         assert jdet_after.min() >= 0.01 - 1e-5
@@ -98,8 +107,11 @@ class TestParallelSolver2D:
 
         deformation = self._make_folded_field(10, 10)
         phi = iterative_parallel(
-            deformation, verbose=0, threshold=0.01,
-            max_iterations=200, max_workers=1,
+            deformation,
+            verbose=0,
+            threshold=0.01,
+            max_iterations=200,
+            max_workers=1,
         )
         jdet_after = jacobian_det2D(phi)
         assert jdet_after.min() >= 0.01 - 1e-5
@@ -109,7 +121,10 @@ class TestParallelSolver2D:
 
         deformation = self._make_folded_field(8, 12)
         phi = iterative_parallel(
-            deformation, verbose=0, max_iterations=50, max_workers=1,
+            deformation,
+            verbose=0,
+            max_iterations=50,
+            max_workers=1,
         )
         assert phi.shape == (2, 8, 12)
 
@@ -129,7 +144,10 @@ class TestRandomDvfCorrection:
             pytest.skip("Random DVF has no negative Jacobians to correct")
 
         phi = iterative_serial(
-            dvf, verbose=0, threshold=0.01, max_iterations=500,
+            dvf,
+            verbose=0,
+            threshold=0.01,
+            max_iterations=500,
         )
         jdet_after = jacobian_det2D(phi)
         assert jdet_after.min() >= 0.01 - 1e-5

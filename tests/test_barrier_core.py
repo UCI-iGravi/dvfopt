@@ -9,16 +9,16 @@ import numpy as np
 import pytest
 
 from dvfopt.core._barrier_core import (
-    run_penalty_barrier_lbfgs,
-    anchor_term,
     DEFAULT_LAM_SCHEDULE,
     DEFAULT_MU_SCHEDULE,
+    anchor_term,
+    run_penalty_barrier_lbfgs,
 )
-
 
 # ---------------------------------------------------------------------------
 # anchor_term: per-mode value + gradient verification
 # ---------------------------------------------------------------------------
+
 
 class TestAnchorTerm:
     def test_l2_zero_diff(self):
@@ -64,6 +64,7 @@ class TestAnchorTerm:
 # Lets us check the homotopy mechanics without any constraint coupling.
 # ---------------------------------------------------------------------------
 
+
 def _toy_constraint():
     return (lambda p: p - 0.5, lambda p, v: v)
 
@@ -73,11 +74,15 @@ class TestHomotopyMechanics:
         # Start above target: penalty phase shouldn't iterate.
         phi = np.array([1.0])
         vals, adj = _toy_constraint()
-        phi_out, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
-            max_iter=20, verbose=0,
+        _phi_out, info = run_penalty_barrier_lbfgs(
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
+            max_iter=20,
+            verbose=0,
         )
         assert info['lam_steps'] == 0
         assert info['feasible'] is True
@@ -89,10 +94,14 @@ class TestHomotopyMechanics:
         phi = np.array([0.0])
         vals, adj = _toy_constraint()
         _, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
-            max_iter=20, verbose=0,
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
+            max_iter=20,
+            verbose=0,
         )
         assert info['lam_steps'] >= 1
 
@@ -101,11 +110,15 @@ class TestHomotopyMechanics:
         phi = np.array([-10.0])  # very far below target
         vals, adj = _toy_constraint()
         _, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
             lam_schedule=(0.001,),  # one tiny step
-            max_iter=5, verbose=0,
+            max_iter=5,
+            verbose=0,
         )
         # Penalty phase did one step but didn't reach feasibility.
         assert info['lam_steps'] == 1
@@ -119,10 +132,15 @@ class TestRecordHistorySchema:
         phi = np.array([0.0])
         vals, adj = _toy_constraint()
         _, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
-            max_iter=10, verbose=0, record_history=True,
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
+            max_iter=10,
+            verbose=0,
+            record_history=True,
         )
         # At least one penalty step (probably one barrier step too).
         assert len(info['history']) >= 1
@@ -142,10 +160,15 @@ class TestRecordHistorySchema:
         phi = np.array([0.0])
         vals, adj = _toy_constraint()
         _, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
-            max_iter=5, verbose=0, record_history=False,
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
+            max_iter=5,
+            verbose=0,
+            record_history=False,
         )
         assert info['history'] == []
 
@@ -153,6 +176,7 @@ class TestRecordHistorySchema:
 # ---------------------------------------------------------------------------
 # active_mask: only listed constraint cells participate
 # ---------------------------------------------------------------------------
+
 
 class TestActiveMask:
     def test_mask_excludes_cells_from_penalty(self):
@@ -163,12 +187,16 @@ class TestActiveMask:
         phi = np.array([-0.5, -0.5, -2.0])
         anchor = phi.copy()
         active = np.array([True, True, False])
-        phi_out, info = run_penalty_barrier_lbfgs(
-            phi, anchor,
+        phi_out, _info = run_penalty_barrier_lbfgs(
+            phi,
+            anchor,
             constraint_values=lambda p: p,
             constraint_adjoint=lambda p, v: v,
-            threshold=0.0, margin=0.01,
-            active_mask=active, max_iter=30, verbose=0,
+            threshold=0.0,
+            margin=0.01,
+            active_mask=active,
+            max_iter=30,
+            verbose=0,
         )
         # Cells 0, 1 should be lifted above target; cell 2 stays roughly where it was.
         assert phi_out[0] >= 0.01 - 1e-3
@@ -182,18 +210,22 @@ class TestActiveMask:
 # bounds: frozen variables stay fixed
 # ---------------------------------------------------------------------------
 
+
 class TestBounds:
     def test_pinned_variable_does_not_move(self):
         # Two variables; the first is pinned by bounds=(value, value).
         phi = np.array([0.0, -0.5])
         anchor = phi.copy()
-        phi_out, info = run_penalty_barrier_lbfgs(
-            phi, anchor,
+        phi_out, _info = run_penalty_barrier_lbfgs(
+            phi,
+            anchor,
             constraint_values=lambda p: p,
             constraint_adjoint=lambda p, v: v,
-            threshold=0.0, margin=0.01,
+            threshold=0.0,
+            margin=0.01,
             bounds=[(0.0, 0.0), (None, None)],
-            max_iter=20, verbose=0,
+            max_iter=20,
+            verbose=0,
         )
         # First var stays pinned.
         assert phi_out[0] == pytest.approx(0.0, abs=1e-8)
@@ -204,6 +236,7 @@ class TestBounds:
 # ---------------------------------------------------------------------------
 # Infeasible iterate guard in barrier phase
 # ---------------------------------------------------------------------------
+
 
 class TestBarrierInfeasibleGuard:
     """The barrier objective returns inf for infeasible iterates; phi_flat
@@ -217,11 +250,15 @@ class TestBarrierInfeasibleGuard:
         # verify the result is feasible after a full run.
         phi = np.array([1.0])
         vals, adj = _toy_constraint()
-        phi_out, info = run_penalty_barrier_lbfgs(
-            phi, phi.copy(),
-            constraint_values=vals, constraint_adjoint=adj,
-            threshold=0.0, margin=0.01,
-            max_iter=30, verbose=0,
+        phi_out, _info = run_penalty_barrier_lbfgs(
+            phi,
+            phi.copy(),
+            constraint_values=vals,
+            constraint_adjoint=adj,
+            threshold=0.0,
+            margin=0.01,
+            max_iter=30,
+            verbose=0,
         )
         # After full run, must still be feasible (T > threshold).
         T = vals(phi_out)

@@ -27,8 +27,7 @@ def load_nii_images(image_list, scale=False):
             # Execution is faster on copied data
             if scale:
                 scales = tuple(
-                    np.array(nii_image.header.get_zooms())
-                    / np.array(f_image.header.get_zooms())
+                    np.array(nii_image.header.get_zooms()) / np.array(f_image.header.get_zooms())
                 )
                 imdata = scipy.ndimage.zoom(imdata.copy(), scales, order=1)
             images.append(imdata.copy())

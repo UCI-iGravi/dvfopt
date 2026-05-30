@@ -8,13 +8,13 @@ import numpy as np
 import pytest
 
 from dvfopt.core.slsqp.constraints import jacobian_constraint
-from dvfopt.jacobian.shoelace import shoelace_constraint
-from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.core.slsqp.gradients import (
+    injectivity_constraint_jacobian_2d,
     jdet_constraint_jacobian_2d,
     shoelace_constraint_jacobian_2d,
-    injectivity_constraint_jacobian_2d,
 )
+from dvfopt.jacobian.monotonicity import injectivity_constraint
+from dvfopt.jacobian.shoelace import shoelace_constraint
 
 
 def _numerical_jacobian(func, x0, eps=1e-6):

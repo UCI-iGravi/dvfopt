@@ -7,9 +7,8 @@ Mirrors test_integration_3d.py but exercises the full-grid L-BFGS-B
 import numpy as np
 import pytest
 
-from dvfopt.jacobian.numpy_jdet import jacobian_det3D
 from dvfopt.dvf.generation import generate_random_dvf_3d
-
+from dvfopt.jacobian.numpy_jdet import jacobian_det3D
 
 THRESHOLD = 0.01
 
@@ -45,8 +44,9 @@ class TestBarrier3DNumpy:
         d[2, 3, 3, 3] = 4.0
         assert jacobian_det3D(d).min() < THRESHOLD
 
-        phi = iterative_3d_barrier(d, verbose=0, threshold=THRESHOLD,
-                                    lam_schedule=(1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6))
+        phi = iterative_3d_barrier(
+            d, verbose=0, threshold=THRESHOLD, lam_schedule=(1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
+        )
         _assert_no_neg_jdet_3d(phi)
 
     def test_corrects_random_field(self):
@@ -107,8 +107,13 @@ class TestBarrier3DTorch:
         d[2, 3, 3, 3] = 4.0
         assert jacobian_det3D(d).min() < THRESHOLD
 
-        phi = iterative_3d_barrier_torch(d, verbose=0, threshold=THRESHOLD, device="cpu",
-                                          lam_schedule=(1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6))
+        phi = iterative_3d_barrier_torch(
+            d,
+            verbose=0,
+            threshold=THRESHOLD,
+            device="cpu",
+            lam_schedule=(1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6),
+        )
         _assert_no_neg_jdet_3d(phi)
 
     def test_opposing_spikes(self):

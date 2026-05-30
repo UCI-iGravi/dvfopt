@@ -17,21 +17,24 @@ constraint violation fails to halve (Birgin-Martinez safeguard).
 
 Promoted from ``notebooks/experiments/wall_breakers/methods/m03_augmented_lagrangian.py``.
 """
+
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.core.tri_primitives import (
     tri_areas_flat as _tri_areas_flat,
+)
+from dvfopt.core.tri_primitives import (
     tri_grad_T_v as _tri_grad_T_v,
 )
 
 
-def _alm_objective(phi_flat, phi_init_flat, H, W, threshold, mu, rho,
-                   anchor='l2', eps_l1=1e-4):
+def _alm_objective(phi_flat, phi_init_flat, H, W, threshold, mu, rho, anchor='l2', eps_l1=1e-4):
     diff = phi_flat - phi_init_flat
     if anchor == 'l2':
         val = 0.5 * float(diff @ diff)
@@ -52,20 +55,23 @@ def _alm_objective(phi_flat, phi_init_flat, H, W, threshold, mu, rho,
     return val, grad
 
 
-def augmented_lagrangian_2d(phi_in: np.ndarray, *,
-                            threshold: float = None,
-                            margin: float = 1e-3,
-                            anchor: str = 'l2',
-                            rho_init: float = 1.0,
-                            rho_growth: float = 5.0,
-                            rho_max: float = 1e8,
-                            outer_max: int = 60,
-                            inner_maxiter: int = 200,
-                            ftol_inner: float = 1e-10,
-                            gtol_inner: float = 1e-7,
-                            time_budget_s: float = 600.0,
-                            verbose: int = 1,
-                            record_history: bool = False):
+def augmented_lagrangian_2d(
+    phi_in: np.ndarray,
+    *,
+    threshold: Optional[float] = None,
+    margin: float = 1e-3,
+    anchor: str = 'l2',
+    rho_init: float = 1.0,
+    rho_growth: float = 5.0,
+    rho_max: float = 1e8,
+    outer_max: int = 60,
+    inner_maxiter: int = 200,
+    ftol_inner: float = 1e-10,
+    gtol_inner: float = 1e-7,
+    time_budget_s: float = 600.0,
+    verbose: int = 1,
+    record_history: bool = False,
+):
     """PHR augmented Lagrangian; stops when feasible at ``threshold + margin``.
 
     Parameters
@@ -82,6 +88,7 @@ def augmented_lagrangian_2d(phi_in: np.ndarray, *,
     info : dict, only if ``record_history=True``
     """
     from dvfopt._defaults import DEFAULT_PARAMS
+
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     H, W = phi_in.shape[1], phi_in.shape[2]
@@ -102,10 +109,13 @@ def augmented_lagrangian_2d(phi_in: np.ndarray, *,
         if time.time() - t0 > time_budget_s:
             break
         res = minimize(
-            _alm_objective, phi_flat, jac=True, method='L-BFGS-B',
+            _alm_objective,
+            phi_flat,
+            jac=True,
+            method='L-BFGS-B',
             args=(phi_init_flat, H, W, threshold, mu, rho, anchor, 1e-4),
-            options=dict(maxiter=inner_maxiter, ftol=ftol_inner,
-                         gtol=gtol_inner))
+            options=dict(maxiter=inner_maxiter, ftol=ftol_inner, gtol=gtol_inner),
+        )
         phi_flat = res.x
 
         T = _tri_areas_flat(phi_flat, H, W)
@@ -116,22 +126,35 @@ def augmented_lagrangian_2d(phi_in: np.ndarray, *,
         if outer > 0 and viol_now > 0.5 * log[-1]['viol']:
             rho = min(rho_max, rho * rho_growth)
 
-        log.append(dict(outer=outer, inner_nit=int(res.nit),
-                        min_T=min_T, viol=viol_now, rho=rho,
-                        mu_max=float(mu.max()),
-                        wall=time.time() - t0))
+        log.append(
+            dict(
+                outer=outer,
+                inner_nit=int(res.nit),
+                min_T=min_T,
+                viol=viol_now,
+                rho=rho,
+                mu_max=float(mu.max()),
+                wall=time.time() - t0,
+            )
+        )
         if verbose:
-            print(f'  ALM out={outer:3d}  inner={res.nit:4d}  '
-                  f'min_T={min_T:+.5f}  viol={viol_now:.3e}  '
-                  f'rho={rho:.1e}  ({time.time()-t0:.1f}s)', flush=True)
+            print(
+                f'  ALM out={outer:3d}  inner={res.nit:4d}  '
+                f'min_T={min_T:+.5f}  viol={viol_now:.3e}  '
+                f'rho={rho:.1e}  ({time.time() - t0:.1f}s)',
+                flush=True,
+            )
         last_min = min_T
         if min_T >= target:
             break
 
-    phi_out = np.stack([phi_flat[:H * W].reshape(H, W),
-                        phi_flat[H * W:].reshape(H, W)])
-    info = dict(outer_used=len(log), rho_final=rho,
-                min_T_final=last_min,
-                feasible=last_min >= target,
-                log_first5=log[:5], log_last5=log[-5:])
+    phi_out = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
+    info = dict(
+        outer_used=len(log),
+        rho_final=rho,
+        min_T_final=last_min,
+        feasible=last_min >= target,
+        log_first5=log[:5],
+        log_last5=log[-5:],
+    )
     return (phi_out, info) if record_history else phi_out

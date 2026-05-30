@@ -1,8 +1,6 @@
 import numpy as np
-import pytest
 
 from benchmarks.two_triangle import registry
-import benchmarks.two_triangle.variants  # registers
 
 
 def _tiny_2d_fold():
@@ -49,8 +47,9 @@ def test_active_set_runs_and_progresses():
     dvf = _tiny_2d_fold()
     result = fn(dvf, threshold=0.01, max_iterations=20)
     assert len(result.trajectory) >= 2
-    assert result.trajectory.iloc[-1]["fold_count_tri"] <= \
-           result.trajectory.iloc[0]["fold_count_tri"]
+    assert (
+        result.trajectory.iloc[-1]["fold_count_tri"] <= result.trajectory.iloc[0]["fold_count_tri"]
+    )
 
 
 def test_trust_constr_registered():
@@ -63,5 +62,6 @@ def test_trust_constr_runs():
     result = fn(dvf, threshold=0.01, max_iterations=20)
     assert result.phi_final.shape == (2, 6, 6)
     # trust-constr is more relaxed than SLSQP — only require non-regression
-    assert result.trajectory.iloc[-1]["fold_count_tri"] <= \
-           result.trajectory.iloc[0]["fold_count_tri"]
+    assert (
+        result.trajectory.iloc[-1]["fold_count_tri"] <= result.trajectory.iloc[0]["fold_count_tri"]
+    )

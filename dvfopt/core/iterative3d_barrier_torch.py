@@ -20,7 +20,7 @@ import torch
 from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core.solver import _setup_accumulators, _print_summary, _save_results
+from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
 
 
 def _build_active_mask_3d(j, target, radius):
@@ -57,18 +57,28 @@ def _jdet_3d_torch(phi):
     ddz_dy = torch.gradient(dz, dim=1)[0]
     ddz_dz = torch.gradient(dz, dim=0)[0]
 
-    a11 = 1.0 + ddx_dx;  a12 = ddx_dy;       a13 = ddx_dz
-    a21 = ddy_dx;         a22 = 1.0 + ddy_dy;  a23 = ddy_dz
-    a31 = ddz_dx;         a32 = ddz_dy;        a33 = 1.0 + ddz_dz
+    a11 = 1.0 + ddx_dx
+    a12 = ddx_dy
+    a13 = ddx_dz
+    a21 = ddy_dx
+    a22 = 1.0 + ddy_dy
+    a23 = ddy_dz
+    a31 = ddz_dx
+    a32 = ddz_dy
+    a33 = 1.0 + ddz_dz
 
-    return (a11 * (a22 * a33 - a23 * a32)
-            - a12 * (a21 * a33 - a23 * a31)
-            + a13 * (a21 * a32 - a22 * a31))
+    return (
+        a11 * (a22 * a33 - a23 * a32)
+        - a12 * (a21 * a33 - a23 * a31)
+        + a13 * (a21 * a32 - a22 * a31)
+    )
 
 
 def _jdet_3d_torch_batched(phi_b):
     """Batched 3D Jdet. phi_b shape (K, 3, D, H, W). Returns (K, D, H, W)."""
-    dz = phi_b[:, 0];  dy = phi_b[:, 1];  dx = phi_b[:, 2]  # each (K, D, H, W)
+    dz = phi_b[:, 0]
+    dy = phi_b[:, 1]
+    dx = phi_b[:, 2]  # each (K, D, H, W)
 
     ddx_dx = torch.gradient(dx, dim=3)[0]
     ddx_dy = torch.gradient(dx, dim=2)[0]
@@ -80,21 +90,27 @@ def _jdet_3d_torch_batched(phi_b):
     ddz_dy = torch.gradient(dz, dim=2)[0]
     ddz_dz = torch.gradient(dz, dim=1)[0]
 
-    a11 = 1.0 + ddx_dx;  a12 = ddx_dy;       a13 = ddx_dz
-    a21 = ddy_dx;         a22 = 1.0 + ddy_dy;  a23 = ddy_dz
-    a31 = ddz_dx;         a32 = ddz_dy;        a33 = 1.0 + ddz_dz
+    a11 = 1.0 + ddx_dx
+    a12 = ddx_dy
+    a13 = ddx_dz
+    a21 = ddy_dx
+    a22 = 1.0 + ddy_dy
+    a23 = ddy_dz
+    a31 = ddz_dx
+    a32 = ddz_dy
+    a33 = 1.0 + ddz_dz
 
-    return (a11 * (a22 * a33 - a23 * a32)
-            - a12 * (a21 * a33 - a23 * a31)
-            + a13 * (a21 * a32 - a22 * a31))
+    return (
+        a11 * (a22 * a33 - a23 * a32)
+        - a12 * (a21 * a33 - a23 * a31)
+        + a13 * (a21 * a32 - a22 * a31)
+    )
 
 
 def _bbox_overlap_3d(b1, b2):
     z0a, z1a, y0a, y1a, x0a, x1a = b1
     z0b, z1b, y0b, y1b, x0b, x1b = b2
-    return not (z1a < z0b or z1b < z0a or
-                y1a < y0b or y1b < y0a or
-                x1a < x0b or x1b < x0a)
+    return not (z1a < z0b or z1b < z0a or y1a < y0b or y1b < y0a or x1a < x0b or x1b < x0a)
 
 
 def _group_nonoverlapping_3d(bboxes, max_batch=32):
@@ -113,13 +129,22 @@ def _group_nonoverlapping_3d(bboxes, max_batch=32):
     return batches
 
 
-def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
-                              threshold_f, margin, lam_schedule, mu_schedule,
-                              max_minimize_iter, device, dtype):
+def _optimize_batch_3d_torch(
+    phi_full,
+    bboxes,
+    grid_shape,
+    threshold_f,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    device,
+    dtype,
+):
     """Batched penalty->barrier on K non-overlapping interior 3D patches.
     Shares a single LBFGS optimizer across K patches via (K, 3, Dmax, Hmax, Wmax)
     tensor with per-patch frozen/active masks."""
-    D, H, W = grid_shape
+    _D, _H, _W = grid_shape
     K = len(bboxes)
     Dmax = max(z1 - z0 + 1 for (z0, z1, y0, y1, x0, x1) in bboxes)
     Hmax = max(y1 - y0 + 1 for (z0, z1, y0, y1, x0, x1) in bboxes)
@@ -131,11 +156,14 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
 
     for k, (z0, z1, y0, y1, x0, x1) in enumerate(bboxes):
         Dp, Hp, Wp = z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1
-        phi_batch_init[k, :, :Dp, :Hp, :Wp] = phi_full[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1]
+        phi_batch_init[k, :, :Dp, :Hp, :Wp] = phi_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
         pf = torch.zeros((Dp, Hp, Wp), dtype=torch.bool, device=device)
-        pf[0, :, :] = True;  pf[-1, :, :] = True
-        pf[:, 0, :] = True;  pf[:, -1, :] = True
-        pf[:, :, 0] = True;  pf[:, :, -1] = True
+        pf[0, :, :] = True
+        pf[-1, :, :] = True
+        pf[:, 0, :] = True
+        pf[:, -1, :] = True
+        pf[:, :, 0] = True
+        pf[:, :, -1] = True
         cell_frozen[k, :Dp, :Hp, :Wp] = pf
         active_cell[k, :Dp, :Hp, :Wp] = ~pf
 
@@ -178,9 +206,15 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
             loss.backward()
             return loss
 
-        opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=mi,
-                                 tolerance_grad=1e-6, tolerance_change=tol_change,
-                                 history_size=hs, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS(
+            [phi_var],
+            lr=1.0,
+            max_iter=mi,
+            tolerance_grad=1e-6,
+            tolerance_change=tol_change,
+            history_size=hs,
+            line_search_fn="strong_wolfe",
+        )
         opt.step(closure)
         lam_steps += 1
         if lam_idx % 2 == 1 or lam_idx == n_lam - 1:
@@ -194,6 +228,7 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
         active_bar_f = active_bar.to(dtype=dtype)
         prev_l2 = None
         for mu in mu_schedule:
+
             def closure_bar():
                 if phi_var.grad is not None:
                     phi_var.grad.zero_()
@@ -212,9 +247,15 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
                 loss.backward()
                 return loss
 
-            opt = torch.optim.LBFGS([phi_var], lr=1.0, max_iter=max_minimize_iter,
-                                     tolerance_grad=1e-6, tolerance_change=tol_change,
-                                     history_size=20, line_search_fn="strong_wolfe")
+            opt = torch.optim.LBFGS(
+                [phi_var],
+                lr=1.0,
+                max_iter=max_minimize_iter,
+                tolerance_grad=1e-6,
+                tolerance_change=tol_change,
+                history_size=20,
+                line_search_fn="strong_wolfe",
+            )
             opt.step(closure_bar)
             mu_steps += 1
             with torch.no_grad():
@@ -228,7 +269,7 @@ def _optimize_batch_3d_torch(phi_full, bboxes, grid_shape,
         phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
         for k, (z0, z1, y0, y1, x0, x1) in enumerate(bboxes):
             Dp, Hp, Wp = z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1
-            phi_full[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = phi_eff[k, :, :Dp, :Hp, :Wp]
+            phi_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = phi_eff[k, :, :Dp, :Hp, :Wp]
 
     return lam_steps, mu_steps
 
@@ -249,20 +290,40 @@ def _frozen_mask_3d_torch(z0, z1, y0, y1, x0, x1, grid_shape, device):
     D, H, W = grid_shape
     Dp, Hp, Wp = z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1
     mask = torch.zeros((Dp, Hp, Wp), dtype=torch.bool, device=device)
-    if z0 > 0:     mask[0, :, :] = True
-    if z1 < D - 1: mask[-1, :, :] = True
-    if y0 > 0:     mask[:, 0, :] = True
-    if y1 < H - 1: mask[:, -1, :] = True
-    if x0 > 0:     mask[:, :, 0] = True
-    if x1 < W - 1: mask[:, :, -1] = True
+    if z0 > 0:
+        mask[0, :, :] = True
+    if z1 < D - 1:
+        mask[-1, :, :] = True
+    if y0 > 0:
+        mask[:, 0, :] = True
+    if y1 < H - 1:
+        mask[:, -1, :] = True
+    if x0 > 0:
+        mask[:, :, 0] = True
+    if x1 < W - 1:
+        mask[:, :, -1] = True
     return mask.unsqueeze(0)  # (1, Dp, Hp, Wp) broadcast to (3, ...)
 
 
-def _optimize_patch_3d_torch(phi_full, z0, z1, y0, y1, x0, x1, grid_shape,
-                             threshold_f, margin, lam_schedule, mu_schedule,
-                             max_minimize_iter, device, dtype):
+def _optimize_patch_3d_torch(
+    phi_full,
+    z0,
+    z1,
+    y0,
+    y1,
+    x0,
+    x1,
+    grid_shape,
+    threshold_f,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    device,
+    dtype,
+):
     """Run penalty -> barrier on a 3D patch. Mutates phi_full in place."""
-    phi_patch_init = phi_full[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1].detach().clone()
+    phi_patch_init = phi_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].detach().clone()
     phi_patch_var = phi_patch_init.detach().clone().requires_grad_(True)
     frozen_b = _frozen_mask_3d_torch(z0, z1, y0, y1, x0, x1, grid_shape, device)
     # Interior-voxel mask for penalty/barrier sums: torch.gradient uses
@@ -312,9 +373,15 @@ def _optimize_patch_3d_torch(phi_full, z0, z1, y0, y1, x0, x1, grid_shape,
             loss.backward()
             return loss
 
-        opt = torch.optim.LBFGS([phi_patch_var], lr=1.0, max_iter=mi,
-                                 tolerance_grad=1e-6, tolerance_change=tol_change,
-                                 history_size=hs, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS(
+            [phi_patch_var],
+            lr=1.0,
+            max_iter=mi,
+            tolerance_grad=1e-6,
+            tolerance_change=tol_change,
+            history_size=hs,
+            line_search_fn="strong_wolfe",
+        )
         opt.step(closure)
         lam_steps += 1
         # Skip GPU->CPU .item() sync on even lam indices (check odd + last)
@@ -331,6 +398,7 @@ def _optimize_patch_3d_torch(phi_full, z0, z1, y0, y1, x0, x1, grid_shape,
         active_f = active.to(dtype=phi_patch_var.dtype)
         prev_l2 = None
         for mu in mu_schedule:
+
             def closure():
                 if phi_patch_var.grad is not None:
                     phi_patch_var.grad.zero_()
@@ -352,9 +420,15 @@ def _optimize_patch_3d_torch(phi_full, z0, z1, y0, y1, x0, x1, grid_shape,
                 loss.backward()
                 return loss
 
-            opt = torch.optim.LBFGS([phi_patch_var], lr=1.0, max_iter=max_minimize_iter,
-                                     tolerance_grad=1e-6, tolerance_change=tol_change,
-                                     history_size=20, line_search_fn="strong_wolfe")
+            opt = torch.optim.LBFGS(
+                [phi_patch_var],
+                lr=1.0,
+                max_iter=max_minimize_iter,
+                tolerance_grad=1e-6,
+                tolerance_change=tol_change,
+                history_size=20,
+                line_search_fn="strong_wolfe",
+            )
             opt.step(closure)
             mu_steps += 1
             # Early-exit: if L2 distortion barely changed across this mu step,
@@ -368,7 +442,7 @@ def _optimize_patch_3d_torch(phi_full, z0, z1, y0, y1, x0, x1, grid_shape,
 
     with torch.no_grad():
         phi_eff = torch.where(frozen_b, phi_patch_init, phi_patch_var)
-        phi_full[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = phi_eff
+        phi_full[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = phi_eff
     return lam_steps, mu_steps
 
 
@@ -456,9 +530,12 @@ def iterative_3d_barrier_torch(
     num_neg_jac.append(init_neg)
     min_jdet_list.append(init_min)
     mode = "windowed" if windowed else "full-grid"
-    _log(verbose, 1,
-         f"[init] Grid {D}x{H}x{W}  threshold={threshold_f}  margin={margin}  "
-         f"device={device}  dtype={dtype}  mode={mode}")
+    _log(
+        verbose,
+        1,
+        f"[init] Grid {D}x{H}x{W}  threshold={threshold_f}  margin={margin}  "
+        f"device={device}  dtype={dtype}  mode={mode}",
+    )
     _log(verbose, 1, f"[init] Neg-Jdet voxels: {init_neg}  min Jdet: {init_min:.6f}")
 
     target = threshold_f + margin
@@ -473,7 +550,7 @@ def iterative_3d_barrier_torch(
                 neg_mask_t = j <= threshold_f - err_tol_f
                 any_neg = bool(neg_mask_t.any().item())
             if not any_neg:
-                _log(verbose, 1, f"[iter {iteration+1}] No neg-Jdet remain — exiting")
+                _log(verbose, 1, f"[iter {iteration + 1}] No neg-Jdet remain — exiting")
                 break
             neg_mask = neg_mask_t.cpu().numpy()
             labeled, n_components = label(neg_mask, structure=structure)
@@ -491,9 +568,9 @@ def iterative_3d_barrier_torch(
                 z0, z1, y0, y1, x0, x1 = _patch_bbox_3d(coords, pad, (D, H, W))
                 window_counts[(z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1)] += 1
                 Dp, Hp, Wp = z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1
-                is_interior = (z0 > 0 and z1 < D - 1 and
-                               y0 > 0 and y1 < H - 1 and
-                               x0 > 0 and x1 < W - 1)
+                is_interior = (
+                    z0 > 0 and z1 < D - 1 and y0 > 0 and y1 < H - 1 and x0 > 0 and x1 < W - 1
+                )
                 n_active_est = max(0, (Dp - 2) * (Hp - 2) * (Wp - 2))
                 if is_interior and n_active_est < 3000:
                     small_bboxes.append((z0, z1, y0, y1, x0, x1))
@@ -503,25 +580,59 @@ def iterative_3d_barrier_torch(
             for batch in _group_nonoverlapping_3d(small_bboxes, max_batch=32):
                 if len(batch) >= 2:
                     lam_steps, mu_steps = _optimize_batch_3d_torch(
-                        phi_full, batch, (D, H, W),
-                        threshold_f, margin, lam_schedule, mu_schedule,
-                        max_minimize_iter, device, dtype)
+                        phi_full,
+                        batch,
+                        (D, H, W),
+                        threshold_f,
+                        margin,
+                        lam_schedule,
+                        mu_schedule,
+                        max_minimize_iter,
+                        device,
+                        dtype,
+                    )
                     total_lam += lam_steps
                     total_mu += mu_steps
                 else:
                     (z0, z1, y0, y1, x0, x1) = batch[0]
                     lam_steps, mu_steps = _optimize_patch_3d_torch(
-                        phi_full, z0, z1, y0, y1, x0, x1, (D, H, W),
-                        threshold_f, margin, lam_schedule, mu_schedule,
-                        max_minimize_iter, device, dtype)
+                        phi_full,
+                        z0,
+                        z1,
+                        y0,
+                        y1,
+                        x0,
+                        x1,
+                        (D, H, W),
+                        threshold_f,
+                        margin,
+                        lam_schedule,
+                        mu_schedule,
+                        max_minimize_iter,
+                        device,
+                        dtype,
+                    )
                     total_lam += lam_steps
                     total_mu += mu_steps
 
-            for (z0, z1, y0, y1, x0, x1) in large_bboxes:
+            for z0, z1, y0, y1, x0, x1 in large_bboxes:
                 lam_steps, mu_steps = _optimize_patch_3d_torch(
-                    phi_full, z0, z1, y0, y1, x0, x1, (D, H, W),
-                    threshold_f, margin, lam_schedule, mu_schedule,
-                    max_minimize_iter, device, dtype)
+                    phi_full,
+                    z0,
+                    z1,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                    (D, H, W),
+                    threshold_f,
+                    margin,
+                    lam_schedule,
+                    mu_schedule,
+                    max_minimize_iter,
+                    device,
+                    dtype,
+                )
                 total_lam += lam_steps
                 total_mu += mu_steps
 
@@ -533,12 +644,17 @@ def iterative_3d_barrier_torch(
                 cur_neg = int((j <= 0).sum().item())
                 cur_min = float(j.min().item())
                 l2 = float(torch.linalg.norm(phi_full - phi_init).item())
-            num_neg_jac.append(cur_neg); min_jdet_list.append(cur_min); error_list.append(l2)
-            _log(verbose, 1,
-                 f"[iter {iteration+1}] comps={n_components:4d}  "
-                 f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
-                 f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                 f"L2={l2:.4f}  t={elapsed:.2f}s")
+            num_neg_jac.append(cur_neg)
+            min_jdet_list.append(cur_min)
+            error_list.append(l2)
+            _log(
+                verbose,
+                1,
+                f"[iter {iteration + 1}] comps={n_components:4d}  "
+                f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
+                f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                f"L2={l2:.4f}  t={elapsed:.2f}s",
+            )
             if cur_neg == 0 and cur_min >= threshold_f - err_tol_f:
                 break
 
@@ -559,10 +675,13 @@ def iterative_3d_barrier_torch(
             active_dof = active_vox.unsqueeze(0).expand(3, D, H, W).contiguous()
             active_vox_f = active_vox.to(dtype=dtype)
             phi_var_flat = phi_init.masked_select(active_dof).detach().clone().requires_grad_(True)
-            _log(verbose, 1,
-                 f"[active-set] radius={active_set_radius}  "
-                 f"active_vox={n_active:,}/{D*H*W:,} ({100.0*n_active/(D*H*W):.1f}%)  "
-                 f"LBFGS DOFs={phi_var_flat.numel():,}")
+            _log(
+                verbose,
+                1,
+                f"[active-set] radius={active_set_radius}  "
+                f"active_vox={n_active:,}/{D * H * W:,} ({100.0 * n_active / (D * H * W):.1f}%)  "
+                f"LBFGS DOFs={phi_var_flat.numel():,}",
+            )
 
             def _compose():
                 return phi_init.masked_scatter(active_dof, phi_var_flat)
@@ -609,22 +728,29 @@ def iterative_3d_barrier_torch(
                 num_neg_jac.append(cur_neg)
                 min_jdet_list.append(cur_min)
                 error_list.append(l2)
-                _log(verbose, 1,
-                     f"[penalty {k+1}/{len(lam_schedule)}] lam={lam:g}  "
-                     f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                     f"L2={l2:.4f}  t={elapsed:.2f}s")
+                _log(
+                    verbose,
+                    1,
+                    f"[penalty {k + 1}/{len(lam_schedule)}] lam={lam:g}  "
+                    f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                    f"L2={l2:.4f}  t={elapsed:.2f}s",
+                )
                 if cur_min >= target:
                     feasible = True
                     break
 
             if not feasible:
-                _log(verbose, 1,
-                     f"[penalty] did not reach feasibility (min_J={cur_min:+.6f} < {target}); "
-                     "skipping barrier phase")
+                _log(
+                    verbose,
+                    1,
+                    f"[penalty] did not reach feasibility (min_J={cur_min:+.6f} < {target}); "
+                    "skipping barrier phase",
+                )
 
             if feasible:
                 prev_l2 = None
                 for k, mu in enumerate(mu_schedule):
+
                     def closure_bar():
                         if phi_var_flat.grad is not None:
                             phi_var_flat.grad.zero_()
@@ -666,12 +792,15 @@ def iterative_3d_barrier_torch(
                     num_neg_jac.append(cur_neg)
                     min_jdet_list.append(cur_min)
                     error_list.append(l2)
-                    _log(verbose, 1,
-                         f"[barrier {k+1}/{len(mu_schedule)}] mu={mu:g}  "
-                         f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-                         f"L2={l2:.4f}  t={elapsed:.2f}s")
+                    _log(
+                        verbose,
+                        1,
+                        f"[barrier {k + 1}/{len(mu_schedule)}] mu={mu:g}  "
+                        f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+                        f"L2={l2:.4f}  t={elapsed:.2f}s",
+                    )
                     if prev_l2 is not None and abs(l2 - prev_l2) / max(prev_l2, 1e-9) < 1e-5:
-                        _log(verbose, 1, f"[barrier] L2 converged — early exit")
+                        _log(verbose, 1, "[barrier] L2 converged — early exit")
                         break
                     prev_l2 = l2
 
@@ -687,23 +816,41 @@ def iterative_3d_barrier_torch(
 
     phi_out = phi_var_final.detach().cpu().numpy()
 
-    _print_summary(verbose, f"Penalty->Barrier L-BFGS torch - 3D ({mode})",
-                   (D, H, W), len(iter_times),
-                   init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed_total)
+    _print_summary(
+        verbose,
+        f"Penalty->Barrier L-BFGS torch - 3D ({mode})",
+        (D, H, W),
+        len(iter_times),
+        init_neg,
+        final_neg,
+        init_min,
+        final_min,
+        final_err,
+        elapsed_total,
+    )
 
     if save_path is not None:
         _save_results(
-            save_path, method=f"penalty_barrier_lbfgs_torch_{mode}",
-            threshold=threshold_f, err_tol=err_tol_f,
+            save_path,
+            method=f"penalty_barrier_lbfgs_torch_{mode}",
+            threshold=threshold_f,
+            err_tol=err_tol_f,
             max_iterations=len(iter_times),
-            max_per_index_iter=0, max_minimize_iter=max_minimize_iter,
-            grid_shape=(D, H, W), elapsed=elapsed_total,
-            final_err=final_err, init_neg=init_neg, final_neg=final_neg,
-            init_min=init_min, final_min=final_min,
-            iteration=len(iter_times), phi=phi_out,
-            error_list=error_list, num_neg_jac=num_neg_jac,
-            iter_times=iter_times, min_jdet_list=min_jdet_list,
+            max_per_index_iter=0,
+            max_minimize_iter=max_minimize_iter,
+            grid_shape=(D, H, W),
+            elapsed=elapsed_total,
+            final_err=final_err,
+            init_neg=init_neg,
+            final_neg=final_neg,
+            init_min=init_min,
+            final_min=final_min,
+            iteration=len(iter_times),
+            phi=phi_out,
+            error_list=error_list,
+            num_neg_jac=num_neg_jac,
+            iter_times=iter_times,
+            min_jdet_list=min_jdet_list,
             window_counts=window_counts,
         )
 

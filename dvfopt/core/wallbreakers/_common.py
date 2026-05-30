@@ -3,12 +3,15 @@
 Used by both ``_harmonic_polished`` (m10) and ``_refine_repair`` (m14)
 so the two pipelines stay consistent in their objective math.
 """
+
 from __future__ import annotations
 
 import numpy as np
 
 from dvfopt.core.tri_primitives import (
     tri_areas_flat as _tri_areas_flat,
+)
+from dvfopt.core.tri_primitives import (
     tri_grad_T_v as _tri_grad_T_v,
 )
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
@@ -20,8 +23,7 @@ def min_tri(phi: np.ndarray) -> float:
     return float(np.minimum(T1, T2).min())
 
 
-def barrier_anchored_objective(phi_flat, phi_in_flat, H, W,
-                                threshold, mu, anchor, eps_l1=1e-4):
+def barrier_anchored_objective(phi_flat, phi_in_flat, H, W, threshold, mu, anchor, eps_l1=1e-4):
     """L-BFGS-B objective: anchor(phi - phi_in) - mu * sum log(T - threshold).
 
     Returns ``(value, gradient)``. Returns ``(+inf, gradient)`` when the

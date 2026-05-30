@@ -47,9 +47,17 @@ def _annotate_jdet_values(ax, jac_2d, max_dim=25):
             t = float(np.clip(val, 0, 1))  # 1 = safe, 0 = threshold
             alpha = 1.0 - 0.5 * t * t
             fontsize = base_fontsize * (1.0 + 0.25 * (1.0 - t * t))
-            ax.text(col, row, f"{val:.2f}", ha="center", va="center",
-                    fontsize=fontsize, color=color, alpha=alpha,
-                    fontweight=weight)
+            ax.text(
+                col,
+                row,
+                f"{val:.2f}",
+                ha="center",
+                va="center",
+                fontsize=fontsize,
+                color=color,
+                alpha=alpha,
+                fontweight=weight,
+            )
 
 
 def _annotate_neg_contour(ax, jac_2d, threshold=0.0):
@@ -74,8 +82,9 @@ def _annotate_neg_contour(ax, jac_2d, threshold=0.0):
     ys = np.linspace(-1.25, ph - 1.75, 2 * ph)
     xs = np.linspace(-1.25, pw - 1.75, 2 * pw)
     X, Y = np.meshgrid(xs, ys)
-    ax.contour(X, Y, mask_up, levels=[0.5], colors=NEG_CONTOUR_COLOR,
-               linewidths=2.0, linestyles="-")
+    ax.contour(
+        X, Y, mask_up, levels=[0.5], colors=NEG_CONTOUR_COLOR, linewidths=2.0, linestyles="-"
+    )
     # Restore axis limits
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)

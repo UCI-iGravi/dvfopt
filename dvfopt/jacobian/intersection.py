@@ -2,10 +2,10 @@
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Segment intersection primitives
 # ---------------------------------------------------------------------------
+
 
 def _cross2d(ox, oy, ax, ay, bx, by):
     """Signed 2-D cross product of vectors (o→a) and (o→b)."""
@@ -22,10 +22,10 @@ def _segs_cross(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y):
     d2 = _cross2d(p3x, p3y, p4x, p4y, p2x, p2y)
     d3 = _cross2d(p1x, p1y, p2x, p2y, p3x, p3y)
     d4 = _cross2d(p1x, p1y, p2x, p2y, p4x, p4y)
-    if ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and \
-       ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0)):
-        return True
-    return False
+    return bool(
+        ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0))
+        and ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0))
+    )
 
 
 def _quads_intersect(corners_a, corners_b):
@@ -53,6 +53,7 @@ def _quads_intersect(corners_a, corners_b):
 # Main public function
 # ---------------------------------------------------------------------------
 
+
 def has_quad_self_intersections(phi):
     """Return True if any two non-adjacent deformed quad cells intersect.
 
@@ -78,16 +79,20 @@ def has_quad_self_intersections(phi):
         return False
 
     # Deformed coordinates
-    rows = np.arange(H, dtype=float)[:, None]   # (H,1)
-    cols = np.arange(W, dtype=float)[None, :]   # (1,W)
-    Y = rows + dy   # (H, W)
-    X = cols + dx   # (H, W)
+    rows = np.arange(H, dtype=float)[:, None]  # (H,1)
+    cols = np.arange(W, dtype=float)[None, :]  # (1,W)
+    Y = rows + dy  # (H, W)
+    X = cols + dx  # (H, W)
 
     # Per-quad AABB: corners TL(r,c), TR(r,c+1), BR(r+1,c+1), BL(r+1,c)
-    y_tl = Y[:-1, :-1]; x_tl = X[:-1, :-1]
-    y_tr = Y[:-1, 1:];  x_tr = X[:-1, 1:]
-    y_br = Y[1:,  1:];  x_br = X[1:,  1:]
-    y_bl = Y[1:,  :-1]; x_bl = X[1:,  :-1]
+    y_tl = Y[:-1, :-1]
+    x_tl = X[:-1, :-1]
+    y_tr = Y[:-1, 1:]
+    x_tr = X[:-1, 1:]
+    y_br = Y[1:, 1:]
+    x_br = X[1:, 1:]
+    y_bl = Y[1:, :-1]
+    x_bl = X[1:, :-1]
 
     aabb_ymin = np.minimum(np.minimum(y_tl, y_tr), np.minimum(y_bl, y_br))  # (nr,nc)
     aabb_ymax = np.maximum(np.maximum(y_tl, y_tr), np.maximum(y_bl, y_br))
@@ -100,12 +105,15 @@ def has_quad_self_intersections(phi):
     n_quads = nr * nc
 
     # Build flat corner arrays  shape (n_quads, 4, 2)
-    corners = np.stack([
-        np.stack([y_tl.ravel(), x_tl.ravel()], axis=1),
-        np.stack([y_tr.ravel(), x_tr.ravel()], axis=1),
-        np.stack([y_br.ravel(), x_br.ravel()], axis=1),
-        np.stack([y_bl.ravel(), x_bl.ravel()], axis=1),
-    ], axis=1)   # (n_quads, 4, 2)
+    corners = np.stack(
+        [
+            np.stack([y_tl.ravel(), x_tl.ravel()], axis=1),
+            np.stack([y_tr.ravel(), x_tr.ravel()], axis=1),
+            np.stack([y_br.ravel(), x_br.ravel()], axis=1),
+            np.stack([y_bl.ravel(), x_bl.ravel()], axis=1),
+        ],
+        axis=1,
+    )  # (n_quads, 4, 2)
 
     ymin_flat = aabb_ymin.ravel()
     ymax_flat = aabb_ymax.ravel()
@@ -120,8 +128,12 @@ def has_quad_self_intersections(phi):
             if abs(ri - rj) <= 1 and abs(ci - cj) <= 1:
                 continue
             # AABB overlap test
-            if (ymin_flat[i] > ymax_flat[j] or ymax_flat[i] < ymin_flat[j]
-                    or xmin_flat[i] > xmax_flat[j] or xmax_flat[i] < xmin_flat[j]):
+            if (
+                ymin_flat[i] > ymax_flat[j]
+                or ymax_flat[i] < ymin_flat[j]
+                or xmin_flat[i] > xmax_flat[j]
+                or xmax_flat[i] < xmin_flat[j]
+            ):
                 continue
             # Full edge-edge test
             if _quads_intersect(corners[i], corners[j]):

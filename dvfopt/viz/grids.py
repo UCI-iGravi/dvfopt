@@ -2,21 +2,19 @@
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-from matplotlib.cm import ScalarMappable
 import numpy as np
+from matplotlib.cm import ScalarMappable
+from matplotlib.patches import Polygon
 from scipy.ndimage import map_coordinates
 
-from dvfopt.jacobian import jacobian_det2D
 import dvfopt.jacobian.sitk_jdet as _sitk
-from dvfopt.viz._style import CMAP
+from dvfopt.jacobian import jacobian_det2D
 
 
 # ---------------------------------------------------------------------------
 # Shared cell-polygon rendering
 # ---------------------------------------------------------------------------
-def _draw_jdet_cell_polygons(ax, def_x, def_y, jac, *,
-                              cmap, norm, spacing=1, linewidth=0.5):
+def _draw_jdet_cell_polygons(ax, def_x, def_y, jac, *, cmap, norm, spacing=1, linewidth=0.5):
     """Add one matplotlib Polygon per cell, coloured by ``jac[i, j]``.
 
     Cells with non-positive Jdet are drawn opaque with a yellow border
@@ -31,28 +29,37 @@ def _draw_jdet_cell_polygons(ax, def_x, def_y, jac, *,
         for j in range(0, W - spacing, spacing):
             ci = [i, i, i + spacing, i + spacing]
             cj = [j, j + spacing, j + spacing, j]
-            corners = [(def_x[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)],
-                        def_y[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)])
-                       for r, c in zip(ci, cj)]
+            corners = [
+                (
+                    def_x[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)],
+                    def_y[np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)],
+                )
+                for r, c in zip(ci, cj)
+            ]
             jval = jac[i, j]
             fc = cmap(norm(jval))
             if jval <= 0:
-                poly = Polygon(corners, closed=True,
-                               facecolor=fc, edgecolor="yellow",
-                               linewidth=max(linewidth * 3, 1.5),
-                               zorder=2)
+                poly = Polygon(
+                    corners,
+                    closed=True,
+                    facecolor=fc,
+                    edgecolor="yellow",
+                    linewidth=max(linewidth * 3, 1.5),
+                    zorder=2,
+                )
             else:
-                poly = Polygon(corners, closed=True,
-                               facecolor=(*fc[:3], 0.25),
-                               edgecolor="none", zorder=0)
+                poly = Polygon(
+                    corners, closed=True, facecolor=(*fc[:3], 0.25), edgecolor="none", zorder=0
+                )
             ax.add_patch(poly)
 
 
 # ---------------------------------------------------------------------------
 # Simple deformed-grid plots
 # ---------------------------------------------------------------------------
-def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
-                             title="2D Deformation Grid", highlight_point=None):
+def plot_2d_deformation_grid(
+    deformation, spacing=1, xlim=None, ylim=None, title="2D Deformation Grid", highlight_point=None
+):
     """Visualise a ``(3, 1, Y, X)`` deformation as a deformed grid.
 
     Parameters
@@ -71,7 +78,7 @@ def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
     new_y = y_coords + dy[y_coords, x_coords]
     new_x = x_coords + dx[y_coords, x_coords]
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    _fig, ax = plt.subplots(figsize=(8, 8))
     for i in range(y_coords.shape[0]):
         ax.plot(new_x[i, :], new_y[i, :], "r-")
     for j in range(x_coords.shape[1]):
@@ -89,7 +96,7 @@ def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
         ax.scatter(cx + dx[cy, cx], cy + dy[cy, cx], color="blue", zorder=5)
         if len(pts) == 4:
             xs, ys = zip(*pts)
-            ax.plot(xs + (xs[0],), ys + (ys[0],), color="black", linewidth=1.5)
+            ax.plot((*xs, xs[0]), (*ys, ys[0]), color="black", linewidth=1.5)
 
     ax.invert_yaxis()
     ax.set_aspect("equal")
@@ -102,8 +109,9 @@ def plot_2d_deformation_grid(deformation, spacing=1, xlim=None, ylim=None,
     plt.show()
 
 
-def plot_deformed_quads(deformation, center_y, center_x, spacing=1,
-                        patch_size=20, title="Deformed Quadrilateral Mesh"):
+def plot_deformed_quads(
+    deformation, center_y, center_x, spacing=1, patch_size=20, title="Deformed Quadrilateral Mesh"
+):
     """Plot a zoomed-in deformed quadrilateral mesh.
 
     Parameters
@@ -122,14 +130,14 @@ def plot_deformed_quads(deformation, center_y, center_x, spacing=1,
     x0 = max(center_x - patch_size // 2, 0)
     x1 = min(center_x + patch_size // 2, W - spacing - 1)
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+    _fig, ax = plt.subplots(figsize=(6, 6))
     for i in range(y0, y1, spacing):
         for j in range(x0, x1, spacing):
-            corners = [(j, i), (j + spacing, i),
-                       (j + spacing, i + spacing), (j, i + spacing)]
+            corners = [(j, i), (j + spacing, i), (j + spacing, i + spacing), (j, i + spacing)]
             deformed = [(x + dx[y, x], y + dy[y, x]) for x, y in corners]
-            poly = Polygon(deformed, closed=True, edgecolor="red",
-                           facecolor="lightgray", linewidth=0.8)
+            poly = Polygon(
+                deformed, closed=True, edgecolor="red", facecolor="lightgray", linewidth=0.8
+            )
             ax.add_patch(poly)
 
     ax.set_xlim(x0, x1 + spacing)
@@ -140,8 +148,9 @@ def plot_deformed_quads(deformation, center_y, center_x, spacing=1,
     plt.show()
 
 
-def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
-                                patch_size=20, cmap="bwr"):
+def plot_deformed_quads_colored(
+    deformation, center_y, center_x, spacing=1, patch_size=20, cmap="bwr"
+):
     """Plot a zoomed quad mesh coloured by Jacobian determinant.
 
     Negative-Jdet quads are outlined in yellow.
@@ -151,9 +160,7 @@ def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
     dx = deformation[2, 0]
 
     J = np.squeeze(_sitk.sitk_jacobian_determinant(deformation))
-    norm = mcolors.TwoSlopeNorm(
-        vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3)
-    )
+    norm = mcolors.TwoSlopeNorm(vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3))
     colormap = plt.get_cmap(cmap)
 
     y0 = max(center_y - patch_size // 2, 0)
@@ -164,14 +171,14 @@ def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
     fig, ax = plt.subplots(figsize=(6, 6))
     for i in range(y0, y1, spacing):
         for j in range(x0, x1, spacing):
-            corners = [(j, i), (j + spacing, i),
-                       (j + spacing, i + spacing), (j, i + spacing)]
+            corners = [(j, i), (j + spacing, i), (j + spacing, i + spacing), (j, i + spacing)]
             deformed = [(x + dx[y, x], y + dy[y, x]) for x, y in corners]
 
             ec = "yellow" if J[i, j] < 0 else "black"
             lw = 2.0 if J[i, j] < 0 else 0.5
-            poly = Polygon(deformed, closed=True, edgecolor=ec,
-                           facecolor=colormap(norm(J[i, j])), linewidth=lw)
+            poly = Polygon(
+                deformed, closed=True, edgecolor=ec, facecolor=colormap(norm(J[i, j])), linewidth=lw
+            )
             ax.add_patch(poly)
 
     ax.set_xlim(x0, x1 + spacing)
@@ -179,9 +186,9 @@ def plot_deformed_quads_colored(deformation, center_y, center_x, spacing=1,
     ax.set_title("Deformed Mesh (coloured by Jacobian)")
     sm = ScalarMappable(cmap=colormap, norm=norm)
     sm.set_array([])
-    plt.colorbar(sm, ax=ax, label="Jacobian Determinant")
-    plt.tight_layout()
-    plt.show()
+    # Use the fig+ax form (rather than plt.colorbar without ax) so the
+    # call is compatible with the theme's constrained_layout=True.
+    fig.colorbar(sm, ax=ax, label="Jacobian Determinant")
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +211,8 @@ def _invert_displacement(dy, dx, iterations=50):
         sample_y = np.clip(yy + inv_dy, 0, H - 1)
         sample_x = np.clip(xx + inv_dx, 0, W - 1)
 
-        sampled_dy = map_coordinates(dy, [sample_y, sample_x],
-                                     order=1, mode='nearest')
-        sampled_dx = map_coordinates(dx, [sample_y, sample_x],
-                                     order=1, mode='nearest')
+        sampled_dy = map_coordinates(dy, [sample_y, sample_x], order=1, mode='nearest')
+        sampled_dx = map_coordinates(dx, [sample_y, sample_x], order=1, mode='nearest')
 
         inv_dy = -sampled_dy
         inv_dx = -sampled_dx
@@ -218,9 +223,17 @@ def _invert_displacement(dy, dx, iterations=50):
 # ---------------------------------------------------------------------------
 # Single deformation grid (Jdet-coloured)
 # ---------------------------------------------------------------------------
-def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
-              linewidth=0.5, inverse=False, jdet_vmax=None,
-              jac_override=None, ax=None):
+def plot_grid(
+    deformation,
+    title="",
+    figsize=(7, 6),
+    spacing=1,
+    linewidth=0.5,
+    inverse=False,
+    jdet_vmax=None,
+    jac_override=None,
+    ax=None,
+):
     """Plot a single deformation grid coloured by Jacobian determinant.
 
     Single-panel counterpart to :func:`plot_grid_before_after` — same
@@ -259,11 +272,9 @@ def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
         yy, xx = np.mgrid[0:H, 0:W].astype(float)
         preimg_y = np.clip(yy + inv_dy, 0, H - 1)
         preimg_x = np.clip(xx + inv_dx, 0, W - 1)
-        jac_fwd_at_preimg = map_coordinates(
-            jac_fwd, [preimg_y, preimg_x], order=1, mode='nearest')
+        jac_fwd_at_preimg = map_coordinates(jac_fwd, [preimg_y, preimg_x], order=1, mode='nearest')
         with np.errstate(divide='ignore', invalid='ignore'):
-            jac = np.where(np.abs(jac_fwd_at_preimg) > 1e-10,
-                           1.0 / jac_fwd_at_preimg, 0.0)
+            jac = np.where(np.abs(jac_fwd_at_preimg) > 1e-10, 1.0 / jac_fwd_at_preimg, 0.0)
     else:
         phi_view = phi_init
         if jac_override is not None:
@@ -296,8 +307,9 @@ def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
     def_x = xx + dx
     def_y = yy + dy
 
-    _draw_jdet_cell_polygons(ax, def_x, def_y, jac, cmap=cmap, norm=norm,
-                              spacing=spacing, linewidth=linewidth)
+    _draw_jdet_cell_polygons(
+        ax, def_x, def_y, jac, cmap=cmap, norm=norm, spacing=spacing, linewidth=linewidth
+    )
 
     row_indices = list(range(0, H, spacing))
     if (H - 1) not in row_indices:
@@ -307,11 +319,9 @@ def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
         col_indices.append(W - 1)
 
     for i in row_indices:
-        ax.plot(def_x[i, col_indices], def_y[i, col_indices], 'k-',
-                linewidth=linewidth, zorder=1)
+        ax.plot(def_x[i, col_indices], def_y[i, col_indices], 'k-', linewidth=linewidth, zorder=1)
     for j in col_indices:
-        ax.plot(def_x[row_indices, j], def_y[row_indices, j], 'k-',
-                linewidth=linewidth, zorder=1)
+        ax.plot(def_x[row_indices, j], def_y[row_indices, j], 'k-', linewidth=linewidth, zorder=1)
 
     pad = max(W, H) * 0.03
     ax.set_xlim(def_x.min() - pad, def_x.max() + pad)
@@ -331,10 +341,18 @@ def plot_grid(deformation, title="", figsize=(7, 6), spacing=1,
 # ---------------------------------------------------------------------------
 # Before / after deformation grid comparison
 # ---------------------------------------------------------------------------
-def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
-                           title="", spacing=1, linewidth=0.5,
-                           inverse=False, jdet_vmax=None,
-                           jac_init_override=None, jac_corr_override=None):
+def plot_grid_before_after(
+    deformation_i,
+    phi_corrected,
+    figsize=(14, 6),
+    title="",
+    spacing=1,
+    linewidth=0.5,
+    inverse=False,
+    jdet_vmax=None,
+    jac_init_override=None,
+    jac_corr_override=None,
+):
     """Side-by-side deformation grids coloured by Jacobian determinant.
 
     Parameters
@@ -380,20 +398,18 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
         preimg_y = np.clip(yy + inv_init_dy, 0, H - 1)
         preimg_x = np.clip(xx + inv_init_dx, 0, W - 1)
         jac_fwd_at_preimg = map_coordinates(
-            jac_fwd_init, [preimg_y, preimg_x], order=1, mode='nearest')
+            jac_fwd_init, [preimg_y, preimg_x], order=1, mode='nearest'
+        )
         with np.errstate(divide='ignore', invalid='ignore'):
-            jac_init = np.where(
-                np.abs(jac_fwd_at_preimg) > 1e-10,
-                1.0 / jac_fwd_at_preimg, 0.0)
+            jac_init = np.where(np.abs(jac_fwd_at_preimg) > 1e-10, 1.0 / jac_fwd_at_preimg, 0.0)
 
         preimg_y = np.clip(yy + inv_corr_dy, 0, H - 1)
         preimg_x = np.clip(xx + inv_corr_dx, 0, W - 1)
         jac_fwd_at_preimg = map_coordinates(
-            jac_fwd_corr, [preimg_y, preimg_x], order=1, mode='nearest')
+            jac_fwd_corr, [preimg_y, preimg_x], order=1, mode='nearest'
+        )
         with np.errstate(divide='ignore', invalid='ignore'):
-            jac_corr = np.where(
-                np.abs(jac_fwd_at_preimg) > 1e-10,
-                1.0 / jac_fwd_at_preimg, 0.0)
+            jac_corr = np.where(np.abs(jac_fwd_at_preimg) > 1e-10, 1.0 / jac_fwd_at_preimg, 0.0)
     else:
         phi_init_view = phi_init
         phi_corr_view = phi_corrected
@@ -425,7 +441,12 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
 
     for ax, phi, jac, label in [
         (axes[0], phi_init_view, jac_init, f"Initial — {direction} field (neg Jdet = {init_neg})"),
-        (axes[1], phi_corr_view, jac_corr, f"Corrected — {direction} field (neg Jdet = {corr_neg})"),
+        (
+            axes[1],
+            phi_corr_view,
+            jac_corr,
+            f"Corrected — {direction} field (neg Jdet = {corr_neg})",
+        ),
     ]:
         dy = phi[0]
         dx = phi[1]
@@ -436,8 +457,9 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
         def_y = yy + dy
 
         # Layer 1: light Jdet-coloured cell fills
-        _draw_jdet_cell_polygons(ax, def_x, def_y, jac, cmap=cmap, norm=norm,
-                                  spacing=spacing, linewidth=linewidth)
+        _draw_jdet_cell_polygons(
+            ax, def_x, def_y, jac, cmap=cmap, norm=norm, spacing=spacing, linewidth=linewidth
+        )
 
         # Layer 2: wireframe grid lines
         row_indices = list(range(0, H, spacing))
@@ -448,11 +470,13 @@ def plot_grid_before_after(deformation_i, phi_corrected, figsize=(14, 6),
             col_indices.append(W - 1)
 
         for i in row_indices:
-            ax.plot(def_x[i, col_indices], def_y[i, col_indices], 'k-',
-                    linewidth=linewidth, zorder=1)
+            ax.plot(
+                def_x[i, col_indices], def_y[i, col_indices], 'k-', linewidth=linewidth, zorder=1
+            )
         for j in col_indices:
-            ax.plot(def_x[row_indices, j], def_y[row_indices, j], 'k-',
-                    linewidth=linewidth, zorder=1)
+            ax.plot(
+                def_x[row_indices, j], def_y[row_indices, j], 'k-', linewidth=linewidth, zorder=1
+            )
 
         pad = max(W, H) * 0.03
         ax.set_xlim(def_x.min() - pad, def_x.max() + pad)

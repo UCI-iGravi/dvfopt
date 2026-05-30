@@ -18,10 +18,10 @@ import numpy as np
 from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core.solver import _setup_accumulators, _print_summary, _save_results
-from dvfopt.core.solver3d import _init_phi_3d, _update_metrics_3d
-from dvfopt.core.barrier_objective import jdet_full, _jdet_grad_T_v
 from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
+from dvfopt.core.barrier_objective import _jdet_grad_T_v, jdet_full
+from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
+from dvfopt.core.solver3d import _init_phi_3d, _update_metrics_3d
 
 
 def _pack_phi(phi):
@@ -35,8 +35,8 @@ def _unpack_phi(phi_flat, grid_size, out=None):
     if out is None:
         out = np.empty((3, D, H, W), dtype=phi_flat.dtype)
     out[2] = phi_flat[:n].reshape(D, H, W)
-    out[1] = phi_flat[n:2 * n].reshape(D, H, W)
-    out[0] = phi_flat[2 * n:].reshape(D, H, W)
+    out[1] = phi_flat[n : 2 * n].reshape(D, H, W)
+    out[0] = phi_flat[2 * n :].reshape(D, H, W)
     return out
 
 
@@ -62,12 +62,18 @@ def _patch_frozen_mask(z0, z1, y0, y1, x0, x1, grid_shape):
     D, H, W = grid_shape
     Dp, Hp, Wp = z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1
     mask = np.zeros((Dp, Hp, Wp), dtype=bool)
-    if z0 > 0:     mask[0, :, :] = True
-    if z1 < D - 1: mask[-1, :, :] = True
-    if y0 > 0:     mask[:, 0, :] = True
-    if y1 < H - 1: mask[:, -1, :] = True
-    if x0 > 0:     mask[:, :, 0] = True
-    if x1 < W - 1: mask[:, :, -1] = True
+    if z0 > 0:
+        mask[0, :, :] = True
+    if z1 < D - 1:
+        mask[-1, :, :] = True
+    if y0 > 0:
+        mask[:, 0, :] = True
+    if y1 < H - 1:
+        mask[:, -1, :] = True
+    if x0 > 0:
+        mask[:, :, 0] = True
+    if x1 < W - 1:
+        mask[:, :, -1] = True
     return mask
 
 
@@ -85,16 +91,30 @@ def _patch_bounds(phi_flat_patch, frozen_mask):
     return bounds
 
 
-def _optimize_patch(phi, phi_init, z0, z1, y0, y1, x0, x1, grid_shape,
-                    threshold, margin, lam_schedule, mu_schedule,
-                    max_minimize_iter, verbose):
+def _optimize_patch(
+    phi,
+    phi_init,
+    z0,
+    z1,
+    y0,
+    y1,
+    x0,
+    x1,
+    grid_shape,
+    threshold,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    verbose,
+):
     """Run penalty -> barrier continuation on a single patch.
 
     Anchors the data term to the *current* patch state (not the original
     phi_init), mirroring SLSQP's windowed sub-solve.  Mutates *phi* in
     place. Returns ``(patch_elapsed, lam_steps, mu_steps, patch_final_min)``.
     """
-    phi_patch = phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1].copy()
+    phi_patch = phi[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].copy()
     Dp, Hp, Wp = phi_patch.shape[1:]
     patch_size = (Dp, Hp, Wp)
 
@@ -113,13 +133,17 @@ def _optimize_patch(phi, phi_init, z0, z1, y0, y1, x0, x1, grid_shape,
 
     t_start = time.time()
     phi_flat, info = run_penalty_barrier_lbfgs(
-        phi_flat, phi_anchor,
+        phi_flat,
+        phi_anchor,
         constraint_values=lambda p: jdet_full(p, patch_size),
         constraint_adjoint=lambda p, v: _jdet_grad_T_v(p, patch_size, v),
-        threshold=threshold, margin=margin,
-        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        threshold=threshold,
+        margin=margin,
+        lam_schedule=lam_schedule,
+        mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
-        active_mask=active_mask, bounds=bounds,
+        active_mask=active_mask,
+        bounds=bounds,
         anchor='l2',
         verbose=max(0, verbose - 2),  # core's verbose=1 is per-step; suppress unless very chatty
     )
@@ -128,17 +152,30 @@ def _optimize_patch(phi, phi_init, z0, z1, y0, y1, x0, x1, grid_shape,
 
     # Write patch back into full phi.
     _unpack_phi(phi_flat, patch_size, out=phi_patch)
-    phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = phi_patch
+    phi[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = phi_patch
 
     j_final = jdet_full(phi_flat, patch_size)
-    return (time.time() - t_start, lam_steps, mu_steps,
-            float(j_final[active_mask].min()))
+    return (time.time() - t_start, lam_steps, mu_steps, float(j_final[active_mask].min()))
 
 
 def _iterative_3d_barrier_windowed(
-    phi, phi_init, phi_init_flat, grid_size, threshold, err_tol, margin,
-    lam_schedule, mu_schedule, max_minimize_iter, max_iterations,
-    pad, verbose, error_list, num_neg_jac, iter_times, min_jdet_list,
+    phi,
+    phi_init,
+    phi_init_flat,
+    grid_size,
+    threshold,
+    err_tol,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    max_iterations,
+    pad,
+    verbose,
+    error_list,
+    num_neg_jac,
+    iter_times,
+    min_jdet_list,
     window_counts,
 ):
     """Windowed penalty->barrier loop. Mutates phi & accumulators in place."""
@@ -152,8 +189,7 @@ def _iterative_3d_barrier_windowed(
         j = jdet_full(_pack_phi(phi), grid_size).reshape(D, H, W)
         neg_mask = j <= threshold - err_tol
         if not neg_mask.any():
-            _log(verbose, 1,
-                 f"[iter {iteration+1}] No neg-Jdet voxels remain — exiting")
+            _log(verbose, 1, f"[iter {iteration + 1}] No neg-Jdet voxels remain — exiting")
             converged = True
             break
 
@@ -170,16 +206,32 @@ def _iterative_3d_barrier_windowed(
             window_counts[(z1 - z0 + 1, y1 - y0 + 1, x1 - x0 + 1)] += 1
 
             _, lam_steps, mu_steps, patch_min = _optimize_patch(
-                phi, phi_init, z0, z1, y0, y1, x0, x1, (D, H, W),
-                threshold, margin, lam_schedule, mu_schedule,
-                max_minimize_iter, verbose)
+                phi,
+                phi_init,
+                z0,
+                z1,
+                y0,
+                y1,
+                x0,
+                x1,
+                (D, H, W),
+                threshold,
+                margin,
+                lam_schedule,
+                mu_schedule,
+                max_minimize_iter,
+                verbose,
+            )
             total_lam += lam_steps
             total_mu += mu_steps
 
-            _log(verbose, 2,
-                 f"  [comp {comp_id}/{n_components}] "
-                 f"patch={z1-z0+1}x{y1-y0+1}x{x1-x0+1}  "
-                 f"lam={lam_steps} mu={mu_steps}  patch_min={patch_min:+.4f}")
+            _log(
+                verbose,
+                2,
+                f"  [comp {comp_id}/{n_components}] "
+                f"patch={z1 - z0 + 1}x{y1 - y0 + 1}x{x1 - x0 + 1}  "
+                f"lam={lam_steps} mu={mu_steps}  patch_min={patch_min:+.4f}",
+            )
 
         elapsed = time.time() - t0
         iter_times.append(elapsed)
@@ -192,45 +244,69 @@ def _iterative_3d_barrier_windowed(
         num_neg_jac.append(cur_neg)
         min_jdet_list.append(cur_min)
         error_list.append(l2)
-        _log(verbose, 1,
-             f"[iter {iteration+1}] comps={n_components:4d}  "
-             f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
-             f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
-             f"L2={l2:.4f}  t={elapsed:.2f}s")
+        _log(
+            verbose,
+            1,
+            f"[iter {iteration + 1}] comps={n_components:4d}  "
+            f"lam_steps={total_lam:3d} mu_steps={total_mu:3d}  "
+            f"neg={cur_neg:5d}  min_J={cur_min:+.6f}  "
+            f"L2={l2:.4f}  t={elapsed:.2f}s",
+        )
 
         if cur_neg == 0 and cur_min >= threshold - err_tol:
             converged = True
             break
 
     if not converged:
-        _log(verbose, 1,
-             f"[done] max_iterations={max_iterations} reached without "
-             f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})")
+        _log(
+            verbose,
+            1,
+            f"[done] max_iterations={max_iterations} reached without "
+            f"clearing all folds (neg={cur_neg}, min_J={cur_min:+.6f})",
+        )
 
 
 def _iterative_3d_barrier_fullgrid(
-    phi, phi_init, phi_init_flat, grid_size, threshold, margin,
-    lam_schedule, mu_schedule, max_minimize_iter,
-    verbose, error_list, num_neg_jac, iter_times, min_jdet_list,
+    phi,
+    phi_init,
+    phi_init_flat,
+    grid_size,
+    threshold,
+    margin,
+    lam_schedule,
+    mu_schedule,
+    max_minimize_iter,
+    verbose,
+    error_list,
+    num_neg_jac,
+    iter_times,
+    min_jdet_list,
 ):
     """Original full-grid penalty->barrier loop. Mutates phi & accumulators."""
     phi_flat = _pack_phi(phi)
     phi_flat, info = run_penalty_barrier_lbfgs(
-        phi_flat, phi_init_flat,
+        phi_flat,
+        phi_init_flat,
         constraint_values=lambda p: jdet_full(p, grid_size),
         constraint_adjoint=lambda p, v: _jdet_grad_T_v(p, grid_size, v),
-        threshold=threshold, margin=margin,
-        lam_schedule=lam_schedule, mu_schedule=mu_schedule,
+        threshold=threshold,
+        margin=margin,
+        lam_schedule=lam_schedule,
+        mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
         anchor='l2',
-        verbose=verbose, record_history=True,
+        verbose=verbose,
+        record_history=True,
     )
     if not info['feasible']:
         T_end = jdet_full(phi_flat, grid_size)
-        _log(verbose, 1,
-             f"[penalty] did not reach feasibility "
-             f"(min_J={float(T_end.min()):+.6f} < {threshold + margin}); "
-             "skipping barrier phase")
+        _log(
+            verbose,
+            1,
+            f"[penalty] did not reach feasibility "
+            f"(min_J={float(T_end.min()):+.6f} < {threshold + margin}); "
+            "skipping barrier phase",
+        )
     for step in info['history']:
         num_neg_jac.append(step['n_neg'])
         min_jdet_list.append(step['min_T'])
@@ -310,25 +386,50 @@ def iterative_3d_barrier(
 
     _, init_neg, init_min = _update_metrics_3d(phi, phi_init, num_neg_jac, min_jdet_list)
     mode = "windowed" if windowed else "full-grid"
-    _log(verbose, 1,
-         f"[init] Grid {D}x{H}x{W}  threshold={threshold}  margin={margin}  "
-         f"mode={mode}")
+    _log(
+        verbose, 1, f"[init] Grid {D}x{H}x{W}  threshold={threshold}  margin={margin}  mode={mode}"
+    )
     _log(verbose, 1, f"[init] Neg-Jdet voxels: {init_neg}  min Jdet: {init_min:.6f}")
 
     phi_init_flat = _pack_phi(phi_init)
 
     if windowed:
         _iterative_3d_barrier_windowed(
-            phi, phi_init, phi_init_flat, grid_size, threshold, err_tol, margin,
-            lam_schedule, mu_schedule, max_minimize_iter, max_iterations,
-            pad, verbose, error_list, num_neg_jac, iter_times, min_jdet_list,
+            phi,
+            phi_init,
+            phi_init_flat,
+            grid_size,
+            threshold,
+            err_tol,
+            margin,
+            lam_schedule,
+            mu_schedule,
+            max_minimize_iter,
+            max_iterations,
+            pad,
+            verbose,
+            error_list,
+            num_neg_jac,
+            iter_times,
+            min_jdet_list,
             window_counts,
         )
     else:
         _iterative_3d_barrier_fullgrid(
-            phi, phi_init, phi_init_flat, grid_size, threshold, margin,
-            lam_schedule, mu_schedule, max_minimize_iter,
-            verbose, error_list, num_neg_jac, iter_times, min_jdet_list,
+            phi,
+            phi_init,
+            phi_init_flat,
+            grid_size,
+            threshold,
+            margin,
+            lam_schedule,
+            mu_schedule,
+            max_minimize_iter,
+            verbose,
+            error_list,
+            num_neg_jac,
+            iter_times,
+            min_jdet_list,
         )
 
     elapsed_total = time.time() - start_time
@@ -339,23 +440,41 @@ def iterative_3d_barrier(
     final_min = float(j_final.min())
     final_err = float(np.linalg.norm(phi_final_flat - phi_init_flat))
 
-    _print_summary(verbose, f"Penalty->Barrier L-BFGS-B - 3D ({mode})",
-                   (D, H, W), len(iter_times),
-                   init_neg, final_neg, init_min, final_min,
-                   final_err, elapsed_total)
+    _print_summary(
+        verbose,
+        f"Penalty->Barrier L-BFGS-B - 3D ({mode})",
+        (D, H, W),
+        len(iter_times),
+        init_neg,
+        final_neg,
+        init_min,
+        final_min,
+        final_err,
+        elapsed_total,
+    )
 
     if save_path is not None:
         _save_results(
-            save_path, method=f"penalty_barrier_lbfgsb_{mode}",
-            threshold=threshold, err_tol=err_tol,
+            save_path,
+            method=f"penalty_barrier_lbfgsb_{mode}",
+            threshold=threshold,
+            err_tol=err_tol,
             max_iterations=len(iter_times),
-            max_per_index_iter=0, max_minimize_iter=max_minimize_iter,
-            grid_shape=(D, H, W), elapsed=elapsed_total,
-            final_err=final_err, init_neg=init_neg, final_neg=final_neg,
-            init_min=init_min, final_min=final_min,
-            iteration=len(iter_times), phi=phi,
-            error_list=error_list, num_neg_jac=num_neg_jac,
-            iter_times=iter_times, min_jdet_list=min_jdet_list,
+            max_per_index_iter=0,
+            max_minimize_iter=max_minimize_iter,
+            grid_shape=(D, H, W),
+            elapsed=elapsed_total,
+            final_err=final_err,
+            init_neg=init_neg,
+            final_neg=final_neg,
+            init_min=init_min,
+            final_min=final_min,
+            iteration=len(iter_times),
+            phi=phi,
+            error_list=error_list,
+            num_neg_jac=num_neg_jac,
+            iter_times=iter_times,
+            min_jdet_list=min_jdet_list,
             window_counts=window_counts,
         )
 

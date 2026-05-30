@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d
-from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d, _gradient_stencil
+from dvfopt.core.slsqp.gradients3d import _gradient_stencil, jdet_constraint_jacobian_3d
 
 
 def _numerical_jacobian(func, x0, eps=1e-6):
@@ -38,7 +38,7 @@ class TestGradientStencil:
         assert coeff == [-1.0, 1.0]
 
     def test_single_element(self):
-        idx, coeff = _gradient_stencil(0, 1)
+        _idx, coeff = _gradient_stencil(0, 1)
         assert coeff == [0.0]
 
 

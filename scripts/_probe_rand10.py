@@ -3,7 +3,8 @@ from __future__ import annotations
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import numpy as np
-from dvfopt import iterative_serial, jacobian_det2D, scale_dvf, generate_random_dvf
+from dvfopt import jacobian_det2D, scale_dvf, generate_random_dvf
+from dvfopt.core.slsqp.iterative import iterative_serial
 
 base = generate_random_dvf((3, 1, 5, 5), 1.0, 42)
 dvf = scale_dvf(base, (10, 10))

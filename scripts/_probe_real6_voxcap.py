@@ -14,7 +14,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from dvfopt import iterative_3d, jacobian_det3D, scale_dvf_3d
+from dvfopt import jacobian_det3D, scale_dvf_3d
+from dvfopt.core.slsqp.iterative3d import iterative_3d
 
 FULL = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..",

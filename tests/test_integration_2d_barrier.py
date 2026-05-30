@@ -3,9 +3,8 @@
 import numpy as np
 import pytest
 
-from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt.dvf.generation import generate_random_dvf
-
+from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 THRESHOLD = 0.01
 
@@ -62,14 +61,16 @@ class TestBarrier2DNumpy:
         from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
 
         d = _make_folded_field(8, 8)
-        phi = iterative_2d_barrier(d, verbose=0, threshold=THRESHOLD,
-                                    windowed=False, max_minimize_iter=100)
+        phi = iterative_2d_barrier(
+            d, verbose=0, threshold=THRESHOLD, windowed=False, max_minimize_iter=100
+        )
         assert phi.shape == (2, 8, 8)
         # Result should be at least as good as the input.
         init_min = float(jacobian_det2D(d[[1, 2], 0]).min())
         final_min = float(jacobian_det2D(phi).min())
-        assert final_min >= init_min - 1e-6, \
+        assert final_min >= init_min - 1e-6, (
             f"full-grid mode made the field worse: init_min={init_min}, final_min={final_min}"
+        )
 
 
 class TestBarrier2DTorch:

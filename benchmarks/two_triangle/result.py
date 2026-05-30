@@ -1,15 +1,22 @@
 """SolverResult dataclass + dependency-free bundle serialization."""
+
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-import json
 import numpy as np
 import pandas as pd
 
 REQUIRED_TRAJECTORY_COLS = (
-    "outer_iter", "time_s", "fold_count_jdet", "fold_count_tri",
-    "max_violation", "l2_disp", "smoothness", "n_active_windows",
+    "outer_iter",
+    "time_s",
+    "fold_count_jdet",
+    "fold_count_tri",
+    "max_violation",
+    "l2_disp",
+    "smoothness",
+    "n_active_windows",
     "inner_iters",
 )
 

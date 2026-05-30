@@ -5,7 +5,8 @@ import numpy as np
 
 import cv2
 
-from dvfopt import jacobian_det2D, iterative_serial
+from dvfopt import jacobian_det2D
+from dvfopt.core.slsqp.iterative import iterative_serial
 
 
 def make_test_image(size, shapes):

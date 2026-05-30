@@ -25,24 +25,25 @@ Public API
   nicks it. ~5x faster than global m14 on the full B0039 z=12 slice
   with ~11% lower L1.
 """
-from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
+
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
-from dvfopt.core.wallbreakers._l2_refine import l2_refine_2d
+from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 from dvfopt.core.wallbreakers._harmonic_polished import (
     iterative_2d_tri_harmonic_polished,
+)
+from dvfopt.core.wallbreakers._l2_refine import l2_refine_2d
+from dvfopt.core.wallbreakers._m14_schwarz import (
+    iterative_2d_tri_refine_repair_schwarz,
 )
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )
-from dvfopt.core.wallbreakers._m14_schwarz import (
-    iterative_2d_tri_refine_repair_schwarz,
-)
 
 __all__ = [
-    'harmonic_extension_2d',
     'augmented_lagrangian_2d',
-    'l2_refine_2d',
+    'harmonic_extension_2d',
     'iterative_2d_tri_harmonic_polished',
     'iterative_2d_tri_refine_repair',
     'iterative_2d_tri_refine_repair_schwarz',
+    'l2_refine_2d',
 ]

@@ -5,14 +5,14 @@ import pytest
 
 from dvfopt.jacobian import (
     jacobian_det2D,
-    triangle_sign_det2D,
     triangle_sign_count_negatives,
+    triangle_sign_det2D,
     triangulated_shoelace_det2D,
 )
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d
 from dvfopt.jacobian.triangle_sign import (
-    _triangle_areas_2d,
     _corner_patch_areas_2d,
+    _triangle_areas_2d,
     _triangle_areas_2d_full_coverage,
 )
 
@@ -101,9 +101,7 @@ def test_cross_check_all_triangle_strict_implies_our_two_positive():
     signs = triangle_sign_det2D(phi)
     our_all_pos = (signs > 0).all(axis=0)  # (H-1, W-1)
 
-    assert (our_all_pos | ~strict_all_pos).all(), (
-        "strict_all_pos => our_all_pos failed somewhere"
-    )
+    assert (our_all_pos | ~strict_all_pos).all(), "strict_all_pos => our_all_pos failed somewhere"
 
 
 def test_asymmetry_vs_tl_br_split():
@@ -121,7 +119,7 @@ def test_asymmetry_vs_tl_br_split():
     phi = _make_phi(dy, dx)
 
     tl_br = triangulated_shoelace_det2D(phi)  # existing TL-BR split
-    tr_bl_signs = triangle_sign_det2D(phi)    # our TR-BL split
+    tr_bl_signs = triangle_sign_det2D(phi)  # our TR-BL split
 
     # Cell (2, 2) under TL-BR split stays convex (both triangles positive)
     assert (tl_br[:, 2, 2] > 0).all(), "TL-BR split should keep (2,2) positive"
@@ -145,6 +143,7 @@ def test_internal_area_matches_sign_function():
 # -----------------------------------------------------------------------------
 # Full-coverage variant: per-cell TR-BL split + two corner patch triangles
 # -----------------------------------------------------------------------------
+
 
 class TestCornerPatchAreas:
     """The standard ``_triangle_areas_2d`` leaves vertices ``(0, 0)`` and

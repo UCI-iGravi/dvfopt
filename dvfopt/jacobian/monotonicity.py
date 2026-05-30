@@ -10,8 +10,8 @@ def _monotonicity_diffs_2d(dy, dx):
 
     Returns ``(h_mono, v_mono)`` with shapes ``(H, W-1)`` and ``(H-1, W)``.
     """
-    h_mono = 1.0 + np.diff(dx, axis=1)   # (H, W-1)
-    v_mono = 1.0 + np.diff(dy, axis=0)   # (H-1, W)
+    h_mono = 1.0 + np.diff(dx, axis=1)  # (H, W-1)
+    v_mono = 1.0 + np.diff(dy, axis=0)  # (H-1, W)
     return h_mono, v_mono
 
 
@@ -28,8 +28,8 @@ def _diagonal_monotonicity_diffs_2d(dy, dx):
 
     Returns ``(d1, d2)`` each with shape ``(H-1, W-1)``.
     """
-    d1 = 1.0 + dx[:-1, 1:] - dx[1:, :-1]   # (H-1, W-1)
-    d2 = 1.0 + dy[1:, :-1] - dy[:-1, 1:]   # (H-1, W-1)
+    d1 = 1.0 + dx[:-1, 1:] - dx[1:, :-1]  # (H-1, W-1)
+    d2 = 1.0 + dy[1:, :-1] - dy[:-1, 1:]  # (H-1, W-1)
     return d1, d2
 
 

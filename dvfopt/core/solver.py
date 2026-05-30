@@ -12,48 +12,71 @@ They are re-exported from this module so existing imports
 
 import numpy as np
 
-from dvfopt._defaults import _log, _unpack_size, _adaptive_maxiter
-from dvfopt.core.slsqp.constraints import _quality_map
-from dvfopt.core.slsqp.spatial import (
-    get_nearest_center,
-    neg_jdet_bounding_window,
-    _frozen_edges_clean,
-    get_phi_sub_flat_padded,
-    _edge_flags,
-)
+from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size
 
-# Re-exported building blocks (back-compat for existing import sites).
-from dvfopt.core._io import (
-    _setup_accumulators,
+# Re-exported building blocks. The actual implementations moved under
+# :mod:`dvfopt.core._internal` to signal their private nature; this
+# module continues to surface them for back-compat with existing import
+# sites (callers should migrate to ``dvfopt.core._internal`` directly).
+from dvfopt.core._internal.io import (
+    _init_phi,
     _print_summary,
     _save_results,
-    _init_phi,
+    _setup_accumulators,
 )
-from dvfopt.core._metrics import _update_metrics, _patch_jacobian_2d
-from dvfopt.core._window import (
+from dvfopt.core._internal.metrics import _patch_jacobian_2d, _update_metrics
+from dvfopt.core._internal.window import (
+    _apply_result,
     _full_grid_step,
     _optimize_single_window,
-    _apply_result,
+)
+from dvfopt.core.slsqp.constraints import _quality_map
+from dvfopt.core.slsqp.spatial import (
+    _edge_flags,
+    _frozen_edges_clean,
+    get_nearest_center,
+    get_phi_sub_flat_padded,
+    neg_jdet_bounding_window,
 )
 
 __all__ = [
-    # io
-    "_setup_accumulators", "_print_summary", "_save_results", "_init_phi",
-    # metrics
-    "_update_metrics", "_patch_jacobian_2d",
+    "_adaptive_injectivity_loop",
+    "_apply_result",
     # per-window
-    "_full_grid_step", "_optimize_single_window", "_apply_result",
+    "_full_grid_step",
+    "_init_phi",
+    "_optimize_single_window",
+    "_patch_jacobian_2d",
+    "_print_summary",
+    "_save_results",
     # coordinators (defined below)
-    "_serial_fix_pixel", "_adaptive_injectivity_loop",
+    "_serial_fix_pixel",
+    # io
+    "_setup_accumulators",
+    # metrics
+    "_update_metrics",
 ]
 
 
 def _serial_fix_pixel(
-    neg_index_tuple, phi, phi_init, jacobian_matrix,
-    slice_shape, near_cent_dict, window_counts,
-    max_per_index_iter, max_minimize_iter,
-    max_window, threshold, err_tol, method_name, verbose,
-    error_list, num_neg_jac, min_jdet_list, iter_times,
+    neg_index_tuple,
+    phi,
+    phi_init,
+    jacobian_matrix,
+    slice_shape,
+    near_cent_dict,
+    window_counts,
+    max_per_index_iter,
+    max_minimize_iter,
+    max_window,
+    threshold,
+    err_tol,
+    method_name,
+    verbose,
+    error_list,
+    num_neg_jac,
+    min_jdet_list,
+    iter_times,
     enforce_shoelace=False,
     enforce_injectivity=False,
     injectivity_threshold=None,
@@ -76,17 +99,28 @@ def _serial_fix_pixel(
     jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
     """
     _use_quality = enforce_shoelace or enforce_injectivity or enforce_triangles
-    quality_matrix = _quality_map(phi, enforce_shoelace, enforce_injectivity,
-                                  enforce_triangles=enforce_triangles,
-                                  jacobian_matrix=jacobian_matrix) if _use_quality else jacobian_matrix
+    quality_matrix = (
+        _quality_map(
+            phi,
+            enforce_shoelace,
+            enforce_injectivity,
+            enforce_triangles=enforce_triangles,
+            jacobian_matrix=jacobian_matrix,
+        )
+        if _use_quality
+        else jacobian_matrix
+    )
 
     # Adaptive starting size from negative-Jdet bounding box
     submatrix_size, bbox_center = neg_jdet_bounding_window(
-        quality_matrix, neg_index_tuple, threshold, err_tol, labeled=labeled)
+        quality_matrix, neg_index_tuple, threshold, err_tol, labeled=labeled
+    )
     max_sy, max_sx = _unpack_size(max_window)
     min_sy, min_sx = _unpack_size(min_window)
-    submatrix_size = (max(min(submatrix_size[0], max_sy), min_sy),
-                      max(min(submatrix_size[1], max_sx), min_sx))
+    submatrix_size = (
+        max(min(submatrix_size[0], max_sy), min_sy),
+        max(min(submatrix_size[1], max_sx), min_sx),
+    )
 
     per_index_iter = 0
     window_reached_max = False
@@ -95,18 +129,13 @@ def _serial_fix_pixel(
     # making J[cy-hy-1] subject to change (patched by _patch_jacobian_2d).
     _check_y0 = _check_y1 = _check_x0 = _check_x1 = 0  # placeholders, short-circuited on first eval
 
-    while (
-        per_index_iter == 0
-        or (
-            per_index_iter < max_per_index_iter
-            and (quality_matrix[0,
-                    _check_y0:_check_y1,
-                    _check_x0:_check_x1]
-                 < threshold - err_tol).any()
-        )
+    while per_index_iter == 0 or (
+        per_index_iter < max_per_index_iter
+        and (
+            quality_matrix[0, _check_y0:_check_y1, _check_x0:_check_x1] < threshold - err_tol
+        ).any()
     ):
-        cz, cy, cx = get_nearest_center(
-            bbox_center, slice_shape, submatrix_size, near_cent_dict)
+        cz, cy, cx = get_nearest_center(bbox_center, slice_shape, submatrix_size, near_cent_dict)
         sy, sx = _unpack_size(submatrix_size)
         hy, hx = sy // 2, sx // 2
         hy_hi, hx_hi = sy - hy, sx - hx
@@ -115,9 +144,11 @@ def _serial_fix_pixel(
         # (including its boundary ring) is optimised and its Jacobian is
         # constrained with proper central-difference context.
         phi_sub_flat, opt_size = get_phi_sub_flat_padded(
-            phi, cz, cy, cx, slice_shape, submatrix_size)
+            phi, cz, cy, cx, slice_shape, submatrix_size
+        )
         phi_init_sub_flat, _ = get_phi_sub_flat_padded(
-            phi_init, cz, cy, cx, slice_shape, submatrix_size)
+            phi_init, cz, cy, cx, slice_shape, submatrix_size
+        )
         is_padded = opt_size != (sy, sx)
 
         # Update check region for the NEXT while-condition evaluation.
@@ -139,16 +170,22 @@ def _serial_fix_pixel(
         opt_is_at_edge = False if is_padded else is_at_edge
         opt_window_reached_max = False if is_padded else window_reached_max
 
-        _log(verbose, 2, f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}  padded={is_padded}")
+        _log(
+            verbose,
+            2,
+            f"  [edge] at_edge={is_at_edge}  window_reached_max={window_reached_max}  padded={is_padded}",
+        )
 
         # Skip optimizer if frozen edges have negative Jdet (likely infeasible).
         # Does NOT consume per_index_iter budget — only actual optimizer calls do.
         # For padded windows check the padded outer ring (opt_size); for
         # unpacked windows check the original boundary ring (submatrix_size).
         check_size = opt_size if is_padded else submatrix_size
-        if (not opt_is_at_edge and not opt_window_reached_max
-                and not _frozen_edges_clean(quality_matrix, cy, cx,
-                                           check_size, threshold, err_tol)):
+        if (
+            not opt_is_at_edge
+            and not opt_window_reached_max
+            and not _frozen_edges_clean(quality_matrix, cy, cx, check_size, threshold, err_tol)
+        ):
             _log(verbose, 2, f"  [skip] Frozen edges have neg Jdet at win {sy}x{sx} — growing")
             sy, sx = _unpack_size(submatrix_size)
             if sy < max_sy or sx < max_sx:
@@ -160,16 +197,25 @@ def _serial_fix_pixel(
         window_counts[_unpack_size(submatrix_size)] += 1
 
         if per_index_iter > 1:
-            _log(verbose, 2, f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (opt-iter {per_index_iter})")
+            _log(
+                verbose,
+                2,
+                f"  [window] Index {neg_index_tuple}: window grew to {sy}x{sx} (opt-iter {per_index_iter})",
+            )
 
         _opt_sy, _opt_sx = _unpack_size(opt_size)
         _eff_max_iter = _adaptive_maxiter(2 * _opt_sy * _opt_sx, max_minimize_iter)
 
         # Run optimisation directly — no process pool
         result_x, elapsed, opt_success = _optimize_single_window(
-            phi_sub_flat, phi_init_sub_flat, opt_size,
-            opt_is_at_edge, opt_window_reached_max,
-            threshold, _eff_max_iter, method_name,
+            phi_sub_flat,
+            phi_init_sub_flat,
+            opt_size,
+            opt_is_at_edge,
+            opt_window_reached_max,
+            threshold,
+            _eff_max_iter,
+            method_name,
             enforce_shoelace=enforce_shoelace,
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
@@ -177,24 +223,40 @@ def _serial_fix_pixel(
         )
         iter_times.append(elapsed)
         if not opt_success:
-            _log(verbose, 1,
-                 f"  [warn] SLSQP did not converge at win {sy}x{sx} "
-                 f"(sub-iter {per_index_iter})")
+            _log(
+                verbose,
+                1,
+                f"  [warn] SLSQP did not converge at win {sy}x{sx} (sub-iter {per_index_iter})",
+            )
 
-        _apply_result(phi, result_x, cy, cx, opt_size,
-                      write_size=submatrix_size if is_padded else None)
+        _apply_result(
+            phi, result_x, cy, cx, opt_size, write_size=submatrix_size if is_padded else None
+        )
 
-        jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
-            phi, phi_init, enforce_shoelace, enforce_injectivity,
-            num_neg_jac, min_jdet_list, error_list,
-            jacobian_matrix=jacobian_matrix, patch_center=(cy, cx),
+        jacobian_matrix, quality_matrix, _cur_neg, _cur_min = _update_metrics(
+            phi,
+            phi_init,
+            enforce_shoelace,
+            enforce_injectivity,
+            num_neg_jac,
+            min_jdet_list,
+            error_list,
+            jacobian_matrix=jacobian_matrix,
+            patch_center=(cy, cx),
             patch_size=submatrix_size,
-            enforce_triangles=enforce_triangles)
+            enforce_triangles=enforce_triangles,
+        )
 
-        _log(verbose, 2, f"  [sub-Jdet] centre ({cy},{cx}) window {sy}x{sx}:\n"
-             + np.array2string(
-                 jacobian_matrix[0, cy - hy:cy + hy_hi, cx - hx:cx + hx_hi],
-                 precision=4, suppress_small=True))
+        _log(
+            verbose,
+            2,
+            f"  [sub-Jdet] centre ({cy},{cx}) window {sy}x{sx}:\n"
+            + np.array2string(
+                jacobian_matrix[0, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi],
+                precision=4,
+                suppress_small=True,
+            ),
+        )
 
         if plot_callback is not None:
             plot_callback(deformation_i, phi)
@@ -212,8 +274,7 @@ def _serial_fix_pixel(
     return jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
 
 
-def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose,
-                               max_doublings=5, **kwargs):
+def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose, max_doublings=5, **kwargs):
     """Run *correct_fn* with doubling ``injectivity_threshold`` until globally injective.
 
     Called automatically when ``enforce_injectivity=True`` and
@@ -245,9 +306,12 @@ def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose,
     tau = 0.05
 
     for attempt in range(max_doublings + 1):
-        _log(verbose, 1,
-             f"[adaptive-injectivity] attempt {attempt + 1}/{max_doublings + 1}  "
-             f"injectivity_threshold={tau:.4f}  max_doublings={max_doublings}")
+        _log(
+            verbose,
+            1,
+            f"[adaptive-injectivity] attempt {attempt + 1}/{max_doublings + 1}  "
+            f"injectivity_threshold={tau:.4f}  max_doublings={max_doublings}",
+        )
 
         phi = correct_fn(
             deformation_i.copy(),
@@ -257,14 +321,11 @@ def _adaptive_injectivity_loop(deformation_i, correct_fn, verbose,
         )
 
         if not has_quad_self_intersections(phi):
-            _log(verbose, 1,
-                 f"[adaptive-injectivity] globally injective at tau={tau:.4f}")
+            _log(verbose, 1, f"[adaptive-injectivity] globally injective at tau={tau:.4f}")
             return phi
 
-        _log(verbose, 1,
-             f"[adaptive-injectivity] intersections remain — doubling tau")
+        _log(verbose, 1, "[adaptive-injectivity] intersections remain — doubling tau")
         tau *= 2.0
 
-    _log(verbose, 1,
-         "[adaptive-injectivity] max doublings reached; returning best result")
+    _log(verbose, 1, "[adaptive-injectivity] max doublings reached; returning best result")
     return phi
