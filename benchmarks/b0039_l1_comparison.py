@@ -75,10 +75,8 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -109,9 +107,9 @@ ERR_TOL = 1e-5
 # 2-tri fold count ranges roughly [280, 5300]; bucket ranges are
 # chosen so each spans roughly the same density-magnitude band.
 B0039_BUCKETS = [
-    ('easy', 0, 600),          # 78 of 528 slices live here
-    ('medium', 600, 1500),     # 296 of 528
-    ('hard', 1500, 3000),      # 137 of 528
+    ('easy', 0, 600),  # 78 of 528 slices live here
+    ('medium', 600, 1500),  # 296 of 528
+    ('hard', 1500, 3000),  # 137 of 528
     ('extreme', 3000, 100_000),  # 17 of 528
 ]
 
@@ -369,7 +367,7 @@ def _build_b0039_cases(slice_count_per_bucket: int) -> list[Case]:
         if n == 1:
             idxs = [len(in_bucket) // 2]
         else:
-            idxs = [int(round(i * (len(in_bucket) - 1) / (n - 1))) for i in range(n)]
+            idxs = [round(i * (len(in_bucket) - 1) / (n - 1)) for i in range(n)]
         idxs = sorted(set(idxs))
         chosen = [in_bucket[i] for i in idxs]
         picks.extend(chosen)
@@ -486,7 +484,9 @@ def _cached_lib_versions() -> dict:
     return _LIB_VERSIONS
 
 
-def _classify_convergence(*, feasible: bool, wall_s: float, budget_s: float, error_kind: str) -> str:
+def _classify_convergence(
+    *, feasible: bool, wall_s: float, budget_s: float, error_kind: str
+) -> str:
     """Categorise the outcome of one run."""
     if error_kind:
         return 'error'
@@ -748,7 +748,9 @@ def main(argv=None) -> int:
     method_filter = None
     if args.methods:
         method_filter = [s.strip() for s in args.methods.split(',') if s.strip()]
-    methods = [m for m in METHOD_SPECS if method_filter is None or any(f in m[0] for f in method_filter)]
+    methods = [
+        m for m in METHOD_SPECS if method_filter is None or any(f in m[0] for f in method_filter)
+    ]
     _log(f'methods ({len(methods)}): {[m[0] for m in methods]}')
 
     done = _completed_keys(args.retry_errors)

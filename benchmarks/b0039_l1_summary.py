@@ -31,9 +31,7 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CSV = REPO_ROOT / 'benchmarks' / 'output' / 'b0039_l1_comparison' / 'results.csv'
@@ -80,7 +78,6 @@ def summary_by_method(df: pd.DataFrame) -> pd.DataFrame:
     for (constraint, method_id, strategy), g in groups:
         n_total = len(g)
         n_err = int(g['has_error'].sum())
-        n_ok = n_total - n_err
         n_feas = int((g['feasible'] & ~g['has_error']).sum())
         feas_runs = g[g['feasible'] & ~g['has_error']]
         # Failure-mode summary
@@ -102,7 +99,9 @@ def summary_by_method(df: pd.DataFrame) -> pd.DataFrame:
                 feasibility_rate=round(n_feas / n_total, 3) if n_total else float('nan'),
                 # L1 across feasible runs (the primary metric).
                 L1_mean=round(feas_runs['l1_total'].mean(), 2) if len(feas_runs) else float('nan'),
-                L1_median=round(feas_runs['l1_total'].median(), 2) if len(feas_runs) else float('nan'),
+                L1_median=round(feas_runs['l1_total'].median(), 2)
+                if len(feas_runs)
+                else float('nan'),
                 L1_std=round(feas_runs['l1_total'].std(), 2) if len(feas_runs) else float('nan'),
                 # Wall time across all *non-error* runs (feasible or not).
                 wall_mean_s=round(ok['wall_time_s'].mean(), 2) if len(ok) else float('nan'),
@@ -113,10 +112,18 @@ def summary_by_method(df: pd.DataFrame) -> pd.DataFrame:
                 # Residual-fold stats under BOTH views, averaged over OK
                 # runs (a method that "solves" under Jdet may still leave
                 # folded triangles, and vice versa).
-                final_n_neg_jdet_mean=round(ok['final_n_neg_jdet'].mean(), 1) if len(ok) else float('nan'),
-                final_n_neg_2tri_mean=round(ok['final_n_neg_2tri'].mean(), 1) if len(ok) else float('nan'),
-                final_min_T_jdet_mean=round(ok['final_min_T_jdet'].mean(), 4) if len(ok) else float('nan'),
-                final_min_T_2tri_mean=round(ok['final_min_T_2tri'].mean(), 4) if len(ok) else float('nan'),
+                final_n_neg_jdet_mean=round(ok['final_n_neg_jdet'].mean(), 1)
+                if len(ok)
+                else float('nan'),
+                final_n_neg_2tri_mean=round(ok['final_n_neg_2tri'].mean(), 1)
+                if len(ok)
+                else float('nan'),
+                final_min_T_jdet_mean=round(ok['final_min_T_jdet'].mean(), 4)
+                if len(ok)
+                else float('nan'),
+                final_min_T_2tri_mean=round(ok['final_min_T_2tri'].mean(), 4)
+                if len(ok)
+                else float('nan'),
                 error_modes=err_kinds_str,
             )
         )
@@ -156,7 +163,11 @@ def best_per_slice(df: pd.DataFrame) -> pd.DataFrame:
                 best_min_T=round(float(best['final_min_T']), 4),
             )
         )
-    out = pd.DataFrame(rows).sort_values(['dataset', 'init_n_neg_2tri', 'case_id']).reset_index(drop=True)
+    out = (
+        pd.DataFrame(rows)
+        .sort_values(['dataset', 'init_n_neg_2tri', 'case_id'])
+        .reset_index(drop=True)
+    )
     return out
 
 
