@@ -72,7 +72,7 @@ result = Solver(
 
 **Objectives** ([dvfopt/objectives.py](dvfopt/objectives.py)) — `L1Objective(eps)`, `L2Objective()`, `NoneObjective()`. Wrap the shared `anchor_term` from `_barrier_core.py`. Composition (`+`, `*`) supported for research.
 
-**Strategies** ([dvfopt/strategies.py](dvfopt/strategies.py)) — `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `M10Strategy`, `M14Strategy`, `M14SchwarzStrategy`. Each is a dataclass with strategy-specific knobs. `requires_2tri` and `supports_3d` class attrs declare compatibility; `Solver.__init__` checks at construction.
+**Strategies** ([dvfopt/strategies.py](dvfopt/strategies.py)) — `NMVFStrategy` (heuristic neighborhood-mean smoother, original method), `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `SchwarzWrapperStrategy(inner=…)` (generic Schwarz wrapper around any 2-tri or 6-tet inner — auto-detects 2D vs 3D), `HarmonicALMBarrierStrategy` (alias `M10Strategy`), `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`), `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`). 3D analogues for the wallbreakers: `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`), `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`), `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`). The class names are phase-stack-explicit: each algorithm in the pipeline (harmonic Laplacian extension, PHR-ALM, log-barrier polish, soft-penalty L2 refine, harmonic repair, Schwarz domain decomposition) appears in the name. The dedicated `Schwarz*` classes are equivalent to `SchwarzWrapperStrategy(inner=...)` with the inner pinned — both run through the shared `dvfopt.core.wallbreakers._schwarz_common` core (one implementation of the Schwarz decomposition, not two). Each Strategy is a dataclass with strategy-specific knobs. `requires_2tri` and `supports_3d` class attrs declare compatibility; `Solver.__init__` checks at construction.
 
 **Solver** ([dvfopt/solver.py](dvfopt/solver.py)) — composes the three; provides `from_spec(constraint='2tri', ...)` string-based construction and one-shot `correct_dvf(phi, ...)`. `auto_strategy(constraint, init_n_neg, init_min, objective_label)` encodes the strategy-selection heuristic.
 
@@ -84,13 +84,18 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 
 | Strategy | Delegates to |
 |---|---|
+| `NMVFStrategy` (Jdet 2D) | `dvfopt.core._nmvf.nmvf_correct_2d` |
 | `BarrierStrategy` (any constraint) | `_barrier_core.run_penalty_barrier_lbfgs` |
 | `SLSQPFullGridStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_slsqp.iterative_2d_tri_slsqp` |
 | `SLSQPWindowedStrategy` (Jdet) | `dvfopt.core.slsqp.iterative.iterative_serial` / `iterative3d` |
 | `SchwarzStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_schwarz.iterative_2d_tri_schwarz` |
-| `M10Strategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_harmonic_polished` |
-| `M14Strategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair` |
-| `M14SchwarzStrategy` | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` |
+| `HarmonicALMBarrierStrategy` (alias `M10Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_harmonic_polished` |
+| `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair` |
+| `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` (thin closure shim around `_schwarz_common.cluster_schwarz_2d_tri`) |
+| `SchwarzWrapperStrategy(inner=...)` | `dvfopt.core.wallbreakers._schwarz_common.cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet` directly, calling `inner.solve` per cluster |
+| `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`) | `dvfopt.core.wallbreakers._alm_3d` (harmonic + ALM-3D + polish) |
+| `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d` |
+| `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d_schwarz` |
 
 ### Building blocks (still public, still useful for custom pipelines)
 

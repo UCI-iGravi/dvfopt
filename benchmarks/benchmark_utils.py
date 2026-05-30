@@ -424,7 +424,9 @@ def plot_jac_heatmaps(
     fig.colorbar(im, ax=axes, label="Jacobian determinant", shrink=0.8)
     if title:
         plt.suptitle(title, fontsize=13)
-    plt.tight_layout()
+    # ``plt.tight_layout()`` is intentionally skipped — matplotlib >=3.10
+    # raises RuntimeError when called after a fig.colorbar() that has
+    # already established a layout engine on a multi-axes figure.
     return fig
 
 
@@ -459,7 +461,8 @@ def plot_correction_magnitude(phi_pairs, labels, title=None, figscale=2.5):
 
     if title:
         plt.suptitle(title, fontsize=13)
-    plt.tight_layout()
+    # ``plt.tight_layout()`` intentionally skipped (matplotlib >=3.10
+    # colorbar layout-engine incompat). See sibling note above.
     return fig
 
 

@@ -1,15 +1,36 @@
-"""Wallbreaker strategies — m10, m14, m14-Schwarz (2D) + Harmonic3DStrategy.
+"""Wallbreaker strategies — phase-stack-explicit 2D + 3D pipelines.
+
+Each Strategy spells out the optimisation phases it chains. The
+research tags they were known by during development (m10, m14,
+m14-Schwarz, ...) remain as ``M*Strategy`` back-compat aliases at the
+bottom of each section.
+
+2D (2-triangle constraint)
+--------------------------
+* :class:`HarmonicALMBarrierStrategy` — alias :class:`M10Strategy`.
+  Harmonic Laplacian extension → PHR augmented Lagrangian → log-barrier
+  L-BFGS-B polish.
+* :class:`HarmonicALMRefineRepairStrategy` — alias :class:`M14Strategy`.
+  HarmonicALMBarrier seed → soft-penalty L2 refine → harmonic repair →
+  log-barrier polish.
+* :class:`SchwarzHarmonicALMRefineRepairStrategy` — alias
+  :class:`M14SchwarzStrategy`. Cluster-localized version of the above.
+
+3D (6-tetrahedron constraint)
+-----------------------------
+* :class:`Harmonic3DStrategy` — the 3D harmonic primitive on its own
+  (m02 analogue).
+* :class:`ALM3DStrategy` — the 3D PHR-ALM phase on its own.
+* :class:`HarmonicALMBarrier3DStrategy` — alias :class:`M10TetStrategy`.
+* :class:`HarmonicALMRefineRepair3DStrategy` — alias
+  :class:`M14TetStrategy`.
+* :class:`SchwarzHarmonicALMRefineRepair3DStrategy` — alias
+  :class:`M14Schwarz3DStrategy`.
 
 The 2D wallbreakers thin-wrap the corresponding pipelines in
 :mod:`dvfopt.core.wallbreakers`. They're triangle-area-specific by
 design (harmonic extension assumes PL bijectivity via triangle areas,
-etc.) and don't generalize directly to 3D.
-
-The 3D path so far has just the **harmonic** primitive
-(:class:`Harmonic3DStrategy`) — the 3D analog of m02 / step 1 of m10.
-The full 3D m10 pipeline (harmonic → ALM → polish) is deferred; the
-strategy here pairs the harmonic seed with an optional barrier polish
-when a 6-tet constraint is composed in.
+etc.).
 """
 
 from __future__ import annotations
@@ -24,14 +45,23 @@ from dvfopt.constraints import (
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
 
-@register_strategy('m10')
+@register_strategy('harmonic_alm_barrier')
+@register_strategy('m10')  # back-compat alias for the original "m10" tag
 @dataclass
-class M10Strategy(Strategy):
-    """Harmonic seed -> ALM -> log-barrier polish.
+class HarmonicALMBarrierStrategy(Strategy):
+    """Harmonic seed → ALM → log-barrier polish (2D 2-triangle).
 
-    The "always-feasibility" wallbreaker — reaches feasibility on cases
-    where the barrier strategy stalls (e.g. extreme density >5000
-    folds).
+    Three-stage "always-feasibility" wallbreaker:
+    harmonic-extension into fold cores → augmented-Lagrangian tighten
+    → log-barrier polish anchored to the input.
+
+    Reaches feasibility on cases where :class:`BarrierStrategy` stalls
+    (e.g. extreme density >5000 folds). Larger L1 deviation than the
+    refine-repair pipeline; faster though.
+
+    Historically tagged as "m10" in the wallbreaker experiments; the
+    old ``M10Strategy`` name + ``'m10'`` registry string remain as
+    back-compat aliases.
     """
 
     margin: float = 1e-3
@@ -66,14 +96,34 @@ class M10Strategy(Strategy):
         )
         if record_history:
             phi_out, info = out
-            return phi_out, _build_solve_info('M10Strategy', info, threshold)
-        return out, _build_solve_info('M10Strategy', {}, threshold)
+            return phi_out, _build_solve_info('HarmonicALMBarrierStrategy', info, threshold)
+        return out, _build_solve_info('HarmonicALMBarrierStrategy', {}, threshold)
 
 
-@register_strategy('m14')
+# Back-compat alias for code that imports ``M10Strategy`` directly.
+M10Strategy = HarmonicALMBarrierStrategy
+
+
+@register_strategy('harmonic_alm_refine_repair')
+@register_strategy('m14')  # back-compat alias
 @dataclass
-class M14Strategy(Strategy):
-    """m10 seed -> soft-penalty pull -> harmonic repair -> barrier polish."""
+class HarmonicALMRefineRepairStrategy(Strategy):
+    """Full 4-stage refine-repair pipeline (2D 2-triangle).
+
+    Pipeline:
+    HarmonicALMBarrier seed (the full m10 pipeline) → soft-penalty
+    L2 pull → harmonic repair of
+    residual folds → barrier polish anchored to ``phi_in``.
+
+    The L2 / L1 winner on dense folds: typically ~50% lower L2 than
+    HarmonicALMBarrierStrategy alone (and ~80% lower L1 with the L1
+    anchor) by trading the harmonic seed's smooth-but-far solution for
+    a refined one that stays closer to the input.
+
+    Historically tagged as "m14" in the wallbreaker experiments; the
+    old ``M14Strategy`` name + ``'m14'`` registry string remain as
+    back-compat aliases.
+    """
 
     margin: float = 1e-3
     lam_schedule: tuple[float, ...] = (1e2, 1e4, 1e6, 1e8)
@@ -111,17 +161,30 @@ class M14Strategy(Strategy):
         )
         if record_history:
             phi_out, info = out
-            return phi_out, _build_solve_info('M14Strategy', info, threshold)
-        return out, _build_solve_info('M14Strategy', {}, threshold)
+            return phi_out, _build_solve_info('HarmonicALMRefineRepairStrategy', info, threshold)
+        return out, _build_solve_info('HarmonicALMRefineRepairStrategy', {}, threshold)
 
 
-@register_strategy('m14_schwarz')
+# Back-compat alias.
+M14Strategy = HarmonicALMRefineRepairStrategy
+
+
+@register_strategy('schwarz_harmonic_alm_refine_repair')
+@register_strategy('m14_schwarz')  # back-compat alias
 @dataclass
-class M14SchwarzStrategy(Strategy):
-    """Cluster-localized m14 + final global barrier polish.
+class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
+    """Cluster-localized HarmonicALMRefineRepair + final global barrier polish (2D).
 
-    ~5x faster than global m14 on large slices (>20K corners) with
-    ~11% lower L1 on the B0039 z=12 full slice.
+    Detects connected fold clusters, runs the full
+    HarmonicALMRefineRepair pipeline on each cluster's padded crop
+    independently, and finishes with a global log-barrier polish.
+    ~5x faster than the global pipeline on large
+    slices (>20K corners) with ~11% lower L1 on the B0039 z=12 full
+    slice.
+
+    Historically tagged as "m14_schwarz"; the old ``M14SchwarzStrategy``
+    name + ``'m14_schwarz'`` registry string remain as back-compat
+    aliases.
     """
 
     margin: float = 1e-3
@@ -129,7 +192,7 @@ class M14SchwarzStrategy(Strategy):
     merge_dilation: int = 2
     max_outer_iters: int = 3
     fallback_size_ratio: float = 0.7
-    max_grow_iters: int = 8  # forwarded to per-cluster m14
+    max_grow_iters: int = 8  # forwarded to per-cluster refine-repair
     time_budget_s: float = 600.0
     final_polish: bool = True
     final_polish_max_iter: int = 200
@@ -162,8 +225,14 @@ class M14SchwarzStrategy(Strategy):
         )
         if record_history:
             phi_out, info = out
-            return phi_out, _build_solve_info('M14SchwarzStrategy', info, threshold)
-        return out, _build_solve_info('M14SchwarzStrategy', {}, threshold)
+            return phi_out, _build_solve_info(
+                'SchwarzHarmonicALMRefineRepairStrategy', info, threshold
+            )
+        return out, _build_solve_info('SchwarzHarmonicALMRefineRepairStrategy', {}, threshold)
+
+
+# Back-compat alias.
+M14SchwarzStrategy = SchwarzHarmonicALMRefineRepairStrategy
 
 
 @register_strategy('harmonic_3d')
@@ -373,12 +442,13 @@ class ALM3DStrategy(Strategy):
         return out, _build_solve_info('ALM3DStrategy', {}, threshold)
 
 
-@register_strategy('m10_3d')
+@register_strategy('harmonic_alm_barrier_3d')
+@register_strategy('m10_3d')  # back-compat alias
 @dataclass
-class M10TetStrategy(Strategy):
+class HarmonicALMBarrier3DStrategy(Strategy):
     """Full m10-3D pipeline: harmonic seed → ALM → barrier polish.
 
-    3D analog of :class:`M10Strategy` (2D). Three stages:
+    3D analog of :class:`HarmonicALMBarrierStrategy`. Three stages:
 
     1. **Harmonic seed.** Find fold cores, Dirichlet-fill via 7-point
        Laplacian. Guaranteed feasible but L2 = O(1) (smoothest possible
@@ -468,7 +538,7 @@ class M10TetStrategy(Strategy):
         phi_anchor = np.asarray(phi_in, dtype=np.float64)
         if phi_anchor.shape != phi_h.shape:
             raise RuntimeError(
-                f'M10TetStrategy: phi_in shape {phi_anchor.shape} '
+                f'HarmonicALMBarrier3DStrategy: phi_in shape {phi_anchor.shape} '
                 f'differs from harmonic output {phi_h.shape}'
             )
         alm_out = augmented_lagrangian_3d(
@@ -504,7 +574,7 @@ class M10TetStrategy(Strategy):
 
         if not self.polish:
             return phi_alm, _build_solve_info(
-                'M10TetStrategy', [harmonic_phase, alm_phase], threshold
+                'HarmonicALMBarrier3DStrategy', [harmonic_phase, alm_phase], threshold
             )
 
         # ---- Stage 3: barrier polish ----
@@ -531,15 +601,20 @@ class M10TetStrategy(Strategy):
             for p in polish_info.phases
         ]
         return phi_out, _build_solve_info(
-            'M10TetStrategy',
+            'HarmonicALMBarrier3DStrategy',
             [harmonic_phase, alm_phase, *polish_phases],
             threshold,
         )
 
 
-@register_strategy('m14_3d')
+# Back-compat alias.
+M10TetStrategy = HarmonicALMBarrier3DStrategy
+
+
+@register_strategy('harmonic_alm_refine_repair_3d')
+@register_strategy('m14_3d')  # back-compat alias
 @dataclass
-class M14TetStrategy(Strategy):
+class HarmonicALMRefineRepair3DStrategy(Strategy):
     """Full m14-3D refine-repair pipeline.
 
     3D analog of :class:`M14Strategy` (2D). Four stages:
@@ -611,28 +686,34 @@ class M14TetStrategy(Strategy):
         )
         if record_history:
             phi_out, info = out
-            return phi_out, _build_solve_info('M14TetStrategy', info, threshold)
-        return out, _build_solve_info('M14TetStrategy', {}, threshold)
+            return phi_out, _build_solve_info('HarmonicALMRefineRepair3DStrategy', info, threshold)
+        return out, _build_solve_info('HarmonicALMRefineRepair3DStrategy', {}, threshold)
 
 
-@register_strategy('m14_schwarz_3d')
+# Back-compat alias.
+M14TetStrategy = HarmonicALMRefineRepair3DStrategy
+
+
+@register_strategy('schwarz_harmonic_alm_refine_repair_3d')
+@register_strategy('m14_schwarz_3d')  # back-compat alias
 @dataclass
-class M14Schwarz3DStrategy(Strategy):
-    """Cluster-localized m14-3D (Schwarz domain decomposition for 6-tet).
+class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
+    """Cluster-localized RefineRepair-3D (Schwarz for 6-tet).
 
-    3D analog of :class:`M14SchwarzStrategy` (2D). Detects connected
-    fold components via 26-connectivity CCL, runs global m14-3D on
-    each padded crop independently, splices back, and (if necessary)
-    repeats to clear Schwarz-overlap artifacts at crop boundaries.
+    3D analog of :class:`SchwarzHarmonicALMRefineRepairStrategy` (2D). Detects
+    connected fold components via 26-connectivity CCL, runs global
+    RefineRepair3D on each padded crop independently, splices back,
+    and (if necessary) repeats to clear Schwarz-overlap artifacts at
+    crop boundaries.
 
-    Falls back to global m14-3D when any single cluster spans more
-    than ``fallback_size_ratio`` of any axis, or when outer iterations
-    fail to reduce ``n_neg`` for two consecutive rounds.
+    Falls back to global RefineRepair3D when any single cluster spans
+    more than ``fallback_size_ratio`` of any axis, or when outer
+    iterations fail to reduce ``n_neg`` for two consecutive rounds.
 
-    Use when fold clusters cover a small fraction of a large 3D volume
-    — same shape of wall-clock speedup as the 2D version. On dense
-    single-cluster volumes the wrapper falls back to global m14-3D and
-    behaves identically to :class:`M14TetStrategy`.
+    Use when fold clusters cover a small fraction of a large 3D volume.
+    On dense single-cluster volumes the wrapper falls back to global
+    RefineRepair3D and behaves identically to
+    :class:`HarmonicALMRefineRepair3DStrategy`.
     """
 
     margin: float = 1e-3
@@ -677,17 +758,33 @@ class M14Schwarz3DStrategy(Strategy):
         )
         if record_history:
             phi_out, info = out
-            return phi_out, _build_solve_info('M14Schwarz3DStrategy', info, threshold)
-        return out, _build_solve_info('M14Schwarz3DStrategy', {}, threshold)
+            return phi_out, _build_solve_info(
+                'SchwarzHarmonicALMRefineRepair3DStrategy', info, threshold
+            )
+        return out, _build_solve_info('SchwarzHarmonicALMRefineRepair3DStrategy', {}, threshold)
 
 
+# Back-compat alias.
+M14Schwarz3DStrategy = SchwarzHarmonicALMRefineRepair3DStrategy
+
+
+# Names in ``__all__`` are sorted alphabetically (ruff RUF022).
+# The ``M*Strategy`` entries are back-compat aliases for the original
+# "m10/m14/..." research tags — they refer to the same classes as the
+# descriptive names alongside them.
 __all__ = [
     'ALM3DStrategy',
     'Harmonic3DStrategy',
+    'HarmonicALMBarrier3DStrategy',
+    'HarmonicALMBarrierStrategy',
+    'HarmonicALMRefineRepair3DStrategy',
+    'HarmonicALMRefineRepairStrategy',
     'M10Strategy',
     'M10TetStrategy',
     'M14Schwarz3DStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
     'M14TetStrategy',
+    'SchwarzHarmonicALMRefineRepair3DStrategy',
+    'SchwarzHarmonicALMRefineRepairStrategy',
 ]

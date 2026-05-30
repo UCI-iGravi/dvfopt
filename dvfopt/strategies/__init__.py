@@ -20,14 +20,20 @@ Strategies declare what they support via class attributes:
 
 The strategy hierarchy:
 
-    Strategy                         (abstract base)
-    ├── BarrierStrategy              penalty -> log-barrier L-BFGS-B
-    ├── SLSQPFullGridStrategy        full-grid SLSQP + warm-restart
-    ├── SLSQPWindowedStrategy        windowed SLSQP (Jdet + 2-tri)
-    ├── SchwarzStrategy              overlapping-tile SLSQP/Schwarz
-    ├── M10Strategy                  harmonic -> ALM -> polish
-    ├── M14Strategy                  m10 -> soft-penalty -> repair -> polish
-    └── M14SchwarzStrategy           cluster-localized m14 + global polish
+    Strategy                                            (abstract base)
+    ├── NMVFStrategy                                     neighborhood-mean heuristic (legacy)
+    ├── BarrierStrategy                                  penalty -> log-barrier L-BFGS-B
+    ├── SLSQPFullGridStrategy                            full-grid SLSQP + warm-restart
+    ├── SLSQPWindowedStrategy                            windowed SLSQP (Jdet + 2-tri)
+    ├── SchwarzStrategy                                  overlapping-tile SLSQP/Schwarz
+    ├── SchwarzWrapperStrategy                           cluster-Schwarz wrapper around any inner Strategy (2D + 3D)
+    ├── HarmonicALMBarrierStrategy                       (m10) harmonic -> PHR-ALM -> log-barrier polish
+    ├── HarmonicALMRefineRepairStrategy                  (m14) m10 seed -> soft-penalty L2 refine -> harmonic repair -> log-barrier polish
+    └── SchwarzHarmonicALMRefineRepairStrategy           (m14-schwarz) cluster-localized m14 + global polish (= SchwarzWrapperStrategy(inner=HarmonicALMRefineRepairStrategy()))
+
+The "m10/m14/..." names are the original research tags and remain
+exported as back-compat aliases (e.g. ``M10Strategy is
+HarmonicALMBarrierStrategy``).
 
 Each strategy lives in its own file under :mod:`dvfopt.strategies`;
 this ``__init__`` re-exports the public surface so existing
@@ -50,7 +56,9 @@ from dvfopt.strategies.base import (
     make_strategy,
     register_strategy,
 )
+from dvfopt.strategies.nmvf import NMVFStrategy
 from dvfopt.strategies.schwarz import SchwarzStrategy
+from dvfopt.strategies.schwarz_wrapper import SchwarzWrapperStrategy
 from dvfopt.strategies.slsqp import (
     SLSQPFullGrid3DStrategy,
     SLSQPFullGridStrategy,
@@ -59,28 +67,46 @@ from dvfopt.strategies.slsqp import (
 from dvfopt.strategies.wallbreakers import (
     ALM3DStrategy,
     Harmonic3DStrategy,
+    HarmonicALMBarrier3DStrategy,
+    HarmonicALMBarrierStrategy,
+    HarmonicALMRefineRepair3DStrategy,
+    HarmonicALMRefineRepairStrategy,
     M10Strategy,
     M10TetStrategy,
     M14Schwarz3DStrategy,
     M14SchwarzStrategy,
     M14Strategy,
     M14TetStrategy,
+    SchwarzHarmonicALMRefineRepair3DStrategy,
+    SchwarzHarmonicALMRefineRepairStrategy,
 )
 
+# Names in ``__all__`` are sorted alphabetically (ruff RUF022).
+# Descriptive names live alongside the original ``M*Strategy`` aliases
+# the package still exports — they are simply class identities pointing
+# at the same dataclass.
 __all__ = [
     'ALM3DStrategy',
     'BarrierStrategy',
     'Harmonic3DStrategy',
+    'HarmonicALMBarrier3DStrategy',
+    'HarmonicALMBarrierStrategy',
+    'HarmonicALMRefineRepair3DStrategy',
+    'HarmonicALMRefineRepairStrategy',
     'M10Strategy',
     'M10TetStrategy',
     'M14Schwarz3DStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
     'M14TetStrategy',
+    'NMVFStrategy',
     'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
+    'SchwarzHarmonicALMRefineRepair3DStrategy',
+    'SchwarzHarmonicALMRefineRepairStrategy',
     'SchwarzStrategy',
+    'SchwarzWrapperStrategy',
     'Strategy',
     '_build_solve_info',
     'make_strategy',

@@ -462,7 +462,11 @@ def plot_deformation_field(
     divider = make_axes_locatable(axs[1])
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(im, cax=cax, label="Jacobian determinant")
-    plt.tight_layout()
+    # NOTE: ``plt.tight_layout()`` is intentionally skipped here — on
+    # matplotlib >=3.10 it raises a ``RuntimeError`` when the figure has
+    # already been laid out with a colorbar created through
+    # :func:`make_axes_locatable`. The constrained-layout backend
+    # picks up sensible spacing without an explicit call.
 
     if save_path:
         plt.savefig(save_path.replace(".npy", ".png"), bbox_inches="tight")

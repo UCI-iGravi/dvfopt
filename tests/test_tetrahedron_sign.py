@@ -336,6 +336,34 @@ class TestALM3DStrategy:
         assert result.feasible
         assert result.info.strategy_name == 'ALM3DStrategy'
 
+    def test_phase_n_neg_populated(self):
+        """PR #16 review (g)+(h): per-phase ``n_neg`` must flow from
+        ALM's per-outer log entries into :class:`PhaseInfo`, and
+        :attr:`SolveInfo.feasible_after_phase` must mark the round in
+        which the iterate first reached feasibility. Before this fix,
+        ALM history entries had no ``n_neg`` key, so all PhaseInfo
+        entries had ``n_neg=-1`` and ``feasible_after_phase=-1``."""
+        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        result = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=ALM3DStrategy(),
+        ).fit(self._phi_planted_fold_3d(), record_history=True)
+
+        assert result.feasible
+        assert result.info.phases, 'ALM3DStrategy should record per-outer phases'
+        # Every recorded phase must have a real n_neg (not the -1 sentinel).
+        for ph in result.info.phases:
+            assert ph.n_neg >= 0, (
+                f'phase {ph.name!r} has n_neg={ph.n_neg} (PhaseInfo default); '
+                f'ALM log did not include n_neg'
+            )
+        # The final phase should have n_neg == 0 (we reached feasibility).
+        assert result.info.phases[-1].n_neg == 0
+        # And feasible_after_phase should be set to the first feasible round.
+        assert result.info.feasible_after_phase >= 0
+
 
 class TestM10TetStrategy:
     """Full m10-3D pipeline (harmonic → ALM → barrier polish).
@@ -401,7 +429,7 @@ class TestM10TetStrategy:
             strategy='m10_3d',
         )
         assert result.feasible
-        assert result.info.strategy_name == 'M10TetStrategy'
+        assert result.info.strategy_name == 'HarmonicALMBarrier3DStrategy'
 
 
 class TestM14Schwarz3DStrategy:
@@ -465,7 +493,7 @@ class TestM14Schwarz3DStrategy:
         phi[2, 2, 2, 2] = 1.5
         result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='m14_schwarz_3d')
         assert result.feasible
-        assert result.info.strategy_name == 'M14Schwarz3DStrategy'
+        assert result.info.strategy_name == 'SchwarzHarmonicALMRefineRepair3DStrategy'
 
 
 class TestM14TetStrategy:
@@ -518,7 +546,7 @@ class TestM14TetStrategy:
             strategy='m14_3d',
         )
         assert result.feasible
-        assert result.info.strategy_name == 'M14TetStrategy'
+        assert result.info.strategy_name == 'HarmonicALMRefineRepair3DStrategy'
 
     def test_rejects_2tri(self):
         from dvfopt import (

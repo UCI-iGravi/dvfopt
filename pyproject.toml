@@ -83,9 +83,11 @@ ignore = [
 "**/conftest.py" = ["F401"]
 "scripts/**" = ["E402", "F401"]    # probes are scratch code
 "notebooks/experiments/_run_*.py" = ["E402"]
-"benchmarks/_run_*.py" = ["E402"]
-"benchmarks/_full_volume_parallel.py" = ["E402"]
-"benchmarks/_*.py" = ["E402"]
+# Legacy benchmark scratch scripts — sys.path mutation before imports
+# is the intended pattern; the runtime path math lives there.
+"benchmarks/scripts/_run_*.py" = ["E402"]
+"benchmarks/scripts/_full_volume_parallel.py" = ["E402"]
+"benchmarks/scripts/_*.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dvfopt", "laplacian", "test_cases"]
