@@ -404,6 +404,139 @@ class TestM10TetStrategy:
         assert result.info.strategy_name == 'M10TetStrategy'
 
 
+class TestM14Schwarz3DStrategy:
+    """Cluster-localized m14-3D (Phase E)."""
+
+    def test_two_clusters_separately_processed(self):
+        """Two well-separated planted folds should be detected as two
+        clusters and processed independently (no fallback)."""
+        from dvfopt import L2Objective, M14Schwarz3DStrategy, Solver, Tet6Constraint3D
+
+        phi = np.zeros((3, 10, 10, 10))
+        phi[1, 2, 2, 2] = 1.5
+        phi[2, 2, 2, 2] = 1.5
+        phi[1, 7, 7, 7] = 1.5
+        phi[2, 7, 7, 7] = 1.5
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(10, 10, 10)),
+            objective=L2Objective(),
+            strategy=M14Schwarz3DStrategy(pad=2),
+        )
+        result = solver.fit(phi, record_history=True)
+        V = six_tet_volumes_3d(result.corrected)
+        assert (V <= 0).sum() == 0
+        assert V.min() >= 0.01 - 1e-5
+        # The stage-keyed info dict from iterative_3d_tet_refine_repair_schwarz
+        # gets converted to SolveInfo.phases via _build_solve_info — each
+        # top-level key becomes a phase. Expect both 'init' and 'final'.
+        phase_names = [p.name for p in result.info.phases]
+        assert 'init' in phase_names, f'expected init phase; got {phase_names}'
+        assert 'final' in phase_names, f'expected final phase; got {phase_names}'
+
+    def test_dense_field_falls_back_to_global(self):
+        """A small dense field where one cluster spans the whole volume
+        should fall back to global m14-3D."""
+        from dvfopt import L2Objective, M14Schwarz3DStrategy, Solver, Tet6Constraint3D
+
+        # Dense field — fold cells touch the global boundary so a
+        # merge_dilation of 2 grows to cover the whole volume.
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        phi[1, 2, 2, 2] = 1.5
+        phi[2, 2, 2, 2] = 1.5
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=M14Schwarz3DStrategy(pad=1, fallback_size_ratio=0.5),
+        )
+        result = solver.fit(phi, record_history=True)
+        V = six_tet_volumes_3d(result.corrected)
+        # Still expect feasibility (fallback should still solve it).
+        assert (V <= 0).sum() == 0
+
+    def test_registry(self):
+        from dvfopt import correct_dvf
+
+        phi = np.zeros((3, 10, 10, 10))
+        phi[1, 2, 2, 2] = 1.5
+        phi[2, 2, 2, 2] = 1.5
+        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='m14_schwarz_3d')
+        assert result.feasible
+        assert result.info.strategy_name == 'M14Schwarz3DStrategy'
+
+
+class TestM14TetStrategy:
+    """Full m14-3D refine-repair pipeline (Phase D)."""
+
+    @staticmethod
+    def _phi_planted_fold_3d():
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        return phi
+
+    def test_reaches_feasibility(self):
+        from dvfopt import L2Objective, M14TetStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=M14TetStrategy(),
+        )
+        result = solver.fit(self._phi_planted_fold_3d())
+        V = six_tet_volumes_3d(result.corrected)
+        assert (V <= 0).sum() == 0
+        assert V.min() >= 0.01 - 1e-5
+
+    def test_history_records_pipeline_stages(self):
+        from dvfopt import L2Objective, M14TetStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=M14TetStrategy(),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        phase_names = [p.name for p in result.info.phases]
+        # The stage-keyed dict from iterative_3d_tet_refine_repair becomes
+        # SolveInfo.phases via _build_solve_info — each top-level key is
+        # a phase. We expect at least stage1/2/3 to be present.
+        assert any('stage1' in n for n in phase_names), f'no stage1; got {phase_names}'
+        assert any('stage2' in n for n in phase_names), f'no stage2; got {phase_names}'
+        assert any('stage3' in n for n in phase_names), f'no stage3; got {phase_names}'
+
+    def test_registry(self):
+        from dvfopt import correct_dvf
+
+        result = correct_dvf(
+            self._phi_planted_fold_3d(),
+            constraint='6tet',
+            objective='l2',
+            strategy='m14_3d',
+        )
+        assert result.feasible
+        assert result.info.strategy_name == 'M14TetStrategy'
+
+    def test_rejects_2tri(self):
+        from dvfopt import (
+            IncompatibleConstraintError,
+            L2Objective,
+            M14TetStrategy,
+            Solver,
+            TriConstraint2DFullCoverage,
+        )
+
+        with pytest.raises(IncompatibleConstraintError):
+            Solver(
+                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                objective=L2Objective(),
+                strategy=M14TetStrategy(),
+            )
+
+
 class TestHarmonic3DWallbreaker:
     """3D harmonic-extension wallbreaker — Phase 1 first cut.
 

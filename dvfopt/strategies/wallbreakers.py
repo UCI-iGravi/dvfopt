@@ -537,11 +537,157 @@ class M10TetStrategy(Strategy):
         )
 
 
+@register_strategy('m14_3d')
+@dataclass
+class M14TetStrategy(Strategy):
+    """Full m14-3D refine-repair pipeline.
+
+    3D analog of :class:`M14Strategy` (2D). Four stages:
+
+    1. **m10-3D seed**: harmonic patch + ALM tightening. Feasible by
+       construction (Radó-Kneser-Choquet for harmonic; ALM smooth pull).
+    2. **Soft-penalty L2 pull** (``l2_refine_3d``): one-sided quadratic
+       penalty annealed up; large L2 reduction on non-active cells.
+    3. **Harmonic repair** of any residual folds created by stage 2.
+    4. **Barrier polish** anchored to ``phi_in`` for the strict
+       L2-optimum of the central path.
+
+    Use when :class:`BarrierStrategy` stalls on dense folds AND you
+    want the smallest L2 / L1 deviation possible — m14 typically
+    dominates m10 by ~50% L2 reduction on dense 2D cases. The 3D
+    behavior follows the same pattern.
+    """
+
+    margin: float = 1e-3
+    # Stage 1 (seed) — m10-3D-style
+    ring_pad: int = 2
+    max_grow_iters: int = 6
+    merge_dilation: int = 2
+    alm_outer_max: int = 30
+    alm_inner_maxiter: int = 200
+    # Stage 2 (l2 refine)
+    lam_schedule: tuple = (1e2, 1e4, 1e6, 1e8)
+    inner_maxiter: int = 300
+    # Stage 4 (polish)
+    polish_mu: tuple = (1e-2, 1e-4, 1e-6)
+    polish_maxiter: int = 200
+    time_budget_s: float = 600.0
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        from dvfopt.core.wallbreakers._refine_repair_3d import iterative_3d_tet_refine_repair
+
+        self._check_constraint(constraint)
+        out = iterative_3d_tet_refine_repair(
+            phi_in,
+            threshold=threshold,
+            margin=self.margin,
+            anchor=objective.label or 'l2',
+            eps_l1=getattr(objective, 'eps', 1e-4),
+            ring_pad=self.ring_pad,
+            max_grow_iters=self.max_grow_iters,
+            merge_dilation=self.merge_dilation,
+            alm_outer_max=self.alm_outer_max,
+            alm_inner_maxiter=self.alm_inner_maxiter,
+            lam_schedule=self.lam_schedule,
+            inner_maxiter=self.inner_maxiter,
+            polish_mu=self.polish_mu,
+            polish_maxiter=self.polish_maxiter,
+            time_budget_s=self.time_budget_s,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_out, info = out
+            return phi_out, _build_solve_info('M14TetStrategy', info, threshold)
+        return out, _build_solve_info('M14TetStrategy', {}, threshold)
+
+
+@register_strategy('m14_schwarz_3d')
+@dataclass
+class M14Schwarz3DStrategy(Strategy):
+    """Cluster-localized m14-3D (Schwarz domain decomposition for 6-tet).
+
+    3D analog of :class:`M14SchwarzStrategy` (2D). Detects connected
+    fold components via 26-connectivity CCL, runs global m14-3D on
+    each padded crop independently, splices back, and (if necessary)
+    repeats to clear Schwarz-overlap artifacts at crop boundaries.
+
+    Falls back to global m14-3D when any single cluster spans more
+    than ``fallback_size_ratio`` of any axis, or when outer iterations
+    fail to reduce ``n_neg`` for two consecutive rounds.
+
+    Use when fold clusters cover a small fraction of a large 3D volume
+    — same shape of wall-clock speedup as the 2D version. On dense
+    single-cluster volumes the wrapper falls back to global m14-3D and
+    behaves identically to :class:`M14TetStrategy`.
+    """
+
+    margin: float = 1e-3
+    pad: int = 4
+    merge_dilation: int = 2
+    max_outer_iters: int = 3
+    fallback_size_ratio: float = 0.7
+    time_budget_s: float = 600.0
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        from dvfopt.core.wallbreakers._m14_schwarz_3d import (
+            iterative_3d_tet_refine_repair_schwarz,
+        )
+
+        self._check_constraint(constraint)
+        out = iterative_3d_tet_refine_repair_schwarz(
+            phi_in,
+            threshold=threshold,
+            margin=self.margin,
+            anchor=objective.label or 'l2',
+            eps_l1=getattr(objective, 'eps', 1e-4),
+            pad=self.pad,
+            merge_dilation=self.merge_dilation,
+            max_outer_iters=self.max_outer_iters,
+            fallback_size_ratio=self.fallback_size_ratio,
+            time_budget_s=self.time_budget_s,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_out, info = out
+            return phi_out, _build_solve_info('M14Schwarz3DStrategy', info, threshold)
+        return out, _build_solve_info('M14Schwarz3DStrategy', {}, threshold)
+
+
 __all__ = [
     'ALM3DStrategy',
     'Harmonic3DStrategy',
     'M10Strategy',
     'M10TetStrategy',
+    'M14Schwarz3DStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
+    'M14TetStrategy',
 ]
