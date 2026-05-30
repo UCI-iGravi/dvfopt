@@ -595,3 +595,113 @@ class TestTet6Constraint3D:
         # And the corrected field should produce strictly positive volumes.
         V_after = c.values(c.flatten(result.corrected))
         assert V_after.min() > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Regression: history-schema parity across the new 3D-tet solvers.
+#
+# All three new solvers (SLSQP-3D-tet, GPU tet barrier, Harmonic3DStrategy +
+# polish) emit ``history`` dicts that ``SolveInfo.from_legacy_history`` /
+# ``_build_solve_info`` consume. The shared adapter reads ``min_T`` (or its
+# legacy alias ``min_tri``); the original implementations used ``min_V``,
+# which silently fell back to NaN and broke ``feasible_after_phase``
+# detection. Pin the schema below so it doesn't regress.
+# ---------------------------------------------------------------------------
+
+
+class TestHistorySchemaParity:
+    """The three new 3D-tet solvers must emit history dicts compatible
+    with ``SolveInfo.from_legacy_history`` — i.e. use the canonical
+    ``min_T`` key for the minimum constraint value. Regressions caught
+    by the PR #13 code review."""
+
+    @staticmethod
+    def _phi_planted_fold_3d():
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        return phi
+
+    def test_slsqp_3d_tet_history_uses_min_T(self):
+        from dvfopt.core.iterative3d_tet_slsqp import iterative_3d_tet_slsqp
+
+        phi_out, history = iterative_3d_tet_slsqp(
+            self._phi_planted_fold_3d(), verbose=0, record_history=True
+        )
+        assert isinstance(history, list) and history, 'history must be a non-empty list'
+        for h in history:
+            assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T (got keys={list(h)})'
+            assert 'min_V' not in h, 'min_V is the wrong key — use min_T (canonical schema)'
+
+    def test_slsqp_3d_tet_solve_info_populates_min_T(self):
+        """End-to-end: ``Solver.fit`` should produce a SolveInfo whose
+        phases have a finite ``min_T``."""
+        from dvfopt import L2Objective, SLSQPFullGrid3DStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=SLSQPFullGrid3DStrategy(max_iter=200),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+        assert info.phases, 'expected at least one phase in SolveInfo'
+        for p in info.phases:
+            assert not np.isnan(p.min_T), f'phase {p.name!r} has NaN min_T — schema mismatch'
+
+    def test_tet_barrier_torch_history_uses_min_T(self):
+        pytest.importorskip('torch')
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+
+        phi_out, history = iterative_3d_tet_barrier_torch(
+            self._phi_planted_fold_3d(), verbose=0, device='cpu', record_history=True
+        )
+        assert isinstance(history, list) and history
+        for h in history:
+            assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T (got keys={list(h)})'
+            assert 'min_V' not in h, 'min_V is the wrong key — use min_T (canonical schema)'
+
+    def test_harmonic_3d_polish_emits_chained_phases(self):
+        """``Harmonic3DStrategy(polish=True)`` chains the harmonic step
+        + each barrier-polish phase as separate entries in the SolveInfo
+        history. The prior bug (``polish_info.to_dict()`` guard always
+        falling through to ``{}``) silently dropped the polish phases.
+
+        After the fix, ``info.phases`` has 1 harmonic + N polish entries,
+        each with a finite ``min_T``.
+        """
+        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=Harmonic3DStrategy(polish=True),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+
+        phase_names = [p.name for p in info.phases]
+        assert any(n == 'harmonic' for n in phase_names), (
+            f'expected a harmonic phase; got {phase_names}'
+        )
+        assert any(n.startswith('polish_') for n in phase_names), (
+            f'expected at least one polish_* phase (polish=True); got {phase_names}'
+        )
+        for p in info.phases:
+            assert not np.isnan(p.min_T), f'phase {p.name!r} has NaN min_T — schema mismatch'
+
+    def test_harmonic_3d_polish_off_emits_just_harmonic_phase(self):
+        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=Harmonic3DStrategy(polish=False),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+        phase_names = [p.name for p in info.phases]
+        assert phase_names == ['harmonic'], (
+            f'polish=False should produce exactly one harmonic phase; got {phase_names}'
+        )
+        assert not np.isnan(info.phases[0].min_T)

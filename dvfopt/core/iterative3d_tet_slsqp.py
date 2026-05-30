@@ -140,6 +140,13 @@ def iterative_3d_tet_slsqp(
     phi_corr = np.stack([dz, dy, dx])
 
     if record_history:
+        # ``min_T`` is the canonical history key across the package — it's
+        # what ``_build_solve_info`` / ``SolveInfo.from_legacy_history``
+        # read to populate ``PhaseInfo.min_T`` and to detect feasibility.
+        # The legacy name is preserved across constraint families (2-tri
+        # uses ``T`` for triangle areas, 3D-tet uses ``V`` for volumes;
+        # the schema treats them uniformly as "the minimum constraint
+        # value reached at this phase").
         history = [
             dict(
                 phase='slsqp',
@@ -147,7 +154,7 @@ def iterative_3d_tet_slsqp(
                 status=int(res.status),
                 nit=int(res.nit),
                 n_neg=n_neg,
-                min_V=min_V,
+                min_T=min_V,
                 wall_s=wall,
             )
         ]

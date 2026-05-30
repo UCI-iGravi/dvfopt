@@ -214,10 +214,14 @@ class Harmonic3DStrategy(Strategy):
         record_history=False,
         **_,
     ):
+        import time
+
         from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         self._check_constraint(constraint)
 
+        t0 = time.time()
         out = harmonic_extension_3d(
             phi_in,
             threshold=threshold,
@@ -232,14 +236,31 @@ class Harmonic3DStrategy(Strategy):
         else:
             phi_harmonic = out
             info = {}
+        harmonic_wall = time.time() - t0
+
+        # Build a proper history-list phase entry for the harmonic step
+        # using the canonical schema (phase, n_neg, min_T, wall_s, …).
+        # The shared _build_solve_info adapter recognises this shape via
+        # SolveInfo.from_legacy_history.
+        V_h = six_tet_volumes_3d(phi_harmonic)
+        harmonic_phase = {
+            'phase': 'harmonic',
+            'n_neg': int((V_h <= 0).sum()),
+            'min_T': float(V_h.min()),
+            'wall_s': harmonic_wall,
+            'patches': info.get('patches', 0),
+            'records': info.get('records', []),
+        }
 
         if not self.polish:
             return phi_harmonic, _build_solve_info(
-                'Harmonic3DStrategy', {**info, 'polished': False}, threshold
+                'Harmonic3DStrategy', [harmonic_phase], threshold
             )
 
         # Polish via barrier-on-tet from the harmonic seed. We import
         # BarrierStrategy lazily to avoid an import cycle.
+        from dataclasses import asdict
+
         from dvfopt.strategies.barrier import BarrierStrategy
 
         barrier = BarrierStrategy(max_iter=self.polish_max_iter)
@@ -251,12 +272,28 @@ class Harmonic3DStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        merged = {
-            **info,
-            'polished': True,
-            'polish_info': polish_info.to_dict() if hasattr(polish_info, 'to_dict') else {},
-        }
-        return phi_out, _build_solve_info('Harmonic3DStrategy', merged, threshold)
+        # ``polish_info`` is a SolveInfo dataclass. Flatten each phase
+        # into the legacy history schema so they flow through the
+        # adapter alongside the harmonic phase (rather than being lost
+        # to a SolveInfo-shaped blob inside a stage-keyed dict, which
+        # was the original PR #13 bug the reviewer caught).
+        polish_phases = []
+        for p in polish_info.phases:
+            entry = {
+                'phase': f'polish_{p.name}',
+                'n_iter': p.n_iter,
+                'n_neg': p.n_neg,
+                'min_T': p.min_T,
+                'wall_s': p.wall_s,
+                **asdict(p).get('extras', {}),
+            }
+            polish_phases.append(entry)
+
+        return phi_out, _build_solve_info(
+            'Harmonic3DStrategy',
+            [harmonic_phase, *polish_phases],
+            threshold,
+        )
 
 
 __all__ = ['Harmonic3DStrategy', 'M10Strategy', 'M14SchwarzStrategy', 'M14Strategy']

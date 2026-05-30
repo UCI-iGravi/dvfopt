@@ -192,8 +192,11 @@ def iterative_3d_tet_barrier_torch(
                 f'n_neg={n_neg}  min={cur_min:+.6f}  L2(phi-init)={l2:.5f}'
             )
         if record_history:
+            # ``min_T`` is the canonical schema key for "minimum constraint
+            # value at this phase" across the package; emitting ``min_V``
+            # silently dropped this through SolveInfo.from_legacy_history.
             history.append(
-                dict(phase='penalty', step=step, lam=lam, n_neg=n_neg, min_V=cur_min, l2=l2)
+                dict(phase='penalty', step=step, lam=lam, n_neg=n_neg, min_T=cur_min, l2=l2)
             )
         if cur_min >= target_f:
             feasible = True
@@ -246,7 +249,7 @@ def iterative_3d_tet_barrier_torch(
                 )
             if record_history:
                 history.append(
-                    dict(phase='barrier', step=step, mu=mu, n_neg=n_neg, min_V=cur_min, l2=l2)
+                    dict(phase='barrier', step=step, mu=mu, n_neg=n_neg, min_T=cur_min, l2=l2)
                 )
 
     wall = time.time() - t0
