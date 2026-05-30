@@ -286,6 +286,124 @@ class TestTet6SparseJacobian:
         assert float(np.abs(J.T @ v - c.adjoint(phi, v)).max()) < 1e-14
 
 
+class TestALM3DStrategy:
+    """PHR augmented Lagrangian for 6-tet — standalone Phase C wallbreaker."""
+
+    @staticmethod
+    def _phi_planted_fold_3d():
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        return phi
+
+    def test_reaches_feasibility_at_threshold(self):
+        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=ALM3DStrategy(),
+        )
+        result = solver.fit(self._phi_planted_fold_3d())
+        V = six_tet_volumes_3d(result.corrected)
+        assert (V <= 0).sum() == 0
+        assert V.min() >= 0.01 - 1e-5
+
+    def test_l2_better_than_harmonic_alone(self):
+        """ALM should produce a smaller L2 than the harmonic-alone seed
+        on this single-corner case — the harmonic patch is L2 = sqrt(4.5)
+        ≈ 2.12 (smoothest), ALM tightens to ~0.59."""
+        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        phi = self._phi_planted_fold_3d()
+        result = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=ALM3DStrategy(),
+        ).fit(phi)
+        l2 = float(np.linalg.norm(result.corrected - phi))
+        assert l2 < 1.0, f'expected ALM L2 < 1.0; got {l2}'
+
+    def test_registry(self):
+        from dvfopt import correct_dvf
+
+        result = correct_dvf(
+            self._phi_planted_fold_3d(),
+            constraint='6tet',
+            objective='l2',
+            strategy='alm_3d',
+        )
+        assert result.feasible
+        assert result.info.strategy_name == 'ALM3DStrategy'
+
+
+class TestM10TetStrategy:
+    """Full m10-3D pipeline (harmonic → ALM → barrier polish).
+
+    Verifies the chained pipeline: harmonic seed brings the field to
+    feasibility, ALM pulls it back toward the input via the anchor
+    (passing phi_anchor explicitly so the anchor reference is the
+    ORIGINAL input, not the harmonic seed), and optional barrier
+    polish tightens further.
+    """
+
+    @staticmethod
+    def _phi_planted_fold_3d():
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        return phi
+
+    def test_polish_off_emits_two_phases(self):
+        """With polish=False, the SolveInfo history has exactly two
+        phases (harmonic + alm); ALM's anchor pulls toward the
+        original input, not the harmonic seed."""
+        from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=M10TetStrategy(polish=False),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        phase_names = [p.name for p in result.info.phases]
+        assert phase_names == ['harmonic', 'alm'], (
+            f'polish=False should produce [harmonic, alm]; got {phase_names}'
+        )
+        # ALM should pull L2 well below the harmonic-alone result (~2.12).
+        l2 = float(np.linalg.norm(result.corrected - self._phi_planted_fold_3d()))
+        assert l2 < 1.5, f'M10 (harmonic+ALM) L2 should be < 1.5; got {l2}'
+
+    def test_polish_on_emits_pipeline(self):
+        from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=M10TetStrategy(polish=True),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        phase_names = [p.name for p in result.info.phases]
+        assert phase_names[:2] == ['harmonic', 'alm'], (
+            f'expected harmonic + alm first; got {phase_names}'
+        )
+        assert any(n.startswith('polish_') for n in phase_names), (
+            f'expected at least one polish_* phase; got {phase_names}'
+        )
+
+    def test_registry(self):
+        from dvfopt import correct_dvf
+
+        result = correct_dvf(
+            self._phi_planted_fold_3d(),
+            constraint='6tet',
+            objective='l2',
+            strategy='m10_3d',
+        )
+        assert result.feasible
+        assert result.info.strategy_name == 'M10TetStrategy'
+
+
 class TestHarmonic3DWallbreaker:
     """3D harmonic-extension wallbreaker — Phase 1 first cut.
 
