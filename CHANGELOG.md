@@ -36,6 +36,23 @@ follows [Semantic Versioning](https://semver.org/).
   `tet_volumes_flat`, `tet_grad_T_v`.
 
 ### Fixed
+- **CI lint failure in [PR #10](https://github.com/UCI-iGravi/dvfopt/pull/10).**
+  `ruff check` failed on Ubuntu (Python 3.10/3.11/3.12) with
+  `RUF100: Unused noqa directive (non-enabled: F401)` at
+  [tests/test_tetrahedron_sign.py:110](tests/test_tetrahedron_sign.py#L110).
+  Replaced the `try/except ImportError + # noqa: F401` pattern with
+  `pytest.importorskip('torch')` — same semantics, no noqa needed.
+
+  Root cause: local runs were `ruff check dvfopt/ tests/`; CI runs
+  `ruff check dvfopt tests benchmarks` (note the third directory).
+  The unused-noqa rule's interaction with the active rule set differed
+  enough that the directive was flagged on CI but not locally.
+
+  **New helper** to prevent recurrence:
+  [scripts/check_ci.py](scripts/check_ci.py) replays the CI workflow
+  steps locally (ruff check + ruff format check + benchmark py_compile
+  smoke + pytest). README has a "Development" section pointing at it.
+
 - **`plot_step_snapshot` + `plot_deformed_quads_colored` theme conflict**
   closed — both functions now use `fig.colorbar(im, ax=ax)` + drop the
   manual `tight_layout`/`plt.show` calls. The 2 xfail markers in
