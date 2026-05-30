@@ -1,4 +1,4 @@
-"""SLSQP strategies — full-grid (2-tri) and windowed (Jdet)."""
+"""SLSQP strategies — full-grid (2-tri / 6-tet) and windowed (Jdet)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import numpy as np
 from dvfopt.constraints import (
     JdetConstraint2D,
     JdetConstraint3D,
+    Tet6Constraint3D,
     TriConstraint2D,
     TriConstraint2DFullCoverage,
 )
@@ -140,4 +141,62 @@ class SLSQPWindowedStrategy(Strategy):
         return out
 
 
-__all__ = ['SLSQPFullGridStrategy', 'SLSQPWindowedStrategy']
+@register_strategy('slsqp_3d_tet')
+@dataclass
+class SLSQPFullGrid3DStrategy(Strategy):
+    """Full-grid SLSQP for the 3D 6-tetrahedron constraint.
+
+    3D analogue of :class:`SLSQPFullGridStrategy` — uses
+    ``Tet6Constraint3D.jacobian`` (sparse forward Jacobian wired in PR
+    #12) to drive ``scipy.optimize.minimize(method='SLSQP')``.
+
+    .. warning::
+        **Scaling.** 3D SLSQP does not scale to realistic registration
+        problems. The constraint vector grows as
+        ``6 * (D-1)(H-1)(W-1)`` — at a 32×32×32 voxel grid that's
+        178k constraints, and SLSQP's active-set QP step becomes the
+        bottleneck. Prefer :class:`dvfopt.strategies.BarrierStrategy`
+        on any non-tiny 3D problem. This strategy exists for symmetry
+        with the 2D path and for tiny-grid debugging where KKT
+        semantics matter.
+    """
+
+    max_iter: int = 50
+    ftol: float = 1e-8
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        from dvfopt.core.iterative3d_tet_slsqp import iterative_3d_tet_slsqp
+
+        self._check_constraint(constraint)
+        out = iterative_3d_tet_slsqp(
+            phi_in,
+            threshold=threshold,
+            max_iter=self.max_iter,
+            ftol=self.ftol,
+            anchor=objective.label or 'l2',
+            eps_l1=getattr(objective, 'eps', 1e-4),
+            verbose=verbose,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_out, hist = out
+            return phi_out, _build_solve_info(
+                'SLSQPFullGrid3DStrategy', {'history': hist}, threshold
+            )
+        return out, _build_solve_info('SLSQPFullGrid3DStrategy', {}, threshold)
+
+
+__all__ = ['SLSQPFullGrid3DStrategy', 'SLSQPFullGridStrategy', 'SLSQPWindowedStrategy']

@@ -158,10 +158,12 @@ from dvfopt.solver import (
 )
 from dvfopt.strategies import (
     BarrierStrategy,
+    Harmonic3DStrategy,
     M10Strategy,
     M14SchwarzStrategy,
     M14Strategy,
     SchwarzStrategy,
+    SLSQPFullGrid3DStrategy,
     SLSQPFullGridStrategy,
     SLSQPWindowedStrategy,
     Strategy,
@@ -205,6 +207,7 @@ __all__ = [
     'DVFoptConfig',
     'DVFoptError',
     'FeasibilityError',
+    'Harmonic3DStrategy',
     'IncompatibleConstraintError',
     'JdetConstraint2D',
     'JdetConstraint3D',
@@ -218,6 +221,7 @@ __all__ = [
     'PhaseInfo',
     'PhiPack',
     'Result',
+    'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
     'ScaledObjective',

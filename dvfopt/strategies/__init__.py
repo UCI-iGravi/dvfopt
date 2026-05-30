@@ -51,8 +51,13 @@ from dvfopt.strategies.base import (
     register_strategy,
 )
 from dvfopt.strategies.schwarz import SchwarzStrategy
-from dvfopt.strategies.slsqp import SLSQPFullGridStrategy, SLSQPWindowedStrategy
+from dvfopt.strategies.slsqp import (
+    SLSQPFullGrid3DStrategy,
+    SLSQPFullGridStrategy,
+    SLSQPWindowedStrategy,
+)
 from dvfopt.strategies.wallbreakers import (
+    Harmonic3DStrategy,
     M10Strategy,
     M14SchwarzStrategy,
     M14Strategy,
@@ -60,9 +65,11 @@ from dvfopt.strategies.wallbreakers import (
 
 __all__ = [
     'BarrierStrategy',
+    'Harmonic3DStrategy',
     'M10Strategy',
     'M14SchwarzStrategy',
     'M14Strategy',
+    'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
     'SchwarzStrategy',

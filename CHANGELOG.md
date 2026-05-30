@@ -7,6 +7,54 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
+- **`SLSQPFullGrid3DStrategy`** — full-grid SLSQP for the 6-tet
+  constraint ([dvfopt/strategies/slsqp.py](dvfopt/strategies/slsqp.py),
+  [dvfopt/core/iterative3d_tet_slsqp.py](dvfopt/core/iterative3d_tet_slsqp.py)).
+  Registered as `'slsqp_3d_tet'`. Uses `Tet6Constraint3D.jacobian()`
+  (the sparse Jacobian shipped in PR #12) + the smoothed-L1/L2 anchor
+  helper. Comes with the scaling caveat documented in the docstring
+  (3D SLSQP doesn't scale to realistic registration problem sizes —
+  active-set QP step dominates wall-clock past ~32³ voxels). Tests
+  cover direct composition + registry resolution + 2-tri rejection.
+
+- **GPU tet barrier** — penalty → log-barrier homotopy for the 6-tet
+  constraint on `torch` tensors via autograd
+  ([dvfopt/core/iterative3d_tet_barrier_torch.py](dvfopt/core/iterative3d_tet_barrier_torch.py)).
+  Uses the torch forward from PR #11 (`six_tet_volumes_3d_torch`);
+  two phases (LBFGS-on-quadratic-penalty then LBFGS-on-log-barrier)
+  match the numpy/scipy barrier path. Full-grid only —
+  windowed/active-set machinery from `iterative3d_barrier_torch.py`
+  (857 LOC of dilation + max-pool + per-component patches) is
+  deferred. Optional torch import; raises a clear `ImportError` if
+  called without it.
+
+- **`Harmonic3DStrategy` — 3D harmonic wallbreaker** for the 6-tet
+  constraint
+  ([dvfopt/core/wallbreakers/_harmonic_3d.py](dvfopt/core/wallbreakers/_harmonic_3d.py),
+  [dvfopt/strategies/wallbreakers.py](dvfopt/strategies/wallbreakers.py)).
+  Registered as `'harmonic_3d'`. Finds 3D fold cores via
+  `six_tet_fold_classification`, dilates a ring of feasible boundary,
+  and solves a 7-point Laplacian on each displacement channel
+  (Dirichlet boundary). The 3D analog of the 2D m02 harmonic step —
+  foundation that 3D m10 / m14 / m14-Schwarz would build on (the full
+  pipeline is deferred). `polish=True` (default) runs `BarrierStrategy`
+  from the harmonic seed to tighten L2/L1 from the input.
+
+### Changed
+
+- **Notebook archive sweep.** Moved 6 superseded legacy notebooks to
+  `archive/notebooks/` — each was already covered by either
+  `notebooks/two-triangle-check/` or a benchmark notebook:
+  `run-parallel-corrections.ipynb`, `shoelace-artifact-example.ipynb`,
+  `test-shoelace-constraint.ipynb`, `test-injectivity-constraint.ipynb`,
+  `test-global-folding.ipynb`, `triangle-jdet-criterion.ipynb`. Three
+  others (`slsqp-iterative-refactored.ipynb`, `slsqp-3d.ipynb`,
+  `debug-iterative.ipynb`) were flagged for porting to the new API
+  but left untouched in this round — they're real demos with legacy
+  `iterative_*` imports.
+
+### Added (PR #12 follow-up — already shipped)
 - **Sparse forward Jacobian for `Tet6Constraint3D`**, completing API
   symmetry with `TriConstraint2D`. New public helper
   `build_tet_sparse_jac(D, H, W)` in
