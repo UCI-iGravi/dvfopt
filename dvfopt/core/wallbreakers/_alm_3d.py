@@ -161,6 +161,12 @@ def augmented_lagrangian_3d(
         V = tet_volumes_flat(phi_flat, D, H, W)
         slack = V - threshold
         min_T = float(V.min())
+        # ``n_neg`` is the canonical "tets with V <= 0" — same definition
+        # the other wallbreaker stages use. Including it on every log entry
+        # lets ``SolveInfo.from_legacy_history`` detect the
+        # feasibility-transition outer round (which appears as
+        # ``feasible_after_phase`` on the resulting :class:`SolveInfo`).
+        n_neg = int((V <= 0).sum())
         mu = np.maximum(0.0, mu - rho * slack)
         viol_now = float(np.maximum(0.0, target - V).max())
         if outer > 0 and viol_now > 0.5 * log[-1]['viol']:
@@ -170,6 +176,7 @@ def augmented_lagrangian_3d(
             dict(
                 outer=outer,
                 inner_nit=int(res.nit),
+                n_neg=n_neg,
                 min_T=min_T,
                 viol=viol_now,
                 rho=rho,
