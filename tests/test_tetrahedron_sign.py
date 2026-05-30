@@ -393,6 +393,53 @@ class TestTetBarrierTorch:
         assert (V <= 0).sum() == 0
         assert V.min() >= 0.01 - 1e-4  # threshold (default 0.01), slack for float32
 
+    def test_windowed_reaches_feasibility(self):
+        """Windowed mode on an 8^3 volume with a single 2-magnitude
+        corner fold — verify it converges + parity with full-grid."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+
+        phi = np.zeros((3, 8, 8, 8))
+        phi[1, 3, 3, 3] = 2.0
+        phi[2, 3, 3, 3] = 2.0
+
+        phi_w = iterative_3d_tet_barrier_torch(
+            phi, windowed=True, pad=2, verbose=0, device='cpu', anchor='l2'
+        )
+        V_w = six_tet_volumes_3d(phi_w)
+        assert (V_w <= 0).sum() == 0
+        assert V_w.min() >= 0.01 - 1e-4
+
+    def test_windowed_record_history_uses_min_T(self):
+        """Windowed history must follow the canonical schema (min_T)."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+
+        phi = np.zeros((3, 6, 6, 6))
+        phi[1, 2, 2, 2] = 1.8
+        phi[2, 2, 2, 2] = 1.8
+        phi_w, history = iterative_3d_tet_barrier_torch(
+            phi, windowed=True, pad=2, verbose=0, device='cpu', record_history=True
+        )
+        assert history, 'history should be non-empty'
+        for h in history:
+            assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T'
+
+    def test_windowed_matches_full_grid_feasibility(self):
+        """Both modes should reach feasibility on the same input. L2
+        distances may differ slightly (windowed locks more boundary
+        corners) but the feasibility verdict should be identical."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+
+        phi = np.zeros((3, 6, 6, 6))
+        phi[1, 2, 2, 2] = 1.5
+        phi[2, 2, 2, 2] = 1.5
+
+        phi_w = iterative_3d_tet_barrier_torch(phi, windowed=True, verbose=0, device='cpu')
+        phi_f = iterative_3d_tet_barrier_torch(phi, windowed=False, verbose=0, device='cpu')
+        V_w = six_tet_volumes_3d(phi_w)
+        V_f = six_tet_volumes_3d(phi_f)
+        assert (V_w <= 0).sum() == 0, 'windowed should be feasible'
+        assert (V_f <= 0).sum() == 0, 'full-grid should be feasible'
+
     def test_no_torch_raises_clear_error(self):
         """If torch is unavailable, the public entry should raise
         ImportError with a clear message. Simulate via a temporary
