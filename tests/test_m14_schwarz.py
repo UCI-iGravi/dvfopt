@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 
 from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
-from dvfopt.core.wallbreakers._m14_schwarz import (
-    _fold_clusters,
-    _stats,
+from dvfopt.core.wallbreakers._schwarz_common import (
+    _fold_clusters_2d as _fold_clusters,
+    _stats_2d as _stats,
 )
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 

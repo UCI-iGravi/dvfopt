@@ -17,8 +17,11 @@ Configuration axes (every combination valid; sensible defaults):
     constraint : '2tri' (default, full-coverage), '2tri_standard'
         (TR-BL only — for benchmark reproducibility), 'jdet'
         (== 'jdet_2d'), 'jdet_3d', '6tet' (3D 6-tet)
-    solver     : 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz',
-                 'm10', 'm14', 'm14_schwarz', 'auto'
+    solver     : 'nmvf', 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz',
+                 'harmonic_alm_barrier' (alias 'm10'),
+                 'harmonic_alm_refine_repair' (alias 'm14'),
+                 'schwarz_harmonic_alm_refine_repair' (alias 'm14_schwarz'),
+                 'auto'
     objective  : 'l1' | 'l2' | 'none'
 
 Example::
@@ -84,8 +87,11 @@ class DVFoptConfig:
     err_tol: float = 1e-5
 
     # ---- strategy / objective ----
-    # 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz', 'm10', 'm14',
-    # 'm14_schwarz', or 'auto' (defer to auto_strategy).
+    # 'nmvf', 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz',
+    # 'harmonic_alm_barrier' (alias 'm10'),
+    # 'harmonic_alm_refine_repair' (alias 'm14'),
+    # 'schwarz_harmonic_alm_refine_repair' (alias 'm14_schwarz'),
+    # or 'auto' (defer to auto_strategy).
     # A Strategy instance is also accepted — use that when you need
     # non-default knobs.
     solver: object = 'auto'

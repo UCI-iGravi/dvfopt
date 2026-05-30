@@ -401,7 +401,7 @@ class TestM10TetStrategy:
             strategy='m10_3d',
         )
         assert result.feasible
-        assert result.info.strategy_name == 'M10TetStrategy'
+        assert result.info.strategy_name == 'HarmonicALMBarrier3DStrategy'
 
 
 class TestM14Schwarz3DStrategy:
@@ -465,7 +465,7 @@ class TestM14Schwarz3DStrategy:
         phi[2, 2, 2, 2] = 1.5
         result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='m14_schwarz_3d')
         assert result.feasible
-        assert result.info.strategy_name == 'M14Schwarz3DStrategy'
+        assert result.info.strategy_name == 'SchwarzHarmonicALMRefineRepair3DStrategy'
 
 
 class TestM14TetStrategy:
@@ -518,7 +518,7 @@ class TestM14TetStrategy:
             strategy='m14_3d',
         )
         assert result.feasible
-        assert result.info.strategy_name == 'M14TetStrategy'
+        assert result.info.strategy_name == 'HarmonicALMRefineRepair3DStrategy'
 
     def test_rejects_2tri(self):
         from dvfopt import (

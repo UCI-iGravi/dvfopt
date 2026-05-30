@@ -18,8 +18,8 @@ Concrete subclasses signal the kind of failure precisely:
   budget before reaching feasibility. Subclass of ``FeasibilityError``
   since it's a more specific reason for the same failure.
 * :class:`IncompatibleConstraintError` — a Strategy was given a
-  Constraint type it cannot handle (e.g. ``M10Strategy`` with
-  ``JdetConstraint2D``). Subclass of ``TypeError`` so existing
+  Constraint type it cannot handle (e.g. ``HarmonicALMBarrierStrategy``
+  with ``JdetConstraint2D``). Subclass of ``TypeError`` so existing
   ``except TypeError`` handlers still catch it.
 * :class:`SolverConfigError` — config validation failure. Subclass of
   ``ValueError`` for the same back-compat reason.

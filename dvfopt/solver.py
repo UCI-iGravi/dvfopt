@@ -22,7 +22,8 @@ String shorthand (constructs the parts from labels)::
 
     from dvfopt import Solver
     result = Solver.from_spec(
-        constraint='2tri', objective='l1', strategy='m14_schwarz',
+        constraint='2tri', objective='l1',
+        strategy='schwarz_harmonic_alm_refine_repair',
         shape=(320, 456),
     ).fit(phi_in)
 
@@ -219,7 +220,8 @@ class Solver:
         Examples
         --------
         >>> Solver.from_spec(
-        ...     constraint='2tri', objective='l1', strategy='m14_schwarz',
+        ...     constraint='2tri', objective='l1',
+        ...     strategy='schwarz_harmonic_alm_refine_repair',
         ...     shape=(320, 456),
         ... )
         """

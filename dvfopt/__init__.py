@@ -40,10 +40,21 @@ Public API
         Constraint, TriConstraint2D, TriConstraint2DFullCoverage,
         JdetConstraint2D, JdetConstraint3D, make_constraint,
         Objective, L1Objective, L2Objective, NoneObjective, make_objective,
-        Strategy, BarrierStrategy, SLSQPFullGridStrategy,
-        SLSQPWindowedStrategy, SchwarzStrategy, M10Strategy, M14Strategy,
-        M14SchwarzStrategy, make_strategy,
+        Strategy, NMVFStrategy, BarrierStrategy, SLSQPFullGridStrategy,
+        SLSQPWindowedStrategy, SchwarzStrategy, SchwarzWrapperStrategy,
+        HarmonicALMBarrierStrategy, HarmonicALMRefineRepairStrategy,
+        SchwarzHarmonicALMRefineRepairStrategy, make_strategy,
     )
+
+For Schwarz domain decomposition around an arbitrary inner strategy use
+:class:`SchwarzWrapperStrategy(inner=...)`. The dedicated
+``SchwarzHarmonicALMRefineRepair*Strategy`` classes wire the inner to
+the refine-repair pipeline directly and are kept for back-compat.
+
+The wallbreaker strategies also remain exported under their original
+``M10Strategy`` / ``M14Strategy`` / ``M14SchwarzStrategy`` research
+tags for back-compatibility (3D analogues likewise: ``M10TetStrategy``,
+``M14TetStrategy``, ``M14Schwarz3DStrategy``).
 
 **High-level facade (3D volume, tabular reports)**::
 
@@ -74,10 +85,19 @@ strategy by initial fold density:
 * **Extreme density** (n_neg > 5000, e.g. full B0039 z=12 slice with
   8978 folds): the wallbreakers reach feasibility where barrier
   doesn't:
-  - :class:`M10Strategy` — L2-optimal, fast, larger L1
-  - :class:`M14Strategy` — m10 seed + refinement, smallest L1
-  - :class:`M14SchwarzStrategy` — m14 with cluster-localized domain
+  - :class:`HarmonicALMBarrierStrategy` (aka ``M10Strategy``) —
+    harmonic + ALM + log-barrier polish; L2-optimal, fast, larger L1
+  - :class:`HarmonicALMRefineRepairStrategy` (aka ``M14Strategy``) —
+    m10 seed + L2 refine + harmonic repair + barrier polish; smallest
+    L1
+  - :class:`SchwarzHarmonicALMRefineRepairStrategy`
+    (aka ``M14SchwarzStrategy``) — m14 with cluster-localized domain
     decomposition; ~5x faster than m14 on large slices
+
+For a heuristic (non-optimisation) first-pass smoother on 2D Jdet
+folds, :class:`NMVFStrategy` (Neighborhood Mean Vector Filter) is the
+original method this package was built around. It's lossy — prefer
+the optimisation strategies above for accurate displacement.
 
 For Jdet (no wallbreakers): :class:`BarrierStrategy` for dense,
 :class:`SLSQPWindowedStrategy` for mild. 3D Jdet supported by both.
@@ -160,13 +180,21 @@ from dvfopt.strategies import (
     ALM3DStrategy,
     BarrierStrategy,
     Harmonic3DStrategy,
+    HarmonicALMBarrier3DStrategy,
+    HarmonicALMBarrierStrategy,
+    HarmonicALMRefineRepair3DStrategy,
+    HarmonicALMRefineRepairStrategy,
     M10Strategy,
     M10TetStrategy,
     M14Schwarz3DStrategy,
     M14SchwarzStrategy,
     M14Strategy,
     M14TetStrategy,
+    NMVFStrategy,
+    SchwarzHarmonicALMRefineRepair3DStrategy,
+    SchwarzHarmonicALMRefineRepairStrategy,
     SchwarzStrategy,
+    SchwarzWrapperStrategy,
     SLSQPFullGrid3DStrategy,
     SLSQPFullGridStrategy,
     SLSQPWindowedStrategy,
@@ -210,6 +238,10 @@ __all__ = [
     'DVFoptError',
     'FeasibilityError',
     'Harmonic3DStrategy',
+    'HarmonicALMBarrier3DStrategy',
+    'HarmonicALMBarrierStrategy',
+    'HarmonicALMRefineRepair3DStrategy',
+    'HarmonicALMRefineRepairStrategy',
     'IncompatibleConstraintError',
     'JdetConstraint2D',
     'JdetConstraint3D',
@@ -221,6 +253,7 @@ __all__ = [
     'M14SchwarzStrategy',
     'M14Strategy',
     'M14TetStrategy',
+    'NMVFStrategy',
     'NoneObjective',
     'Objective',
     'PhaseInfo',
@@ -230,7 +263,10 @@ __all__ = [
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
     'ScaledObjective',
+    'SchwarzHarmonicALMRefineRepair3DStrategy',
+    'SchwarzHarmonicALMRefineRepairStrategy',
     'SchwarzStrategy',
+    'SchwarzWrapperStrategy',
     'SliceResult',
     'SolveInfo',
     'SolveResult',
