@@ -1,16 +1,26 @@
-"""Wallbreaker strategies — m10, m14, m14-Schwarz.
+"""Wallbreaker strategies — m10, m14, m14-Schwarz (2D) + Harmonic3DStrategy.
 
-All three thin-wrap the corresponding pipelines in
-:mod:`dvfopt.core.wallbreakers`. 2-tri constraints only by design —
-each pipeline embeds triangle-area-specific reasoning (harmonic
-extension assumes PL bijectivity via triangle areas, etc.).
+The 2D wallbreakers thin-wrap the corresponding pipelines in
+:mod:`dvfopt.core.wallbreakers`. They're triangle-area-specific by
+design (harmonic extension assumes PL bijectivity via triangle areas,
+etc.) and don't generalize directly to 3D.
+
+The 3D path so far has just the **harmonic** primitive
+(:class:`Harmonic3DStrategy`) — the 3D analog of m02 / step 1 of m10.
+The full 3D m10 pipeline (harmonic → ALM → polish) is deferred; the
+strategy here pairs the harmonic seed with an optional barrier polish
+when a 6-tet constraint is composed in.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dvfopt.constraints import TriConstraint2D, TriConstraint2DFullCoverage
+from dvfopt.constraints import (
+    Tet6Constraint3D,
+    TriConstraint2D,
+    TriConstraint2DFullCoverage,
+)
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
 
@@ -156,4 +166,134 @@ class M14SchwarzStrategy(Strategy):
         return out, _build_solve_info('M14SchwarzStrategy', {}, threshold)
 
 
-__all__ = ['M10Strategy', 'M14SchwarzStrategy', 'M14Strategy']
+@register_strategy('harmonic_3d')
+@dataclass
+class Harmonic3DStrategy(Strategy):
+    """3D harmonic-extension wallbreaker for the 6-tet constraint.
+
+    3D analog of the harmonic step in :class:`M10Strategy`. Finds
+    fold cores, dilates each by a ring of feasible boundary, and
+    solves a 7-point Laplacian on each displacement channel to
+    Dirichlet-fill the interior with the smoothest possible map.
+
+    Useful when :class:`BarrierStrategy` stalls (the dense-fold
+    "wall" — barrier's penalty phase fails to find a feasible step
+    when many tets are crowded against zero simultaneously).
+
+    Optional ``polish`` runs barrier from the harmonic seed to
+    minimise L2/L1 distance from the input — the harmonic patch is
+    *globally feasible* but not *minimum-displacement*; barrier
+    initialised from a feasible point converges fast and produces
+    a much better L2.
+
+    .. note::
+        Compared to the 2D :class:`M10Strategy`, only the harmonic
+        step is ported. The full 3D m10 pipeline (harmonic → ALM →
+        polish, then refinement / m14 / m14-Schwarz) is deferred —
+        this is the foundation other 3D wallbreakers would build on.
+    """
+
+    margin: float = 1e-3
+    ring_pad: int = 2
+    max_grow_iters: int = 6
+    merge_dilation: int = 2
+    polish: bool = True  # run BarrierStrategy from the harmonic seed
+    polish_max_iter: int = 200
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        import time
+
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        self._check_constraint(constraint)
+
+        t0 = time.time()
+        out = harmonic_extension_3d(
+            phi_in,
+            threshold=threshold,
+            ring_pad=self.ring_pad,
+            max_grow_iters=self.max_grow_iters,
+            merge_dilation=self.merge_dilation,
+            margin=self.margin,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_harmonic, info = out
+        else:
+            phi_harmonic = out
+            info = {}
+        harmonic_wall = time.time() - t0
+
+        # Build a proper history-list phase entry for the harmonic step
+        # using the canonical schema (phase, n_neg, min_T, wall_s, …).
+        # The shared _build_solve_info adapter recognises this shape via
+        # SolveInfo.from_legacy_history.
+        V_h = six_tet_volumes_3d(phi_harmonic)
+        harmonic_phase = {
+            'phase': 'harmonic',
+            'n_neg': int((V_h <= 0).sum()),
+            'min_T': float(V_h.min()),
+            'wall_s': harmonic_wall,
+            'patches': info.get('patches', 0),
+            'records': info.get('records', []),
+        }
+
+        if not self.polish:
+            return phi_harmonic, _build_solve_info(
+                'Harmonic3DStrategy', [harmonic_phase], threshold
+            )
+
+        # Polish via barrier-on-tet from the harmonic seed. We import
+        # BarrierStrategy lazily to avoid an import cycle.
+        from dataclasses import asdict
+
+        from dvfopt.strategies.barrier import BarrierStrategy
+
+        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        phi_out, polish_info = barrier.solve(
+            phi_harmonic,
+            constraint=constraint,
+            objective=objective,
+            threshold=threshold,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        # ``polish_info`` is a SolveInfo dataclass. Flatten each phase
+        # into the legacy history schema so they flow through the
+        # adapter alongside the harmonic phase (rather than being lost
+        # to a SolveInfo-shaped blob inside a stage-keyed dict, which
+        # was the original PR #13 bug the reviewer caught).
+        polish_phases = []
+        for p in polish_info.phases:
+            entry = {
+                'phase': f'polish_{p.name}',
+                'n_iter': p.n_iter,
+                'n_neg': p.n_neg,
+                'min_T': p.min_T,
+                'wall_s': p.wall_s,
+                **asdict(p).get('extras', {}),
+            }
+            polish_phases.append(entry)
+
+        return phi_out, _build_solve_info(
+            'Harmonic3DStrategy',
+            [harmonic_phase, *polish_phases],
+            threshold,
+        )
+
+
+__all__ = ['Harmonic3DStrategy', 'M10Strategy', 'M14SchwarzStrategy', 'M14Strategy']

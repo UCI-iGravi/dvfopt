@@ -286,6 +286,183 @@ class TestTet6SparseJacobian:
         assert float(np.abs(J.T @ v - c.adjoint(phi, v)).max()) < 1e-14
 
 
+class TestHarmonic3DWallbreaker:
+    """3D harmonic-extension wallbreaker — Phase 1 first cut.
+
+    Validates the core algorithm directly (numpy) and via the
+    `Harmonic3DStrategy` wrapper.
+    """
+
+    def test_harmonic_extension_clears_planted_fold(self):
+        """Direct call to harmonic_extension_3d on the same planted fold
+        that other tet solvers handle. Verifies feasibility + reports a
+        patch record."""
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        V_init = six_tet_volumes_3d(phi)
+        assert (V_init <= 0).any()
+
+        phi_out, info = harmonic_extension_3d(phi, record_history=True)
+        V_out = six_tet_volumes_3d(phi_out)
+        assert V_out.min() > 0
+        assert info['patches'] >= 1
+
+    def test_harmonic_identity_already_feasible(self):
+        """Identity field is already feasible — the algorithm should
+        return immediately with reason='already-feasible'."""
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi_out, info = harmonic_extension_3d(phi, record_history=True)
+        assert info['reason'] == 'already-feasible'
+        np.testing.assert_array_equal(phi_out, phi)
+
+    def test_strategy_polish_off(self):
+        """``Harmonic3DStrategy(polish=False)`` should reach feasibility
+        without going through barrier."""
+        from dvfopt import (
+            Harmonic3DStrategy,
+            L2Objective,
+            Solver,
+            Tet6Constraint3D,
+        )
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=Harmonic3DStrategy(polish=False),
+        )
+        result = solver.fit(phi)
+        assert result.feasible
+        assert result.info.strategy_name == 'Harmonic3DStrategy'
+
+    def test_strategy_registry(self):
+        """``strategy='harmonic_3d'`` should resolve correctly."""
+        from dvfopt import correct_dvf
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='harmonic_3d')
+        assert result.feasible
+        assert result.info.strategy_name == 'Harmonic3DStrategy'
+
+    def test_rejects_2tri_constraint(self):
+        """Strategy is 3D-tet-only — composing with a 2-tri constraint
+        must fail at Solver init."""
+        from dvfopt import (
+            Harmonic3DStrategy,
+            IncompatibleConstraintError,
+            L2Objective,
+            Solver,
+            TriConstraint2DFullCoverage,
+        )
+
+        with pytest.raises(IncompatibleConstraintError):
+            Solver(
+                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                objective=L2Objective(),
+                strategy=Harmonic3DStrategy(),
+            )
+
+
+class TestTetBarrierTorch:
+    """The GPU tet barrier should reach feasibility on the same planted
+    fold the numpy barrier path solves, with comparable final L2."""
+
+    def setup_method(self):
+        pytest.importorskip('torch')
+
+    def test_clears_planted_fold(self):
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+
+        phi_out = iterative_3d_tet_barrier_torch(phi, verbose=0, device='cpu', anchor='l2')
+        V = six_tet_volumes_3d(phi_out)
+        assert (V <= 0).sum() == 0
+        assert V.min() >= 0.01 - 1e-4  # threshold (default 0.01), slack for float32
+
+    def test_no_torch_raises_clear_error(self):
+        """If torch is unavailable, the public entry should raise
+        ImportError with a clear message. Simulate via a temporary
+        monkeypatch (we already know torch is installed if this test
+        runs, but we can still test the guard at the module level)."""
+        from dvfopt.core import iterative3d_tet_barrier_torch as mod
+
+        # Save then null-out the module's torch reference; restore after.
+        original = mod.torch
+        mod.torch = None
+        try:
+            with pytest.raises(ImportError, match='torch'):
+                mod.iterative_3d_tet_barrier_torch(np.zeros((3, 4, 4, 4)))
+        finally:
+            mod.torch = original
+
+
+class TestSLSQPFullGrid3DStrategy:
+    """End-to-end via the new Strategy wrapper, exercising both direct
+    composition and the registry (``correct_dvf(strategy='slsqp_3d_tet')``)."""
+
+    def test_direct_composition_clears_fold(self):
+        from dvfopt import L2Objective, SLSQPFullGrid3DStrategy, Solver, Tet6Constraint3D
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+
+        c = Tet6Constraint3D(shape=(4, 4, 4))
+        assert (c.values(c.flatten(phi)) <= 0).any()
+
+        solver = Solver(
+            constraint=c,
+            objective=L2Objective(),
+            strategy=SLSQPFullGrid3DStrategy(max_iter=200),
+        )
+        result = solver.fit(phi)
+        assert result.feasible
+        assert result.info.strategy_name == 'SLSQPFullGrid3DStrategy'
+
+    def test_registry_via_correct_dvf(self):
+        from dvfopt import correct_dvf
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+
+        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='slsqp_3d_tet')
+        assert result.feasible
+        assert result.info.strategy_name == 'SLSQPFullGrid3DStrategy'
+
+    def test_rejects_wrong_constraint(self):
+        """Strategy declares accepts_constraints = (Tet6Constraint3D,) —
+        composing with a 2-tri constraint must fail at Solver init."""
+        from dvfopt import (
+            IncompatibleConstraintError,
+            L2Objective,
+            SLSQPFullGrid3DStrategy,
+            Solver,
+            TriConstraint2DFullCoverage,
+        )
+
+        with pytest.raises(IncompatibleConstraintError):
+            Solver(
+                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                objective=L2Objective(),
+                strategy=SLSQPFullGrid3DStrategy(),
+            )
+
+
 class TestSLSQPOnTet:
     """End-to-end: direct scipy SLSQP using ``Tet6Constraint3D.jacobian()``
     should clear a planted 3D fold. Today this is the only way to drive
@@ -418,3 +595,113 @@ class TestTet6Constraint3D:
         # And the corrected field should produce strictly positive volumes.
         V_after = c.values(c.flatten(result.corrected))
         assert V_after.min() > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Regression: history-schema parity across the new 3D-tet solvers.
+#
+# All three new solvers (SLSQP-3D-tet, GPU tet barrier, Harmonic3DStrategy +
+# polish) emit ``history`` dicts that ``SolveInfo.from_legacy_history`` /
+# ``_build_solve_info`` consume. The shared adapter reads ``min_T`` (or its
+# legacy alias ``min_tri``); the original implementations used ``min_V``,
+# which silently fell back to NaN and broke ``feasible_after_phase``
+# detection. Pin the schema below so it doesn't regress.
+# ---------------------------------------------------------------------------
+
+
+class TestHistorySchemaParity:
+    """The three new 3D-tet solvers must emit history dicts compatible
+    with ``SolveInfo.from_legacy_history`` — i.e. use the canonical
+    ``min_T`` key for the minimum constraint value. Regressions caught
+    by the PR #13 code review."""
+
+    @staticmethod
+    def _phi_planted_fold_3d():
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 1, 1, 1] = 1.5
+        phi[2, 1, 1, 1] = 1.5
+        return phi
+
+    def test_slsqp_3d_tet_history_uses_min_T(self):
+        from dvfopt.core.iterative3d_tet_slsqp import iterative_3d_tet_slsqp
+
+        phi_out, history = iterative_3d_tet_slsqp(
+            self._phi_planted_fold_3d(), verbose=0, record_history=True
+        )
+        assert isinstance(history, list) and history, 'history must be a non-empty list'
+        for h in history:
+            assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T (got keys={list(h)})'
+            assert 'min_V' not in h, 'min_V is the wrong key — use min_T (canonical schema)'
+
+    def test_slsqp_3d_tet_solve_info_populates_min_T(self):
+        """End-to-end: ``Solver.fit`` should produce a SolveInfo whose
+        phases have a finite ``min_T``."""
+        from dvfopt import L2Objective, SLSQPFullGrid3DStrategy, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=SLSQPFullGrid3DStrategy(max_iter=200),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+        assert info.phases, 'expected at least one phase in SolveInfo'
+        for p in info.phases:
+            assert not np.isnan(p.min_T), f'phase {p.name!r} has NaN min_T — schema mismatch'
+
+    def test_tet_barrier_torch_history_uses_min_T(self):
+        pytest.importorskip('torch')
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+
+        phi_out, history = iterative_3d_tet_barrier_torch(
+            self._phi_planted_fold_3d(), verbose=0, device='cpu', record_history=True
+        )
+        assert isinstance(history, list) and history
+        for h in history:
+            assert 'min_T' in h, f'phase {h.get("phase")!r} missing min_T (got keys={list(h)})'
+            assert 'min_V' not in h, 'min_V is the wrong key — use min_T (canonical schema)'
+
+    def test_harmonic_3d_polish_emits_chained_phases(self):
+        """``Harmonic3DStrategy(polish=True)`` chains the harmonic step
+        + each barrier-polish phase as separate entries in the SolveInfo
+        history. The prior bug (``polish_info.to_dict()`` guard always
+        falling through to ``{}``) silently dropped the polish phases.
+
+        After the fix, ``info.phases`` has 1 harmonic + N polish entries,
+        each with a finite ``min_T``.
+        """
+        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=Harmonic3DStrategy(polish=True),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+
+        phase_names = [p.name for p in info.phases]
+        assert any(n == 'harmonic' for n in phase_names), (
+            f'expected a harmonic phase; got {phase_names}'
+        )
+        assert any(n.startswith('polish_') for n in phase_names), (
+            f'expected at least one polish_* phase (polish=True); got {phase_names}'
+        )
+        for p in info.phases:
+            assert not np.isnan(p.min_T), f'phase {p.name!r} has NaN min_T — schema mismatch'
+
+    def test_harmonic_3d_polish_off_emits_just_harmonic_phase(self):
+        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+
+        solver = Solver(
+            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            objective=L2Objective(),
+            strategy=Harmonic3DStrategy(polish=False),
+        )
+        result = solver.fit(self._phi_planted_fold_3d(), record_history=True)
+        info = result.info
+        phase_names = [p.name for p in info.phases]
+        assert phase_names == ['harmonic'], (
+            f'polish=False should produce exactly one harmonic phase; got {phase_names}'
+        )
+        assert not np.isnan(info.phases[0].min_T)
