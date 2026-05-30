@@ -61,8 +61,10 @@ from dvfopt.strategies.wallbreakers import (
     Harmonic3DStrategy,
     M10Strategy,
     M10TetStrategy,
+    M14Schwarz3DStrategy,
     M14SchwarzStrategy,
     M14Strategy,
+    M14TetStrategy,
 )
 
 __all__ = [
@@ -71,8 +73,10 @@ __all__ = [
     'Harmonic3DStrategy',
     'M10Strategy',
     'M10TetStrategy',
+    'M14Schwarz3DStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
+    'M14TetStrategy',
     'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
