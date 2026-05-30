@@ -18,7 +18,7 @@ print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 | **`Solver`** | Composes constraint + objective + strategy, validates input, runs | [dvfopt/solver.py](dvfopt/solver.py) |
 | **`Constraint`** | `TriConstraint2DFullCoverage` (default `'2tri'`) / `TriConstraint2D` (`'2tri_standard'`) / `JdetConstraint2D` / `JdetConstraint3D` / `Tet6Constraint3D` — feasibility check + analytical adjoint + sparse Jacobian. The 2-tri default is full-coverage (includes 2 corner patches) so every grid vertex sits in ≥ 2 triangles | [dvfopt/constraints.py](dvfopt/constraints.py) |
 | **`Objective`** | `L1Objective` / `L2Objective` / `NoneObjective` — what to minimize subject to feasibility (composable via `+` / `*`) | [dvfopt/objectives.py](dvfopt/objectives.py) |
-| **`Strategy`** | `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `M10Strategy`, `M14Strategy`, `M14SchwarzStrategy` — how to actually optimize | [dvfopt/strategies/](dvfopt/strategies/) |
+| **`Strategy`** | `NMVFStrategy`, `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `SchwarzWrapperStrategy(inner=…)`, `HarmonicALMBarrierStrategy` (alias `M10Strategy`), `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`), `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) — how to actually optimize | [dvfopt/strategies/](dvfopt/strategies/) |
 | **`DVFopt`** (facade) | Per-slice orchestration for 3D volumes, tabular reports, plots | [dvfopt/unified.py](dvfopt/unified.py) |
 | **Validation** | `validate_dvf`, accepts `(2,H,W)`, `(3,H,W)`, `(2,1,H,W)`, `(3,1,H,W)`, lists, NaN/Inf rejection | [dvfopt/validation.py](dvfopt/validation.py) |
 | **Visualization** | Themed plots, including `plot_fold_overview` (2D money-shot with per-triangle classification) and `plot_fold_overview_3d` (3D money-shot with per-tetrahedron classification) | [dvfopt/viz/](dvfopt/viz/) |
@@ -31,7 +31,7 @@ print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 | Mild — `n_neg ≤ 100` | `SLSQPFullGridStrategy` (KKT semantics, smallest L1 with `L1Objective`) |
 | Moderate-to-dense — 100 < `n_neg` < 5000 | `BarrierStrategy` (dominates SLSQP by ~100x at this density) |
 | Many small fold clusters | `SchwarzStrategy` |
-| Extreme — `n_neg` > 5000 (e.g. full B0039 z=12 with 8978 folds) | `M10Strategy` (L2-optimal, fast) → `M14Strategy` (m10 seed + refinement, smallest L1) → `M14SchwarzStrategy` (~5× faster on large slices) |
+| Extreme — `n_neg` > 5000 (e.g. full B0039 z=12 with 8978 folds) | `HarmonicALMBarrierStrategy` (aka `M10Strategy`; harmonic + PHR-ALM + log-barrier polish; L2-optimal, fast) → `HarmonicALMRefineRepairStrategy` (aka `M14Strategy`; m10 seed + L2 refine + harmonic repair + barrier polish; smallest L1) → `SchwarzHarmonicALMRefineRepairStrategy` (aka `M14SchwarzStrategy`; ~5× faster on large slices) |
 
 For **Jdet** (no wallbreaker family): `BarrierStrategy` for dense, `SLSQPWindowedStrategy` for mild. Both support 3D.
 
@@ -68,18 +68,18 @@ result = correct_dvf(
     constraint='2tri',         # default: full-coverage (T1, T2, + 2 corner patches)
                                # | '2tri_standard' (TR-BL only, no patches) | 'jdet' | 'jdet_3d' | '6tet'
     objective='l1',            # | 'l2' | 'none' (feasibility-only)
-    strategy='auto',           # or 'barrier' | 'slsqp_fullgrid' | 'm14_schwarz' | ...
+    strategy='auto',           # or 'nmvf' | 'barrier' | 'slsqp_fullgrid' | 'schwarz_harmonic_alm_refine_repair' | ...
 )
 ```
 
 ### Explicit composition
 
 ```python
-from dvfopt import Solver, TriConstraint2D, L1Objective, M14SchwarzStrategy
+from dvfopt import Solver, TriConstraint2D, L1Objective, SchwarzHarmonicALMRefineRepairStrategy
 solver = Solver(
     constraint=TriConstraint2D(shape=(320, 456)),
     objective=L1Objective(eps=1e-4),
-    strategy=M14SchwarzStrategy(pad=4),
+    strategy=SchwarzHarmonicALMRefineRepairStrategy(pad=4),
 )
 result = solver.fit(phi)
 print(f'feasible={result.feasible}, L1={result.info.get("L1"):.4f}')
@@ -90,7 +90,7 @@ print(f'feasible={result.feasible}, L1={result.info.get("L1"):.4f}')
 ```python
 from dvfopt import DVFopt, DVFoptConfig
 opt = DVFopt(DVFoptConfig(
-    constraint='2tri', solver='m14_schwarz',
+    constraint='2tri', solver='schwarz_harmonic_alm_refine_repair',
     objective='l1', threshold=0.01,
 ))
 result = opt.fit(deformation)            # (3, D, H, W) or (2, H, W)
@@ -116,9 +116,11 @@ Both apply the package theme automatically (`apply_theme()`), use the curated `P
 | `SLSQPFullGridStrategy` | One SLSQP call over the full grid with the constraint Jacobian | Mild folds where KKT semantics matter |
 | `SLSQPWindowedStrategy` | Find worst-Jdet voxel, expand bounding box around connected negative region, SLSQP on that sub-window with frozen edges, repeat | Mild folds + classical post-hoc correction (the original method, kept as a baseline) |
 | `SchwarzStrategy` | Domain decomposition: cluster folds, solve each cluster with overlapping halos, average overlaps | Many small clusters where full-grid SLSQP wastes work |
-| `M10Strategy` | Harmonic Laplacian extension into fold cores, then L2-polished refinement | Extreme density where barrier stalls |
-| `M14Strategy` | m10 seed + L2 refinement + repair phase | After m10, when you want smallest L1 |
-| `M14SchwarzStrategy` | m14 with cluster-localized domain decomposition | Large slices where m14 itself becomes the bottleneck (~5× speedup) |
+| `NMVFStrategy` (heuristic) | Iteratively replace every pixel in the 3x3 neighbourhood of each fold with the local mean displacement vector | Fast first-pass smoother on sparse 2D Jdet folds; the original method this package was built around (lossy — non-optimisation) |
+| `HarmonicALMBarrierStrategy` (aka `M10Strategy`) | Harmonic Laplacian extension into fold cores → PHR augmented Lagrangian tightening → log-barrier L-BFGS-B polish | Extreme density where barrier stalls |
+| `HarmonicALMRefineRepairStrategy` (aka `M14Strategy`) | m10 seed + soft-penalty L2 refine + harmonic repair + barrier polish | After m10, when you want smallest L1 |
+| `SchwarzWrapperStrategy(inner=…)` | Cluster-CCL Schwarz decomposition around any 2-tri or 6-tet inner strategy — generic version of the m14-Schwarz pipeline. Auto-detects 2D vs 3D from the outer constraint | Large slices/volumes with sparse fold clusters; same speedup as the dedicated m14-Schwarz path but inner is swappable |
+| `SchwarzHarmonicALMRefineRepairStrategy` (aka `M14SchwarzStrategy`) | m14 with cluster-localized domain decomposition + global polish. Equivalent to `SchwarzWrapperStrategy(inner=HarmonicALMRefineRepairStrategy())` | Large slices where m14 itself becomes the bottleneck (~5× speedup) |
 
 ## Manuscript-grade math: see [Methods Reference](#methods-reference) (below)
 
