@@ -57,16 +57,20 @@ from dvfopt.strategies.slsqp import (
     SLSQPWindowedStrategy,
 )
 from dvfopt.strategies.wallbreakers import (
+    ALM3DStrategy,
     Harmonic3DStrategy,
     M10Strategy,
+    M10TetStrategy,
     M14SchwarzStrategy,
     M14Strategy,
 )
 
 __all__ = [
+    'ALM3DStrategy',
     'BarrierStrategy',
     'Harmonic3DStrategy',
     'M10Strategy',
+    'M10TetStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
     'SLSQPFullGrid3DStrategy',

@@ -157,9 +157,11 @@ from dvfopt.solver import (
     correct_dvf,
 )
 from dvfopt.strategies import (
+    ALM3DStrategy,
     BarrierStrategy,
     Harmonic3DStrategy,
     M10Strategy,
+    M10TetStrategy,
     M14SchwarzStrategy,
     M14Strategy,
     SchwarzStrategy,
@@ -197,12 +199,10 @@ def __getattr__(name):
 
 __all__ = [
     'DEFAULT_PARAMS',
+    'ALM3DStrategy',
     'BarrierStrategy',
-    # Defaults
     'BudgetExhaustedError',
-    # Composables
     'Constraint',
-    # High-level facade (lazy)
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
@@ -214,6 +214,7 @@ __all__ = [
     'L1Objective',
     'L2Objective',
     'M10Strategy',
+    'M10TetStrategy',
     'M14SchwarzStrategy',
     'M14Strategy',
     'NoneObjective',
@@ -240,14 +241,11 @@ __all__ = [
     'coerce_to_ndarray',
     'correct_dvf',
     'enable_default_handler',
-    # DVF utilities
     'generate_random_dvf',
     'generate_random_dvf_3d',
     'injectivity_constraint',
-    # Jacobian primitives
     'jacobian_det2D',
     'jacobian_det3D',
-    # I/O
     'load_nii_images',
     'logger',
     'make_constraint',

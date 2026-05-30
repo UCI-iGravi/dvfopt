@@ -296,4 +296,252 @@ class Harmonic3DStrategy(Strategy):
         )
 
 
-__all__ = ['Harmonic3DStrategy', 'M10Strategy', 'M14SchwarzStrategy', 'M14Strategy']
+@register_strategy('alm_3d')
+@dataclass
+class ALM3DStrategy(Strategy):
+    """PHR augmented Lagrangian for the 3D 6-tet constraint.
+
+    3D analog of the standalone 2D m03 ALM wallbreaker. Avoids the
+    barrier's penalty-phase stall on dense folds — the inner problem
+    is unconstrained L-BFGS-B over a smooth augmented Lagrangian.
+    """
+
+    margin: float = 1e-3
+    rho_init: float = 1.0
+    rho_growth: float = 5.0
+    rho_max: float = 1e8
+    outer_max: int = 60
+    inner_maxiter: int = 200
+    ftol_inner: float = 1e-10
+    gtol_inner: float = 1e-7
+    time_budget_s: float = 600.0
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        from dvfopt.core.wallbreakers._alm_3d import augmented_lagrangian_3d
+
+        self._check_constraint(constraint)
+        out = augmented_lagrangian_3d(
+            phi_in,
+            threshold=threshold,
+            margin=self.margin,
+            anchor=objective.label or 'l2',
+            eps_l1=getattr(objective, 'eps', 1e-4),
+            rho_init=self.rho_init,
+            rho_growth=self.rho_growth,
+            rho_max=self.rho_max,
+            outer_max=self.outer_max,
+            inner_maxiter=self.inner_maxiter,
+            ftol_inner=self.ftol_inner,
+            gtol_inner=self.gtol_inner,
+            time_budget_s=self.time_budget_s,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_out, info = out
+            return phi_out, _build_solve_info(
+                'ALM3DStrategy',
+                [
+                    dict(
+                        phase=f'alm_{h["outer"]}',
+                        n_iter=h['inner_nit'],
+                        min_T=h['min_T'],
+                        wall_s=h['wall'],
+                        **{
+                            k: v
+                            for k, v in h.items()
+                            if k not in {'outer', 'inner_nit', 'min_T', 'wall'}
+                        },
+                    )
+                    for h in info.get('log_last5', [])
+                ],
+                threshold,
+            )
+        return out, _build_solve_info('ALM3DStrategy', {}, threshold)
+
+
+@register_strategy('m10_3d')
+@dataclass
+class M10TetStrategy(Strategy):
+    """Full m10-3D pipeline: harmonic seed → ALM → barrier polish.
+
+    3D analog of :class:`M10Strategy` (2D). Three stages:
+
+    1. **Harmonic seed.** Find fold cores, Dirichlet-fill via 7-point
+       Laplacian. Guaranteed feasible but L2 = O(1) (smoothest possible
+       reconstruction, not minimum-displacement).
+    2. **ALM.** Tighten the feasible iterate via PHR augmented
+       Lagrangian. Smooth inner problem; no active-set degeneracy.
+    3. **Barrier polish.** Optional log-barrier interior-point step
+       from the ALM iterate to minimise L2/L1 distance from the input.
+
+    Use this when :class:`BarrierStrategy` stalls (dense 3D folds where
+    the penalty phase can't find a feasible step) — the harmonic seed
+    guarantees a feasible start.
+    """
+
+    margin: float = 1e-3
+    # Harmonic stage
+    ring_pad: int = 2
+    max_grow_iters: int = 6
+    merge_dilation: int = 2
+    # ALM stage
+    rho_init: float = 1.0
+    rho_growth: float = 5.0
+    rho_max: float = 1e8
+    outer_max: int = 60
+    alm_inner_maxiter: int = 200
+    # Polish stage (barrier from feasible)
+    polish: bool = True
+    polish_max_iter: int = 200
+
+    supports_3d: bool = True
+    accepts_constraints = (Tet6Constraint3D,)
+
+    def solve(
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        **_,
+    ):
+        import time
+        from dataclasses import asdict
+
+        import numpy as np
+
+        from dvfopt.core.wallbreakers._alm_3d import augmented_lagrangian_3d
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        self._check_constraint(constraint)
+        anchor_label = objective.label or 'l2'
+        eps_l1 = getattr(objective, 'eps', 1e-4)
+
+        # ---- Stage 1: harmonic seed ----
+        t0 = time.time()
+        h_out = harmonic_extension_3d(
+            phi_in,
+            threshold=threshold,
+            ring_pad=self.ring_pad,
+            max_grow_iters=self.max_grow_iters,
+            merge_dilation=self.merge_dilation,
+            margin=self.margin,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_h, h_info = h_out
+        else:
+            phi_h = h_out
+            h_info = {}
+        wall_h = time.time() - t0
+        V_h = six_tet_volumes_3d(phi_h)
+        harmonic_phase = {
+            'phase': 'harmonic',
+            'n_neg': int((V_h <= 0).sum()),
+            'min_T': float(V_h.min()),
+            'wall_s': wall_h,
+            'patches': h_info.get('patches', 0),
+        }
+
+        # ---- Stage 2: ALM (start from harmonic seed, anchor to original input) ----
+        t1 = time.time()
+        # Coerce phi_in into the canonical (3, D, H, W) [dz, dy, dx] shape
+        # for the anchor — harmonic_extension_3d already produces it.
+        phi_anchor = np.asarray(phi_in, dtype=np.float64)
+        if phi_anchor.shape != phi_h.shape:
+            raise RuntimeError(
+                f'M10TetStrategy: phi_in shape {phi_anchor.shape} '
+                f'differs from harmonic output {phi_h.shape}'
+            )
+        alm_out = augmented_lagrangian_3d(
+            phi_h,
+            threshold=threshold,
+            margin=self.margin,
+            anchor=anchor_label,
+            eps_l1=eps_l1,
+            phi_anchor=phi_anchor,
+            rho_init=self.rho_init,
+            rho_growth=self.rho_growth,
+            rho_max=self.rho_max,
+            outer_max=self.outer_max,
+            inner_maxiter=self.alm_inner_maxiter,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        if record_history:
+            phi_alm, alm_info = alm_out
+        else:
+            phi_alm = alm_out
+            alm_info = {}
+        wall_alm = time.time() - t1
+        V_alm = six_tet_volumes_3d(phi_alm)
+        alm_phase = {
+            'phase': 'alm',
+            'n_neg': int((V_alm <= 0).sum()),
+            'min_T': float(V_alm.min()),
+            'wall_s': wall_alm,
+            'outer_used': alm_info.get('outer_used', -1),
+            'rho_final': alm_info.get('rho_final', 0.0),
+        }
+
+        if not self.polish:
+            return phi_alm, _build_solve_info(
+                'M10TetStrategy', [harmonic_phase, alm_phase], threshold
+            )
+
+        # ---- Stage 3: barrier polish ----
+        from dvfopt.strategies.barrier import BarrierStrategy
+
+        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        phi_out, polish_info = barrier.solve(
+            phi_alm,
+            constraint=constraint,
+            objective=objective,
+            threshold=threshold,
+            verbose=verbose,
+            record_history=record_history,
+        )
+        polish_phases = [
+            {
+                'phase': f'polish_{p.name}',
+                'n_iter': p.n_iter,
+                'n_neg': p.n_neg,
+                'min_T': p.min_T,
+                'wall_s': p.wall_s,
+                **asdict(p).get('extras', {}),
+            }
+            for p in polish_info.phases
+        ]
+        return phi_out, _build_solve_info(
+            'M10TetStrategy',
+            [harmonic_phase, alm_phase, *polish_phases],
+            threshold,
+        )
+
+
+__all__ = [
+    'ALM3DStrategy',
+    'Harmonic3DStrategy',
+    'M10Strategy',
+    'M10TetStrategy',
+    'M14SchwarzStrategy',
+    'M14Strategy',
+]
