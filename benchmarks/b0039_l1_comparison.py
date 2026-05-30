@@ -362,10 +362,15 @@ def _build_b0039_cases(slice_count_per_bucket: int) -> list[Case]:
             _log(f'  bucket "{bucket_name}" empty — no slices in [{lo}, {hi})')
             continue
         n = min(slice_count_per_bucket, len(in_bucket))
-        # Evenly-spaced ranks across the bucket.
-        idxs = [int(round((i + 0.5) * (len(in_bucket) - 1) / max(1, n - 1))) if n > 1 else 0
-                for i in range(n)]
-        idxs = sorted(set(min(i, len(in_bucket) - 1) for i in idxs))
+        # Evenly-spaced ranks across the bucket — linspace from index 0
+        # to L-1 inclusive, rounded to ints. The previous ``(i + 0.5)``
+        # formula was a midpoint-style numerator that produced
+        # out-of-range indices for the last sample after clamping.
+        if n == 1:
+            idxs = [len(in_bucket) // 2]
+        else:
+            idxs = [int(round(i * (len(in_bucket) - 1) / (n - 1))) for i in range(n)]
+        idxs = sorted(set(idxs))
         chosen = [in_bucket[i] for i in idxs]
         picks.extend(chosen)
         _log(f'  bucket "{bucket_name}" [{lo},{hi}): {len(in_bucket)} avail, picked {chosen}')

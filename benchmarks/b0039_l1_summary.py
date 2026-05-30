@@ -56,6 +56,7 @@ def _load(csv_path: Path) -> pd.DataFrame:
         'wall_time_s',
         'n_phases',
         'total_iter',
+        'cluster_count',
         'init_n_neg_jdet',
         'init_n_neg_2tri',
         'init_min_T_jdet',
