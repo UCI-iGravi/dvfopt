@@ -102,6 +102,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Make the script robust to being invoked from a subdirectory.
+    import os
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    os.chdir(repo_root)
+
     # Use the same interpreter that's running this script — otherwise a
     # literal "python" shells out to whichever python comes first on PATH,
     # which is rarely the venv where ruff/pytest are installed.
