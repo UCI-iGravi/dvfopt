@@ -32,6 +32,7 @@ from dvfopt.jacobian.sitk_jdet import (
     sitk_jacobian_determinant,
 )
 from dvfopt.jacobian.tetrahedron_sign import (
+    build_tet_sparse_jac,
     six_tet_fold_classification,
     six_tet_volumes_3d,
     tet_grad_T_v,
@@ -58,6 +59,7 @@ __all__ = [
     "_triangle_signs_2d",
     "_triangulated_shoelace_areas_2d",
     # Public surface.
+    "build_tet_sparse_jac",
     "cell_min_jdet_2d",
     "cell_to_pixel_min",
     "has_quad_self_intersections",

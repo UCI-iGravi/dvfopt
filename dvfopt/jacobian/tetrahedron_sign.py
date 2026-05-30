@@ -271,7 +271,139 @@ def tet_grad_T_v(phi_flat: np.ndarray, D: int, H: int, W: int, v: np.ndarray) ->
     return np.concatenate([g_dx.ravel(), g_dy.ravel(), g_dz.ravel()])
 
 
+# ---------------------------------------------------------------------------
+# Sparse forward Jacobian (SLSQP path)
+# ---------------------------------------------------------------------------
+#
+# 3D analogue of ``dvfopt.core.iterative2d_tri_slsqp._build_full_grid_tri_jac``.
+# SLSQP's interior solver wants a sparse CSR Jacobian ``J`` of the constraint
+# vector w.r.t. the flat decision vector — same shape conventions as the
+# barrier-side primitives:
+#
+#   variables (phi pack)   : [dx.ravel(), dy.ravel(), dz.ravel()]  length 3*D*H*W
+#   constraints (V pack)   : [V0.ravel(), V1.ravel(), ..., V5.ravel()]
+#                                                       length 6*(D-1)*(H-1)*(W-1)
+#
+# Each tet has 4 vertices × 3 displacement components = 12 partials. The
+# sparsity pattern is constant for a given (D, H, W) — only the values
+# change per iterate — so we precompute (rows, cols) once and assemble a
+# fresh CSR each call.
+
+
+def _tet_corner_offsets():
+    """``(8, 3)`` offsets (oz, oy, ox) of each cube corner."""
+    return np.array(
+        [[(i >> 2) & 1, (i >> 1) & 1, i & 1] for i in range(8)],
+        dtype=np.int64,
+    )
+
+
+def build_tet_sparse_jac(D: int, H: int, W: int):
+    """Build a callable ``jac(phi_flat) -> csr_matrix`` for the 6-tet constraint.
+
+    Variable layout: ``[dx, dy, dz]`` (length ``3*D*H*W``).
+    Constraint layout: ``[V_0, V_1, ..., V_5]`` (length
+    ``6 * (D-1) * (H-1) * (W-1)``).
+
+    The (rows, cols) pattern is precomputed once at build time so each call
+    is dominated by the gradient arithmetic, not index bookkeeping.
+
+    Returns
+    -------
+    jac : callable
+        ``jac(phi_flat)`` → :class:`scipy.sparse.csr_matrix` of shape
+        ``(n_constraints, n_variables)``.
+    """
+    import scipy.sparse as sp
+
+    Dc, Hc, Wc = D - 1, H - 1, W - 1
+    n_cells = Dc * Hc * Wc
+    n_constr = 6 * n_cells
+    n_vars = 3 * D * H * W
+    DHW = D * H * W
+
+    # Cell-grid index arrays (broadcastable to (Dc, Hc, Wc)).
+    cz = np.arange(Dc, dtype=np.int64)[:, None, None]
+    cy = np.arange(Hc, dtype=np.int64)[None, :, None]
+    cx = np.arange(Wc, dtype=np.int64)[None, None, :]
+    # Flat cell index for each (cz, cy, cx).
+    cell_flat = (cz * Hc * Wc + cy * Wc + cx).ravel()  # shape (n_cells,)
+
+    # Per-corner (oz, oy, ox) offsets.
+    offsets = _tet_corner_offsets()  # (8, 3)
+
+    # Flat vertex (grid-pixel) index for each corner of each cell:
+    # shape (8, n_cells).
+    vertex_flat = np.empty((8, n_cells), dtype=np.int64)
+    for i in range(8):
+        oz, oy, ox = offsets[i]
+        vertex_flat[i] = ((cz + oz) * H * W + (cy + oy) * W + (cx + ox)).ravel()
+
+    # Build (rows, cols) one tet at a time. For tet k with vertex indices
+    # (i0, i1, i2, i3), each cell contributes 4 vertices × 3 components = 12
+    # entries. Row = k*n_cells + cell_flat; col = component*DHW + vertex_flat.
+    rows_chunks = []
+    cols_chunks = []
+    # key_order tracks how the value arrays from the jac() callable line up
+    # with the row/col slots. Layout per tet k:
+    #   for v in (A, B, C, D):
+    #       for c in (x, y, z):           # 3 components per vertex
+    #           entry (row = k*n_cells + cell, col = c*DHW + vertex_flat[v_corner])
+    for k, (i0, i1, i2, i3) in enumerate(_TET_VERTICES):
+        rows_for_tet = (k * n_cells + cell_flat).astype(np.int64)
+        for corner_idx in (i0, i1, i2, i3):
+            vcols = vertex_flat[corner_idx]  # (n_cells,)
+            for comp in range(3):  # 0=x, 1=y, 2=z (matches phi_flat layout)
+                rows_chunks.append(rows_for_tet)
+                cols_chunks.append(comp * DHW + vcols)
+
+    rows_flat = np.concatenate(rows_chunks)
+    cols_flat = np.concatenate(cols_chunks)
+    # nnz = 6 tets * 4 corners * 3 comps * n_cells = 72 * n_cells.
+    assert rows_flat.size == 72 * n_cells
+
+    def jac(phi_flat):
+        # Re-use the analytical adjoint's vertex-gradient computation, but
+        # instead of scatter-adding into a per-pixel buffer we keep the
+        # per-tet per-cell per-corner per-component values and dump them
+        # into the sparse-matrix data array.
+        dz, dy, dx = _phi_flat_to_dz_dy_dx(phi_flat, D, H, W)
+        pos = _voxel_corner_positions(dz, dy, dx)  # (8, 3, Dc, Hc, Wc)
+
+        data_chunks = []
+        for k, (i0, i1, i2, i3) in enumerate(_TET_VERTICES):
+            sgn = float(_TET_SIGN[k])
+            A = pos[i0]
+            B = pos[i1]
+            C = pos[i2]
+            Dv = pos[i3]
+            AB = B - A
+            AC = C - A
+            AD = Dv - A
+            inv6 = sgn / 6.0
+            # Per-vertex gradients in (z, y, x) component order — same as
+            # tet_grad_T_v.
+            gB = inv6 * _cross(AC, AD)
+            gC = inv6 * _cross(AD, AB)
+            gD_ = inv6 * _cross(AB, AC)
+            gA = -(gB + gC + gD_)
+            # For each of the 4 corners (A, B, C, D), push the 3
+            # components (x, y, z). Components are in axis-0 of g* as
+            # (z-comp, y-comp, x-comp), so we permute to (x, y, z).
+            for grad in (gA, gB, gC, gD_):
+                data_chunks.append(grad[2].ravel())  # ∂V/∂(corner.x)
+                data_chunks.append(grad[1].ravel())  # ∂V/∂(corner.y)
+                data_chunks.append(grad[0].ravel())  # ∂V/∂(corner.z)
+
+        data_flat = np.concatenate(data_chunks)
+        assert data_flat.size == rows_flat.size
+        return sp.csr_matrix((data_flat, (rows_flat, cols_flat)), shape=(n_constr, n_vars))
+
+    return jac
+
+
 __all__ = [
+    'build_tet_sparse_jac',
     'six_tet_fold_classification',
     'six_tet_volumes_3d',
     'tet_grad_T_v',
