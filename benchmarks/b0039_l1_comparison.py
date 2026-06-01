@@ -96,8 +96,11 @@ LOG_FILE = OUT_DIR / 'log.txt'
 
 # Per-strategy wall-clock budget. Strategies with a ``time_budget_s`` field
 # will respect this; others (SLSQP) may exceed it slightly via their own
-# maxiter caps but won't run forever.
-TIME_BUDGET_S = 180.0
+# maxiter caps but won't run forever. Raised from 180s after the first
+# benchmark sweep showed wallbreakers (M10/M14/Schwarz) hitting the
+# 180s wall on dense B0039 extreme slices (5000+ folds) without
+# reaching feasibility — 600s gives them room to converge.
+TIME_BUDGET_S = 600.0
 
 THRESHOLD = 0.01
 EPS_L1 = 1e-4
