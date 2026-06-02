@@ -135,6 +135,7 @@ def run_penalty_barrier_lbfgs(
     verbose: int = 0,
     record_history: bool = False,
     log_prefix: str = '',
+    step_callback=None,
 ):
     """Run the penalty -> log-barrier L-BFGS-B homotopy.
 
@@ -172,6 +173,23 @@ def run_penalty_barrier_lbfgs(
     history = []
     lam_steps = 0
     mu_steps = 0
+
+    def _fire(stage: str, phi_flat_now: np.ndarray) -> None:
+        """Forward a flat-phi snapshot to ``step_callback`` if a caller
+        passed one. The barrier core works in the constraint's flat
+        decision-vector layout; the caller (typically a Strategy) is
+        responsible for any reshape it wants — we pass ``phi_flat`` in
+        the payload so the consumer can unflatten with the constraint
+        it owns. Buggy callbacks are swallowed; KeyboardInterrupt is
+        the documented stop signal and propagates."""
+        if step_callback is None:
+            return
+        try:
+            step_callback({'phi_flat': phi_flat_now.copy(), 'stage': stage})
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            pass
 
     obj_kwargs = dict(
         phi_anchor=phi_anchor,
@@ -222,6 +240,7 @@ def run_penalty_barrier_lbfgs(
                 f'({time.time() - t0:.2f}s)',
                 flush=True,
             )
+        _fire(f'penalty_lam={lam:g}', phi_flat)
         if cur_min >= target:
             feasible = True
             break
@@ -264,6 +283,7 @@ def run_penalty_barrier_lbfgs(
                     f'({time.time() - t0:.2f}s)',
                     flush=True,
                 )
+            _fire(f'barrier_mu={mu:g}', phi_flat)
 
     return phi_flat, {
         'feasible': feasible,

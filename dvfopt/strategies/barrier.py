@@ -26,7 +26,16 @@ class BarrierStrategy(Strategy):
     supports_3d: bool = True
 
     def solve(
-        self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        step_callback=None,
+        **_,
     ):
         from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
 
@@ -35,6 +44,17 @@ class BarrierStrategy(Strategy):
         phi_anchor = phi_flat.copy()
         anchor_kind = objective.label or 'l2'
         anchor_eps = getattr(objective, 'eps', 1e-4)
+
+        # Wrap the caller's ``step_callback`` so the inner barrier core
+        # (which works in flat decision-vector layout) emits ``{'phi':
+        # (C, *shape), 'stage': name}`` like the other strategies. The
+        # constraint owns the unflatten convention.
+        if step_callback is None:
+            inner_cb = None
+        else:
+            def inner_cb(state):
+                phi_arr = constraint.unflatten(state['phi_flat'])
+                step_callback({'phi': phi_arr, 'stage': state['stage']})
 
         out_flat, info = run_penalty_barrier_lbfgs(
             phi_flat,
@@ -50,6 +70,7 @@ class BarrierStrategy(Strategy):
             eps_l1=anchor_eps,
             verbose=verbose,
             record_history=record_history,
+            step_callback=inner_cb,
         )
         return constraint.unflatten(out_flat), _build_solve_info('BarrierStrategy', info, threshold)
 

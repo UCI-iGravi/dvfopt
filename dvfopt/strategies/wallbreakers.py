@@ -75,7 +75,16 @@ class HarmonicALMBarrierStrategy(Strategy):
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
 
     def solve(
-        self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        step_callback=None,
+        **_,
     ):
         from dvfopt.core.wallbreakers import iterative_2d_tri_harmonic_polished
 
@@ -93,6 +102,7 @@ class HarmonicALMBarrierStrategy(Strategy):
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
+            step_callback=step_callback,
         )
         if record_history:
             phi_out, info = out
@@ -211,7 +221,16 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
 
     def solve(
-        self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        step_callback=None,
+        **_,
     ):
         from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
 
@@ -232,6 +251,7 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
             max_grow_iters=self.max_grow_iters,
             verbose=verbose,
             record_history=record_history,
+            step_callback=step_callback,
         )
         if record_history:
             phi_out, info = out

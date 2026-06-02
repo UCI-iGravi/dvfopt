@@ -45,6 +45,7 @@ def iterative_2d_tri_refine_repair_schwarz(
     final_polish_max_iter: int = 200,
     verbose: int = 1,
     record_history: bool = False,
+    step_callback=None,
     **m14_kwargs,
 ):
     """Cluster-localized refine-repair (m14-Schwarz).
@@ -118,6 +119,7 @@ def iterative_2d_tri_refine_repair_schwarz(
         final_polish_fn=final_polish_fn,
         verbose=verbose,
         record_history=record_history,
+        step_callback=step_callback,
     )
 
 

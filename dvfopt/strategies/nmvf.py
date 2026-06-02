@@ -60,6 +60,7 @@ class NMVFStrategy(Strategy):
         threshold,
         verbose=0,
         record_history=False,
+        step_callback=None,
         **_,
     ):
         from dvfopt.core._nmvf import nmvf_correct_2d
@@ -73,6 +74,7 @@ class NMVFStrategy(Strategy):
             max_iter=self.max_iter,
             verbose=verbose,
             record_history=record_history,
+            step_callback=step_callback,
         )
         if record_history:
             phi_out, info = out
