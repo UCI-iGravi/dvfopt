@@ -30,6 +30,7 @@ def iterative_serial(
     save_path=None,
     plot_every=0,
     plot_callback=None,
+    step_callback=None,
     threshold=None,
     err_tol=None,
     max_iterations=None,
@@ -63,6 +64,19 @@ def iterative_serial(
     plot_callback : callable or None
         Optional callback receiving ``(deformation_i, phi)``
         after each sub-optimisation.
+    step_callback : callable or None
+        Optional richer per-step hook receiving a single ``state`` dict
+        after each sub-optimisation. ``state`` carries the current
+        ``phi`` / ``phi_init`` / ``jacobian`` / ``quality`` arrays
+        (mutated in-place by the solver — copy before reading from
+        another thread), the active-window ``(cy, cx)`` centre and
+        ``(sy, sx)`` size, ``opt_size`` (padded), the ``is_padded``
+        flag, the worst-pixel ``neg_index``, the ``outer_iter`` /
+        ``per_index_iter`` counters, and running ``n_neg`` / ``min_T``.
+        Used by :mod:`dvfopt_gui` for live solver visualisation. Note
+        that this hook fires after ``scipy.optimize.minimize`` returns,
+        not during it — so stop-on-callback semantics have whatever
+        latency one sub-optimisation takes.
     threshold, err_tol, max_iterations, max_per_index_iter,
     max_minimize_iter :
         Override the corresponding default parameters.
@@ -252,6 +266,8 @@ def iterative_serial(
                 injectivity_threshold=injectivity_threshold,
                 enforce_triangles=enforce_triangles,
                 plot_callback=_cb,
+                step_callback=step_callback,
+                outer_iter=iteration,
                 deformation_i=deformation_i,
                 min_window=global_min_window,
                 labeled=_labeled_neg,

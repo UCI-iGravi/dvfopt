@@ -31,9 +31,15 @@ dev = [
     "nbformat>=5",
     "pandas",
 ]
+gui = [
+    # Live-visualisation app (``dvfopt_gui``). Standalone — only needed
+    # if you want the PyQtGraph GUI; not pulled in by ``pip install -e .``.
+    "pyqt5",
+    "pyqtgraph",
+]
 
 [tool.setuptools.packages.find]
-include = ["dvfopt*", "laplacian*", "test_cases*"]
+include = ["dvfopt*", "laplacian*", "test_cases*", "dvfopt_gui*"]
 
 # ---------------------------------------------------------------------------
 # Ruff: lint + format. Run with `ruff check --fix` and `ruff format`.
@@ -88,9 +94,14 @@ ignore = [
 "benchmarks/scripts/_run_*.py" = ["E402"]
 "benchmarks/scripts/_full_volume_parallel.py" = ["E402"]
 "benchmarks/scripts/_*.py" = ["E402"]
+# GUI package: ``__init__.py`` re-exports ``LiveSolverWindow`` and
+# ``launch`` without using them locally, so F401 fires there. Scoped to
+# the init module only so the rest of the package gets normal
+# unused-import detection.
+"dvfopt_gui/__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dvfopt", "laplacian", "test_cases"]
+known-first-party = ["dvfopt", "dvfopt_gui", "laplacian", "test_cases"]
 
 [tool.ruff.format]
 quote-style = "preserve"  # don't auto-rewrite quotes (codebase uses both)
