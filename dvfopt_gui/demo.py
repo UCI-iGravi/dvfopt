@@ -97,9 +97,14 @@ def main(argv=None) -> int:
         print(f'Loading canonical {args.canonical}…', flush=True)
         deformation_i = _canonical_case(args.canonical)
     else:
-        # Smallish default with enough folds to be interesting.
-        print('Loading default canonical 03d_20x20_crossing…', flush=True)
-        deformation_i = _canonical_case('03d')
+        # The canonical "bowtie" crossing — 10x10 grid with two
+        # opposing correspondence points that swap diagonally. Small
+        # enough that every view mode renders instantly, but the
+        # crossing produces ~16 cells with at least one flipped
+        # triangle, so the deformation-grid view shows a clear red
+        # bowtie of folded cells out of the gate.
+        print('Loading default canonical 01a_10x10_crossing (bowtie)…', flush=True)
+        deformation_i = _canonical_case('01a')
 
     print(f'  shape: {deformation_i.shape}', flush=True)
 

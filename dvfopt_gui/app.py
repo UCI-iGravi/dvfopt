@@ -106,6 +106,52 @@ def _grid_lines(phi_2hw: np.ndarray, stride: int = 1):
     return np.concatenate(xs_list), np.concatenate(ys_list)
 
 
+def _folded_cells_path(phi_2hw: np.ndarray, max_cells: int = 10_000):
+    """Build a ``QPainterPath`` outlining every cell where
+    ``min(T1, T2) <= 0`` (i.e. at least one of the cell's two
+    sign-area triangles has flipped). Returned with the warped-corner
+    quad geometry so we can fill in red over the wireframe.
+
+    Caps at ``max_cells`` folded cells to keep the draw call bounded
+    on dense fields (e.g., a 320×456 B0039 slice can have ~5000 folded
+    cells, well under the cap). When the cap is exceeded the loudest
+    folds (by ``min(T1, T2)``) are kept and the rest dropped.
+    """
+    from PyQt5.QtGui import QPainterPath
+
+    from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
+    dy, dx = phi_2hw[0], phi_2hw[1]
+    T1, T2 = _triangle_areas_2d(dy, dx)
+    cell_min = np.minimum(T1, T2)
+    folded_mask = cell_min <= 0
+    if not folded_mask.any():
+        return QPainterPath()
+
+    folded_yx = np.argwhere(folded_mask)
+    if len(folded_yx) > max_cells:
+        # Keep the deepest folds.
+        vals = cell_min[folded_mask]
+        order = np.argsort(vals)[:max_cells]
+        folded_yx = folded_yx[order]
+
+    H, W = dy.shape
+    yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing='ij')
+    Y = yy + dy
+    X = xx + dx
+
+    path = QPainterPath()
+    for r, c in folded_yx:
+        # Quad corners: top-left → top-right → bottom-right → bottom-left
+        # (using row-major (y, x) indexing on the (H, W) grid).
+        path.moveTo(float(X[r, c]), float(Y[r, c]))
+        path.lineTo(float(X[r, c + 1]), float(Y[r, c + 1]))
+        path.lineTo(float(X[r + 1, c + 1]), float(Y[r + 1, c + 1]))
+        path.lineTo(float(X[r + 1, c]), float(Y[r + 1, c]))
+        path.closeSubpath()
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
@@ -203,6 +249,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         )
         self._grid_curve.setVisible(False)
         self._plot.addItem(self._grid_curve)
+
+        # Folded-cell overlay (deformation-grid view only). Filled red
+        # with a darker red outline so flipped cells stand out against
+        # the gray wireframe.
+        self._fold_overlay = pg.QtWidgets.QGraphicsPathItem()
+        self._fold_overlay.setBrush(pg.mkBrush(220, 30, 30, 180))
+        self._fold_overlay.setPen(pg.mkPen(color=(160, 0, 0), width=1))
+        self._fold_overlay.setVisible(False)
+        self._plot.addItem(self._fold_overlay)
 
         # Section-selection ROI — used by "Run section". Hidden until a
         # DVF is loaded; user drags handles to outline the region.
@@ -361,24 +416,27 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if mode == VIEW_JDET:
             self._img.setImage(jacobian, autoLevels=False)
             self._img.setVisible(True)
+            self._img.setOpacity(1.0)
             self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
         elif mode == VIEW_2TRI:
             self._img.setImage(_min_tri_from_phi(phi_2hw), autoLevels=False)
             self._img.setVisible(True)
+            self._img.setOpacity(1.0)
             self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
         elif mode == VIEW_GRID:
-            # Faint Jdet under the wireframe so folded regions still
-            # read red through the grid.
-            self._img.setImage(jacobian, autoLevels=False)
-            self._img.setVisible(True)
-            self._img.setOpacity(0.35)
+            # Pure grid view: hide the Jdet heatmap entirely and draw
+            # only the warped wireframe. Folded cells (min(T1,T2) <= 0)
+            # are overlaid with a translucent red fill so they pop out
+            # against the gray grid without obscuring its geometry.
+            self._img.setVisible(False)
             stride = max(1, min(phi_2hw.shape[1:]) // 40)
             xs, ys = _grid_lines(phi_2hw, stride=stride)
             self._grid_curve.setData(xs, ys)
             self._grid_curve.setVisible(True)
-            return
-        # Restore opacity if we drop back from grid mode.
-        self._img.setOpacity(1.0)
+            self._fold_overlay.setPath(_folded_cells_path(phi_2hw))
+            self._fold_overlay.setVisible(True)
 
     def _on_view_changed(self, idx: int):
         self._view_mode = self._view_combo.itemData(idx)
