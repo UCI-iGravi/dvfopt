@@ -41,7 +41,13 @@ from PyQt5 import QtCore
 
 
 class StateSnapshot:
-    """Plain-numpy snapshot of one solver step, decoupled from solver memory."""
+    """Plain-numpy snapshot of one solver step, decoupled from solver memory.
+
+    Carries the corrected ``phi`` (a copy — solver mutates the live
+    buffer in place) so the GUI can render alternate views (2-tri
+    min, deformation-grid wireframe) and the pixel inspector can
+    compute T1/T2 alongside Jdet.
+    """
 
     __slots__ = (
         'is_padded',
@@ -56,6 +62,7 @@ class StateSnapshot:
         'opt_y1',
         'outer_iter',
         'per_index_iter',
+        'phi',
         'window_x0',
         'window_x1',
         'window_y0',
@@ -65,6 +72,7 @@ class StateSnapshot:
     def __init__(
         self,
         *,
+        phi,
         jacobian,
         window_y0,
         window_y1,
@@ -82,6 +90,7 @@ class StateSnapshot:
         n_neg,
         min_T,
     ):
+        self.phi = phi
         self.jacobian = jacobian
         self.window_y0 = window_y0
         self.window_y1 = window_y1
@@ -101,7 +110,15 @@ class StateSnapshot:
 
 
 def _state_to_snapshot(state: dict) -> StateSnapshot:
-    """Convert the solver's callback dict into a thread-safe snapshot."""
+    """Convert the solver's callback dict into a thread-safe snapshot.
+
+    Both ``phi`` and ``jacobian`` are *copied* — the solver mutates
+    those buffers in place between callback fires, so a stale view
+    from the GUI thread would otherwise race.
+    """
+    # ``phi`` from the iterative_serial path is ``(2, H, W)`` channels
+    # ``[dy, dx]``. Copy so the GUI thread can read it safely.
+    phi_arr = np.asarray(state['phi']).copy()
     jac = np.asarray(state['jacobian'][0]).copy()  # (H, W)
     cy, cx = state['window_center']
     sy, sx = state['window_size']
@@ -110,6 +127,7 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
     ohy, ohx = osy // 2, osx // 2
     H, W = jac.shape
     return StateSnapshot(
+        phi=phi_arr,
         jacobian=jac,
         window_y0=max(0, cy - hy),
         window_y1=min(H, cy + (sy - hy)),
