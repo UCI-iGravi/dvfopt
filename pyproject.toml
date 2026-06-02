@@ -31,9 +31,15 @@ dev = [
     "nbformat>=5",
     "pandas",
 ]
+gui = [
+    # Live-visualisation app (``dvfopt_gui``). Standalone — only needed
+    # if you want the PyQtGraph GUI; not pulled in by ``pip install -e .``.
+    "pyqt5",
+    "pyqtgraph",
+]
 
 [tool.setuptools.packages.find]
-include = ["dvfopt*", "laplacian*", "test_cases*"]
+include = ["dvfopt*", "laplacian*", "test_cases*", "dvfopt_gui*"]
 
 # ---------------------------------------------------------------------------
 # Ruff: lint + format. Run with `ruff check --fix` and `ruff format`.
@@ -88,6 +94,9 @@ ignore = [
 "benchmarks/scripts/_run_*.py" = ["E402"]
 "benchmarks/scripts/_full_volume_parallel.py" = ["E402"]
 "benchmarks/scripts/_*.py" = ["E402"]
+# GUI relies on the optional PyQt5 import — skip the unused-import
+# noise from ruff when PyQt5 isn't installed during lint.
+"dvfopt_gui/**" = ["F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dvfopt", "laplacian", "test_cases"]

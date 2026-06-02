@@ -82,6 +82,8 @@ def _serial_fix_pixel(
     injectivity_threshold=None,
     enforce_triangles=False,
     plot_callback=None,
+    step_callback=None,
+    outer_iter=None,
     deformation_i=None,
     min_window=(3, 3),
     labeled=None,
@@ -260,6 +262,29 @@ def _serial_fix_pixel(
 
         if plot_callback is not None:
             plot_callback(deformation_i, phi)
+        if step_callback is not None:
+            # Rich state hook for live-visualization tools. The callback
+            # receives a snapshot of the per-pixel inner-loop state; the
+            # consumer is responsible for any copying it needs (most
+            # arrays here are mutated in subsequent iterations).
+            step_callback(
+                {
+                    'phi': phi,
+                    'phi_init': phi_init,
+                    'jacobian': jacobian_matrix,
+                    'quality': quality_matrix,
+                    'neg_index': neg_index_tuple,
+                    'window_center': (cy, cx),
+                    'window_size': submatrix_size,
+                    'opt_size': opt_size,
+                    'is_padded': is_padded,
+                    'per_index_iter': per_index_iter,
+                    'outer_iter': outer_iter,
+                    'window_reached_max': window_reached_max,
+                    'n_neg': int(_cur_neg) if _cur_neg is not None else -1,
+                    'min_T': float(_cur_min) if _cur_min is not None else float('nan'),
+                }
+            )
 
         if float(quality_matrix[0].min()) > threshold - err_tol:
             break
