@@ -138,7 +138,16 @@ class HarmonicALMRefineRepairStrategy(Strategy):
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
 
     def solve(
-        self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
+        self,
+        phi_in,
+        *,
+        constraint,
+        objective,
+        threshold,
+        verbose=0,
+        record_history=False,
+        step_callback=None,
+        **_,
     ):
         from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair
 
@@ -158,6 +167,7 @@ class HarmonicALMRefineRepairStrategy(Strategy):
             verbose=verbose,
             eps_l1=getattr(objective, 'eps', 1e-4),
             record_history=record_history,
+            step_callback=step_callback,
         )
         if record_history:
             phi_out, info = out
