@@ -161,10 +161,18 @@ class SolverWorker(QtCore.QThread):
     finishedWithResult = QtCore.pyqtSignal(object, object)  # corrected_phi, info
     errored = QtCore.pyqtSignal(str)
 
-    def __init__(self, *, deformation_i, solver_kwargs=None, parent=None):
+    def __init__(
+        self,
+        *,
+        deformation_i,
+        method_id: str = 'slsqp_windowed_2tri',
+        params=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._deformation_i = deformation_i
-        self._solver_kwargs = dict(solver_kwargs or {})
+        self._method_id = method_id
+        self._params = dict(params or {})
         self._stop_requested = False
         # Bounded queue so a slow GUI doesn't stall the solver. The
         # producer pre-drains the old item before pushing — we always
@@ -215,17 +223,123 @@ class SolverWorker(QtCore.QThread):
         """
         return self._callback_count
 
+    # -- one-shot helpers -----------------------------------------------------
+
+    def _emit_synthetic_snapshot(self, phi_2hw, n_neg: int, min_T: float) -> None:
+        """Push one synthetic snapshot through the queue so the GUI can
+        render the final state of a one-shot (no-step_callback) solver.
+
+        The window / target overlays are collapsed to a zero-sized rect
+        since there's no live window to show.
+        """
+        from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+
+        jac = jacobian_det2D(phi_2hw)[0]
+        H, W = jac.shape
+        snap = StateSnapshot(
+            phi=phi_2hw.copy(),
+            jacobian=jac.copy(),
+            window_y0=0,
+            window_y1=0,
+            window_x0=0,
+            window_x1=0,
+            opt_y0=0,
+            opt_y1=0,
+            opt_x0=0,
+            opt_x1=0,
+            is_padded=False,
+            neg_y=0,
+            neg_x=0,
+            per_index_iter=0,
+            outer_iter=0,
+            n_neg=int(n_neg),
+            min_T=float(min_T),
+        )
+        self._callback_count += 1
+        try:
+            self._latest.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            self._latest.put_nowait(snap)
+        except queue.Full:
+            pass
+
+    def _run_windowed_slsqp(self, enforce_triangles: bool):
+        """Live-progress path: ``iterative_serial`` with our
+        ``step_callback`` hook so the GUI sees every sub-window solve."""
+        from dvfopt.core.slsqp.iterative import iterative_serial
+
+        kwargs = {
+            'verbose': 0,
+            'enforce_triangles': enforce_triangles,
+        }
+        if 'max_iterations' in self._params:
+            kwargs['max_iterations'] = int(self._params['max_iterations'])
+        phi_out = iterative_serial(
+            self._deformation_i.copy(),
+            step_callback=self._callback,
+            **kwargs,
+        )
+        return phi_out
+
+    def _run_via_solver(self, strategy):
+        """One-shot path through ``dvfopt.Solver``. Emits one synthetic
+        snapshot when finished so the GUI's render loop sees the final
+        state. No live progress for these methods (they don't expose
+        ``step_callback`` hooks yet)."""
+        from dvfopt import L1Objective, Solver, TriConstraint2DFullCoverage
+
+        # iterative_serial gets the (3, 1, H, W) layout; Solver takes
+        # the (2, H, W) one. Strip the singleton dz row.
+        phi_2hw = np.stack(
+            [
+                self._deformation_i[1, 0].astype(np.float64),
+                self._deformation_i[2, 0].astype(np.float64),
+            ]
+        )
+        H, W = phi_2hw.shape[1:]
+        constraint = TriConstraint2DFullCoverage(shape=(H, W))
+        objective = L1Objective(eps=1e-4)
+        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        result = solver.fit(phi_2hw)
+        self._emit_synthetic_snapshot(
+            result.corrected, n_neg=result.final_n_neg, min_T=result.final_min_T
+        )
+        return result.corrected
+
+    def _build_strategy(self):
+        """Build a configured Strategy instance for the chosen method."""
+        from dvfopt import (
+            BarrierStrategy,
+            HarmonicALMBarrierStrategy,
+            HarmonicALMRefineRepairStrategy,
+            SchwarzHarmonicALMRefineRepairStrategy,
+        )
+
+        time_budget = float(self._params.get('time_budget_s', 60.0))
+        if self._method_id == 'barrier_2tri':
+            return BarrierStrategy()
+        if self._method_id == 'm10_2tri':
+            return HarmonicALMBarrierStrategy(time_budget_s=time_budget)
+        if self._method_id == 'm14_2tri':
+            return HarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+        if self._method_id == 'm14_schwarz_2tri':
+            return SchwarzHarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+        raise ValueError(f'unknown method_id={self._method_id!r}')
+
+    # -- main entrypoint ------------------------------------------------------
+
     def run(self):
         try:
-            from dvfopt.core.slsqp.iterative import iterative_serial
-
-            kwargs = dict(self._solver_kwargs)
-            kwargs.setdefault('verbose', 0)
-            phi_out = iterative_serial(
-                self._deformation_i.copy(),
-                step_callback=self._callback,
-                **kwargs,
-            )
+            if self._method_id == 'slsqp_windowed_jdet':
+                phi_out = self._run_windowed_slsqp(enforce_triangles=False)
+            elif self._method_id == 'slsqp_windowed_2tri':
+                phi_out = self._run_windowed_slsqp(enforce_triangles=True)
+            else:
+                phi_out = self._run_via_solver(self._build_strategy())
             self.finishedWithResult.emit(phi_out, None)
         except KeyboardInterrupt:
             # Clean stop requested via request_stop().

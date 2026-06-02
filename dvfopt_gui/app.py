@@ -162,6 +162,21 @@ VIEW_2TRI = '2tri'
 VIEW_GRID = 'grid'
 
 
+# Method dropdown specs. ``label`` shows in the combo; ``id`` is what
+# the worker dispatches on. Keep the wallbreaker family first since
+# they're the only options that genuinely correct 2-tri folds — the
+# bowtie + most B0039 slices need a 2-tri-aware solver.
+_METHOD_SPECS = [
+    ('m14_2tri', 'M14 — 2-tri (Harmonic + ALM + L2 refine + repair + polish)'),
+    ('m14_schwarz_2tri', 'M14-Schwarz — 2-tri (cluster decomposition + global polish)'),
+    ('m10_2tri', 'M10 — 2-tri (Harmonic + ALM + barrier polish)'),
+    ('barrier_2tri', 'Barrier — 2-tri (penalty → log-barrier L-BFGS-B)'),
+    ('slsqp_windowed_2tri', 'SLSQP windowed — 2-tri (live progress)'),
+    ('slsqp_windowed_jdet', 'SLSQP windowed — Jdet only (live progress; misses 2-tri folds)'),
+]
+DEFAULT_METHOD_ID = 'm14_2tri'
+
+
 class LiveSolverWindow(QtWidgets.QMainWindow):
     """Live-viz window for the windowed-SLSQP solver.
 
@@ -170,7 +185,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     ``None`` to start empty and use **Load DVF...** to pick a file.
     """
 
-    def __init__(self, deformation_i=None, *, solver_kwargs=None, parent=None):
+    def __init__(self, deformation_i=None, *, parent=None):
         super().__init__(parent)
         self.setWindowTitle('dvfopt — live solver visualisation')
         self.resize(1500, 900)
@@ -181,7 +196,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # them with D=1.
         self._volume: np.ndarray | None = None
         self._z = 0
-        self._default_solver_kwargs = dict(solver_kwargs or {})
         self._view_mode = VIEW_JDET
         self._latest: StateSnapshot | None = None
         self._worker: SolverWorker | None = None
@@ -228,11 +242,52 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stop_btn.setEnabled(False)
         bar.addWidget(self._stop_btn)
 
+        # ---- second toolbar row: method + parameters -------------------
+        method_bar = QtWidgets.QHBoxLayout()
+        outer.addLayout(method_bar)
+        method_bar.addWidget(QtWidgets.QLabel('Method:'))
+        self._method_combo = QtWidgets.QComboBox()
+        for mid, label in _METHOD_SPECS:
+            self._method_combo.addItem(label, mid)
+        # Default to a 2-tri wallbreaker so the bowtie + most B0039
+        # slices visibly correct on the first run.
+        default_idx = next(
+            (i for i, (mid, _) in enumerate(_METHOD_SPECS) if mid == DEFAULT_METHOD_ID),
+            0,
+        )
+        self._method_combo.setCurrentIndex(default_idx)
+        method_bar.addWidget(self._method_combo, stretch=1)
+
+        method_bar.addWidget(QtWidgets.QLabel('time_budget_s:'))
+        self._budget_spin = QtWidgets.QDoubleSpinBox()
+        self._budget_spin.setRange(1.0, 3600.0)
+        self._budget_spin.setSingleStep(10.0)
+        self._budget_spin.setValue(60.0)
+        self._budget_spin.setToolTip(
+            'Wall-clock budget for the wallbreaker family '
+            '(M10, M14, Schwarz, Barrier). Ignored by SLSQP-windowed.'
+        )
+        method_bar.addWidget(self._budget_spin)
+
+        method_bar.addWidget(QtWidgets.QLabel('max_iter:'))
+        self._max_iter_spin = QtWidgets.QSpinBox()
+        self._max_iter_spin.setRange(1, 100_000)
+        self._max_iter_spin.setSingleStep(10)
+        self._max_iter_spin.setValue(200)
+        self._max_iter_spin.setToolTip(
+            'Outer-iteration cap for SLSQP-windowed. Ignored by '
+            'wallbreaker methods (they use time_budget_s instead).'
+        )
+        method_bar.addWidget(self._max_iter_spin)
+
         # ---- split: left image, right info panel -----------------------
         split = QtWidgets.QHBoxLayout()
         outer.addLayout(split, stretch=1)
 
-        self._plot = pg.PlotWidget()
+        # White background so heatmap text + dark grid lines are
+        # legible. The default pyqtgraph black bg made the deformation-
+        # grid wireframe look "faded" (dark lines on dark bg).
+        self._plot = pg.PlotWidget(background='w')
         self._plot.setAspectLocked(True)
         self._plot.invertY(True)
         self._plot.setLabels(left='y', bottom='x')
@@ -244,9 +299,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._img.setLevels((-1.0, 1.0))
         self._plot.addItem(self._img)
 
-        self._grid_curve = pg.PlotDataItem(
-            pen=pg.mkPen(color=(40, 40, 80), width=1), connect='finite'
-        )
+        self._grid_curve = pg.PlotDataItem(pen=pg.mkPen(color=(0, 0, 0), width=2), connect='finite')
         self._grid_curve.setVisible(False)
         self._plot.addItem(self._grid_curve)
 
@@ -485,9 +538,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._start_worker(deformation_i)
 
     def _start_worker(self, deformation_i: np.ndarray):
+        method_id = self._method_combo.currentData()
+        params = {
+            'time_budget_s': float(self._budget_spin.value()),
+            'max_iterations': int(self._max_iter_spin.value()),
+        }
         self._worker = SolverWorker(
             deformation_i=deformation_i,
-            solver_kwargs=dict(self._default_solver_kwargs),
+            method_id=method_id,
+            params=params,
             parent=self,
         )
         self._worker.finishedWithResult.connect(self._on_finished)
@@ -495,7 +554,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stop_btn.setEnabled(True)
         self._run_full_btn.setEnabled(False)
         self._run_roi_btn.setEnabled(False)
-        self._fps_label.setText('starting…')
+        self._fps_label.setText(f'starting {method_id}…')
         self._last_count = 0
         self._last_tick.restart()
         self._worker.start()
@@ -667,12 +726,15 @@ def launch(deformation_i=None, *, solver_kwargs=None) -> int:
         ``(3, D, H, W)``. When ``None`` (default), the window starts
         empty — use **Load DVF…** to pick a file.
     solver_kwargs : dict, optional
-        Forwarded to :func:`dvfopt.core.slsqp.iterative.iterative_serial`
-        on every run.
+        Ignored. The choice of solver + its parameters now lives in
+        the toolbar (Method dropdown + the ``time_budget_s`` /
+        ``max_iter`` spinboxes). Kept in the signature for back-
+        compat with v1 callers.
 
     Returns Qt exit code."""
+    del solver_kwargs  # kept for back-compat; choice is in-GUI now
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
-    win = LiveSolverWindow(deformation_i, solver_kwargs=solver_kwargs)
+    win = LiveSolverWindow(deformation_i)
     win.show()
     win.start()
     return app.exec_()
