@@ -57,25 +57,37 @@ def _canonical_case(key: str) -> np.ndarray:
 
 
 def _bowtie_fixture() -> np.ndarray:
-    """Build a minimal 4×4 deformation with exactly **two crossing cells**.
+    """The 7x7 shoelace-artifact bowtie from
+    ``notebooks/two-triangle-check/02_optimization.ipynb``.
 
-    The displacement swaps the two interior corners of the middle row
-    horizontally: corner (1, 1) moves right by ~1.5 cells, corner
-    (1, 2) moves left by ~1.5 cells. The two cells in the middle row
-    that touch the swap (one on the left, one on the right) both end
-    up with crossed diagonals — a literal bowtie shape per cell.
+    Definition (verbatim from the notebook):
+
+    .. code-block:: python
+
+        dy = np.zeros((7, 7))
+        dx = np.zeros((7, 7))
+        dx[3, 3] = +1.2
+        dx[3, 4] = -1.2
+        phi = np.stack([dy, dx])
+
+    Pixels ``(3, 3)`` and ``(3, 4)`` swap in the dx channel — the two
+    cells anchored at those positions get crossed top/bottom edges,
+    i.e. literally bowtie-shaped warped quads. The full grid has
+    exactly **two folded 2-triangle cells** and **zero neg-Jdet
+    pixels** (the central-diff stencil's 2Δ symmetry cancels the
+    artifact out). It's the manuscript's "Jdet-CD misses sub-pixel
+    folds that 2-tri catches" demonstration in its smallest form.
 
     Returns the canonical ``(3, 1, H, W)`` layout the GUI expects.
     """
-    H, W = 4, 4
-    phi = np.zeros((2, H, W), dtype=np.float64)
-    # dx channel — move the two middle-row interior corners past each
-    # other horizontally to cross their cells.
-    phi[1, 1, 1] = +1.6
-    phi[1, 1, 2] = -1.6
+    H, W = 7, 7
+    dy = np.zeros((H, W), dtype=np.float64)
+    dx = np.zeros((H, W), dtype=np.float64)
+    dx[3, 3] = +1.2
+    dx[3, 4] = -1.2
     out = np.zeros((3, 1, H, W), dtype=np.float64)
-    out[1, 0] = phi[0]
-    out[2, 0] = phi[1]
+    out[1, 0] = dy
+    out[2, 0] = dx
     return out
 
 
@@ -120,13 +132,11 @@ def main(argv=None) -> int:
         print(f'Loading canonical {args.canonical}…', flush=True)
         deformation_i = _canonical_case(args.canonical)
     else:
-        # Minimal 4×4 bowtie: two adjacent cells with crossed
-        # diagonals (one of each cell's two triangles flipped).
-        # Critically, this fixture has ZERO neg-Jdet pixels but TWO
-        # folded 2-tri cells — exactly the "Jdet stencil misses
-        # sub-pixel folds" story in microcosm, and a clean demo of
-        # why the GUI defaults to a 2-tri-aware solver.
-        print('Loading default 4x4 bowtie fixture (2 crossing cells)…', flush=True)
+        # 7x7 shoelace-artifact bowtie from
+        # notebooks/two-triangle-check/02_optimization.ipynb —
+        # dx[3,3]=+1.2 swaps with dx[3,4]=-1.2. Exactly two crossing
+        # cells, zero neg-Jdet pixels.
+        print('Loading default 7x7 bowtie fixture (02_optimization.ipynb)…', flush=True)
         deformation_i = _bowtie_fixture()
 
     print(f'  shape: {deformation_i.shape}', flush=True)
