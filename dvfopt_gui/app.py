@@ -36,15 +36,20 @@ from dvfopt_gui.worker import SolverWorker, StateSnapshot
 
 
 def _jdet_colormap():
-    """Diverging Jdet colormap; red = negative (folded), blue = positive."""
+    """Diverging Jdet colormap; **red = positive (feasible)**,
+    **blue = negative (folded)**. White separates the two at zero.
+
+    (Note: this is the opposite of the standard "red = bad" convention
+    used in :mod:`dvfopt.viz`; chosen here per user request to match
+    their preferred reading.)"""
     stops = np.array([0.0, 0.49, 0.5, 0.51, 1.0])
     colors = np.array(
         [
-            [180, 0, 0, 255],  # deep red
-            [255, 200, 180, 255],  # pale red near zero
+            [0, 90, 200, 255],  # deep blue at Jdet=-1
+            [200, 220, 255, 255],  # pale blue near zero
             [240, 240, 240, 255],  # white at zero
-            [200, 220, 255, 255],  # pale blue
-            [0, 90, 200, 255],  # deep blue
+            [255, 200, 180, 255],  # pale red just positive
+            [180, 0, 0, 255],  # deep red at Jdet=+1
         ],
         dtype=np.uint8,
     )
@@ -303,12 +308,13 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._grid_curve.setVisible(False)
         self._plot.addItem(self._grid_curve)
 
-        # Folded-cell overlay (deformation-grid view only). Filled red
-        # with a darker red outline so flipped cells stand out against
-        # the gray wireframe.
+        # Folded-cell overlay (deformation-grid view only). Filled
+        # magenta with a dark-magenta outline so flipped cells stand
+        # out against the black wireframe. Magenta (not red) so the
+        # highlight reads distinctly from the red-=-positive heatmap.
         self._fold_overlay = pg.QtWidgets.QGraphicsPathItem()
-        self._fold_overlay.setBrush(pg.mkBrush(220, 30, 30, 180))
-        self._fold_overlay.setPen(pg.mkPen(color=(160, 0, 0), width=1))
+        self._fold_overlay.setBrush(pg.mkBrush(220, 30, 200, 200))
+        self._fold_overlay.setPen(pg.mkPen(color=(120, 0, 110), width=1))
         self._fold_overlay.setVisible(False)
         self._plot.addItem(self._fold_overlay)
 

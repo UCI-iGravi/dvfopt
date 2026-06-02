@@ -56,6 +56,29 @@ def _canonical_case(key: str) -> np.ndarray:
     )
 
 
+def _bowtie_fixture() -> np.ndarray:
+    """Build a minimal 4×4 deformation with exactly **two crossing cells**.
+
+    The displacement swaps the two interior corners of the middle row
+    horizontally: corner (1, 1) moves right by ~1.5 cells, corner
+    (1, 2) moves left by ~1.5 cells. The two cells in the middle row
+    that touch the swap (one on the left, one on the right) both end
+    up with crossed diagonals — a literal bowtie shape per cell.
+
+    Returns the canonical ``(3, 1, H, W)`` layout the GUI expects.
+    """
+    H, W = 4, 4
+    phi = np.zeros((2, H, W), dtype=np.float64)
+    # dx channel — move the two middle-row interior corners past each
+    # other horizontally to cross their cells.
+    phi[1, 1, 1] = +1.6
+    phi[1, 1, 2] = -1.6
+    out = np.zeros((3, 1, H, W), dtype=np.float64)
+    out[1, 0] = phi[0]
+    out[2, 0] = phi[1]
+    return out
+
+
 def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = p.add_mutually_exclusive_group()
@@ -97,14 +120,14 @@ def main(argv=None) -> int:
         print(f'Loading canonical {args.canonical}…', flush=True)
         deformation_i = _canonical_case(args.canonical)
     else:
-        # The canonical "bowtie" crossing — 10x10 grid with two
-        # opposing correspondence points that swap diagonally. Small
-        # enough that every view mode renders instantly, but the
-        # crossing produces ~16 cells with at least one flipped
-        # triangle, so the deformation-grid view shows a clear red
-        # bowtie of folded cells out of the gate.
-        print('Loading default canonical 01a_10x10_crossing (bowtie)…', flush=True)
-        deformation_i = _canonical_case('01a')
+        # Minimal 4×4 bowtie: two adjacent cells with crossed
+        # diagonals (one of each cell's two triangles flipped).
+        # Critically, this fixture has ZERO neg-Jdet pixels but TWO
+        # folded 2-tri cells — exactly the "Jdet stencil misses
+        # sub-pixel folds" story in microcosm, and a clean demo of
+        # why the GUI defaults to a 2-tri-aware solver.
+        print('Loading default 4x4 bowtie fixture (2 crossing cells)…', flush=True)
+        deformation_i = _bowtie_fixture()
 
     print(f'  shape: {deformation_i.shape}', flush=True)
 
