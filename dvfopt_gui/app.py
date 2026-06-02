@@ -53,11 +53,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         │                              │   wall_s             │
         │                              │                      │
         │   click any pixel →          │  Pixel inspector     │
-        │   inspector updates          │   (y, x), Jdet,      │
-        │                              │   T1, T2             │
+        │   inspector updates          │   (y, x), Jdet       │
+        │                              │   (T1/T2 — v2 TODO)  │
         │                              │                      │
         └──────────────────────────────┴──────────────────────┘
-        [Stop]  [Save snapshot]  [Render: every step ▼]
+        [Stop]
     """
 
     def __init__(self, deformation_i, *, solver_kwargs=None, parent=None):
@@ -66,9 +66,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self.resize(1400, 800)
 
         self._deformation_i = deformation_i
-        self._phi_init = np.stack(
-            [deformation_i[1, 0].astype(np.float64), deformation_i[2, 0].astype(np.float64)]
-        )
         self._latest: StateSnapshot | None = None
 
         # --- central widget: two-column split ---
@@ -159,12 +156,13 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._render_timer.setInterval(33)
         self._render_timer.timeout.connect(self._on_render_tick)
 
-        # FPS counter
-        self._cb_count = 0
+        # Callback-rate display — polled in ``_on_render_tick`` against
+        # the worker's atomic counter. We deliberately don't connect a
+        # per-callback Qt signal: queued cross-thread signals would
+        # accumulate in the event loop and defeat the bounded queue.
         self._last_count = 0
         self._last_tick = QtCore.QElapsedTimer()
         self._last_tick.start()
-        self._worker.stateChanged.connect(self._on_callback_count)
 
     # ----- public ------------------------------------------------------------
 
@@ -213,9 +211,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
     # ----- render loop -------------------------------------------------------
 
-    def _on_callback_count(self, _snap):
-        self._cb_count += 1
-
     def _on_render_tick(self):
         snap = self._worker.take_latest()
         if snap is not None:
@@ -247,12 +242,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if self._picked_yx is not None:
                 self._inspector_label.setText(self._format_inspector(self._picked_yx))
 
-        # fps update once per second
+        # FPS / cb-rate update once per second. ``callback_count`` is
+        # an atomic int read from the worker thread (single CPython
+        # 64-bit store is thread-safe, no GIL gymnastics required).
         if self._last_tick.elapsed() >= 1000:
             dt_s = self._last_tick.restart() / 1000.0
-            delta = self._cb_count - self._last_count
-            self._last_count = self._cb_count
-            self._fps_label.setText(f'{self._cb_count} callbacks · {delta / dt_s:.1f} cb/s')
+            cb_count = self._worker.callback_count
+            delta = cb_count - self._last_count
+            self._last_count = cb_count
+            self._fps_label.setText(f'{cb_count} callbacks · {delta / dt_s:.1f} cb/s')
 
     # ----- mouse pick --------------------------------------------------------
 

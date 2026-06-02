@@ -16,8 +16,11 @@ Callback contract
 sub-iteration. ``state`` carries:
 
 * ``phi`` — current ``(2, H, W)`` field (mutates! copy if you need it)
+* ``phi_init`` — original input field, same shape (immutable)
 * ``jacobian`` — current Jdet ``(1, H, W)`` (mutates! copy if you need it)
-* ``quality`` — current 2-tri quality ``(1, H, W)`` (when enforce_*= True)
+* ``quality`` — current 2-tri quality ``(1, H, W)`` (when enforce_*= True;
+  for plain Jdet runs this is the same buffer as ``jacobian``)
+* ``neg_index`` — ``(y, x)`` tuple of the current worst-Jdet target pixel
 * ``window_center`` — ``(cy, cx)`` SLSQP active-window centre
 * ``window_size`` — ``(sy, sx)`` SLSQP active-window dimensions
 * ``opt_size`` — ``(sy', sx')`` padded optimisation window size
@@ -127,9 +130,16 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
 
 
 class SolverWorker(QtCore.QThread):
-    """Run the solver in a worker thread + emit snapshots."""
+    """Run the solver in a worker thread.
 
-    stateChanged = QtCore.pyqtSignal(object)  # StateSnapshot
+    Per-step state is delivered to the GUI thread via a bounded
+    ``queue.Queue(maxsize=1)`` only — we deliberately do **not** emit
+    a per-callback Qt signal because queued cross-thread signals
+    accumulate in the GUI event loop, defeating the bounded-queue
+    design. Solver pace is the bottleneck; the GUI drains the queue
+    on its own render timer at ~30 Hz.
+    """
+
     finishedWithResult = QtCore.pyqtSignal(object, object)  # corrected_phi, info
     errored = QtCore.pyqtSignal(str)
 
@@ -139,19 +149,26 @@ class SolverWorker(QtCore.QThread):
         self._solver_kwargs = dict(solver_kwargs or {})
         self._stop_requested = False
         # Bounded queue so a slow GUI doesn't stall the solver. The
-        # producer pre-drains old items before pushing — we always
-        # render only the most recent snapshot.
+        # producer pre-drains the old item before pushing — we always
+        # surface only the most recent snapshot.
         self._latest: queue.Queue = queue.Queue(maxsize=1)
+        # Atomic counter for callback fires; the GUI reads this for its
+        # FPS / callbacks-per-second display.
+        self._callback_count = 0
 
     def request_stop(self):
         self._stop_requested = True
 
     def _callback(self, state: dict) -> None:
         if self._stop_requested:
-            # Raising here will propagate up through scipy.optimize and
-            # abort the run cleanly.
+            # ``step_callback`` fires AFTER ``scipy.optimize.minimize``
+            # returns from each sub-window, not during the inner
+            # optimiser. Raising here aborts the run between
+            # sub-optimisations, so stop latency is bounded by one
+            # window's solve time — not zero.
             raise KeyboardInterrupt('user requested stop')
         snap = _state_to_snapshot(state)
+        self._callback_count += 1
         # Drop the previous snapshot if the GUI hasn't picked it up yet.
         try:
             self._latest.get_nowait()
@@ -161,14 +178,24 @@ class SolverWorker(QtCore.QThread):
             self._latest.put_nowait(snap)
         except queue.Full:
             pass
-        self.stateChanged.emit(snap)
 
     def take_latest(self):
-        """GUI thread calls this on its render timer."""
+        """GUI thread calls this on its render timer. Returns the most
+        recent snapshot (or ``None`` if no new state since the last poll)."""
         try:
             return self._latest.get_nowait()
         except queue.Empty:
             return None
+
+    @property
+    def callback_count(self) -> int:
+        """Total ``step_callback`` fires since the worker started.
+
+        Read-only; safe to call from the GUI thread without locking
+        because we only read a single ``int`` whose update is atomic in
+        CPython (single 64-bit store).
+        """
+        return self._callback_count
 
     def run(self):
         try:
