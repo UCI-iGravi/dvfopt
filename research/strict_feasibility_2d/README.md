@@ -98,14 +98,26 @@ large slice — no global polish needed.
   in this build); process-pool spawn cost outweighs the cluster work
   on Windows. **Sequential per-cluster solves are the right design.**
 
+### `auto_slp`: adaptive dispatch
+
+The two new winners (`slp_iter_m14_seed` for small slices,
+`cluster_slp` for large) cover complementary regimes. `auto_slp`
+routes by `H·W` (threshold 5000 px) so callers can use a single
+method and get the right algorithm:
+
+| Input | Routes to |
+|---|---|
+| ≤ 5000 pixels (≤ ~70×70) | `slp_iter_m14_seed` |
+| > 5000 pixels | `cluster_slp` |
+
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 
 | Observed | Affects | Fallback row | Status |
 |---|---|---|---|
 | LP infeasible from harmonic seed on dense canonicals | `slp_iter` | 1 (use m10 seed) | **✓ Landed**: slp_iter now 9/9 feasible |
-| slp_iter L1 worse than M14 on 3 dense-crossing cases | `slp_iter` | (new) Tune trust-region growth, or seed from M14 | Pending |
-| `lp_oneshot` still fails feasibility on 6/9 cases (single-step linearisation error) | `lp_oneshot` only | Iterate (SLP) | Use `slp_iter` instead |
-| Wall-time >12 min at 320×456 | `lp_oneshot` / `slp_iter` on B0039 | 5 (cluster_lp — per-cluster LP solve) | Pending |
+| slp_iter L1 worse than M14 on 3 dense-crossing cases | `slp_iter` | (new) Seed from M14 instead of m10 | **✓ Landed**: `slp_iter_m14_seed` beats M14 on every synthetic case |
+| `lp_oneshot` still fails feasibility on 6/9 cases | `lp_oneshot` | Iterate (SLP) | Use `slp_iter` instead |
+| Wall-time >12 min at 320×456 (direct LP) | `lp_oneshot` / `slp_iter` on B0039 | 5 (cluster_lp — per-cluster LP solve) | **✓ Landed**: `cluster_slp` is 6.2× faster + lower L1 than M14 on z=12 |
 
 ## How to run
 
