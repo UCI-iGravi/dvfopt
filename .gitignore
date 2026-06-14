@@ -189,3 +189,5 @@ cython_debug/
 /notebooks/output_demo
 /benchmarks/results
 /benchmarks/output
+# Strict-feasibility research artifacts (large per-case corrected fields).
+/research/strict_feasibility_2d/runners/output/corrected/

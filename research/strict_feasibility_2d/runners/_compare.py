@@ -39,6 +39,21 @@ def _stats(phi_2hw: np.ndarray):
     }
 
 
+def _solve_via_strategy(strategy_cls, phi_2hw: np.ndarray):
+    """Wrap the v0.2 ``Solver`` + Strategy API for a (2, H, W) field."""
+    from dvfopt import L1Objective, Solver, TriConstraint2DFullCoverage
+
+    H, W = phi_2hw.shape[1:]
+    constraint = TriConstraint2DFullCoverage(shape=(H, W))
+    objective = L1Objective(eps=1e-4)
+    strategy = strategy_cls()
+    solver = Solver(
+        constraint=constraint, objective=objective, strategy=strategy, threshold=THRESHOLD
+    )
+    result = solver.fit(phi_2hw)
+    return result.corrected
+
+
 def _dispatch(name: str, phi_2hw: np.ndarray):
     """Return ``(phi_out, extra_info_dict)``."""
     if name == 'harmonic_only':
@@ -46,16 +61,16 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         phi_out = harmonic_extension_2d(phi_2hw, threshold=THRESHOLD)
         return phi_out, {}
     if name == 'm10':
-        from dvfopt import iterative_2d_tri_harmonic_polished
-        phi_out = iterative_2d_tri_harmonic_polished(phi_2hw, threshold=THRESHOLD, verbose=0)
+        from dvfopt import HarmonicALMBarrierStrategy
+        phi_out = _solve_via_strategy(HarmonicALMBarrierStrategy, phi_2hw)
         return phi_out, {}
     if name == 'm14':
-        from dvfopt import iterative_2d_tri_refine_repair
-        phi_out = iterative_2d_tri_refine_repair(phi_2hw, threshold=THRESHOLD, verbose=0)
+        from dvfopt import HarmonicALMRefineRepairStrategy
+        phi_out = _solve_via_strategy(HarmonicALMRefineRepairStrategy, phi_2hw)
         return phi_out, {}
     if name == 'm14_schwarz':
-        from dvfopt import iterative_2d_tri_refine_repair_schwarz
-        phi_out = iterative_2d_tri_refine_repair_schwarz(phi_2hw, threshold=THRESHOLD, verbose=0)
+        from dvfopt import SchwarzHarmonicALMRefineRepairStrategy
+        phi_out = _solve_via_strategy(SchwarzHarmonicALMRefineRepairStrategy, phi_2hw)
         return phi_out, {}
     if name == 'cluster_pipeline':
         # Not yet wired. ``notebooks/manuscript/_run_2d_clusters.py::process_one_slice``
