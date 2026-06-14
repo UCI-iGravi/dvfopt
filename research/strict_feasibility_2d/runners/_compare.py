@@ -30,7 +30,16 @@ METHOD_NAMES = (
     'slp_iter_m14_seed',
     'slp_iter_wide_tr',
     'cluster_slp',
+    'auto_slp',
 )
+
+# Above this many pixels (H*W) ``auto_slp`` switches from the
+# small-slice winner (``slp_iter_m14_seed``) to the large-slice winner
+# (``cluster_slp``). Empirically: synthetic 20x20=400 too small for
+# cluster_slp to win L1; B0039 320x456=145920 cluster_slp wins on
+# both axes. Threshold set just above the synthetic worst-case to
+# bias toward the small-slice winner unless we're meaningfully scaling.
+_AUTO_CLUSTER_PIXEL_THRESHOLD = 5_000
 
 
 def _stats(phi_2hw: np.ndarray):
@@ -107,6 +116,25 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         phi_out, info = cluster_slp_iter(
             phi_2hw, threshold=THRESHOLD, inner_seed='m14'
         )
+        return phi_out, info
+    if name == 'auto_slp':
+        # Adaptive: route by slice size to the empirical winner.
+        # Small slices: slp_iter_m14_seed (best L1, fast enough).
+        # Large slices: cluster_slp (per-cluster scaling, both L1-best
+        # and wall-best at B0039 scale).
+        H, W = phi_2hw.shape[1:]
+        pixels = H * W
+        if pixels <= _AUTO_CLUSTER_PIXEL_THRESHOLD:
+            phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD, seed='m14')
+            info = {**info, 'auto_dispatch': 'slp_iter_m14_seed', 'pixels': pixels}
+        else:
+            from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
+                cluster_slp_iter,
+            )
+            phi_out, info = cluster_slp_iter(
+                phi_2hw, threshold=THRESHOLD, inner_seed='m14'
+            )
+            info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}
         return phi_out, info
     raise ValueError(f'unknown method: {name!r} (known: {METHOD_NAMES})')
 
