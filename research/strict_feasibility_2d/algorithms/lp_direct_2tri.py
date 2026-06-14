@@ -36,16 +36,57 @@ def _unflatten(phi_flat: np.ndarray, H: int, W: int) -> np.ndarray:
 
 
 def _harmonic_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
-    """Feasible-by-construction seed via Laplacian extension of fold cores."""
+    """Cheap feasible-extension seed via Laplacian extension of fold cores.
+
+    Works on small-displacement / mild-fold cases but leaves residual
+    folds on dense canonical 10x10 / 20x20 inputs -- use ``_m10_seed``
+    for guaranteed feasibility there.
+    """
     from dvfopt.core.wallbreakers import harmonic_extension_2d
     return harmonic_extension_2d(phi_in_2hw, threshold=threshold)
+
+
+def _m10_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
+    """Strict-interior feasible seed via the full m10 pipeline
+    (harmonic + ALM + barrier polish).
+
+    Slower than ``_harmonic_seed`` but guarantees ``min_T >= threshold``
+    on every case where m10 itself reaches feasibility -- i.e. every
+    case in the worst-case catalog. Triggers spec fallback row 1.
+    """
+    from dvfopt import (
+        HarmonicALMBarrierStrategy,
+        L1Objective,
+        Solver,
+        TriConstraint2DFullCoverage,
+    )
+
+    H, W = phi_in_2hw.shape[1:]
+    solver = Solver(
+        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        objective=L1Objective(eps=1e-4),
+        strategy=HarmonicALMBarrierStrategy(),
+        threshold=threshold,
+    )
+    return solver.fit(phi_in_2hw).corrected
+
+
+def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed: str) -> np.ndarray:
+    """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``."""
+    if seed == 'harmonic':
+        return _harmonic_seed(phi_in_2hw, threshold)
+    if seed == 'm10':
+        return _m10_seed(phi_in_2hw, threshold)
+    if seed == 'zero':
+        return np.zeros_like(phi_in_2hw)
+    raise ValueError(f'unknown seed: {seed!r}')
 
 
 def lp_oneshot(
     phi_in_2hw: np.ndarray,
     *,
     threshold: float = 0.01,
-    seed: str = 'harmonic',
+    seed: str = 'm10',
 ):
     """Single-LP linearised around ``seed``.
 
@@ -53,9 +94,14 @@ def lp_oneshot(
     ----------
     phi_in_2hw : (2, H, W) float64
     threshold : float
-    seed : {'harmonic', 'zero'}
-        ``'harmonic'`` uses the Laplacian-extension feasible seed (default).
-        ``'zero'`` linearises around ``phi = 0`` -- used in ablation runs.
+    seed : {'m10', 'harmonic', 'zero'}
+        ``'m10'`` (default) — full m10 pipeline (harmonic + ALM +
+        barrier polish). Strict-interior feasibility on every case in
+        the worst-case catalog. Closes the linearisation-error gap on
+        dense canonical cases where ``'harmonic'`` alone falls short.
+        ``'harmonic'`` — cheap Laplacian extension. Faster but leaves
+        residual folds on dense inputs.
+        ``'zero'`` — linearise around ``phi = 0``. Ablation only.
 
     Returns
     -------
@@ -64,12 +110,7 @@ def lp_oneshot(
     """
     t0 = time.time()
     H, W = phi_in_2hw.shape[1:]
-    if seed == 'harmonic':
-        seed_phi = _harmonic_seed(phi_in_2hw, threshold)
-    elif seed == 'zero':
-        seed_phi = np.zeros_like(phi_in_2hw)
-    else:
-        raise ValueError(f'unknown seed: {seed!r}')
+    seed_phi = _build_seed(phi_in_2hw, threshold, seed)
 
     phi_in_flat = _flatten(phi_in_2hw)
     phi_lin_flat = _flatten(seed_phi)
@@ -104,6 +145,7 @@ def slp_iter(
     ftol: float = 1e-6,
     trust_grow: float = 1.5,
     trust_shrink: float = 0.5,
+    seed: str = 'm10',
 ):
     """Sequential LP loop with adaptive trust region.
 
@@ -121,7 +163,7 @@ def slp_iter(
     H, W = phi_in_2hw.shape[1:]
     phi_in_flat = _flatten(phi_in_2hw)
 
-    seed_phi = _harmonic_seed(phi_in_2hw, threshold)
+    seed_phi = _build_seed(phi_in_2hw, threshold, seed)
     phi_cur_flat = _flatten(seed_phi)
     trust_radius = float(trust_radius_0)
 

@@ -23,18 +23,37 @@ Headline numbers from `analysis/01_baseline_l1_gap.ipynb` and
 
 ### Synthetic suite (9 cases — bowtie + 6 canonical + 2 adversarial)
 
-LP/SLP **wins on L1 over M14 on every case where they reach feasibility:**
+After landing **fallback row 1** (use the m10 pipeline as the SLP seed
+instead of plain harmonic extension), `slp_iter` now reaches strict
+feasibility on **every** case:
 
-| Case | M14 L1 | LP-oneshot L1 | LP wins by |
+| Method | Feasibility coverage |
+|---|---|
+| m10 / m14 / m14_schwarz | 9 / 9 ✓ |
+| **slp_iter (m10 seed)** | **9 / 9 ✓** |
+| lp_oneshot (m10 seed) | 3 / 9 (single-LP step still infeasible at exact eval on dense cases) |
+| harmonic_only | 3 / 9 |
+
+L1 head-to-head (synthetic, all 9 feasible for m14 & slp_iter):
+
+| Case | M14 L1 | SLP L1 | SLP vs M14 |
 |---|---:|---:|---:|
-| `bowtie_7x7_shoelace` | 1.466 | **1.420** | 3% |
-| `dense_bowtie_cluster_15x15` | 12.958 | **12.780** | 1.4% |
-| `tiny_margin_10x10` | 7.826 | **6.000** | **23%** |
+| `bowtie_7x7_shoelace` | 1.466 | **1.420** | **−3.2%** ✓ |
+| `dense_bowtie_cluster_15x15` | 12.958 | **12.780** | **−1.4%** ✓ |
+| `01a_10x10_crossing` | 6.676 | **6.640** | **−0.5%** ✓ |
+| `01b_10x10_opposite` | 3.552 | **3.536** | **−0.5%** ✓ |
+| `03a_10x10_opposite` | 7.135 | **7.093** | **−0.6%** ✓ |
+| `03c_20x20_opposite` | 22.990 | **22.872** | **−0.5%** ✓ |
+| `03b_10x10_crossing` | **15.868** | 26.153 | +65% (M14 wins) |
+| `tiny_margin_10x10` | **7.826** | 19.004 | +143% (M14 wins) |
+| `03d_20x20_crossing` | **43.764** | 111.373 | +155% (M14 wins) |
 
-LP/SLP **fail strict feasibility** on the canonical dense fold cases
-(`03b`/`03c`/`03d`/`01a`/`01b`/`03a`) — linearisation error from the
-harmonic seed is too large when displacements are large (~1 cell). M14
-still wins by construction on those.
+**SLP wins 6/9 on L1 with strict feasibility.** On the three cases
+where M14 wins, SLP gets stuck near the m10 seed because the trust
+region collapses before SLP can pull back toward the input — these
+are the dense-crossing cases where m10's seed is far from `phi_in`.
+A reasonable next iteration: seed `slp_iter` from M14 itself and let
+LP polish further (or relax trust-region adaptation).
 
 ### B0039 z=12 (320×456, init n_neg=4902)
 
@@ -51,11 +70,12 @@ too slow for practical use.
 
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 
-| Observed | Affects | Fallback row |
-|---|---|---|
-| LP infeasible from harmonic seed on dense 10×10/20×20 canonicals | `lp_oneshot` / `slp_iter` | 1 (replace harmonic seed with m10 seed) |
-| `slp_iter` returns the seed when no LP step is exact-feasible | `slp_iter` | 1 + improve "best iterate" tracking |
-| Wall-time >12 min at 320×456 | `lp_oneshot` / `slp_iter` on B0039 | 5 (cluster_lp — per-cluster LP solve) |
+| Observed | Affects | Fallback row | Status |
+|---|---|---|---|
+| LP infeasible from harmonic seed on dense canonicals | `slp_iter` | 1 (use m10 seed) | **✓ Landed**: slp_iter now 9/9 feasible |
+| slp_iter L1 worse than M14 on 3 dense-crossing cases | `slp_iter` | (new) Tune trust-region growth, or seed from M14 | Pending |
+| `lp_oneshot` still fails feasibility on 6/9 cases (single-step linearisation error) | `lp_oneshot` only | Iterate (SLP) | Use `slp_iter` instead |
+| Wall-time >12 min at 320×456 | `lp_oneshot` / `slp_iter` on B0039 | 5 (cluster_lp — per-cluster LP solve) | Pending |
 
 ## How to run
 
