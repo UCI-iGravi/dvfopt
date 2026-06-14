@@ -17,7 +17,7 @@ Triggers spec fallback row 5 (``cluster_lp``).
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from scipy.ndimage import binary_dilation, find_objects, label as cc_label
@@ -29,7 +29,26 @@ from research.strict_feasibility_2d.algorithms.lp_direct_2tri import slp_iter  #
 BBOX_PAD = 4  # cell-units of padding around each cluster's bbox
 MERGE_DILATION_BASE = 2
 MAX_OUTER_ITERS = 3
-DEFAULT_PARALLEL_WORKERS = 4  # threads — HiGHS / L-BFGS-B release the GIL
+DEFAULT_PARALLEL_WORKERS = 1  # sequential by default; user can opt in to processes
+
+
+def _solve_cluster_worker(args):
+    """Top-level (picklable) worker for ProcessPoolExecutor parallelism.
+
+    Threads aren't safe (scipy linprog isn't thread-safe in our build);
+    processes work but pay Windows-spawn cost on each pool startup.
+    Tradeoff: worth it only on dense slices where each cluster solve
+    is multiple seconds.
+    """
+    phi_crop, inner_threshold, inner_trust_radius_0, inner_max_iter, inner_seed = args
+    phi_corr, _ = slp_iter(
+        phi_crop,
+        threshold=inner_threshold,
+        trust_radius_0=inner_trust_radius_0,
+        max_iter=inner_max_iter,
+        seed=inner_seed,
+    )
+    return phi_corr
 
 
 def _partition_clusters_nonoverlapping(clusters):
@@ -165,38 +184,61 @@ def cluster_slp_iter(
         pre_n_neg = int((np.minimum(T1, T2) <= 0).sum())
         round_runs = []
 
-        # Solve each cluster's crop sequentially with a slightly tighter
-        # inner threshold (extra margin so post-splice noise doesn't drop
-        # min_T below the user's target threshold and force a polish).
-        # margin=1e-4 was the empirical sweet spot on B0039 z=12: large
-        # enough to avoid polish (no degenerate near-threshold splices),
-        # small enough to keep L1 within ~0.1% of the unmargined LP optimum.
-        # Other levers tried and ruled out:
-        # - parallelism via threads segfaulted (scipy linprog isn't
-        #   thread-safe in this build);
-        # - parallelism via processes too slow on Windows (spawn cost
-        #   dominates for the moderate per-cluster workload);
-        # - bigger margins (5e-4, 1e-3) waste L1 with no speed benefit.
+        # Inner threshold has a slight margin (threshold + 1e-4) so
+        # post-splice numerical noise doesn't drop min_T below the
+        # user's target and force a polish. 1e-4 was the empirical
+        # sweet spot on B0039 z=12 (L1 within 0.1% of unmargined LP
+        # optimum). Larger margins (5e-3, 1e-2) sweep showed no help
+        # on sparse slices and worse L1 on dense.
         inner_threshold = threshold + 1e-4
 
-        for c in clusters:
-            y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-            phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
-            t_c = time.time()
-            try:
-                phi_corr, _ = slp_iter(
-                    phi_crop,
-                    threshold=inner_threshold,
-                    trust_radius_0=inner_trust_radius_0,
-                    max_iter=inner_max_iter,
-                    seed=inner_seed,
-                )
-            except Exception as exc:
-                round_runs.append({**c, 'error': f'{type(exc).__name__}: {exc}'})
-                continue
-            _splice_interior(phi_out, c, phi_corr)
-            info['total_cluster_solves'] += 1
-            round_runs.append({**c, 'wall': time.time() - t_c})
+        if n_workers > 1:
+            # Parallel via processes (Windows-spawn cost ~1s/worker —
+            # only worth it on dense slices with multi-second per-cluster
+            # solves). Threads were ruled out (scipy linprog not
+            # thread-safe in this build, segfaulted at >=2 workers).
+            # Partition into non-overlapping rounds so concurrent
+            # splices don't race.
+            sub_rounds = _partition_clusters_nonoverlapping(clusters)
+            for sub_round in sub_rounds:
+                arg_list = []
+                for c in sub_round:
+                    y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
+                    phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
+                    arg_list.append((
+                        phi_crop, inner_threshold,
+                        inner_trust_radius_0, inner_max_iter, inner_seed,
+                    ))
+                t_c = time.time()
+                if len(sub_round) > 1:
+                    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                        results = list(pool.map(_solve_cluster_worker, arg_list))
+                else:
+                    results = [_solve_cluster_worker(arg_list[0])]
+                wall_round = time.time() - t_c
+                for c, phi_corr in zip(sub_round, results):
+                    _splice_interior(phi_out, c, phi_corr)
+                    info['total_cluster_solves'] += 1
+                    round_runs.append({**c, 'wall_round': wall_round})
+        else:
+            for c in clusters:
+                y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
+                phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
+                t_c = time.time()
+                try:
+                    phi_corr, _ = slp_iter(
+                        phi_crop,
+                        threshold=inner_threshold,
+                        trust_radius_0=inner_trust_radius_0,
+                        max_iter=inner_max_iter,
+                        seed=inner_seed,
+                    )
+                except Exception as exc:
+                    round_runs.append({**c, 'error': f'{type(exc).__name__}: {exc}'})
+                    continue
+                _splice_interior(phi_out, c, phi_corr)
+                info['total_cluster_solves'] += 1
+                round_runs.append({**c, 'wall': time.time() - t_c})
 
         T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
         post_n_neg = int((np.minimum(T1, T2) <= 0).sum())
