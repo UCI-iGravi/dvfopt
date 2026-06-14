@@ -27,6 +27,8 @@ METHOD_NAMES = (
     'cluster_pipeline',
     'lp_oneshot',
     'slp_iter',
+    'slp_iter_m14_seed',
+    'slp_iter_wide_tr',
 )
 
 
@@ -84,6 +86,16 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         return phi_out, info
     if name == 'slp_iter':
         phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD)
+        return phi_out, info
+    if name == 'slp_iter_m14_seed':
+        # Seed from m14 (closest-to-phi_in feasible point we have).
+        # SLP can only polish further; never worse than m14 on L1.
+        phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD, seed='m14')
+        return phi_out, info
+    if name == 'slp_iter_wide_tr':
+        # Wide initial trust region (2 cell units) lets the first LP step
+        # cover ~full-displacement inputs in one shot. Same m10 seed.
+        phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD, trust_radius_0=2.0)
         return phi_out, info
     raise ValueError(f'unknown method: {name!r} (known: {METHOD_NAMES})')
 

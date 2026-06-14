@@ -71,12 +71,39 @@ def _m10_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     return solver.fit(phi_in_2hw).corrected
 
 
+def _m14_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
+    """Strict-interior seed via the full m14 pipeline (m10 seed +
+    L2-refine + repair + barrier polish).
+
+    The closest-to-``phi_in`` seed available — m14's L2-refine stage
+    pulls back to the input as much as feasibility allows. SLP from
+    this seed should match or improve on M14's L1, never worse.
+    """
+    from dvfopt import (
+        HarmonicALMRefineRepairStrategy,
+        L1Objective,
+        Solver,
+        TriConstraint2DFullCoverage,
+    )
+
+    H, W = phi_in_2hw.shape[1:]
+    solver = Solver(
+        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        objective=L1Objective(eps=1e-4),
+        strategy=HarmonicALMRefineRepairStrategy(),
+        threshold=threshold,
+    )
+    return solver.fit(phi_in_2hw).corrected
+
+
 def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed: str) -> np.ndarray:
     """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``."""
     if seed == 'harmonic':
         return _harmonic_seed(phi_in_2hw, threshold)
     if seed == 'm10':
         return _m10_seed(phi_in_2hw, threshold)
+    if seed == 'm14':
+        return _m14_seed(phi_in_2hw, threshold)
     if seed == 'zero':
         return np.zeros_like(phi_in_2hw)
     raise ValueError(f'unknown seed: {seed!r}')

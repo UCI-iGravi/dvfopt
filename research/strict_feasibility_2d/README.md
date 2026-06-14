@@ -34,26 +34,31 @@ feasibility on **every** case:
 | lp_oneshot (m10 seed) | 3 / 9 (single-LP step still infeasible at exact eval on dense cases) |
 | harmonic_only | 3 / 9 |
 
-L1 head-to-head (synthetic, all 9 feasible for m14 & slp_iter):
+L1 head-to-head (synthetic, all 9 feasible for m14, slp_iter, and
+`slp_iter_m14_seed`):
 
-| Case | M14 L1 | SLP L1 | SLP vs M14 |
+| Case | M14 L1 | SLP (m10 seed) L1 | **SLP (M14 seed) L1** |
 |---|---:|---:|---:|
-| `bowtie_7x7_shoelace` | 1.466 | **1.420** | **−3.2%** ✓ |
-| `dense_bowtie_cluster_15x15` | 12.958 | **12.780** | **−1.4%** ✓ |
-| `01a_10x10_crossing` | 6.676 | **6.640** | **−0.5%** ✓ |
-| `01b_10x10_opposite` | 3.552 | **3.536** | **−0.5%** ✓ |
-| `03a_10x10_opposite` | 7.135 | **7.093** | **−0.6%** ✓ |
-| `03c_20x20_opposite` | 22.990 | **22.872** | **−0.5%** ✓ |
-| `03b_10x10_crossing` | **15.868** | 26.153 | +65% (M14 wins) |
-| `tiny_margin_10x10` | **7.826** | 19.004 | +143% (M14 wins) |
-| `03d_20x20_crossing` | **43.764** | 111.373 | +155% (M14 wins) |
+| `bowtie_7x7_shoelace` | 1.466 | 1.420 | **1.420** (−3.2%) |
+| `dense_bowtie_cluster_15x15` | 12.958 | 12.780 | **12.780** (−1.4%) |
+| `01a_10x10_crossing` | 6.676 | 6.640 | **6.640** (−0.5%) |
+| `01b_10x10_opposite` | 3.552 | 3.536 | **3.536** (−0.5%) |
+| `03a_10x10_opposite` | 7.135 | 7.093 | **7.093** (−0.6%) |
+| `03b_10x10_crossing` | 15.868 | 26.153 | **15.819** (−0.3%) |
+| `03c_20x20_opposite` | 22.990 | 22.872 | **22.872** (−0.5%) |
+| `03d_20x20_crossing` | 43.764 | 111.373 | **43.660** (−0.2%) |
+| `tiny_margin_10x10` | 7.826 | 19.004 | **6.000** (**−23%**) |
 
-**SLP wins 6/9 on L1 with strict feasibility.** On the three cases
-where M14 wins, SLP gets stuck near the m10 seed because the trust
-region collapses before SLP can pull back toward the input — these
-are the dense-crossing cases where m10's seed is far from `phi_in`.
-A reasonable next iteration: seed `slp_iter` from M14 itself and let
-LP polish further (or relax trust-region adaptation).
+**`slp_iter_m14_seed` (seed from the full M14 pipeline, then LP-polish)
+achieves 9/9 strict feasibility AND beats M14 on L1 on every case.**
+Most wins are <1% (M14 is already near the LP optimum), but
+`tiny_margin_10x10` shows a 23% L1 improvement — M14 left genuine
+slack there.
+
+A wide-trust-region variant (`slp_iter_wide_tr`) was tested but
+*worsened* dense-crossing cases — the big LP first-step pulls phi
+away from input then gets stuck. The bottleneck is seed quality, not
+trust radius.
 
 ### B0039 z=12 (320×456, init n_neg=4902)
 

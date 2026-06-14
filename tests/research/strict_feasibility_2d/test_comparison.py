@@ -14,7 +14,7 @@ def _bowtie_phi():
     return phi
 
 
-def test_method_names_include_all_seven():
+def test_method_names_include_core_methods():
     expected = {
         'harmonic_only', 'm10', 'm14', 'm14_schwarz',
         'cluster_pipeline', 'lp_oneshot', 'slp_iter',
