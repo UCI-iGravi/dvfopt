@@ -29,3 +29,10 @@ def test_load_b0039_z12():
 def test_b0039_load_invalid_z_raises():
     with pytest.raises(IndexError):
         _load.load_b0039_slice(99999)
+
+
+def test_load_synthetic_includes_adversarial():
+    cases = _load.load_synthetic_canonical()
+    keys = {name for name, phi, meta in cases}
+    assert 'dense_bowtie_cluster_15x15' in keys
+    assert 'tiny_margin_10x10' in keys

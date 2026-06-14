@@ -16,6 +16,7 @@ from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 _REPO = Path(__file__).resolve().parents[3]
 _CANONICAL_DIR = _REPO / 'data' / 'dvfs' / 'canonical_2tri_2d'
 _B0039 = _REPO / 'data' / 'dvfs' / 'b0039' / 'b0039_laplacian_deformation_field.npy'
+_ADVERSARIAL_DIR = Path(__file__).parent / 'synthetic'
 
 
 def _stats(phi_2hw: np.ndarray) -> dict:
@@ -30,12 +31,16 @@ def _stats(phi_2hw: np.ndarray) -> dict:
 
 def load_synthetic_canonical():
     """Yield ``(name, phi_2hw, meta)`` for every NPZ in
-    ``data/dvfs/canonical_2tri_2d/``."""
+    ``data/dvfs/canonical_2tri_2d/`` and the local adversarial
+    ``synthetic/`` directory."""
     out = []
-    for path in sorted(_CANONICAL_DIR.glob('*.npz')):
-        with np.load(path, allow_pickle=False) as d:
-            phi = d['phi'].astype(np.float64)
-        out.append((path.stem, phi, _stats(phi)))
+    for d in (_CANONICAL_DIR, _ADVERSARIAL_DIR):
+        if not d.exists():
+            continue
+        for path in sorted(d.glob('*.npz')):
+            with np.load(path, allow_pickle=False) as data:
+                phi = data['phi'].astype(np.float64)
+            out.append((path.stem, phi, _stats(phi)))
     return out
 
 

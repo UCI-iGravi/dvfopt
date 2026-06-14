@@ -11,8 +11,11 @@
 | `03c_20x20_opposite` | data/dvfs/canonical_2tri_2d/ | 20×20 | 58 | -0.81 |
 | `03d_20x20_crossing` | data/dvfs/canonical_2tri_2d/ | 20×20 | 72 | -0.74 |
 
-Adversarial cases (built by ``_build_adversarial.py``) land in
-``worst_cases/synthetic/`` after Task 8.
+## Synthetic — adversarial (built by `_build_adversarial.py`)
+| Case | Shape | init n_neg | init min_T | Purpose |
+|---|---|---|---|---|
+| `dense_bowtie_cluster_15x15` | 15×15 | 12 | -0.70 | Dense single-cluster bowtie field |
+| `tiny_margin_10x10` | 10×10 | 45 | -0.05 | Stress linearisation: every interior cell barely infeasible |
 
 ## B0039
 | Case | Source | Shape | Status |
