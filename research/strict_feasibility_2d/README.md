@@ -68,25 +68,35 @@ trust radius.
 | Method | Feasible | n_neg | min_T | L1 | Wall |
 |---|:---:|---:|---:|---:|---:|
 | harmonic_only | ✗ | 641 | -1.89 | 239 499 | 0.9 s |
-| m14 | ✓ | 0 | +0.020 | 184 034 | 267 s |
-| **cluster_slp** | **✓** | 0 | +0.010 | **175 638 (−4.6%)** | **64 s (4.2× faster)** |
-| slp_iter (global, m10 seed) | ✓ | 0 | +0.010 | 287 316 (+56%) | 515 s |
+| m14 | ✓ | 0 | +0.020 | 174 131 | 381 s |
+| **cluster_slp** | **✓** | 0 | +0.010 | **167 210 (−4.0%)** | **61 s (6.2× faster)** |
+| slp_iter (global, m10 seed) | ✓ | 0 | +0.010 | 287 316 (+65%) | 515 s |
 | lp_oneshot (global, direct LP) | (timeout) | — | — | — | >12 min |
 
-**`cluster_slp` is the headline result on B0039:** strict feasibility,
-4.6% lower L1 than M14, and 4.2× faster wall-time.
+**`cluster_slp` is the headline result on B0039:** strict feasibility
+(min_T = +0.0101 > threshold), 4.0% lower L1 than M14, and **6.2×
+faster** wall-time.
 
 The approach: decompose the slice into connected fold clusters (via
 `scipy.ndimage` CCL with merge-dilation), solve SLP on each cluster's
 padded crop with frozen boundary, splice interior corners back. On
-z=12 this produces 11 clusters in round 0 (drops 4902→49 folds) and 5
-clusters in round 1 (49→0). No global polish needed — the cluster
-pass alone reaches feasibility because B0039's folds are sparsely
-distributed in a large slice.
+z=12 this produces 11 clusters in round 0 (drops 4902→27 folds) + 4
+clusters in round 1 (27→0). The cluster pass alone reaches
+feasibility because B0039's folds are sparsely distributed in a
+large slice — no global polish needed.
 
-The optimal inner seed (per per-cluster solve) is M14, not M10 or
-harmonic — both M10 and harmonic inner seeds force a global polish to
-fire, which costs ~3× wall-time and worsens L1.
+#### Tuning history
+
+* Inner seed: M14 (not M10/harmonic). M10/harmonic inner seeds force
+  the global polish to fire, which costs ~3× wall-time and worsens L1.
+* Inner threshold margin: `threshold + 1e-4`. The cluster pass needs
+  a small extra margin so post-splice numerical noise doesn't drop
+  `min_T` below the user's threshold (and trigger an unnecessary
+  global polish). 1e-4 was the empirical sweet spot — bigger margins
+  (5e-4, 1e-3) waste L1 with no speed benefit.
+* Parallelism: threads segfaulted (scipy linprog isn't thread-safe
+  in this build); process-pool spawn cost outweighs the cluster work
+  on Windows. **Sequential per-cluster solves are the right design.**
 
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 

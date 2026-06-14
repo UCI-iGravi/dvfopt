@@ -17,6 +17,7 @@ Triggers spec fallback row 5 (``cluster_lp``).
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from scipy.ndimage import binary_dilation, find_objects, label as cc_label
@@ -28,6 +29,35 @@ from research.strict_feasibility_2d.algorithms.lp_direct_2tri import slp_iter  #
 BBOX_PAD = 4  # cell-units of padding around each cluster's bbox
 MERGE_DILATION_BASE = 2
 MAX_OUTER_ITERS = 3
+DEFAULT_PARALLEL_WORKERS = 4  # threads — HiGHS / L-BFGS-B release the GIL
+
+
+def _partition_clusters_nonoverlapping(clusters):
+    """Greedy graph-colour: pack clusters into rounds where no two in
+    the same round have overlapping or adjacent bboxes (strict 1-cell
+    gap). Mirrors the manuscript pipeline's pattern so concurrent
+    splices into the slice are race-free.
+    """
+    rounds = []
+    for c in clusters:
+        y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
+        placed = False
+        for r in rounds:
+            ok = True
+            for c2 in r:
+                if not (
+                    y1 < c2['y0'] or c2['y1'] < y0
+                    or x1 < c2['x0'] or c2['x1'] < x0
+                ):
+                    ok = False
+                    break
+            if ok:
+                r.append(c)
+                placed = True
+                break
+        if not placed:
+            rounds.append([c])
+    return rounds
 
 
 def _fold_clusters(phi_2hw: np.ndarray, merge_dilation: int = MERGE_DILATION_BASE):
@@ -89,6 +119,7 @@ def cluster_slp_iter(
     max_outer_iters: int = MAX_OUTER_ITERS,
     merge_dilation: int = MERGE_DILATION_BASE,
     final_global_polish: bool = True,
+    n_workers: int = DEFAULT_PARALLEL_WORKERS,
     verbose: int = 0,
 ):
     """Per-cluster SLP with frozen-edge splice.
@@ -133,15 +164,29 @@ def cluster_slp_iter(
         T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
         pre_n_neg = int((np.minimum(T1, T2) <= 0).sum())
         round_runs = []
+
+        # Solve each cluster's crop sequentially with a slightly tighter
+        # inner threshold (extra margin so post-splice noise doesn't drop
+        # min_T below the user's target threshold and force a polish).
+        # margin=1e-4 was the empirical sweet spot on B0039 z=12: large
+        # enough to avoid polish (no degenerate near-threshold splices),
+        # small enough to keep L1 within ~0.1% of the unmargined LP optimum.
+        # Other levers tried and ruled out:
+        # - parallelism via threads segfaulted (scipy linprog isn't
+        #   thread-safe in this build);
+        # - parallelism via processes too slow on Windows (spawn cost
+        #   dominates for the moderate per-cluster workload);
+        # - bigger margins (5e-4, 1e-3) waste L1 with no speed benefit.
+        inner_threshold = threshold + 1e-4
+
         for c in clusters:
             y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-            # Corner-grid crop: (2, y1-y0+1, x1-x0+1).
             phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
             t_c = time.time()
             try:
-                phi_corr, _inner_info = slp_iter(
+                phi_corr, _ = slp_iter(
                     phi_crop,
-                    threshold=threshold,
+                    threshold=inner_threshold,
                     trust_radius_0=inner_trust_radius_0,
                     max_iter=inner_max_iter,
                     seed=inner_seed,
@@ -186,8 +231,17 @@ def cluster_slp_iter(
     # cluster_slp L1 (which is much lower than global M14 on hard
     # cases), plus a small fix-up term.
     T1f, T2f = _triangle_areas_2d(phi_out[0], phi_out[1])
-    cluster_min_T = float(np.minimum(T1f, T2f).min())
-    if final_global_polish and cluster_min_T < threshold - 1e-5:
+    cluster_t_min = np.minimum(T1f, T2f)
+    cluster_min_T = float(cluster_t_min.min())
+    cluster_n_neg = int((cluster_t_min <= 0).sum())
+    # Trigger polish only when there are still folded cells OR the
+    # min_T is meaningfully under the threshold (not just kissing it
+    # within numerical slack). A bare 'min_T < threshold - safety_tol'
+    # trigger fires the polish on cases where the cluster pass is
+    # essentially done -- and the polish costs ~3× the cluster pass.
+    polish_margin = 5 * 1e-5  # 5x safety_tol
+    if (final_global_polish
+            and (cluster_n_neg > 0 or cluster_min_T < threshold - polish_margin)):
         if verbose:
             print(
                 f'[polish] cluster min_T={cluster_min_T:+.4f} < threshold; '
