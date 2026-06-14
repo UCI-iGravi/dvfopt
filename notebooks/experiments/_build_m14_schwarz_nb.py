@@ -3,7 +3,7 @@ import nbformat as nbf
 from pathlib import Path
 
 HERE = Path(__file__).parent
-SRCDIR = HERE / '_slack_reform_cells'
+SRCDIR = HERE / '_m14_schwarz_cells'
 
 CELLS = [
     ('md', 'm14_schwarz_intro.md'),
