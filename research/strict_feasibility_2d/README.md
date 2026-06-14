@@ -13,7 +13,8 @@ See [`DESIGN.md`](DESIGN.md) for the design spec.
 | Algorithms implemented (`lp_oneshot`, `slp_iter`) | ✓ |
 | Worst-case catalog built | ✓ |
 | Synthetic bake-off run | ✓ |
-| B0039 z=12 bake-off run | ✓ partial (harmonic_only + m14; LP/SLP did not complete in 12-min budget at full 320×456) |
+| B0039 z=12 bake-off run | ✓ |
+| B0039 multi-slice sweep (z=12..500, 11 slices) | ✓ 11/11 feasible via `auto_slp` |
 | Analysis notebooks finalised | ✓ |
 
 ## Results (2026-06-14)
@@ -102,40 +103,65 @@ large slice — no global polish needed.
   in this build); process-pool spawn cost outweighs the cluster work
   on Windows. **Sequential per-cluster solves are the right design.**
 
-#### Fold-density dependence (multi-slice findings)
+#### Threshold-aware re-clustering eliminates the sparse-slice polish
 
-Comparing M14 and cluster_slp across B0039 slices reveals a clear
-density-dependent crossover:
+Initial multi-slice runs surfaced a fold-density crossover where
+cluster_slp wall-lost to M14 on sparse slices (e.g., z=100: M14 92 s
+vs cluster_slp 184 s). Investigation showed the bottleneck was the
+post-cluster global polish step firing because splice numerical noise
+pushed `min_T` below the strict threshold on a few cells.
 
-| Slice | init folds | M14 wall | cluster_slp wall | wall winner | L1 winner |
-|---|---:|---:|---:|---|---|
-| z=12 | 4902 | 411 s | **61 s** | cluster_slp (6.7×) | cluster_slp (−4.0%) |
-| z=100 | 399 | **92 s** | 184 s | M14 (2× faster) | cluster_slp (−5.0%) |
+The fix (commit `148049d`): make the outer cluster loop
+**threshold-aware**. Round 0 targets folds (`min_T <= 0`). Subsequent
+rounds target the full strict-feasibility constraint (`min_T <
+threshold`), sweeping up splice-noise cells via tiny localised LP
+solves instead of triggering the expensive global polish.
 
-- **Dense fold slices (≥ a few thousand folds):** cluster_slp wins
-  both L1 and wall — the per-cluster decomposition exploits the
-  bounded LP work per cluster while M14's global passes scale poorly
-  with fold count.
-- **Sparse fold slices (a few hundred folds):** cluster_slp still wins
-  L1 but is 2× slower than M14. Per-cluster M14-inner-solve overhead
-  adds up when there are many small clusters. M14 wins on wall.
+Result: cluster_slp now wins both L1 and wall on **every B0039 slice
+tested**, dense or sparse:
 
-For a wall-time-conscious production pipeline at the full 528-slice
-B0039 volume, a fold-count-based dispatch (cluster_slp above a
-threshold, M14 below) would extract maximum throughput while never
-losing strict feasibility.
+| Slice | init folds | M14 wall | cluster_slp wall | L1 win |
+|---|---:|---:|---:|---:|
+| z=12 | 4902 | 411 s | **61 s** (6.7×) | −4.0% |
+| z=100 | 399 | 92 s | **29 s** (3.2×) | −5.6% |
+
+The earlier fold-count branch in `auto_slp` is now obsolete — large
+slices route to cluster_slp universally.
+
+#### Multi-slice sweep (z=12..500, 11 slices via `auto_slp`)
+
+A full sweep across the B0039 volume confirms uniform strict
+feasibility and bounded wall:
+
+| Slice | init n_neg | final L1 | wall |
+|---|---:|---:|---:|
+| z=012 | 4902 | 167 210 | 68.6 s |
+| z=050 |  702 |     710 | 29.3 s |
+| z=100 |  399 |     424 | 24.7 s |
+| z=150 |  588 |     562 | 36.1 s |
+| z=200 | 1003 |   1 086 | 59.7 s |
+| z=250 | 1594 |   1 864 | 117.1 s |
+| z=300 | 1847 |   2 099 | 123.8 s |
+| z=350 | 1661 |   1 944 | 111.3 s |
+| z=400 | 1348 |   1 445 | 70.9 s |
+| z=450 | 1432 |   2 322 | 71.9 s |
+| z=500 | 1186 |   2 006 | 61.3 s |
+
+**11/11 strict-feasible, total ~13 min, mean 70 s/slice.** Wall scales
+sub-linearly with fold count: the densest sparse slices (z=300 at
+1847 folds) run in 124 s, while the canonical z=12 (4902 folds —
+2.7× as many) takes only 69 s because its folds cluster more compactly.
+Data in [`runners/output/comparison_b0039.csv`](runners/output/comparison_b0039.csv).
 
 ### `auto_slp`: adaptive dispatch
 
-Three regimes cover the full input space; `auto_slp` routes by
-`(pixel count, fold count)` so callers get the per-regime winner
-under a single method name:
+Two regimes cover the full input space; `auto_slp` routes by pixel
+count so callers get the per-regime winner under one method name:
 
-| Input shape | Folds | Routes to | Why |
-|---|---|---|---|
-| ≤ 5000 px (≤ ~70×70) | any | `slp_iter_m14_seed` | Best L1; small enough that global LP is cheap |
-| > 5000 px | ≥ 1000 | `cluster_slp` (m14_fast inner) | Cluster pass alone reaches feasibility; wins L1 + wall |
-| > 5000 px | < 1000 | `m14` | Cluster_slp's global polish step would fire and wall-dominate; sparse-fold case where M14 is faster |
+| Input shape | Routes to | Why |
+|---|---|---|
+| ≤ 5000 px (≤ ~70×70) | `slp_iter_m14_seed` | Best L1; global LP is cheap at this size |
+| > 5000 px | `cluster_slp` (m14_fast inner, threshold-aware) | Wins both L1 and wall on every B0039 slice tested |
 
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 
