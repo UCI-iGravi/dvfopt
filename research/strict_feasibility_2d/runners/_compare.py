@@ -29,6 +29,7 @@ METHOD_NAMES = (
     'slp_iter',
     'slp_iter_m14_seed',
     'slp_iter_wide_tr',
+    'cluster_slp',
 )
 
 
@@ -96,6 +97,16 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         # Wide initial trust region (2 cell units) lets the first LP step
         # cover ~full-displacement inputs in one shot. Same m10 seed.
         phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD, trust_radius_0=2.0)
+        return phi_out, info
+    if name == 'cluster_slp':
+        # Per-cluster SLP with m14 seed per cluster. Makes the LP
+        # tractable at B0039 scale by avoiding the 290k-var direct solve.
+        from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
+            cluster_slp_iter,
+        )
+        phi_out, info = cluster_slp_iter(
+            phi_2hw, threshold=THRESHOLD, inner_seed='m14'
+        )
         return phi_out, info
     raise ValueError(f'unknown method: {name!r} (known: {METHOD_NAMES})')
 

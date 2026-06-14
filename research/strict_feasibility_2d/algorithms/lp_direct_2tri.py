@@ -96,8 +96,19 @@ def _m14_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     return solver.fit(phi_in_2hw).corrected
 
 
-def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed: str) -> np.ndarray:
-    """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``."""
+def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
+    """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``.
+
+    Accepts a string kind (``'harmonic'`` / ``'m10'`` / ``'m14'`` /
+    ``'zero'``) or a ndarray to use as the seed directly (useful for
+    chaining: ``cluster_slp`` passes its output here as the seed for a
+    global polish step)."""
+    if isinstance(seed, np.ndarray):
+        if seed.shape != phi_in_2hw.shape:
+            raise ValueError(
+                f'seed ndarray shape {seed.shape} != phi_in shape {phi_in_2hw.shape}'
+            )
+        return seed.astype(np.float64).copy()
     if seed == 'harmonic':
         return _harmonic_seed(phi_in_2hw, threshold)
     if seed == 'm10':

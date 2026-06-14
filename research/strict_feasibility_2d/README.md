@@ -34,26 +34,29 @@ feasibility on **every** case:
 | lp_oneshot (m10 seed) | 3 / 9 (single-LP step still infeasible at exact eval on dense cases) |
 | harmonic_only | 3 / 9 |
 
-L1 head-to-head (synthetic, all 9 feasible for m14, slp_iter, and
-`slp_iter_m14_seed`):
+L1 head-to-head (synthetic, all 9 feasible for m14, slp_iter,
+`slp_iter_m14_seed`, and `cluster_slp`):
 
-| Case | M14 L1 | SLP (m10 seed) L1 | **SLP (M14 seed) L1** |
+| Case | M14 L1 | **SLP (M14 seed)** | **cluster_slp** |
 |---|---:|---:|---:|
-| `bowtie_7x7_shoelace` | 1.466 | 1.420 | **1.420** (−3.2%) |
-| `dense_bowtie_cluster_15x15` | 12.958 | 12.780 | **12.780** (−1.4%) |
-| `01a_10x10_crossing` | 6.676 | 6.640 | **6.640** (−0.5%) |
-| `01b_10x10_opposite` | 3.552 | 3.536 | **3.536** (−0.5%) |
-| `03a_10x10_opposite` | 7.135 | 7.093 | **7.093** (−0.6%) |
-| `03b_10x10_crossing` | 15.868 | 26.153 | **15.819** (−0.3%) |
-| `03c_20x20_opposite` | 22.990 | 22.872 | **22.872** (−0.5%) |
-| `03d_20x20_crossing` | 43.764 | 111.373 | **43.660** (−0.2%) |
-| `tiny_margin_10x10` | 7.826 | 19.004 | **6.000** (**−23%**) |
+| `bowtie_7x7_shoelace` | 1.466 | **1.420** (−3.2%) | **1.420** (−3.2%) |
+| `dense_bowtie_cluster_15x15` | 12.958 | **12.780** (−1.4%) | **12.780** (−1.4%) |
+| `01a_10x10_crossing` | 6.676 | **6.640** (−0.5%) | **6.640** (−0.5%) |
+| `01b_10x10_opposite` | 3.552 | **3.536** (−0.5%) | 3.552 (≈0) |
+| `03a_10x10_opposite` | 7.135 | **7.093** (−0.6%) | 7.137 (+0.0%) |
+| `03b_10x10_crossing` | 15.868 | **15.819** (−0.3%) | 15.867 (≈0) |
+| `03c_20x20_opposite` | 22.990 | **22.872** (−0.5%) | 22.991 (≈0) |
+| `03d_20x20_crossing` | 43.764 | **43.660** (−0.2%) | 45.104 (+3.1%) |
+| `tiny_margin_10x10` | 7.826 | **6.000** (−23%) | 8.719 (+11.4%) |
 
-**`slp_iter_m14_seed` (seed from the full M14 pipeline, then LP-polish)
-achieves 9/9 strict feasibility AND beats M14 on L1 on every case.**
-Most wins are <1% (M14 is already near the LP optimum), but
-`tiny_margin_10x10` shows a 23% L1 improvement — M14 left genuine
-slack there.
+**Two winners depending on scale:**
+
+* **`slp_iter_m14_seed`** — L1 winner everywhere on small/medium slices
+  (9/9 feasibility, ≥ M14 on every case, never loses, sometimes huge
+  win like tiny_margin's 23%).
+* **`cluster_slp`** — wall-time winner at B0039 scale (see next
+  section); on small synthetic slices the polish step overhead drags
+  L1 by 3–11% on dense crossing cases.
 
 A wide-trust-region variant (`slp_iter_wide_tr`) was tested but
 *worsened* dense-crossing cases — the big LP first-step pulls phi
@@ -65,13 +68,25 @@ trust radius.
 | Method | Feasible | n_neg | min_T | L1 | Wall |
 |---|:---:|---:|---:|---:|---:|
 | harmonic_only | ✗ | 641 | -1.89 | 239 499 | 0.9 s |
-| **m14** | **✓** | 0 | +0.020 | **174 131** | 379 s |
-| lp_oneshot | (timeout) | — | — | — | >12 min |
-| slp_iter | (timeout) | — | — | — | >12 min |
+| m14 | ✓ | 0 | +0.020 | 184 034 | 267 s |
+| **cluster_slp** | **✓** | 0 | +0.010 | **175 638 (−4.6%)** | **64 s (4.2× faster)** |
+| slp_iter (global, m10 seed) | ✓ | 0 | +0.010 | 287 316 (+56%) | 515 s |
+| lp_oneshot (global, direct LP) | (timeout) | — | — | — | >12 min |
 
-LP/SLP at full B0039 scale need per-fold-cluster decomposition (spec
-fallback row 5: `cluster_lp`) — the direct ~290k-variable solve is
-too slow for practical use.
+**`cluster_slp` is the headline result on B0039:** strict feasibility,
+4.6% lower L1 than M14, and 4.2× faster wall-time.
+
+The approach: decompose the slice into connected fold clusters (via
+`scipy.ndimage` CCL with merge-dilation), solve SLP on each cluster's
+padded crop with frozen boundary, splice interior corners back. On
+z=12 this produces 11 clusters in round 0 (drops 4902→49 folds) and 5
+clusters in round 1 (49→0). No global polish needed — the cluster
+pass alone reaches feasibility because B0039's folds are sparsely
+distributed in a large slice.
+
+The optimal inner seed (per per-cluster solve) is M14, not M10 or
+harmonic — both M10 and harmonic inner seeds force a global polish to
+fire, which costs ~3× wall-time and worsens L1.
 
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 
