@@ -79,12 +79,22 @@ def _partition_clusters_nonoverlapping(clusters):
     return rounds
 
 
-def _fold_clusters(phi_2hw: np.ndarray, merge_dilation: int = MERGE_DILATION_BASE):
-    """Return list of cluster dicts (``y0, y1, x0, x1, n_cells``) for
-    every connected fold component, with ``BBOX_PAD`` cells of padding."""
+def _fold_clusters(
+    phi_2hw: np.ndarray,
+    merge_dilation: int = MERGE_DILATION_BASE,
+    target_threshold: float = 0.0,
+):
+    """Return list of cluster dicts for every connected component of
+    cells where ``min(T1, T2) < target_threshold``.
+
+    Default ``target_threshold=0`` finds geometric folds (cells with at
+    least one flipped triangle). Setting it to the user threshold
+    (e.g. 0.01) also catches barely-infeasible cells from splice noise
+    in later outer rounds, so the cluster loop can sweep them up
+    without falling back to the expensive global polish step."""
     T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
     cell_min = np.minimum(T1, T2)
-    fold_mask = cell_min <= 0
+    fold_mask = cell_min < target_threshold
     if not fold_mask.any():
         return []
     merged = binary_dilation(fold_mask, iterations=merge_dilation) if merge_dilation > 0 else fold_mask
@@ -175,7 +185,12 @@ def cluster_slp_iter(
     }
 
     for outer_it in range(max_outer_iters):
-        clusters = _fold_clusters(phi_out, merge_dilation=merge_dilation)
+        # First outer iter: target only actual folds (min_T <= 0). On
+        # subsequent rounds: target full strict-feasibility (min_T <
+        # threshold), so splice-noise cells get swept up by the cluster
+        # loop instead of triggering the expensive global polish step.
+        target = 0.0 if outer_it == 0 else (threshold - 1e-5)
+        clusters = _fold_clusters(phi_out, merge_dilation=merge_dilation, target_threshold=target)
         if not clusters:
             info['rounds'].append({'outer': outer_it, 'n_clusters': 0, 'reason': 'feasible'})
             break
@@ -241,12 +256,15 @@ def cluster_slp_iter(
                 round_runs.append({**c, 'wall': time.time() - t_c})
 
         T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
-        post_n_neg = int((np.minimum(T1, T2) <= 0).sum())
+        T_min = np.minimum(T1, T2)
+        post_n_neg = int((T_min <= 0).sum())
+        post_n_below_threshold = int((T_min < threshold - 1e-5).sum())
         info['rounds'].append({
             'outer': outer_it,
             'n_clusters': len(clusters),
             'pre_n_neg': pre_n_neg,
             'post_n_neg': post_n_neg,
+            'post_n_below_threshold': post_n_below_threshold,
             'wall': time.time() - t0,
             'cluster_runs': round_runs if verbose else None,
         })
@@ -254,13 +272,16 @@ def cluster_slp_iter(
             print(
                 f'[outer {outer_it}] {len(clusters)} clusters: '
                 f'n_neg {pre_n_neg} -> {post_n_neg}  '
+                f'n<threshold={post_n_below_threshold}  '
                 f'({time.time() - t0:.1f}s)',
                 flush=True,
             )
-        if post_n_neg == 0:
+        # Done iff no folds AND no margin violations.
+        if post_n_neg == 0 and post_n_below_threshold == 0:
             break
-        if post_n_neg >= pre_n_neg:
-            # No progress — expand merge_dilation and retry once.
+        # No progress on n_neg (and no margin violations being targeted)
+        # → expand merge_dilation and retry once.
+        if outer_it == 0 and post_n_neg >= pre_n_neg:
             merge_dilation += 1
             if merge_dilation > MERGE_DILATION_BASE + 3:
                 break
