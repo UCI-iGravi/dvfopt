@@ -98,6 +98,29 @@ large slice — no global polish needed.
   in this build); process-pool spawn cost outweighs the cluster work
   on Windows. **Sequential per-cluster solves are the right design.**
 
+#### Fold-density dependence (multi-slice findings)
+
+Comparing M14 and cluster_slp across B0039 slices reveals a clear
+density-dependent crossover:
+
+| Slice | init folds | M14 wall | cluster_slp wall | wall winner | L1 winner |
+|---|---:|---:|---:|---|---|
+| z=12 | 4902 | 411 s | **61 s** | cluster_slp (6.7×) | cluster_slp (−4.0%) |
+| z=100 | 399 | **92 s** | 184 s | M14 (2× faster) | cluster_slp (−5.0%) |
+
+- **Dense fold slices (≥ a few thousand folds):** cluster_slp wins
+  both L1 and wall — the per-cluster decomposition exploits the
+  bounded LP work per cluster while M14's global passes scale poorly
+  with fold count.
+- **Sparse fold slices (a few hundred folds):** cluster_slp still wins
+  L1 but is 2× slower than M14. Per-cluster M14-inner-solve overhead
+  adds up when there are many small clusters. M14 wins on wall.
+
+For a wall-time-conscious production pipeline at the full 528-slice
+B0039 volume, a fold-count-based dispatch (cluster_slp above a
+threshold, M14 below) would extract maximum throughput while never
+losing strict feasibility.
+
 ### `auto_slp`: adaptive dispatch
 
 The two new winners (`slp_iter_m14_seed` for small slices,
