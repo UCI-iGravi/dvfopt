@@ -125,9 +125,11 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         # Adaptive: route by pixel count to the empirical winner.
         # - Small slice (≤5k px): slp_iter_m14_seed (best L1; small
         #   enough that the global LP is cheap).
-        # - Large slice (>5k px): cluster_slp (per-cluster scaling
-        #   plus threshold-aware re-clustering wins both L1 and wall
-        #   on every B0039 slice tested, dense or sparse).
+        # - Large slice (>5k px): cluster_slp with n_workers=8
+        #   parallelism (per-cluster scaling plus threshold-aware
+        #   re-clustering plus shared-pool parallelism: 3-4× wall win
+        #   on B0039 z=100/z=300, identical L1, no help-no-harm on
+        #   the densest z=12 slice).
         H, W = phi_2hw.shape[1:]
         pixels = H * W
         if pixels <= _AUTO_CLUSTER_PIXEL_THRESHOLD:
@@ -138,7 +140,7 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
                 cluster_slp_iter,
             )
             phi_out, info = cluster_slp_iter(
-                phi_2hw, threshold=THRESHOLD, max_outer_iters=6,
+                phi_2hw, threshold=THRESHOLD, max_outer_iters=6, n_workers=8,
             )
             info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}
         return phi_out, info

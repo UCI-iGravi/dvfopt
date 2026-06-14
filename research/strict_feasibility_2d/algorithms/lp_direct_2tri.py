@@ -122,6 +122,43 @@ def _m14_fast_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     return solver.fit(phi_in_2hw).corrected
 
 
+def _m14_quick_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
+    """Even cheaper M14 variant tuned for small cluster scopes.
+
+    On top of ``_m14_fast_seed`` (which already drops stage 4), this
+    also tightens stage 2's L-BFGS-B budget by:
+    - shortening the lambda schedule from 4 entries to 2
+      (1e4 -> 1e8 covers the meaningful continuation range on small
+      cluster crops),
+    - capping ``inner_maxiter`` from 300 to 100 per L-BFGS-B call.
+
+    On a single full-slice run this would leave noticeable L1 on the
+    table, but inside ``cluster_slp`` the outer SLP polishes L1
+    anyway — the inner only needs to land a "near-feasible, near-input"
+    point fast. Profile of z=300 showed stage 2 (l2_refine_2d) was
+    63% of total wall time at 75 s; shrinking its budget is the
+    highest-leverage knob."""
+    from dvfopt import (
+        HarmonicALMRefineRepairStrategy,
+        L1Objective,
+        Solver,
+        TriConstraint2DFullCoverage,
+    )
+
+    H, W = phi_in_2hw.shape[1:]
+    solver = Solver(
+        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        objective=L1Objective(eps=1e-4),
+        strategy=HarmonicALMRefineRepairStrategy(
+            polish_mu=(),
+            lam_schedule=(1e4, 1e8),
+            inner_maxiter=100,
+        ),
+        threshold=threshold,
+    )
+    return solver.fit(phi_in_2hw).corrected
+
+
 def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
     """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``.
 
@@ -143,6 +180,8 @@ def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
         return _m14_seed(phi_in_2hw, threshold)
     if seed == 'm14_fast':
         return _m14_fast_seed(phi_in_2hw, threshold)
+    if seed == 'm14_quick':
+        return _m14_quick_seed(phi_in_2hw, threshold)
     if seed == 'zero':
         return np.zeros_like(phi_in_2hw)
     raise ValueError(f'unknown seed: {seed!r}')

@@ -183,6 +183,13 @@ def cluster_slp_iter(
         'inner_seed': inner_seed,
         'total_cluster_solves': 0,
     }
+    # Single shared worker pool across ALL outer rounds and sub-rounds.
+    # The earlier per-sub-round pool re-spawned ~1-2 s of Windows
+    # process-startup cost on every sub-round (50-100+ times per slice),
+    # erasing the parallelism benefit. With one pool lifetime-spanning
+    # the entire call, spawn cost amortises once across all 200-300
+    # cluster solves.
+    pool = ProcessPoolExecutor(max_workers=n_workers) if n_workers > 1 else None
 
     for outer_it in range(max_outer_iters):
         # First outer iter: target only actual folds (min_T <= 0). On
@@ -226,8 +233,7 @@ def cluster_slp_iter(
                     ))
                 t_c = time.time()
                 if len(sub_round) > 1:
-                    with ProcessPoolExecutor(max_workers=n_workers) as pool:
-                        results = list(pool.map(_solve_cluster_worker, arg_list))
+                    results = list(pool.map(_solve_cluster_worker, arg_list))
                 else:
                     results = [_solve_cluster_worker(arg_list[0])]
                 wall_round = time.time() - t_c
@@ -334,6 +340,9 @@ def cluster_slp_iter(
         info['polish_fired'] = True
     else:
         info['polish_fired'] = False
+
+    if pool is not None:
+        pool.shutdown(wait=True)
 
     info['final_min_T_exact'] = float(np.minimum(
         *_triangle_areas_2d(phi_out[0], phi_out[1])

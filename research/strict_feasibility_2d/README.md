@@ -131,27 +131,62 @@ slices route to cluster_slp universally.
 #### Multi-slice sweep (z=12..500, 11 slices via `auto_slp`)
 
 A full sweep across the B0039 volume confirms uniform strict
-feasibility and bounded wall:
+feasibility and bounded wall. With `n_workers=8` parallelism enabled
+(shared pool across all cluster rounds — see "Shared-pool process
+parallelism" below), wall time drops to mean 22 s/slice:
 
-| Slice | init n_neg | final L1 | wall |
-|---|---:|---:|---:|
-| z=012 | 4902 | 167 210 | 68.6 s |
-| z=050 |  702 |     710 | 29.3 s |
-| z=100 |  399 |     424 | 24.7 s |
-| z=150 |  588 |     562 | 36.1 s |
-| z=200 | 1003 |   1 086 | 59.7 s |
-| z=250 | 1594 |   1 864 | 117.1 s |
-| z=300 | 1847 |   2 099 | 123.8 s |
-| z=350 | 1661 |   1 944 | 111.3 s |
-| z=400 | 1348 |   1 445 | 70.9 s |
-| z=450 | 1432 |   2 322 | 71.9 s |
-| z=500 | 1186 |   2 006 | 61.3 s |
+| Slice | init n_neg | L1 | sequential wall | **parallel wall (n=8)** | speedup |
+|---|---:|---:|---:|---:|---:|
+| z=012 | 4902 | 167 159 | 68.6 s | **61.9 s** | 1.11× |
+| z=050 |  702 |     710 | 29.3 s | **9.8 s** | 2.99× |
+| z=100 |  399 |     424 | 24.7 s | **7.6 s** | 3.25× |
+| z=150 |  588 |     562 | 36.1 s | **9.7 s** | 3.72× |
+| z=200 | 1003 |   1 086 | 59.7 s | **15.4 s** | 3.88× |
+| z=250 | 1594 |   1 866 | 117.1 s | **33.5 s** | 3.50× |
+| z=300 | 1847 |   2 101 | 123.8 s | **27.1 s** | 4.57× |
+| z=350 | 1661 |   1 939 | 111.3 s | **26.0 s** | 4.28× |
+| z=400 | 1348 |   1 448 | 70.9 s | **18.4 s** | 3.85× |
+| z=450 | 1432 |   2 323 | 71.9 s | **18.5 s** | 3.89× |
+| z=500 | 1186 |   1 970 | 61.3 s | **16.7 s** | 3.67× |
+| **total** | | | **775 s (12.9 min)** | **245 s (4.1 min)** | **3.2×** |
 
-**11/11 strict-feasible, total ~13 min, mean 70 s/slice.** Wall scales
-sub-linearly with fold count: the densest sparse slices (z=300 at
-1847 folds) run in 124 s, while the canonical z=12 (4902 folds —
-2.7× as many) takes only 69 s because its folds cluster more compactly.
-Data in [`runners/output/comparison_b0039.csv`](runners/output/comparison_b0039.csv).
+**11/11 strict-feasible, total 4.1 min, mean 22 s/slice.** L1 within
+0.5% of sequential across all slices (iteration-order differences from
+non-overlapping sub-round splicing). z=12 doesn't benefit from
+parallelism — it has only ~11 large clusters of which one or two
+dominate — but no regression. Sparser slices with many small clusters
+parallelize well.
+
+#### Shared-pool process parallelism
+
+cProfile of z=300 (124 s sequential) showed `_m14_fast_seed` was 87% of
+total wall (103 s out of 119 s), and **the LP solve via HiGHS was
+negligible (< 5 s)**. The remaining 13% was cluster-loop overhead. So
+the lever is the per-cluster inner solve.
+
+An earlier `n_workers > 1` path existed but **re-created
+`ProcessPoolExecutor` per sub-round**, paying ~1-2 s of Windows
+spawn cost on every re-creation. With 3-4 outer rounds and up to 3
+non-overlapping sub-rounds each, the spawn cost dominated and erased
+the parallelism benefit — leading to the earlier "Sequential per-
+cluster solves are the right design" note. The fix moves pool
+creation to the top of `cluster_slp_iter` so spawn cost amortises
+once across all 200-300 cluster solves. Result: the 3-4× speedup
+above.
+
+The L1-preserving cheaper-seed alternatives we tried first all
+backfired: `m10` and `harmonic` inner seeds dropped wall by 2-4× but
+inflated L1 by 50-700% (the SLP outer loop can't recover ground a
+worse seed gave away under trust-region step caps); a `m14_quick`
+variant with tightened L-BFGS-B budget was a small win on sparse
+slices but **3.3× slower** on dense z=12. Parallel m14_fast is the
+clean win.
+
+Data in [`runners/output/comparison_b0039.csv`](runners/output/comparison_b0039.csv);
+n_workers sweep in
+[`analysis/_parallel_sweep.py`](analysis/_parallel_sweep.py); cProfile
+trace at
+[`runners/output/profile_z300.prof`](runners/output/profile_z300.prof).
 
 ### `auto_slp`: adaptive dispatch
 
