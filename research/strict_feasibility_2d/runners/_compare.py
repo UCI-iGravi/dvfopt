@@ -33,13 +33,19 @@ METHOD_NAMES = (
     'auto_slp',
 )
 
-# Above this many pixels (H*W) ``auto_slp`` switches from the
-# small-slice winner (``slp_iter_m14_seed``) to the large-slice winner
-# (``cluster_slp``). Empirically: synthetic 20x20=400 too small for
-# cluster_slp to win L1; B0039 320x456=145920 cluster_slp wins on
-# both axes. Threshold set just above the synthetic worst-case to
-# bias toward the small-slice winner unless we're meaningfully scaling.
+# auto_slp dispatch thresholds. Two signals matter:
+#   - Pixel count: below ~5k px, LP at slice scale is cheap enough
+#     that slp_iter_m14_seed beats cluster_slp on L1 (no per-cluster
+#     M14-inner overhead).
+#   - Fold count: above ~1k folds, cluster_slp's per-cluster scaling
+#     pays off and the global polish doesn't fire. Below ~1k folds
+#     in a large slice (sparse), the cluster output triggers polish
+#     and M14 wall-dominates cluster_slp.
+#
+# Empirically calibrated on synthetic 20x20=400 px / 9 cases + B0039
+# z=12 (4902 folds) and z=100 (399 folds).
 _AUTO_CLUSTER_PIXEL_THRESHOLD = 5_000
+_AUTO_CLUSTER_FOLD_THRESHOLD = 1_000
 
 
 def _stats(phi_2hw: np.ndarray):
@@ -118,23 +124,38 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         )
         return phi_out, info
     if name == 'auto_slp':
-        # Adaptive: route by slice size to the empirical winner.
-        # Small slices: slp_iter_m14_seed (best L1, fast enough).
-        # Large slices: cluster_slp (per-cluster scaling, both L1-best
-        # and wall-best at B0039 scale).
+        # Adaptive: route by (pixel count, fold count) to the empirical
+        # winner. See _AUTO_*_THRESHOLD comments for rationale.
+        # - Small slice (≤5k px): slp_iter_m14_seed (best L1, fast).
+        # - Large + dense (≥1k folds): cluster_slp (cluster pass alone
+        #   reaches feasibility; both L1 and wall best at B0039 z=12).
+        # - Large + sparse (<1k folds): M14 globally (cluster_slp would
+        #   trigger an expensive polish step that dominates wall).
         H, W = phi_2hw.shape[1:]
         pixels = H * W
+        from dvfopt.jacobian.triangle_sign import _triangle_areas_2d as _ta
+        _T1, _T2 = _ta(phi_2hw[0], phi_2hw[1])
+        n_folds = int((np.minimum(_T1, _T2) <= 0).sum())
         if pixels <= _AUTO_CLUSTER_PIXEL_THRESHOLD:
             phi_out, info = slp_iter(phi_2hw, threshold=THRESHOLD, seed='m14')
-            info = {**info, 'auto_dispatch': 'slp_iter_m14_seed', 'pixels': pixels}
-        else:
+            info = {
+                **info, 'auto_dispatch': 'slp_iter_m14_seed',
+                'pixels': pixels, 'n_folds': n_folds,
+            }
+        elif n_folds >= _AUTO_CLUSTER_FOLD_THRESHOLD:
             from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
                 cluster_slp_iter,
             )
-            phi_out, info = cluster_slp_iter(
-                phi_2hw, threshold=THRESHOLD, inner_seed='m14'
-            )
-            info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}
+            phi_out, info = cluster_slp_iter(phi_2hw, threshold=THRESHOLD)
+            info = {
+                **info, 'auto_dispatch': 'cluster_slp',
+                'pixels': pixels, 'n_folds': n_folds,
+            }
+        else:
+            # Large + sparse: M14 wall-beats cluster_slp.
+            from dvfopt import HarmonicALMRefineRepairStrategy
+            phi_out = _solve_via_strategy(HarmonicALMRefineRepairStrategy, phi_2hw)
+            info = {'auto_dispatch': 'm14', 'pixels': pixels, 'n_folds': n_folds}
         return phi_out, info
     raise ValueError(f'unknown method: {name!r} (known: {METHOD_NAMES})')
 

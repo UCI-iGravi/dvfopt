@@ -87,13 +87,17 @@ large slice — no global polish needed.
 
 #### Tuning history
 
-* Inner seed: M14 (not M10/harmonic). M10/harmonic inner seeds force
-  the global polish to fire, which costs ~3× wall-time and worsens L1.
-* Inner threshold margin: `threshold + 1e-4`. The cluster pass needs
-  a small extra margin so post-splice numerical noise doesn't drop
-  `min_T` below the user's threshold (and trigger an unnecessary
-  global polish). 1e-4 was the empirical sweet spot — bigger margins
-  (5e-4, 1e-3) waste L1 with no speed benefit.
+* Inner seed: **`m14_fast`** (M14 without stage 4 barrier polish).
+  Stage 4 is redundant when cluster_slp's outer loop does an L1 polish
+  via SLP anyway. Dropping it gives **20–30% inner-call speedup** at
+  identical L1 and feasibility (167210 / +0.0101 on B0039 z=12).
+  M10 / harmonic inner seeds were worse — both force the global
+  polish to fire (~3× wall, worse L1).
+* Polish step (when triggered): also `m14_fast` — same reasoning.
+* Inner threshold margin: `threshold + 1e-4`. Larger margins (5e-3,
+  1e-2) sweep showed faster wall but worse L1 on z=12, and didn't
+  help z=100 (the polish still fired because splice degradation
+  exceeds even 1e-2 of margin on sparse slices).
 * Parallelism: threads segfaulted (scipy linprog isn't thread-safe
   in this build); process-pool spawn cost outweighs the cluster work
   on Windows. **Sequential per-cluster solves are the right design.**
@@ -123,15 +127,15 @@ losing strict feasibility.
 
 ### `auto_slp`: adaptive dispatch
 
-The two new winners (`slp_iter_m14_seed` for small slices,
-`cluster_slp` for large) cover complementary regimes. `auto_slp`
-routes by `H·W` (threshold 5000 px) so callers can use a single
-method and get the right algorithm:
+Three regimes cover the full input space; `auto_slp` routes by
+`(pixel count, fold count)` so callers get the per-regime winner
+under a single method name:
 
-| Input | Routes to |
-|---|---|
-| ≤ 5000 pixels (≤ ~70×70) | `slp_iter_m14_seed` |
-| > 5000 pixels | `cluster_slp` |
+| Input shape | Folds | Routes to | Why |
+|---|---|---|---|
+| ≤ 5000 px (≤ ~70×70) | any | `slp_iter_m14_seed` | Best L1; small enough that global LP is cheap |
+| > 5000 px | ≥ 1000 | `cluster_slp` (m14_fast inner) | Cluster pass alone reaches feasibility; wins L1 + wall |
+| > 5000 px | < 1000 | `m14` | Cluster_slp's global polish step would fire and wall-dominate; sparse-fold case where M14 is faster |
 
 ### Failure modes feeding back into the [fallback plan](../../docs/superpowers/specs/2026-06-14-strict-feasibility-2d-design.md#fallback-plan)
 

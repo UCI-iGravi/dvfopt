@@ -113,7 +113,7 @@ def cluster_slp_iter(
     phi_in_2hw: np.ndarray,
     *,
     threshold: float = 0.01,
-    inner_seed: str = 'm14',
+    inner_seed: str = 'm14_fast',
     inner_max_iter: int = 10,
     inner_trust_radius_0: float = 0.5,
     max_outer_iters: int = MAX_OUTER_ITERS,
@@ -257,10 +257,13 @@ def cluster_slp_iter(
         )
 
         H, W = phi_out.shape[1:]
+        # Polish uses M14-fast (skip stage 4 barrier polish) since
+        # the cluster output is already L1-good — we only need
+        # feasibility-restoration here, not L1 minimisation.
         solver = Solver(
             constraint=TriConstraint2DFullCoverage(shape=(H, W)),
             objective=L1Objective(eps=1e-4),
-            strategy=HarmonicALMRefineRepairStrategy(),
+            strategy=HarmonicALMRefineRepairStrategy(polish_mu=()),
             threshold=threshold,
         )
         phi_out = solver.fit(phi_out).corrected

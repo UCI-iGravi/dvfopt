@@ -96,6 +96,32 @@ def _m14_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     return solver.fit(phi_in_2hw).corrected
 
 
+def _m14_fast_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
+    """Cheaper M14 variant that skips stage 4 (barrier polish).
+
+    The polish loop runs ``len(polish_mu)`` L-BFGS-B calls (default 3)
+    that incrementally tighten the L1/L2-vs-input optimization on the
+    barrier path. When ``_m14_fast_seed`` is used as the inner for
+    ``cluster_slp``, the outer SLP step handles the L1 polish, so the
+    inner's polish is redundant. Skipping it shaves the stage-4 cost
+    per cluster (typically 30-50% of the inner wall time)."""
+    from dvfopt import (
+        HarmonicALMRefineRepairStrategy,
+        L1Objective,
+        Solver,
+        TriConstraint2DFullCoverage,
+    )
+
+    H, W = phi_in_2hw.shape[1:]
+    solver = Solver(
+        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        objective=L1Objective(eps=1e-4),
+        strategy=HarmonicALMRefineRepairStrategy(polish_mu=()),
+        threshold=threshold,
+    )
+    return solver.fit(phi_in_2hw).corrected
+
+
 def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
     """Dispatch on the ``seed`` kwarg shared by ``lp_oneshot`` + ``slp_iter``.
 
@@ -115,6 +141,8 @@ def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
         return _m10_seed(phi_in_2hw, threshold)
     if seed == 'm14':
         return _m14_seed(phi_in_2hw, threshold)
+    if seed == 'm14_fast':
+        return _m14_fast_seed(phi_in_2hw, threshold)
     if seed == 'zero':
         return np.zeros_like(phi_in_2hw)
     raise ValueError(f'unknown seed: {seed!r}')
