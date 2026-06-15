@@ -64,13 +64,59 @@ A wide-trust-region variant (`slp_iter_wide_tr`) was tested but
 away from input then gets stuck. The bottleneck is seed quality, not
 trust radius.
 
-### B0039 z=12 (320×456, init n_neg=4902)
+### B0039 multi-method comparison (11 slices × 3 methods)
+
+Direct head-to-head of `harmonic_only` / `m14` / `auto_slp` across
+the full B0039 z=12..500 slice subset. All methods benefit from the
+shared Numba JIT path on `tri_grad_T_v` / `_triangle_areas_2d` /
+`_soft_pen_objective`, so m14's wall is ~1.7× faster than in the
+pre-JIT snapshot (z=12: 411 s → 242 s).
+
+| Slice | init folds | harmonic_only | m14 | **auto_slp** |
+|---|---:|:---|:---|:---|
+| z=12 | 4902 | ✗  L1=239 499  0.6 s | ✓  L1=178 356  242 s | ✓  L1=180 159  **47 s** |
+| z=50 |  702 | ✗  L1= 12 012  0.3 s | ✓  L1=    809   52 s | ✓  L1=    **703**   **10 s** |
+| z=100 |  399 | ✓  L1=  4 319  0.3 s | ✓  L1=    450   46 s | ✓  L1=    **423**    **7 s** |
+| z=150 |  588 | ✓  L1=  6 366  0.4 s | ✓  L1=    626   47 s | ✓  L1=    **559**    **7 s** |
+| z=200 | 1003 | ✗  L1= 11 641  0.5 s | ✓  L1=  1 282   51 s | ✓  L1=  **1 077**   **11 s** |
+| z=250 | 1594 | ✗  L1= 15 198  0.7 s | ✓  L1=  2 021   49 s | ✓  L1=  **1 891**   **28 s** |
+| z=300 | 1847 | ✗  L1= 19 140  0.9 s | ✓  L1=  2 174   51 s | ✓  L1=  **2 079**   **16 s** |
+| z=350 | 1661 | ✗  L1= 20 671  0.9 s | ✓  L1=  2 282   73 s | ✓  L1=  **1 929**   **17 s** |
+| z=400 | 1348 | ✗  L1= 13 934  0.6 s | ✓  L1=  1 609   49 s | ✓  L1=  **1 455**   **13 s** |
+| z=450 | 1432 | ✓  L1= 17 838  0.8 s | ✓  L1=  **2 138**   40 s | ✓  L1=  2 380   **13 s** |
+| z=500 | 1186 | ✓  L1= 14 069  0.5 s | ✓  L1=  1 580   39 s | ✓  L1=  **1 389**   **12 s** |
+| **totals** |  | **4/11 feas, 6.4 s** | **11/11 feas, 739 s (12.3 min)** | **11/11 feas, 181 s (3.0 min)** |
+
+**Headline:**
+
+- **Feasibility:** auto_slp and m14 both 11/11. harmonic_only only
+  4/11 — it lands feasible only when the input fold count is low
+  enough that pure Laplacian extension happens to satisfy strict
+  feasibility. Not a usable strict-feasibility method on its own.
+- **L1 quality:** auto_slp wins L1 on **9/11 slices**, ties on
+  summed total (Σ L1 = 194 044 vs m14's 193 327; **0.4% difference**).
+  The only meaningful m14 wins are z=12 (1.0% lower) and z=450
+  (10.2% lower). Everywhere else auto_slp is 4-16% better.
+- **Wall:** auto_slp is **4.09× faster** than m14 on the full sweep
+  (3.0 min vs 12.3 min). harmonic_only is fastest at 6.4 s total but
+  irrelevant if you need strict feasibility.
+
+**Bottom line: auto_slp Pareto-dominates m14** (matches L1 within
+noise, 4× faster wall, identical feasibility coverage). Use auto_slp
+unless you specifically need m14's slight L1 edge on z=12.
+
+### B0039 z=12 detail (densest slice, 320×456, init n_neg=4902)
+
+The original LP-direct experiments targeted z=12 as the manuscript-
+canonical hard case. The numbers below are pre-optimization (early
+SLP-iter + cluster_slp work; before parallelism, before the Numba
+JITs); kept for the design narrative.
 
 | Method | Feasible | n_neg | min_T | L1 | Wall |
 |---|:---:|---:|---:|---:|---:|
 | harmonic_only | ✗ | 641 | -1.89 | 239 499 | 0.9 s |
-| m14 | ✓ | 0 | +0.020 | 174 131 | 381 s |
-| **cluster_slp** | **✓** | 0 | +0.010 | **167 210 (−4.0%)** | **61 s (6.2× faster)** |
+| m14 (pre-JIT) | ✓ | 0 | +0.020 | 174 131 | 381 s |
+| **cluster_slp (pre-parallelism)** | **✓** | 0 | +0.010 | **167 210 (−4.0%)** | **61 s (6.2× faster than m14)** |
 | slp_iter (global, m10 seed) | ✓ | 0 | +0.010 | 287 316 (+65%) | 515 s |
 | lp_oneshot (global, direct LP) | (timeout) | — | — | — | >12 min |
 
