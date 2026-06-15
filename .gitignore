@@ -191,3 +191,7 @@ cython_debug/
 /benchmarks/output
 # Strict-feasibility research artifacts (large per-case corrected fields).
 /research/strict_feasibility_2d/runners/output/corrected/
+
+# Large 3D cache/output files from research/strict_feasibility_3d/
+research/strict_feasibility_3d/runners/output/*.npy
+research/strict_feasibility_3d/runners/output/*.prof
