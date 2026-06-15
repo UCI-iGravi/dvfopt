@@ -131,32 +131,43 @@ slices route to cluster_slp universally.
 #### Multi-slice sweep (z=12..500, 11 slices via `auto_slp`)
 
 A full sweep across the B0039 volume confirms uniform strict
-feasibility and bounded wall. With `n_workers=8` parallelism enabled
-plus the Numba JIT path for `tri_grad_T_v` (the
-2-triangle-Jacobian adjoint called inside every L-BFGS-B gradient
-evaluation), wall time drops to mean 20 s/slice:
+feasibility and bounded wall. With `n_workers=16` parallelism enabled
+plus Numba JIT for the three hot constraint kernels (`tri_grad_T_v`,
+`_triangle_areas_2d`, and the fused `_soft_pen_objective`), wall
+time drops to mean 15 s/slice:
 
-| Slice | init n_neg | L1 | seq wall | **parallel** | parallel+numba | total speedup |
-|---|---:|---:|---:|---:|---:|---:|
-| z=012 | 4902 | 169 868 | 68.6 s | 61.9 s | **49.5 s** | 1.39× |
-| z=050 |  702 |     713 | 29.3 s |  9.8 s | **9.5 s** | 3.08× |
-| z=100 |  399 |     424 | 24.7 s |  7.6 s | **6.4 s** | 3.86× |
-| z=150 |  588 |     563 | 36.1 s |  9.7 s | **9.0 s** | 4.01× |
-| z=200 | 1003 |   1 076 | 59.7 s | 15.4 s | **13.6 s** | 4.39× |
-| z=250 | 1594 |   1 869 | 117.1 s | 33.5 s | **33.0 s** | 3.55× |
-| z=300 | 1847 |   2 037 | 123.8 s | 27.1 s | **25.3 s** | 4.89× |
-| z=350 | 1661 |   2 320 | 111.3 s | 26.0 s | **24.7 s** | 4.51× |
-| z=400 | 1348 |   1 445 | 70.9 s | 18.4 s | **16.8 s** | 4.22× |
-| z=450 | 1432 |   2 406 | 71.9 s | 18.5 s | **16.0 s** | 4.49× |
-| z=500 | 1186 |   1 962 | 61.3 s | 16.7 s | **15.0 s** | 4.09× |
-| **total** | | | **775 s (12.9 min)** | **245 s (4.1 min)** | **219 s (3.6 min)** | **3.54×** |
+| Slice | init n_neg | L1 | seq | parallel (n=8) | +tri_grad JIT | +both JITs | **+ fused JIT + n=16** | total speedup |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| z=012 | 4902 | 180 159 | 68.6 s | 61.9 s | 49.5 s | 42.1 s | **42.7 s** | 1.61× |
+| z=050 |  702 |     703 | 29.3 s |  9.8 s |  9.5 s |  8.0 s |  **8.2 s** | 3.57× |
+| z=100 |  399 |     423 | 24.7 s |  7.6 s |  6.4 s |  6.3 s |  **6.2 s** | 3.98× |
+| z=150 |  588 |     559 | 36.1 s |  9.7 s |  9.0 s |  7.7 s |  **7.4 s** | 4.88× |
+| z=200 | 1003 |   1 077 | 59.7 s | 15.4 s | 13.6 s | 11.7 s | **10.5 s** | 5.69× |
+| z=250 | 1594 |   1 891 | 117.1 s | 33.5 s | 33.0 s | 27.5 s | **25.8 s** | 4.54× |
+| z=300 | 1847 |   2 079 | 123.8 s | 27.1 s | 25.3 s | 20.2 s | **16.0 s** | 7.74× |
+| z=350 | 1661 |   1 929 | 111.3 s | 26.0 s | 24.7 s | 19.1 s | **15.7 s** | 7.09× |
+| z=400 | 1348 |   1 455 | 70.9 s | 18.4 s | 16.8 s | 13.5 s | **11.2 s** | 6.33× |
+| z=450 | 1432 |   2 380 | 71.9 s | 18.5 s | 16.0 s | 13.7 s | **13.1 s** | 5.49× |
+| z=500 | 1186 |   1 389 | 61.3 s | 16.7 s | 15.0 s | 12.7 s | **11.1 s** | 5.52× |
+| **total** | | | **775 s (12.9 min)** | **245 s (4.1 min)** | **219 s (3.6 min)** | **182 s (3.0 min)** | **168 s (2.8 min)** | **4.62×** |
 
-**11/11 strict-feasible, total 3.6 min, mean 20 s/slice.** Parallelism
-is the dominant lever (3.2× alone). Numba adds an additional 1.12×
-end-to-end — modest because `tri_grad_T_v` was only ~24% of total wall
-time, so Amdahl caps the gain at ~33% even with infinite JIT speed.
-z=12 sees the largest combined gain (1.39×) because its large clusters
-spend more relative time in `tri_grad_T_v` per L-BFGS-B iter.
+**11/11 strict-feasible, total 2.8 min, mean 15 s/slice.** Cumulative
+lever breakdown:
+
+- **Parallelism (3.16×):** shared-pool fix on `cluster_slp_iter`.
+- **`tri_grad_T_v` JIT + zero-skip (+1.12×):** adjoint kernel +
+  early-continue on cells where viol=0.
+- **`_triangle_areas_2d` JIT (+1.20×):** forward T-area kernel.
+- **Fused `_soft_pen_objective` JIT + n_workers=16 (+1.08×):**
+  collapses anchor + T-areas + viol + grad into one Numba kernel
+  and bumps process pool to 16 workers (small but consistent +5-10%
+  per slice over n=8 on this 16-core box).
+
+A separate experiment swept `merge_dilation`, `inner_max_iter`, and
+`trust_radius_0` and found a tempting combo on z=300 (1.34× extra)
+that backfired on sparser slices (z=450/500 saw +46% wall and +65%
+L1) — kept at defaults to preserve the universal-strict-feasibility
+goal. See [`analysis/_grand_sweep.py`](analysis/_grand_sweep.py).
 
 #### Shared-pool process parallelism
 
@@ -191,28 +202,39 @@ trace at
 JIT microbench in
 [`analysis/_bench_tri_grad.py`](analysis/_bench_tri_grad.py).
 
-#### Numba JIT path for `tri_grad_T_v`
+#### Numba JIT for the hot 2-triangle kernels
 
-The 2-triangle Jacobian adjoint (`dvfopt.core.tri_primitives.tri_grad_T_v`)
-is called inside every L-BFGS-B gradient evaluation in
-`l2_refine_2d` — 465k calls during a z=300 cluster_slp run, totalling
-28 s tottime of 119 s. Each call did 12 sliced broadcast-adds in
-pure numpy. A Numba `@njit` kernel collapses these to a single fused
-triple-loop with no intermediate allocations.
+Three functions called inside every L-BFGS-B gradient evaluation in
+`l2_refine_2d` were JIT-compiled. The pure-numpy versions remained
+as references and fallbacks (auto-detection at import time).
 
-Microbench (`_bench_tri_grad.py`):
+| Kernel | Calls per z=300 cluster_slp run | per-call speedup (z=300 slice / cluster) |
+|---|---:|---:|
+| `tri_grad_T_v` (adjoint) | 465 k | 5.5-13.9× (16.4× on sparse v) |
+| `_triangle_areas_2d` (forward) | 497 k | 5-10× |
+| `_soft_pen_objective` (fused L1 anchor + viol + grad) | 354 k | 1.2-3.4× over the 2-JIT path |
 
-| Shape | numpy | numba | speedup |
-|---|---:|---:|---:|
-| B0039 slice (320×456) | 17.5 ms/call | **1.6 ms/call** | **11.2×** |
-| Small cluster (12×16) | 53 μs/call | **3.8 μs/call** | **13.9×** |
-| Medium cluster (30×40) | 66 μs/call | **8.2 μs/call** | **8.0×** |
-| Large cluster (80×100) | 178 μs/call | **33 μs/call** | **5.5×** |
+Microbench for `tri_grad_T_v` (`_bench_tri_grad.py`):
+
+| Shape | numpy | numba | dense | numba | sparse (99%) |
+|---|---:|---:|---:|---:|---:|
+| B0039 slice (320×456) | 17.5 ms/call | 1.6 ms/call (11.2×) | 0.4 ms/call (44×) | — | — |
+| Small cluster (12×16) | 53 μs/call | 3.8 μs/call (13.9×) | 2.4 μs/call (16.0×) | — | — |
+| Medium cluster (30×40) | 66 μs/call | 8.2 μs/call (8.0×) | 7.1 μs/call (15.7×) | — | — |
+| Large cluster (80×100) | 178 μs/call | 33 μs/call (5.5×) | 19 μs/call (16.4×) | — | — |
+
+End-to-end the three JITs combined save ~30 s/slice on the
+cluster_slp path on z=300. The L-BFGS-B Fortran (`setulb`) remains
+the largest single un-JIT-able cost (~26 s tottime sequential on
+z=300, scales with phi dimension); shrinking it would require
+active-set restriction of the L-BFGS-B problem to vertices touching
+active constraints — meaningful but with diminishing returns at this
+point in the optimization curve.
 
 Numerical equivalence verified to 1e-13 absolute error against the
-numpy reference; entire test suite (996 tests) passes. Numba is an
-opt-in dep (`pip install dvfopt[fast]`); the module auto-detects and
-falls back to numpy when not installed.
+numpy reference for all three kernels; entire test suite (996 tests)
+passes. Numba is an opt-in dep (`pip install dvfopt[fast]`); all
+modules auto-detect and fall back to numpy when not installed.
 
 ### `auto_slp`: adaptive dispatch
 

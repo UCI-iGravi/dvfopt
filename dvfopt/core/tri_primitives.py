@@ -93,11 +93,20 @@ if _HAVE_NUMBA:
         """Single-pass JIT kernel: walks each (i, j) cell once and
         scatter-adds T1 + T2 contributions to all four corner vertices.
         Replaces 12 sliced broadcast-adds in the numpy version with
-        one fused loop, no intermediate allocations."""
+        one fused loop, no intermediate allocations.
+
+        Skips cells where both v1[i,j] and v2[i,j] are zero — most
+        non-violating triangles during the late lambda annealing,
+        which gives a constraint-side active-set effect with no
+        L-BFGS-B variable restriction needed."""
         g_dy = np.zeros((H, W))
         g_dx = np.zeros((H, W))
         for i in range(H - 1):
             for j in range(W - 1):
+                v1_ij = v1[i, j]
+                v2_ij = v2[i, j]
+                if v1_ij == 0.0 and v2_ij == 0.0:
+                    continue
                 # Deformed positions of the four cell corners.
                 # ref_y[i, j] = i, ref_x[i, j] = j (unit grid).
                 x_tl = j + dx[i, j]
@@ -108,22 +117,24 @@ if _HAVE_NUMBA:
                 y_bl = (i + 1) + dy[i + 1, j]
                 x_br = (j + 1) + dx[i + 1, j + 1]
                 y_br = (i + 1) + dy[i + 1, j + 1]
-                # T1 (A=TR, B=BL, C=BR) — coefficient = v1 * 0.5.
-                c1 = 0.5 * v1[i, j]
-                g_dx[i,     j + 1] += c1 * (y_br - y_bl)
-                g_dy[i,     j + 1] += c1 * (x_bl - x_br)
-                g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
-                g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
-                g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
-                g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
-                # T2 (A=TL, B=BL, C=TR) — coefficient = v2 * 0.5.
-                c2 = 0.5 * v2[i, j]
-                g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
-                g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
-                g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
-                g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
-                g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
-                g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
+                if v1_ij != 0.0:
+                    # T1 (A=TR, B=BL, C=BR) — coefficient = v1 * 0.5.
+                    c1 = 0.5 * v1_ij
+                    g_dx[i,     j + 1] +=  c1 * (y_br - y_bl)
+                    g_dy[i,     j + 1] +=  c1 * (x_bl - x_br)
+                    g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
+                    g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
+                    g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
+                    g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
+                if v2_ij != 0.0:
+                    # T2 (A=TL, B=BL, C=TR) — coefficient = v2 * 0.5.
+                    c2 = 0.5 * v2_ij
+                    g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
+                    g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
+                    g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
+                    g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
+                    g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
+                    g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
         return g_dy, g_dx
 
 

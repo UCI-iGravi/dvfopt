@@ -20,6 +20,76 @@ import numpy as np
 
 from dvfopt.jacobian.shoelace import _ref_grid
 
+# Optional Numba JIT — paired with tri_grad_T_v JIT in
+# `dvfopt.core.tri_primitives`. Forward T-area computation is the
+# other ~497k calls/run inside L-BFGS-B objective evaluations; JIT
+# folds the 4 corner-slice broadcasts into a single fused loop.
+try:
+    from numba import njit  # type: ignore
+
+    _HAVE_NUMBA = True
+except ImportError:  # pragma: no cover
+    _HAVE_NUMBA = False
+    njit = None  # type: ignore
+
+
+def _triangle_areas_2d_numpy(dy, dx):
+    H, W = dy.shape
+    ref_y, ref_x = _ref_grid(H, W)
+    def_x = ref_x + dx
+    def_y = ref_y + dy
+
+    x_tl, y_tl = def_x[:-1, :-1], def_y[:-1, :-1]
+    x_tr, y_tr = def_x[:-1, 1:], def_y[:-1, 1:]
+    x_bl, y_bl = def_x[1:, :-1], def_y[1:, :-1]
+    x_br, y_br = def_x[1:, 1:], def_y[1:, 1:]
+
+    AB_x = x_bl - x_tr
+    AB_y = y_bl - y_tr
+    AC_x = x_br - x_tr
+    AC_y = y_br - y_tr
+    T1 = -0.5 * (AB_x * AC_y - AB_y * AC_x)
+
+    AB_x = x_bl - x_tl
+    AB_y = y_bl - y_tl
+    AC_x = x_tr - x_tl
+    AC_y = y_tr - y_tl
+    T2 = -0.5 * (AB_x * AC_y - AB_y * AC_x)
+
+    return T1, T2
+
+
+if _HAVE_NUMBA:
+
+    @njit(cache=True, fastmath=True, boundscheck=False)
+    def _triangle_areas_2d_numba_kernel(dy, dx, H, W):
+        T1 = np.empty((H - 1, W - 1))
+        T2 = np.empty((H - 1, W - 1))
+        for i in range(H - 1):
+            for j in range(W - 1):
+                # Deformed corner positions (ref_y = i, ref_x = j).
+                x_tl = j + dx[i, j]
+                y_tl = i + dy[i, j]
+                x_tr = (j + 1) + dx[i, j + 1]
+                y_tr = i + dy[i, j + 1]
+                x_bl = j + dx[i + 1, j]
+                y_bl = (i + 1) + dy[i + 1, j]
+                x_br = (j + 1) + dx[i + 1, j + 1]
+                y_br = (i + 1) + dy[i + 1, j + 1]
+                # T1 at (i, j+1): A=TR, B=BL, C=BR
+                ABx = x_bl - x_tr
+                ABy = y_bl - y_tr
+                ACx = x_br - x_tr
+                ACy = y_br - y_tr
+                T1[i, j] = -0.5 * (ABx * ACy - ABy * ACx)
+                # T2 at (i, j): A=TL, B=BL, C=TR
+                ABx = x_bl - x_tl
+                ABy = y_bl - y_tl
+                ACx = x_tr - x_tl
+                ACy = y_tr - y_tl
+                T2[i, j] = -0.5 * (ABx * ACy - ABy * ACx)
+        return T1, T2
+
 
 def _triangle_areas_2d(dy, dx):
     """Signed areas of the per-pixel two-triangle pair, TR-BL diagonal.
@@ -36,36 +106,18 @@ def _triangle_areas_2d(dy, dx):
         ``T2[y, x]`` = signed area of triangle at pixel ``(x, y)``
         (upper-left triangle of cell (y, x) under TR-BL split).
         Positive = valid under the +y-down convention.
+
+    Uses a Numba @njit kernel when available; falls back to the
+    pure-numpy implementation otherwise. The two paths are
+    numerically equivalent to 1e-14 absolute on representative
+    inputs.
     """
+    if not _HAVE_NUMBA:
+        return _triangle_areas_2d_numpy(dy, dx)
     H, W = dy.shape
-    ref_y, ref_x = _ref_grid(H, W)
-    def_x = ref_x + dx
-    def_y = ref_y + dy
-
-    # Cell (y, x) has corners at pixels (x, y), (x+1, y), (x, y+1), (x+1, y+1).
-    # Slice the warped grid to extract each corner over all cells.
-    x_tl, y_tl = def_x[:-1, :-1], def_y[:-1, :-1]  # (x,   y)
-    x_tr, y_tr = def_x[:-1, 1:], def_y[:-1, 1:]  # (x+1, y)
-    x_bl, y_bl = def_x[1:, :-1], def_y[1:, :-1]  # (x,   y+1)
-    x_br, y_br = def_x[1:, 1:], def_y[1:, 1:]  # (x+1, y+1)
-
-    # T1 at pixel (x+1, y): vertices A=(x+1, y), B=(x, y+1), C=(x+1, y+1)
-    #   AB = BL - TR,  AC = BR - TR
-    AB_x = x_bl - x_tr
-    AB_y = y_bl - y_tr
-    AC_x = x_br - x_tr
-    AC_y = y_br - y_tr
-    T1 = -0.5 * (AB_x * AC_y - AB_y * AC_x)
-
-    # T2 at pixel (x, y): vertices A=(x, y), B=(x, y+1), C=(x+1, y)
-    #   AB = BL - TL,  AC = TR - TL
-    AB_x = x_bl - x_tl
-    AB_y = y_bl - y_tl
-    AC_x = x_tr - x_tl
-    AC_y = y_tr - y_tl
-    T2 = -0.5 * (AB_x * AC_y - AB_y * AC_x)
-
-    return T1, T2
+    dy_c = np.ascontiguousarray(dy)
+    dx_c = np.ascontiguousarray(dx)
+    return _triangle_areas_2d_numba_kernel(dy_c, dx_c, H, W)
 
 
 def _corner_patch_areas_2d(dy, dx):

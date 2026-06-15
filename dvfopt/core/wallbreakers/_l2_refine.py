@@ -26,8 +26,111 @@ from dvfopt.core.tri_primitives import (
     tri_grad_T_v as _tri_grad_T_v,
 )
 
+# Optional fused JIT path for the L1-anchored objective — the common
+# case for cluster_slp's m14_fast inner. Combines anchor + T-area
+# computation + violation + gradient scatter into a single fused
+# loop, avoiding three separate numpy passes. Auto-detected at import.
+try:
+    from numba import njit  # type: ignore
+
+    _HAVE_NUMBA = True
+except ImportError:  # pragma: no cover
+    _HAVE_NUMBA = False
+    njit = None  # type: ignore
+
+
+if _HAVE_NUMBA:
+
+    @njit(cache=True, fastmath=True, boundscheck=False)
+    def _soft_pen_l1_fused_kernel(
+        dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1
+    ):
+        """Fused L1-anchor + T-areas + viol + grad in one kernel.
+
+        Returns (val, g_dy, g_dx). Anchor val and grad use smoothed L1
+        (sqrt(diff^2 + eps^2) - eps). Constraint contribution skips
+        cells where both T1 and T2 satisfy the threshold (the common
+        case during late lambda annealing)."""
+        g_dy = np.zeros((H, W))
+        g_dx = np.zeros((H, W))
+        val = 0.0
+        # Smoothed-L1 anchor on every grid vertex.
+        for i in range(H):
+            for j in range(W):
+                diff_y = dy[i, j] - dy_in[i, j]
+                diff_x = dx[i, j] - dx_in[i, j]
+                s_y = np.sqrt(diff_y * diff_y + eps_l1 * eps_l1)
+                s_x = np.sqrt(diff_x * diff_x + eps_l1 * eps_l1)
+                val += (s_y - eps_l1) + (s_x - eps_l1)
+                g_dy[i, j] = diff_y / s_y
+                g_dx[i, j] = diff_x / s_x
+        # Constraint violation + adjoint in one pass.
+        for i in range(H - 1):
+            for j in range(W - 1):
+                x_tl = j + dx[i, j]
+                y_tl = i + dy[i, j]
+                x_tr = (j + 1) + dx[i, j + 1]
+                y_tr = i + dy[i, j + 1]
+                x_bl = j + dx[i + 1, j]
+                y_bl = (i + 1) + dy[i + 1, j]
+                x_br = (j + 1) + dx[i + 1, j + 1]
+                y_br = (i + 1) + dy[i + 1, j + 1]
+                # T1 (A=TR, B=BL, C=BR).
+                ABx_1 = x_bl - x_tr
+                ABy_1 = y_bl - y_tr
+                ACx_1 = x_br - x_tr
+                ACy_1 = y_br - y_tr
+                T1 = -0.5 * (ABx_1 * ACy_1 - ABy_1 * ACx_1)
+                # T2 (A=TL, B=BL, C=TR).
+                ABx_2 = x_bl - x_tl
+                ABy_2 = y_bl - y_tl
+                ACx_2 = x_tr - x_tl
+                ACy_2 = y_tr - y_tl
+                T2 = -0.5 * (ABx_2 * ACy_2 - ABy_2 * ACx_2)
+                v1 = max(0.0, threshold - T1)
+                v2 = max(0.0, threshold - T2)
+                if v1 == 0.0 and v2 == 0.0:
+                    continue
+                val += lam * (v1 * v1 + v2 * v2)
+                if v1 != 0.0:
+                    c1 = -2.0 * lam * 0.5 * v1
+                    g_dx[i,     j + 1] +=  c1 * (y_br - y_bl)
+                    g_dy[i,     j + 1] +=  c1 * (x_bl - x_br)
+                    g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
+                    g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
+                    g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
+                    g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
+                if v2 != 0.0:
+                    c2 = -2.0 * lam * 0.5 * v2
+                    g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
+                    g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
+                    g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
+                    g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
+                    g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
+                    g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
+        return val, g_dy, g_dx
+
 
 def _soft_pen_objective(phi_flat, phi_in_flat, H, W, threshold, lam, anchor, eps_l1):
+    """L1/L2-anchored soft-quadratic-penalty objective + gradient.
+
+    Uses a fused Numba JIT kernel for the common L1-anchored case
+    (cluster_slp's m14_fast inner default). Falls back to the
+    numpy-on-pre-JIT'd-primitives path otherwise. The fused kernel is
+    2-3x faster on this hot inner loop because it folds three
+    separate numpy passes (anchor / area / viol-grad) into one and
+    skips inactive cells."""
+    if anchor == 'l1' and _HAVE_NUMBA:
+        HW = H * W
+        dy = np.ascontiguousarray(phi_flat[:HW].reshape(H, W))
+        dx = np.ascontiguousarray(phi_flat[HW:].reshape(H, W))
+        dy_in = np.ascontiguousarray(phi_in_flat[:HW].reshape(H, W))
+        dx_in = np.ascontiguousarray(phi_in_flat[HW:].reshape(H, W))
+        val, g_dy, g_dx = _soft_pen_l1_fused_kernel(
+            dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1
+        )
+        grad = np.concatenate([g_dy.ravel(), g_dx.ravel()])
+        return val, grad
     diff = phi_flat - phi_in_flat
     if anchor == 'l2':
         val = 0.5 * float(diff @ diff)

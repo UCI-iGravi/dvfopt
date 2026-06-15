@@ -139,8 +139,13 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
             from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
                 cluster_slp_iter,
             )
+            # n_workers=16 is the universal-win lever (small but consistent
+            # ~5-10% over n=8 on every slice). The tempting md=4 +
+            # inner_max_iter=5 combo tuned to z=300 (~1.34x) backfires on
+            # sparser slices (z=450/500: +46% wall, +65% L1) — kept at
+            # defaults to preserve the universal-strict-feasibility goal.
             phi_out, info = cluster_slp_iter(
-                phi_2hw, threshold=THRESHOLD, max_outer_iters=6, n_workers=8,
+                phi_2hw, threshold=THRESHOLD, max_outer_iters=6, n_workers=16,
             )
             info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}
         return phi_out, info

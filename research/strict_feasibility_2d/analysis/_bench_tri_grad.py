@@ -21,9 +21,17 @@ from dvfopt.core.tri_primitives import (
 )
 
 
-def _make_inputs(H, W, rng):
+def _make_inputs(H, W, rng, sparsity=0.0):
+    """sparsity=0 -> dense v (all nonzero); sparsity=0.99 -> 1% nonzero."""
     phi = 0.05 * rng.standard_normal(2 * H * W)
     v = rng.standard_normal(2 * (H - 1) * (W - 1))
+    if sparsity > 0:
+        n = v.size
+        keep = max(1, int((1 - sparsity) * n))
+        # Zero all but a random subset.
+        mask = np.zeros(n, dtype=bool)
+        mask[rng.choice(n, size=keep, replace=False)] = True
+        v[~mask] = 0.0
     return phi, v
 
 
@@ -47,19 +55,24 @@ def main():
         ('med cluster  ', 30, 40, 2000),
         ('large cluster', 80, 100, 500),
     ]
-    for label, H, W, n_iter in shapes:
-        print(f'\n=== {label}  shape=({H}, {W})  iters={n_iter} ===')
-        phi, v = _make_inputs(H, W, rng)
-        g_ref = _tri_grad_T_v_numpy(phi, H, W, v)
-        g_jit = tri_grad_T_v(phi, H, W, v)
-        max_abs_err = float(np.max(np.abs(g_ref - g_jit)))
-        rel_err = max_abs_err / (np.max(np.abs(g_ref)) + 1e-30)
-        print(f'  equivalence  max_abs_err={max_abs_err:.2e}  rel={rel_err:.2e}')
-        assert max_abs_err < 1e-9, f'JIT diverges from numpy by {max_abs_err}'
-        t_np = _bench_one('numpy', _tri_grad_T_v_numpy, phi, v, H, W, n_iter)
-        t_jit = _bench_one('numba', tri_grad_T_v, phi, v, H, W, n_iter)
-        speedup = t_np / t_jit if t_jit > 0 else float('inf')
-        print(f'  speedup      {speedup:.2f}x')
+    # sparsity matches what l2_refine_2d sees in practice during the
+    # later lambda steps: most triangles already satisfy threshold so
+    # viol[i, j] = 0 for ~99% of cells.
+    for sparsity in (0.0, 0.99):
+        print(f'\n========== sparsity={sparsity} ==========')
+        for label, H, W, n_iter in shapes:
+            print(f'\n=== {label}  shape=({H}, {W})  iters={n_iter} ===')
+            phi, v = _make_inputs(H, W, rng, sparsity=sparsity)
+            g_ref = _tri_grad_T_v_numpy(phi, H, W, v)
+            g_jit = tri_grad_T_v(phi, H, W, v)
+            max_abs_err = float(np.max(np.abs(g_ref - g_jit)))
+            rel_err = max_abs_err / (np.max(np.abs(g_ref)) + 1e-30)
+            print(f'  equivalence  max_abs_err={max_abs_err:.2e}  rel={rel_err:.2e}')
+            assert max_abs_err < 1e-9, f'JIT diverges from numpy by {max_abs_err}'
+            t_np = _bench_one('numpy', _tri_grad_T_v_numpy, phi, v, H, W, n_iter)
+            t_jit = _bench_one('numba', tri_grad_T_v, phi, v, H, W, n_iter)
+            speedup = t_np / t_jit if t_jit > 0 else float('inf')
+            print(f'  speedup      {speedup:.2f}x')
 
 
 if __name__ == '__main__':
