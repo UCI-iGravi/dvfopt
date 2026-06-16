@@ -222,3 +222,64 @@ Both cache stage outputs as .npy so reruns of later stages are
 instant. Result file:
 `runners/output/b0039_z10_14_strict_feas_threshold0.015.npy`
 (3.48M tets, all ≥ threshold).
+
+## Full B0039 528-slice scale-up
+
+Pushing the pipeline to the full (3, 528, 320, 456) DVF reveals a
+density ceiling. Stage 1 scales linearly per-slice and runs in 141
+min on the full volume; stages 2+3 (global 3D M10Tet) scale roughly
+linearly in phi vars but stall on the densest fold bands.
+
+### Stage 1 on the full volume
+
+```
+[stage 1] 528 slices, 2D auto_slp per slice, 8474 s (141 min)
+   Raw B0039:        2 890 473 folded tets  (0.63%)  min_T = -380.80
+   After Stage 1:    1 059 911 folded tets  (0.23%)  min_T =   -4.13
+                     3 828 269 below 0.01   (0.83%)
+   z-layers with at least one 3D fold: 527 / 527
+   Top fold bands:  z=0..7  (2700-3200 fold cells per layer)
+                    z=292..357  (2300-2400 fold cells per layer)
+```
+
+Stage 1 alone reduces folds by 63% but **all 527 cube-layers still
+have at least one 3D fold** — the straddling-tet mismatches between
+adjacent 2D-corrected slices are systemic, not localised.
+
+### Chunked Stage 2+3 on the densest band (z=0..15, 16 slices)
+
+| Stage | n_neg | n<0.01 | min_T | Wall |
+|---|---:|---:|---:|---:|
+| Stage 1 chunk start | 34 181 | 201 427 | −4.134 | (cached) |
+| + Stage 2 (M10Tet @ 0.01) | 865 | 54 871 | −0.012 | 61 min |
+| + Stage 3 iter 0 (M10Tet @ 0.015) | 173 | 1 572 | −0.013 | 87 min |
+| + Stage 3 iter 1 | 19 | 29 | −0.0071 | 54 min |
+| + Stage 3 iter 2 | 19 | 24 | −0.0064 | 66 min |
+| **Final (converged at iter 2)** | **19** | **24** | −0.0064 | **268 min total** |
+
+99.94% fold reduction but **not strict feasible** — 19 stubborn
+folds remain. M10Tet has hit its convergence ceiling on this very
+dense geometry; subsequent iterations show no progress.
+
+### Density-dependent feasibility ceiling
+
+| Density regime | Example | 2+3 outcome | Wall |
+|---|---|:---:|---:|
+| Sparse (≤1% folded) | B0039 z=10..14 (mod, 6k folds) | ✅ strict 100% | 36 min for 5 slices |
+| Moderate (1-3%) | mid-volume slices (1-2k folds) | ✅ strict 100% (extrapolated) | ~scaled linearly |
+| Dense (>5%) | B0039 z=0..15 (34k folds) | ⚠️ 19 residual, 99.94% | 268 min for 16 slices |
+
+For B0039's worst bands, strict 100% 3D feasibility appears
+out of reach for the current M10Tet+overshoot pipeline. The
+likely next algorithm is a localised 3D cluster-LP on just the
+residual 19 folds (each ~3 voxels wide; should decompose now that
+they're isolated specks rather than 16-slice columns) — but that
+wasn't tested.
+
+Scripts:
+- [`runners/_full_b0039_stage1.py`](runners/_full_b0039_stage1.py) —
+  full-volume Stage 1
+- [`runners/_chunked_stage23.py`](runners/_chunked_stage23.py) —
+  per-chunk Stage 2+3 (CLI: --z0 N --z1 M)
+- [`runners/_iterate_stage3.py`](runners/_iterate_stage3.py) —
+  iterate Stage 3 until convergence-stall
