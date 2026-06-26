@@ -1,0 +1,201 @@
+
+======================================================================
+[INPUT (raw, 173)] b0039_FULL_stage3_z000_016.npy
+======================================================================
+n_neg=173  n<0.01=1572  min_T=-0.013450
+  cube (  0,165,243): min_T=-0.00223  edges=[0.087, 5.721] (crush=0.0151)  svd=(2.97,2.06,0.0249)  best_diag=(0, 7) min=-0.00223
+  cube (  0,188,248): min_T=-0.00282  edges=[1.335, 4.721] (crush=0.2827)  svd=(4.54,0.32,0.1357)  best_diag=(3, 4) min=-0.00004
+  cube (  0,198,265): min_T=-0.00142  edges=[1.005, 5.986] (crush=0.1679)  svd=(4.78,1.01,0.1872)  best_diag=(0, 7) min=-0.00142
+  cube (  0,199,266): min_T=-0.00563  edges=[0.756, 5.907] (crush=0.1280)  svd=(4.32,0.40,0.0028)  best_diag=(0, 7) min=-0.00563
+  cube (  0,199,268): min_T=-0.00344  edges=[1.529, 7.549] (crush=0.2025)  svd=(6.56,0.72,0.2212)  best_diag=(0, 7) min=-0.00344
+  cube (  0,200,266): min_T=-0.00022  edges=[0.756, 6.578] (crush=0.1150)  svd=(4.93,1.83,0.4335)  best_diag=(0, 7) min=-0.00022
+  cube (  0,200,267): min_T=-0.00182  edges=[2.435, 11.165] (crush=0.2181)  svd=(5.25,0.88,0.5252)  best_diag=(0, 7) min=-0.00182
+  cube (  0,200,268): min_T=-0.00323  edges=[0.072, 7.494] (crush=0.0096)  svd=(4.29,2.24,0.2007)  best_diag=(0, 7) min=-0.00323
+  cube (  0,201,268): min_T=-0.00711  edges=[0.072, 6.307] (crush=0.0114)  svd=(5.33,0.75,0.0162)  best_diag=(0, 7) min=-0.00711
+  cube (  0,204,274): min_T=-0.00163  edges=[1.295, 6.950] (crush=0.1863)  svd=(3.06,0.78,0.2933)  best_diag=(0, 7) min=-0.00163
+  cube (  0,204,276): min_T=-0.00396  edges=[3.020, 10.110] (crush=0.2987)  svd=(8.09,1.95,0.2441)  best_diag=(0, 7) min=-0.00396
+  cube (  0,204,277): min_T=-0.00321  edges=[0.533, 6.366] (crush=0.0838)  svd=(6.83,0.75,0.1325)  best_diag=(0, 7) min=-0.00321
+  cube (  0,205,275): min_T=-0.01084  edges=[0.293, 9.165] (crush=0.0320)  svd=(4.12,1.96,0.0031)  best_diag=(3, 4) min=-0.00556
+  cube (  0,206,272): min_T=-0.00061  edges=[0.419, 7.033] (crush=0.0596)  svd=(5.18,1.34,0.0027)  best_diag=(2, 5) min=+0.00040
+  cube (  0,206,273): min_T=-0.00012  edges=[0.419, 5.128] (crush=0.0818)  svd=(3.88,1.09,0.0120)  best_diag=(0, 7) min=-0.00012
+  cube (  0,206,275): min_T=-0.00050  edges=[1.479, 5.216] (crush=0.2836)  svd=(4.69,1.34,0.2793)  best_diag=(0, 7) min=-0.00050
+  cube (  0,206,276): min_T=-0.01004  edges=[1.012, 8.647] (crush=0.1171)  svd=(6.00,0.94,0.0378)  best_diag=(0, 7) min=-0.01004
+  cube (  0,207,272): min_T=-0.00909  edges=[0.545, 7.033] (crush=0.0774)  svd=(4.79,0.33,0.0044)  best_diag=(0, 7) min=-0.00909
+  cube (  0,207,273): min_T=-0.00628  edges=[0.668, 7.502] (crush=0.0891)  svd=(4.49,2.06,0.0412)  best_diag=(0, 7) min=-0.00628
+  cube (  0,210,276): min_T=-0.00642  edges=[0.985, 8.077] (crush=0.1219)  svd=(3.27,2.94,0.1292)  best_diag=(0, 7) min=-0.00642
+  cube (  0,213,218): min_T=-0.00517  edges=[1.520, 23.339] (crush=0.0651)  svd=(11.18,6.61,0.6260)  best_diag=(0, 7) min=-0.00517
+  cube (  0,220,276): min_T=-0.00170  edges=[0.068, 13.526] (crush=0.0050)  svd=(7.26,1.56,0.1235)  best_diag=(0, 7) min=-0.00170
+  cube (  0,220,283): min_T=-0.00358  edges=[0.973, 4.146] (crush=0.2346)  svd=(3.23,0.74,0.3260)  best_diag=(0, 7) min=-0.00358
+  cube (  0,221,269): min_T=-0.00319  edges=[0.232, 5.552] (crush=0.0418)  svd=(4.07,1.44,0.4188)  best_diag=(1, 6) min=+0.00115
+  cube (  1,136,191): min_T=-0.00086  edges=[0.153, 1.978] (crush=0.0774)  svd=(1.40,0.26,0.0991)  best_diag=(0, 7) min=-0.00086
+  cube (  1,136,192): min_T=-0.00014  edges=[0.210, 1.108] (crush=0.1896)  svd=(1.11,0.24,0.1017)  best_diag=(0, 7) min=-0.00014
+  cube (  1,197,264): min_T=-0.00149  edges=[0.517, 3.506] (crush=0.1474)  svd=(3.55,0.44,0.2126)  best_diag=(1, 6) min=+0.01285
+  cube (  1,198,264): min_T=-0.00203  edges=[0.563, 5.610] (crush=0.1003)  svd=(4.50,0.35,0.1266)  best_diag=(0, 7) min=-0.00203
+  cube (  1,199,267): min_T=-0.00394  edges=[1.354, 11.165] (crush=0.1212)  svd=(3.96,2.31,0.0006)  best_diag=(0, 7) min=-0.00394
+  cube (  1,199,268): min_T=-0.00106  edges=[1.306, 6.929] (crush=0.1885)  svd=(4.78,0.52,0.1142)  best_diag=(3, 4) min=-0.00015
+  cube (  1,200,265): min_T=-0.00470  edges=[0.696, 5.834] (crush=0.1193)  svd=(5.57,0.44,0.0301)  best_diag=(0, 7) min=-0.00470
+  cube (  1,200,268): min_T=-0.00341  edges=[0.072, 6.929] (crush=0.0104)  svd=(3.68,2.46,0.0238)  best_diag=(1, 6) min=-0.00271
+  cube (  1,200,269): min_T=-0.00442  edges=[1.250, 4.525] (crush=0.2763)  svd=(4.30,0.47,0.1656)  best_diag=(1, 6) min=+0.00860
+  cube (  1,201,267): min_T=-0.00306  edges=[1.013, 6.307] (crush=0.1607)  svd=(5.30,0.58,0.0267)  best_diag=(0, 7) min=-0.00306
+  cube (  1,204,276): min_T=-0.00139  edges=[0.236, 5.960] (crush=0.0395)  svd=(4.84,1.24,0.0312)  best_diag=(0, 7) min=-0.00139
+  cube (  1,205,275): min_T=-0.00548  edges=[0.293, 6.817] (crush=0.0430)  svd=(4.57,2.65,0.0404)  best_diag=(0, 7) min=-0.00548
+  cube (  1,205,276): min_T=-0.00834  edges=[0.465, 5.960] (crush=0.0780)  svd=(4.72,1.68,0.0010)  best_diag=(2, 5) min=-0.00366
+  cube (  1,206,273): min_T=-0.00441  edges=[0.099, 5.612] (crush=0.0176)  svd=(4.93,0.77,0.0635)  best_diag=(1, 6) min=+0.00514
+  cube (  1,206,276): min_T=-0.00288  edges=[0.541, 4.375] (crush=0.1237)  svd=(4.54,1.45,0.0042)  best_diag=(3, 4) min=+0.00380
+  cube (  1,207,273): min_T=-0.00199  edges=[0.668, 5.612] (crush=0.1191)  svd=(4.96,0.89,0.0002)  best_diag=(3, 4) min=+0.00008
+  cube (  1,208,273): min_T=-0.00172  edges=[0.286, 4.761] (crush=0.0601)  svd=(3.57,0.25,0.0492)  best_diag=(0, 7) min=-0.00172
+  cube (  1,210,271): min_T=-0.00033  edges=[0.406, 7.866] (crush=0.0516)  svd=(5.38,0.75,0.0334)  best_diag=(1, 6) min=+0.00140
+  cube (  1,210,272): min_T=-0.00476  edges=[0.006, 2.769] (crush=0.0020)  svd=(1.74,0.91,0.0365)  best_diag=(0, 7) min=-0.00476
+  cube (  1,210,273): min_T=-0.00656  edges=[0.006, 7.744] (crush=0.0007)  svd=(3.79,0.17,0.0067)  best_diag=(1, 6) min=-0.00054
+  cube (  1,210,274): min_T=-0.01018  edges=[0.275, 8.795] (crush=0.0313)  svd=(5.53,2.53,0.0921)  best_diag=(0, 7) min=-0.01018
+  cube (  1,211,274): min_T=-0.00233  edges=[3.164, 16.917] (crush=0.1870)  svd=(10.76,3.77,1.4249)  best_diag=(0, 7) min=-0.00233
+  cube (  1,214,223): min_T=-0.00438  edges=[0.071, 4.213] (crush=0.0168)  svd=(3.57,0.61,0.1789)  best_diag=(0, 7) min=-0.00438
+  cube (  1,215,270): min_T=-0.00833  edges=[0.617, 7.016] (crush=0.0880)  svd=(6.96,0.10,0.0673)  best_diag=(0, 7) min=-0.00833
+  cube (  1,216,221): min_T=-0.00225  edges=[0.094, 5.089] (crush=0.0185)  svd=(3.70,1.11,0.5341)  best_diag=(0, 7) min=-0.00225
+  cube (  1,216,282): min_T=-0.00205  edges=[1.235, 6.654] (crush=0.1855)  svd=(4.09,3.05,0.2772)  best_diag=(0, 7) min=-0.00205
+  cube (  1,216,283): min_T=-0.00614  edges=[0.631, 2.827] (crush=0.2232)  svd=(1.91,0.82,0.3507)  best_diag=(0, 7) min=-0.00614
+  cube (  1,217,265): min_T=-0.00097  edges=[0.660, 12.381] (crush=0.0533)  svd=(6.19,1.86,0.0537)  best_diag=(0, 7) min=-0.00097
+  cube (  1,217,266): min_T=-0.00573  edges=[0.010, 9.679] (crush=0.0010)  svd=(6.95,0.41,0.0816)  best_diag=(0, 7) min=-0.00573
+  cube (  1,218,265): min_T=-0.00620  edges=[1.324, 18.371] (crush=0.0721)  svd=(10.78,0.39,0.0001)  best_diag=(3, 4) min=-0.00092
+  cube (  1,218,266): min_T=-0.00499  edges=[0.010, 18.371] (crush=0.0005)  svd=(7.13,1.40,0.0588)  best_diag=(0, 7) min=-0.00499
+  cube (  1,218,267): min_T=-0.01070  edges=[0.332, 8.289] (crush=0.0400)  svd=(3.51,0.99,0.1883)  best_diag=(0, 7) min=-0.01070
+  cube (  1,218,282): min_T=-0.00125  edges=[0.686, 7.934] (crush=0.0865)  svd=(5.28,1.15,0.6477)  best_diag=(0, 7) min=-0.00125
+  cube (  1,218,283): min_T=-0.00479  edges=[0.479, 4.447] (crush=0.1077)  svd=(2.91,0.65,0.1328)  best_diag=(0, 7) min=-0.00479
+  cube (  1,219,264): min_T=-0.00039  edges=[0.491, 16.318] (crush=0.0301)  svd=(6.31,3.12,0.1383)  best_diag=(3, 4) min=+0.10943
+  cube (  1,219,265): min_T=-0.00769  edges=[0.902, 18.371] (crush=0.0491)  svd=(8.47,0.54,0.1442)  best_diag=(0, 7) min=-0.00769
+  cube (  1,219,266): min_T=-0.01071  edges=[0.305, 18.371] (crush=0.0166)  svd=(9.45,1.66,0.5910)  best_diag=(0, 7) min=-0.01071
+  cube (  1,219,267): min_T=-0.00440  edges=[0.305, 7.124] (crush=0.0428)  svd=(6.05,1.54,0.1796)  best_diag=(0, 7) min=-0.00440
+  cube (  1,220,267): min_T=-0.00647  edges=[0.083, 12.354] (crush=0.0067)  svd=(7.14,1.38,0.0338)  best_diag=(0, 7) min=-0.00647
+  cube (  1,220,283): min_T=-0.00734  edges=[0.168, 7.963] (crush=0.0210)  svd=(4.82,0.49,0.0603)  best_diag=(3, 4) min=+0.00082
+  cube (  1,221,268): min_T=-0.00568  edges=[0.428, 4.236] (crush=0.1010)  svd=(4.65,1.82,0.1559)  best_diag=(2, 5) min=-0.00205
+  cube (  1,221,278): min_T=-0.00228  edges=[0.613, 5.147] (crush=0.1192)  svd=(2.50,1.01,0.2234)  best_diag=(0, 7) min=-0.00228
+  cube (  2,210,273): min_T=-0.00562  edges=[0.198, 7.744] (crush=0.0255)  svd=(4.78,1.11,0.3498)  best_diag=(1, 6) min=+0.00482
+  cube (  2,210,274): min_T=-0.00374  edges=[0.675, 7.744] (crush=0.0871)  svd=(5.13,1.59,0.5148)  best_diag=(0, 7) min=-0.00374
+  cube (  2,211,273): min_T=-0.00179  edges=[1.356, 6.166] (crush=0.2199)  svd=(4.26,1.49,0.3743)  best_diag=(0, 7) min=-0.00179
+  cube (  2,211,274): min_T=-0.00264  edges=[0.967, 8.620] (crush=0.1121)  svd=(4.40,2.06,0.0003)  best_diag=(1, 6) min=-0.00048
+  cube (  2,215,220): min_T=-0.00097  edges=[0.179, 5.217] (crush=0.0344)  svd=(4.27,1.92,0.0729)  best_diag=(0, 7) min=-0.00097
+  cube (  2,215,221): min_T=-0.00793  edges=[0.058, 5.217] (crush=0.0111)  svd=(3.90,1.19,0.0475)  best_diag=(0, 7) min=-0.00793
+  cube (  2,215,271): min_T=-0.00580  edges=[0.193, 3.321] (crush=0.0582)  svd=(3.18,1.39,0.0934)  best_diag=(2, 5) min=-0.00186
+  cube (  2,215,272): min_T=-0.00257  edges=[0.193, 5.006] (crush=0.0386)  svd=(2.70,0.99,0.8651)  best_diag=(0, 7) min=-0.00257
+  cube (  2,216,273): min_T=-0.00038  edges=[0.391, 4.810] (crush=0.0813)  svd=(3.49,1.35,0.4312)  best_diag=(0, 7) min=-0.00038
+  cube (  2,216,282): min_T=-0.00367  edges=[0.080, 6.490] (crush=0.0123)  svd=(2.71,1.45,0.2230)  best_diag=(0, 7) min=-0.00367
+  cube (  2,217,265): min_T=-0.00597  edges=[0.660, 4.364] (crush=0.1512)  svd=(2.87,0.57,0.1362)  best_diag=(0, 7) min=-0.00597
+  cube (  2,217,275): min_T=-0.00420  edges=[0.140, 4.169] (crush=0.0335)  svd=(4.21,1.02,0.3774)  best_diag=(0, 7) min=-0.00420
+  cube (  2,218,265): min_T=-0.00015  edges=[1.324, 18.960] (crush=0.0698)  svd=(7.71,1.08,0.0313)  best_diag=(0, 7) min=-0.00015
+  cube (  2,218,266): min_T=-0.00046  edges=[1.155, 18.960] (crush=0.0609)  svd=(11.49,0.74,0.1455)  best_diag=(0, 7) min=-0.00046
+  cube (  2,219,265): min_T=-0.00240  edges=[1.327, 18.960] (crush=0.0700)  svd=(10.09,0.93,0.1489)  best_diag=(2, 5) min=-0.00179
+  cube (  2,219,266): min_T=-0.00071  edges=[0.305, 18.960] (crush=0.0161)  svd=(13.69,1.12,0.0003)  best_diag=(3, 4) min=-0.00040
+  cube (  2,219,267): min_T=-0.00030  edges=[0.166, 12.105] (crush=0.0137)  svd=(10.87,0.21,0.0296)  best_diag=(0, 7) min=-0.00030
+  cube (  2,219,282): min_T=-0.00366  edges=[0.461, 5.430] (crush=0.0849)  svd=(3.34,1.65,0.0122)  best_diag=(0, 7) min=-0.00366
+  cube (  2,219,283): min_T=-0.00947  edges=[0.539, 7.963] (crush=0.0677)  svd=(4.85,0.74,0.0294)  best_diag=(3, 4) min=+0.01568
+  cube (  2,220,282): min_T=-0.00286  edges=[0.289, 6.913] (crush=0.0418)  svd=(5.24,1.73,0.4460)  best_diag=(0, 7) min=-0.00286
+  cube (  2,220,283): min_T=-0.00290  edges=[0.289, 7.963] (crush=0.0363)  svd=(5.02,0.41,0.0086)  best_diag=(2, 5) min=+0.00184
+  cube (  2,221,282): min_T=-0.00221  edges=[0.289, 6.913] (crush=0.0418)  svd=(4.98,1.20,0.4653)  best_diag=(3, 4) min=-0.00063
+  cube (  3,215,281): min_T=-0.00445  edges=[0.357, 2.223] (crush=0.1606)  svd=(2.10,0.23,0.0192)  best_diag=(0, 7) min=-0.00445
+  cube (  3,217,277): min_T=-0.00560  edges=[0.390, 8.342] (crush=0.0468)  svd=(5.22,2.64,0.1832)  best_diag=(3, 4) min=+0.01265
+  cube (  3,218,277): min_T=-0.00227  edges=[0.143, 6.632] (crush=0.0215)  svd=(4.74,0.61,0.0293)  best_diag=(2, 5) min=+0.00083
+  cube (  3,219,278): min_T=-0.00490  edges=[0.088, 8.353] (crush=0.0106)  svd=(5.31,0.41,0.0922)  best_diag=(0, 7) min=-0.00490
+  cube (  4,219,280): min_T=-0.00485  edges=[0.675, 3.285] (crush=0.2053)  svd=(2.68,0.75,0.1562)  best_diag=(0, 7) min=-0.00485
+  cube (  5,188,270): min_T=-0.00043  edges=[0.466, 1.823] (crush=0.2556)  svd=(1.48,0.88,0.0178)  best_diag=(3, 4) min=+0.00244
+  cube (  5,188,272): min_T=-0.00885  edges=[0.226, 1.852] (crush=0.1218)  svd=(1.60,0.62,0.0703)  best_diag=(3, 4) min=+0.00584
+  cube (  5,189,272): min_T=-0.00264  edges=[0.323, 1.726] (crush=0.1873)  svd=(1.62,0.74,0.2756)  best_diag=(0, 7) min=-0.00264
+  cube (  6,188,270): min_T=-0.01160  edges=[0.424, 4.889] (crush=0.0867)  svd=(4.85,0.36,0.0412)  best_diag=(1, 6) min=+0.00527
+  cube (  6,189,270): min_T=-0.00939  edges=[0.273, 4.889] (crush=0.0559)  svd=(4.90,0.21,0.0126)  best_diag=(0, 7) min=-0.00939
+  cube (  6,189,271): min_T=-0.00031  edges=[0.435, 4.889] (crush=0.0889)  svd=(4.56,1.03,0.0116)  best_diag=(3, 4) min=-0.00004
+  cube (  6,189,272): min_T=-0.01345  edges=[0.323, 4.309] (crush=0.0750)  svd=(4.29,0.40,0.0046)  best_diag=(3, 4) min=-0.00673
+  cube (  6,189,273): min_T=-0.00017  edges=[0.323, 4.791] (crush=0.0675)  svd=(4.52,0.28,0.1269)  best_diag=(1, 6) min=+0.00163
+  cube (  6,213,227): min_T=-0.00108  edges=[0.230, 3.475] (crush=0.0661)  svd=(2.82,0.78,0.0118)  best_diag=(1, 6) min=+0.00341
+  cube (  6,213,228): min_T=-0.01032  edges=[0.388, 2.657] (crush=0.1459)  svd=(2.66,0.54,0.1421)  best_diag=(3, 4) min=-0.00354
+  cube (  6,214,228): min_T=-0.00576  edges=[0.496, 4.041] (crush=0.1228)  svd=(2.72,0.49,0.0655)  best_diag=(0, 7) min=-0.00576
+  cube (  6,214,229): min_T=-0.00755  edges=[0.268, 2.705] (crush=0.0991)  svd=(2.48,0.48,0.1833)  best_diag=(2, 5) min=+0.01398
+  cube (  7,188,258): min_T=-0.00380  edges=[0.621, 5.291] (crush=0.1174)  svd=(5.41,0.28,0.0882)  best_diag=(3, 4) min=-0.00221
+  cube (  7,188,259): min_T=-0.00045  edges=[0.858, 5.556] (crush=0.1545)  svd=(5.46,0.44,0.0805)  best_diag=(0, 7) min=-0.00045
+  cube (  7,189,259): min_T=-0.00445  edges=[1.007, 4.885] (crush=0.2061)  svd=(5.12,0.28,0.0342)  best_diag=(0, 7) min=-0.00445
+  cube (  7,189,260): min_T=-0.00212  edges=[0.881, 5.291] (crush=0.1666)  svd=(5.49,0.46,0.0835)  best_diag=(0, 7) min=-0.00212
+  cube (  7,190,260): min_T=-0.00294  edges=[0.186, 5.369] (crush=0.0346)  svd=(5.36,0.33,0.0516)  best_diag=(3, 4) min=-0.00131
+  cube (  7,192,263): min_T=-0.00453  edges=[0.913, 5.321] (crush=0.1717)  svd=(5.21,0.26,0.1238)  best_diag=(3, 4) min=-0.00242
+  cube (  7,192,266): min_T=-0.00462  edges=[0.971, 6.158] (crush=0.1577)  svd=(6.10,0.43,0.1273)  best_diag=(3, 4) min=-0.00067
+  cube (  7,195,271): min_T=-0.00379  edges=[0.911, 4.494] (crush=0.2026)  svd=(4.57,0.26,0.1039)  best_diag=(3, 4) min=-0.00298
+  cube (  7,213,228): min_T=-0.00065  edges=[0.307, 4.214] (crush=0.0728)  svd=(3.63,0.88,0.0141)  best_diag=(0, 7) min=-0.00065
+  cube (  7,214,228): min_T=-0.00919  edges=[0.307, 4.041] (crush=0.0759)  svd=(3.51,0.31,0.0031)  best_diag=(3, 4) min=-0.00630
+  cube ( 14,165,227): min_T=-0.00299  edges=[0.110, 1.404] (crush=0.0781)  svd=(1.04,0.83,0.0899)  best_diag=(1, 6) min=+0.01010
+  cube ( 14,166,227): min_T=-0.00322  edges=[0.108, 1.503] (crush=0.0720)  svd=(1.11,0.74,0.0771)  best_diag=(3, 4) min=+0.00653
+  cube ( 14,170,228): min_T=-0.00241  edges=[0.141, 1.565] (crush=0.0899)  svd=(1.36,0.57,0.1019)  best_diag=(3, 4) min=+0.00852
+
+  Spatial clusters (radius=3): 13
+    cluster 0: centroid=(np.int64(0), np.int64(165), np.int64(243)), 1 cube(s)
+    cluster 1: centroid=(np.int64(0), np.int64(188), np.int64(248)), 1 cube(s)
+    cluster 2: centroid=(np.int64(0), np.int64(199), np.int64(266)), 15 cube(s)
+    cluster 3: centroid=(np.int64(0), np.int64(207), np.int64(274)), 27 cube(s)
+    cluster 4: centroid=(np.int64(1), np.int64(214), np.int64(220)), 5 cube(s)
+    cluster 5: centroid=(np.int64(1), np.int64(218), np.int64(273)), 42 cube(s)
+    cluster 6: centroid=(np.int64(1), np.int64(136), np.int64(191)), 2 cube(s)
+    cluster 7: centroid=(np.int64(5), np.int64(188), np.int64(271)), 8 cube(s)
+    cluster 8: centroid=(np.int64(6), np.int64(213), np.int64(228)), 6 cube(s)
+    cluster 9: centroid=(np.int64(7), np.int64(189), np.int64(260)), 7 cube(s)
+    cluster 10: centroid=(np.int64(7), np.int64(195), np.int64(271)), 1 cube(s)
+    cluster 11: centroid=(np.int64(14), np.int64(165), np.int64(227)), 2 cube(s)
+    cluster 12: centroid=(np.int64(14), np.int64(170), np.int64(228)), 1 cube(s)
+
+  Aggregate cube properties:
+    crush_ratio   median=0.0777  min=0.0005  max=0.2987
+    sigma_3       median=0.0921  min=0.0001  max=1.4249
+    best_diag_min median=-0.00205  #cubes-feasible-under-some-diag=24/118
+    best_diag distribution: [72, 13, 8, 25]
+
+======================================================================
+[MS_V1 (~6-9 folds)] b0039_z0_15_ms_v1.npy
+======================================================================
+n_neg=9  n<0.01=10  min_T=-0.003572
+  cube (  0,211,276): min_T=-0.00340  edges=[0.569, 10.447] (crush=0.0545)  svd=(6.10,0.81,0.0021)  best_diag=(0, 7) min=-0.00340
+  cube (  0,213,218): min_T=-0.00010  edges=[1.024, 4.057] (crush=0.2524)  svd=(4.14,1.30,0.0421)  best_diag=(1, 6) min=+0.00151
+  cube (  0,220,267): min_T=-0.00357  edges=[0.043, 3.041] (crush=0.0142)  svd=(2.56,0.93,0.0340)  best_diag=(0, 7) min=-0.00357
+  cube (  1,210,274): min_T=-0.00119  edges=[0.079, 4.892] (crush=0.0162)  svd=(4.41,0.98,0.2426)  best_diag=(0, 7) min=-0.00119
+  cube (  1,210,275): min_T=-0.00048  edges=[0.079, 4.881] (crush=0.0163)  svd=(4.00,1.11,0.2834)  best_diag=(0, 7) min=-0.00048
+  cube (  1,214,274): min_T=-0.00088  edges=[0.129, 4.226] (crush=0.0305)  svd=(3.83,1.60,0.3067)  best_diag=(1, 6) min=+0.01320
+  cube (  1,220,266): min_T=-0.00223  edges=[0.094, 2.583] (crush=0.0363)  svd=(2.75,1.07,0.5006)  best_diag=(0, 7) min=-0.00223
+  cube (  2,213,279): min_T=-0.00062  edges=[0.398, 5.255] (crush=0.0757)  svd=(4.56,0.99,0.1279)  best_diag=(0, 7) min=-0.00062
+  cube (  3,219,279): min_T=-0.00138  edges=[0.678, 3.615] (crush=0.1877)  svd=(3.20,0.45,0.0373)  best_diag=(0, 7) min=-0.00138
+
+  Spatial clusters (radius=3): 4
+    cluster 0: centroid=(np.int64(1), np.int64(211), np.int64(275)), 5 cube(s)
+    cluster 1: centroid=(np.int64(0), np.int64(213), np.int64(218)), 1 cube(s)
+    cluster 2: centroid=(np.int64(0), np.int64(220), np.int64(266)), 2 cube(s)
+    cluster 3: centroid=(np.int64(3), np.int64(219), np.int64(279)), 1 cube(s)
+
+  Aggregate cube properties:
+    crush_ratio   median=0.0363  min=0.0142  max=0.2524
+    sigma_3       median=0.1279  min=0.0021  max=0.5006
+    best_diag_min median=-0.00119  #cubes-feasible-under-some-diag=2/9
+    best_diag distribution: [7, 2, 0, 0]
+
+======================================================================
+[MS_V2_TIGHT (2 folds)] b0039_z0_15_ms_v2_tight.npy
+======================================================================
+n_neg=2  n<0.01=2  min_T=-0.000756
+  cube (  0,213,218): min_T=-0.00021  edges=[0.779, 4.567] (crush=0.1706)  svd=(4.61,1.44,0.1171)  best_diag=(0, 7) min=-0.00021
+  cube (  1,215,220): min_T=-0.00076  edges=[0.067, 3.342] (crush=0.0202)  svd=(3.11,1.05,0.3780)  best_diag=(0, 7) min=-0.00076
+
+  Spatial clusters (radius=3): 1
+    cluster 0: centroid=(np.int64(0), np.int64(214), np.int64(219)), 2 cube(s)
+
+  Aggregate cube properties:
+    crush_ratio   median=0.0954  min=0.0202  max=0.1706
+    sigma_3       median=0.2476  min=0.1171  max=0.3780
+    best_diag_min median=-0.00048  #cubes-feasible-under-some-diag=0/2
+    best_diag distribution: [2, 0, 0, 0]
+
+======================================================================
+[CHAIN_BEST (1 fold)] b0039_z0_15_chain_best.npy
+======================================================================
+n_neg=1  n<0.01=1  min_T=-0.000323
+  cube (  1,215,220): min_T=-0.00032  edges=[0.030, 3.493] (crush=0.0087)  svd=(3.30,1.37,0.5567)  best_diag=(0, 7) min=-0.00032
+
+  Spatial clusters (radius=3): 1
+    cluster 0: centroid=(np.int64(1), np.int64(215), np.int64(220)), 1 cube(s)
+
+  Aggregate cube properties:
+    crush_ratio   median=0.0087  min=0.0087  max=0.0087
+    sigma_3       median=0.5567  min=0.5567  max=0.5567
+    best_diag_min median=-0.00032  #cubes-feasible-under-some-diag=0/1
+    best_diag distribution: [1, 0, 0, 0]

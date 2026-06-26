@@ -1,0 +1,4 @@
+Start: n_neg=173  n<0.01=1572  min_T=-0.013450
+479 corners in fold zone to optimize
+Sweep 1: n_neg=249  n<0.01=1693  min_T=-0.012135  L1+=5.6  wall=17.0s
+No progress, stopping.

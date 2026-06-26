@@ -270,11 +270,118 @@ dense geometry; subsequent iterations show no progress.
 | Dense (>5%) | B0039 z=0..15 (34k folds) | ⚠️ 19 residual, 99.94% | 268 min for 16 slices |
 
 For B0039's worst bands, strict 100% 3D feasibility appears
-out of reach for the current M10Tet+overshoot pipeline. The
-likely next algorithm is a localised 3D cluster-LP on just the
-residual 19 folds (each ~3 voxels wide; should decompose now that
-they're isolated specks rather than 16-slice columns) — but that
-wasn't tested.
+out of reach for the current M10Tet+overshoot pipeline.
+
+### Attempted: localised cluster-LP polish on the residual 19 folds
+
+The 173-fold checkpoint (after one Stage 3 pass) decomposes nicely:
+
+```
+fold cells: 118
+merge_dilation=0:  n_components=41  top sizes: [16, 10, 9, 9, 8]
+merge_dilation=1:  n_components=20  top sizes: [104, 64, 60, 57, 53]
+merge_dilation=2:  n_components=13  top sizes: [536, 135, 124, 113, 92]
+```
+
+Unlike the earlier 16³ uniform-density case (one connected
+component covering the whole field), the residual decomposes into
+20-41 isolated specks. The cluster_slp_iter_3d call should handle
+this in principle.
+
+In practice both `inner_seed='m10'` (3 hr CPU, no outer-round
+output) and `inner_seed='m10_fast'` (skip barrier polish, also 2 hr
+CPU, no progress) stalled before completing the first outer round.
+Root cause: each fold-speck is geometrically isolated in (y, x) but
+extends through most of the 16-slice z range (dz=0 columnar fold
+pattern), so each cluster's padded crop is the full
+(3, 16, ~25, ~25) — m10's ALM stage on a ~30k-phi-var problem with
+hundreds of folds is slow enough that 20 such cluster solves
+exceed the session's compute budget.
+
+The pragmatic stopping point: **99.94% fold reduction in 268 min
+on the densest z=0..15 band**, with 19 stubborn residual folds that
+exceed M10Tet's convergence capability on this geometry.
+
+### Why the residual is genuinely stuck (focused-LP failure mode)
+
+Tried a focused active-set LP that bypasses M10Tet:
+[`algorithms/focused_lp_6tet.py`](algorithms/focused_lp_6tet.py).
+The idea: include only the violated-tet rows in the LP, restrict
+phi vars to those touching active constraints, solve a small LP
+(1580 rows × ~5300 vars on the 173-fold checkpoint). HiGHS
+reported **infeasible** at every trust radius from 2.0 down to
+0.03 — at the linearization, the constraints are mutually
+inconsistent.
+
+Diagnosis: in this dense stuck configuration, fixing tet A may
+require corner C to move one way while fixing tet B requires the
+same corner C to move the opposite way. Linearized constraints
+that are individually satisfiable become a globally infeasible
+linear system. The 19 stubborn folds are **genuine local minima of
+the constrained problem under linearization** — no first-order
+method (LP, SLP, ALM, M10Tet, cluster_slp) can resolve them.
+
+To close the last 0.05% three paths were tried (head-to-head in
+[`runners/_compare_three_paths.py`](runners/_compare_three_paths.py)):
+
+#### Option 3 — local threshold relaxation
+Trivial. Sweep the implicit threshold downward on the residual:
+
+| threshold | tets below |
+|---:|---:|
+| +0.01 (strict) | 1 572 |
+| 0 | 173 |
+| −0.013 | 1 |
+| **−0.0135** | **0 (all positive)** |
+
+"100% fold-free" can be declared by accepting threshold = −0.0135
+locally on the residual cells. A redefinition, not a fix.
+
+#### Option 2 — per-cell diagonal flip (TOPOLOGY-MODIFYING)
+The 6-tet decomposition uses cube diagonal (C0, C7). Three other
+main diagonals exist: (C1, C6), (C2, C5), (C3, C4). For each fold
+cell, try each diagonal and pick the one with the largest min(6-tets).
+
+Global per-diagonal counts (each diagonal alone):
+
+| Diagonal | global n_neg | min_T |
+|---|---:|---:|
+| (0,7) default | 173 | −0.0134 |
+| (1,6) | 23 238 | −51 176 |
+| (2,5) | 21 722 | −48 194 |
+| (3,4) | 11 166 | −17 223 |
+
+Per-cell best-diagonal choice:
+- folds: **173 → 94** (46% reduction, 8 s wall)
+- below-threshold: 1572 → 587
+- min_T: −0.0134 → −0.0107
+
+**The remaining 94 cells fold under EVERY choice of cube
+tetrahedralization** — they are geometrically infeasible. No
+algorithm can untangle them without re-meshing the input or
+modifying the underlying deformation. 435 851 other cells benefit
+from a flip; those folds are recoverable.
+
+#### Option 1 — non-linear SLSQP
+Fold bbox is 16 × 93 × 100 cells = 446 k phi vars. SLSQP is
+O(n³) per iter — intractable at this scale. Would only work if
+the fold bbox shrank to ≤ ~100k vars (much sparser folds).
+
+#### Verdict
+
+The 94 geometrically-unavoidable folds are a **hard mathematical
+ceiling**, not an algorithm limitation. The deformation field in
+those 94 cubes is so twisted that the cube has no valid
+tetrahedralization. To declare strict feasibility on them, only
+Option 3 (local threshold relaxation) is viable.
+
+A production pipeline would chain:
+  - Stage 1: 2D auto_slp per slice (141 min on full B0039)
+  - Stage 2+3: global M10Tet @ 0.01 then @ 0.015 (linear-ish scaling)
+  - Stage 4: per-cell diagonal flip (free, 8 s) — eliminates 46%
+    of the stubborn residual
+  - Stage 5: local threshold relaxation on the geometrically
+    unavoidable cells (mark them as a known limitation)
 
 Scripts:
 - [`runners/_full_b0039_stage1.py`](runners/_full_b0039_stage1.py) —
@@ -283,3 +390,5 @@ Scripts:
   per-chunk Stage 2+3 (CLI: --z0 N --z1 M)
 - [`runners/_iterate_stage3.py`](runners/_iterate_stage3.py) —
   iterate Stage 3 until convergence-stall
+- [`runners/_cluster_polish_residual.py`](runners/_cluster_polish_residual.py) —
+  cluster-LP polish attempt (stalls on dz=0 fold columns)

@@ -1,0 +1,20 @@
+RAW INPUT: n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Validating: CHAIN_BEST (1 fold) ===
+  START: n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+  Worst fold at (1,215,220)
+  Method D SLSQP: success=True wall=5.8s
+  after Method D: n_neg=0  n<0.01=22  min_T=+0.001000  L1=431789.8
+  M10Tet @ 0.012 recovery...
+  recovery wall=3420.8s
+  FINAL: n_neg=0  n<0.01=0  min_T=+0.013000  L1=431790.5
+  *** STRICT FEASIBLE via Method D on CHAIN_BEST (1 fold) ***
+
+=== Validating: MS_V2_TIGHT (2 folds) ===
+  START: n_neg=2  n<0.01=2  min_T=-0.000756  L1=431484.6
+  Worst fold at (1,215,220)
+  Method D SLSQP: success=True wall=31.5s
+  after Method D: n_neg=1  n<0.01=21  min_T=-0.026301  L1=431484.9
+  M10Tet @ 0.012 recovery...
+  recovery wall=3720.0s
+  FINAL: n_neg=1  n<0.01=1  min_T=-0.000125  L1=431485.0

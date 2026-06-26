@@ -1,0 +1,23 @@
+Loading B0039...
+  full shape: (3, 528, 320, 456)
+
+Processing z=10..14 with 2D auto_slp...
+  z= 10  feas=True  min_T=+0.0110  init_n_neg=4568  L1=179292.2  (164.9s)
+  z= 11  feas=True  min_T=+0.0110  init_n_neg=4673  L1=149927.4  (169.3s)
+  z= 12  feas=True  min_T=+0.0101  init_n_neg=4902  L1=180159.0  (52.9s)
+  z= 13  feas=True  min_T=+0.0101  init_n_neg=4993  L1=185131.2  (45.1s)
+  z= 14  feas=True  min_T=+0.0101  init_n_neg=4835  L1=184742.3  (40.0s)
+
+2D processing total: 472.2s
+
+Checking 6-tet feasibility on stacked 3D field...
+  shape: (3, 5, 320, 456)  total tets: 3,483,480
+  n_neg (V<=0):             6368  (0.1828%)
+  n_below_thresh:          34762  (0.9979%)
+  min_T: -1.1563  max_T: +2.7903
+
+Per-z fold cell count (after 2D processing, stacked):
+  z= 10 (cube z=0): 1809 fold cells
+  z= 11 (cube z=1): 1824 fold cells
+  z= 12 (cube z=2): 993 fold cells
+  z= 13 (cube z=3): 769 fold cells

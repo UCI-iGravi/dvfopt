@@ -1,0 +1,38 @@
+Original input: n_neg=173  n<0.01=1572  min_T=-0.013450
+START (saved 2-fold): n_neg=2  n<0.01=2  min_T=-0.000756  L1=431484.6
+
+=== Cycle 1: pure M10Tet @ 0.012 (3 iters) ===
+  iter 1/3: n_neg=2  n<0.01=2  min_T=-0.000440  L1=431485.3
+    wall=1936.7s
+  iter 2/3: n_neg=2  n<0.01=2  min_T=-0.000380  L1=431485.5
+    wall=1682.2s
+  iter 3/3: n_neg=2  n<0.01=2  min_T=-0.000351  L1=431485.6
+    wall=1881.5s
+
+=== Cycle 2: small Gaussian perturbation + M10Tet @ 0.012 ===
+  perturbed sigma=0.02: n_neg=8  n<0.01=15  min_T=-0.087355  L1=431484.5
+  recovered sigma=0.02: n_neg=2  n<0.01=2  min_T=-0.000546  L1=431484.9
+    wall=2333.7s
+  perturbed sigma=0.05: n_neg=19  n<0.01=34  min_T=-0.243602  L1=431484.9
+  recovered sigma=0.05: n_neg=2  n<0.01=2  min_T=-0.000523  L1=431485.4
+    wall=2760.0s
+  perturbed sigma=0.1: n_neg=44  n<0.01=51  min_T=-0.504984  L1=431487.1
+  recovered sigma=0.1: n_neg=2  n<0.01=2  min_T=-0.000512  L1=431487.6
+    wall=3148.2s
+
+=== Cycle 3: M14Tet break + M10Tet @ 0.012 recover ===
+  m14-broken: n_neg=417  n<0.01=447  min_T=-7.021188  L1=432125.5
+    m14 wall=889.2s
+  recovered: n_neg=2  n<0.01=2  min_T=-0.000701  L1=432133.6
+    recover wall=3274.8s
+
+=== Cycle 4: M10Tet @ 0.018 + M10Tet @ 0.012 ===
+  over-tightened: n_neg=1  n<0.01=1  min_T=-0.000804  L1=431788.3
+    wall=3141.0s
+  recovered: n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+    recover wall=1954.5s
+    *** new best: n_neg=1 ***
+
+=== Final ===
+  best across all cycles: n_neg=1
+  saved best state to b0039_z0_15_chain_best.npy

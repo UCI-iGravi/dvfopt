@@ -1,0 +1,152 @@
+BEST_1fold loaded: n_neg=1  n<0.01=1  min_T=-0.000323
+
+======================================================================
+[BEST_1fold] Cube at (1, 215, 220)
+======================================================================
+
+Lattice corner displacements:
+  corner 0 (lattice 1,215,220): d=(+1.2768,-55.2648,-7.2297)
+  corner 1 (lattice 1,215,221): d=(+1.0612,-53.9600,-6.9964)
+  corner 2 (lattice 1,216,220): d=(+2.1092,-53.6904,-5.0201)
+  corner 3 (lattice 1,216,221): d=(+0.8653,-52.3118,-5.9072)
+  corner 4 (lattice 2,215,220): d=(+0.6740,-55.5071,-4.5571)
+  corner 5 (lattice 2,215,221): d=(+0.4371,-54.0403,-5.4904)
+  corner 6 (lattice 2,216,220): d=(+1.1060,-53.6622,-5.0314)
+  corner 7 (lattice 2,216,221): d=(+1.5580,-52.2422,-4.7716)
+
+Deformed positions:
+  corner 0: pos=(+2.2768,+159.7352,+212.7703)
+  corner 1: pos=(+2.0612,+161.0400,+214.0036)
+  corner 2: pos=(+3.1092,+162.3096,+214.9799)
+  corner 3: pos=(+1.8653,+163.6882,+215.0928)
+  corner 4: pos=(+2.6740,+159.4929,+215.4429)
+  corner 5: pos=(+2.4371,+160.9597,+215.5096)
+  corner 6: pos=(+3.1060,+162.3378,+214.9686)
+  corner 7: pos=(+3.5580,+163.7578,+216.2284)
+
+Deformed edge lengths:
+  edge (0, 1): |pos[b]-pos[a]|=1.8083  vec=(-0.2157,+1.3048,+1.2333)
+  edge (2, 3): |pos[b]-pos[a]|=1.8603  vec=(-1.2439,+1.3786,+0.1129)
+  edge (4, 5): |pos[b]-pos[a]|=1.4873  vec=(-0.2368,+1.4668,+0.0667)
+  edge (6, 7): |pos[b]-pos[a]|=1.9514  vec=(+0.4520,+1.4201,+1.2598)
+  edge (0, 2): |pos[b]-pos[a]|=3.4932  vec=(+0.8323,+2.5744,+2.2096)
+  edge (1, 3): |pos[b]-pos[a]|=2.8702  vec=(-0.1959,+2.6482,+1.0892)
+  edge (4, 6): |pos[b]-pos[a]|=2.9163  vec=(+0.4320,+2.8448,-0.4743)
+  edge (5, 7): |pos[b]-pos[a]|=3.0988  vec=(+1.1209,+2.7981,+0.7188)
+  edge (0, 4): |pos[b]-pos[a]|=2.7128  vec=(+0.3971,-0.2423,+2.6726)
+  edge (1, 5): |pos[b]-pos[a]|=1.5543  vec=(+0.3759,-0.0803,+1.5060)
+  edge (2, 6): |pos[b]-pos[a]|=0.0305  vec=(-0.0032,+0.0282,-0.0112)
+  edge (3, 7): |pos[b]-pos[a]|=2.0396  vec=(+1.6927,+0.0696,+1.1356)
+
+6-tet volumes under all 4 main diagonals:
+  diag (0, 7): vols=['+0.58027', '+0.69659', '+0.01294', '-0.00032', '+0.98002', '+0.01288']  min=-0.00032  #neg=1
+  diag (1, 6): vols=['-0.01028', '+0.81495', '-0.01128', '+0.23419', '+0.38254', '+0.25351']  min=-0.01128  #neg=2
+  diag (2, 5): vols=['+0.45035', '+0.63564', '+0.70152', '+0.74897', '-0.00252', '-0.00704']  min=-0.00704  #neg=2
+  diag (3, 4): vols=['+0.26239', '+1.86993', '-0.00045', '-0.00571', '+0.18894', '+1.06503']  min=-0.00571  #neg=2
+
+Trilinear Jacobian det on 9x9x9 interior grid:
+  min=-0.12010  max=+4.94443  mean=+2.44787  #neg=10/729
+
+Jacobian at cube center (u=v=w=0.5):
+  J = 
+[[ 0.61565724 -0.05619646  1.32575368]
+ [ 0.54735309  2.71639613  0.8858441 ]
+ [-0.31108549  1.39257208  0.66817661]]
+  singular values: sigma_1=3.2994  sigma_2=1.3746  sigma_3=0.5567
+  det(J)=+2.52483  condition number sigma_1/sigma_3=5.93
+
+SVD at parametric corners (sigma_1, sigma_2, sigma_3):
+  corner 0 (u,v,w)=(0,0,0): sigma=(4.320,1.958,0.575)  det=+4.86649
+  corner 1 (u,v,w)=(1,0,0): sigma=(3.412,1.493,0.229)  det=+1.16825
+  corner 2 (u,v,w)=(0,1,0): sigma=(3.606,1.631,0.020)  det=-0.12010
+  corner 3 (u,v,w)=(1,1,0): sigma=(3.244,2.303,0.175)  det=+1.30583
+  corner 4 (u,v,w)=(0,0,1): sigma=(3.354,2.575,0.443)  det=+3.82577
+  corner 5 (u,v,w)=(1,0,1): sigma=(3.378,1.568,0.598)  det=+3.16757
+  corner 6 (u,v,w)=(0,1,1): sigma=(3.238,1.352,0.006)  det=-0.02734
+  corner 7 (u,v,w)=(1,1,1): sigma=(3.764,1.703,0.708)  det=+4.53458
+  Saved C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\figures\last_fold_cube_3d.png
+  Saved C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\figures\last_fold_jacobian_interior.png
+  Saved C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\figures\last_fold_neighbourhood.png
+
+
+######################################################################
+COMPARISON: same cube in the original (unoptimised) input
+######################################################################
+
+======================================================================
+[INPUT] Cube at (1, 215, 220)
+======================================================================
+
+Lattice corner displacements:
+  corner 0 (lattice 1,215,220): d=(+9.2934,-65.7554,-4.6043)
+  corner 1 (lattice 1,215,221): d=(-2.0889,-51.8510,-18.5892)
+  corner 2 (lattice 1,216,220): d=(-0.2763,-54.2923,+1.8846)
+  corner 3 (lattice 1,216,221): d=(+4.1553,-51.6985,-3.7816)
+  corner 4 (lattice 2,215,220): d=(+1.2942,-58.6491,-5.2668)
+  corner 5 (lattice 2,215,221): d=(+0.7438,-58.1195,-7.9158)
+  corner 6 (lattice 2,216,220): d=(+1.0678,-57.5925,-0.9947)
+  corner 7 (lattice 2,216,221): d=(+1.2265,-56.2266,-3.6012)
+
+Deformed positions:
+  corner 0: pos=(+10.2934,+149.2446,+215.3957)
+  corner 1: pos=(-1.0889,+163.1490,+202.4108)
+  corner 2: pos=(+0.7237,+161.7077,+221.8846)
+  corner 3: pos=(+5.1553,+164.3015,+217.2184)
+  corner 4: pos=(+3.2942,+156.3509,+214.7332)
+  corner 5: pos=(+2.7438,+156.8805,+213.0842)
+  corner 6: pos=(+3.0678,+158.4075,+219.0053)
+  corner 7: pos=(+3.2265,+159.7734,+217.3988)
+
+Deformed edge lengths:
+  edge (0, 1): |pos[b]-pos[a]|=22.1698  vec=(-11.3824,+13.9044,-12.9849)
+  edge (2, 3): |pos[b]-pos[a]|=6.9384  vec=(+4.4315,+2.5939,-4.6663)
+  edge (4, 5): |pos[b]-pos[a]|=1.8174  vec=(-0.5505,+0.5296,-1.6491)
+  edge (6, 7): |pos[b]-pos[a]|=2.1147  vec=(+0.1587,+1.3659,-1.6065)
+  edge (0, 2): |pos[b]-pos[a]|=17.0004  vec=(-9.5697,+12.4631,+6.4890)
+  edge (1, 3): |pos[b]-pos[a]|=16.1116  vec=(+6.2442,+1.1525,+14.8076)
+  edge (4, 6): |pos[b]-pos[a]|=4.7468  vec=(-0.2264,+2.0566,+4.2721)
+  edge (5, 7): |pos[b]-pos[a]|=5.2171  vec=(+0.4827,+2.8929,+4.3146)
+  edge (0, 4): |pos[b]-pos[a]|=9.9964  vec=(-6.9992,+7.1063,-0.6624)
+  edge (1, 5): |pos[b]-pos[a]|=12.9578  vec=(+3.8327,-6.2685,+10.6734)
+  edge (2, 6): |pos[b]-pos[a]|=4.9675  vec=(+2.3441,-3.3001,-2.8793)
+  edge (3, 7): |pos[b]-pos[a]|=4.9251  vec=(-1.9287,-4.5281,+0.1804)
+
+6-tet volumes under all 4 main diagonals:
+  diag (0, 7): vols=['+140.00986', '+52.95777', '+33.69703', '+3.82624', '+6.15665', '+11.10352']  min=+3.82624  #neg=0
+  diag (1, 6): vols=['+6.27337', '+37.13463', '-74.54745', '-1.99618', '+1.03560', '-7.90248']  min=-74.54745  #neg=3
+  diag (2, 5): vols=['+61.62725', '+4.86498', '-107.24209', '-8.54071', '-1.19599', '-5.01742']  min=-107.24209  #neg=4
+  diag (3, 4): vols=['+143.01027', '+77.48399', '-1.45451', '-13.25502', '+3.51525', '+2.68166']  min=-13.25502  #neg=2
+
+Trilinear Jacobian det on 9x9x9 interior grid:
+  min=-342.62000  max=+768.49971  mean=+93.71775  #neg=153/729
+
+Jacobian at cube center (u=v=w=0.5):
+  J = 
+[[-0.68777498 -1.74760545  1.82800501]
+ [-0.76728977  4.64130179  7.47080318]
+ [-1.83565248  4.59845597 -5.22669419]]
+  singular values: sigma_1=9.3700  sigma_2=6.8769  sigma_3=1.2479
+  det(J)=+80.41175  condition number sigma_1/sigma_3=7.51
+
+SVD at parametric corners (sigma_1, sigma_2, sigma_3):
+  corner 0 (u,v,w)=(0,0,0): sigma=(26.583,13.145,1.003)  det=+350.45729
+  corner 1 (u,v,w)=(1,0,0): sigma=(28.450,10.122,2.669)  det=+768.49971
+  corner 2 (u,v,w)=(0,1,0): sigma=(17.870,6.452,0.930)  det=+107.18777
+  corner 3 (u,v,w)=(1,1,0): sigma=(16.335,7.583,2.766)  det=-342.62000
+  corner 4 (u,v,w)=(0,0,1): sigma=(10.137,4.779,0.403)  det=+19.54001
+  corner 5 (u,v,w)=(1,0,1): sigma=(13.311,4.609,0.042)  det=+2.57998
+  corner 6 (u,v,w)=(0,1,1): sigma=(6.596,2.591,1.207)  det=-20.63035
+  corner 7 (u,v,w)=(1,1,1): sigma=(6.264,4.051,0.542)  det=+13.75481
+  Saved C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\figures\last_fold_cube_input.png
+
+Corner shifts (BEST_1fold - INPUT):
+  corner 0: delta=(-8.0166,+10.4906,-2.6254)  |delta|=13.4615
+  corner 1: delta=(+3.1501,-2.1090,+11.5928)  |delta|=12.1969
+  corner 2: delta=(+2.3855,+0.6019,-6.9048)  |delta|=7.3300
+  corner 3: delta=(-3.2900,-0.6133,-2.1255)  |delta|=3.9646
+  corner 4: delta=(-0.6203,+3.1420,+0.7097)  |delta|=3.2804
+  corner 5: delta=(-0.3067,+4.0792,+2.4254)  |delta|=4.7557
+  corner 6: delta=(+0.0382,+3.9302,-4.0367)  |delta|=5.6341
+  corner 7: delta=(+0.3315,+3.9844,-1.1703)  |delta|=4.1659
+
+Total corner movement: sum|delta|=21.9522

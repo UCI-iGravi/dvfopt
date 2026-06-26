@@ -1,0 +1,23 @@
+Loading B0039 + z=10..14 chunk...
+
+Stage 1: 2D auto_slp on z=10..14
+  z=10: feas=True wall=163.6s
+  z=11: feas=True wall=166.2s
+  z=12: feas=True wall=51.4s
+  z=13: feas=True wall=43.2s
+  z=14: feas=True wall=40.6s
+
+Stage 1 stacked: 3D shape=(3, 5, 320, 456)  n_neg=6368 (0.1828%)  min_T=-1.1563  wall=465.1s
+
+Stage 2: M10Tet (HarmonicALMBarrier3DStrategy) global 3D pass...
+
+Stage 2 wall: 1129.2s
+
+=== Final ===
+  shape:                (3, 5, 320, 456)
+  n_neg (V<=0):         0
+  n_below_threshold:    49
+  min_T:                +0.004851
+  total L1 vs input:    879709.1
+  100% feasible:        False
+  total wall:           1594.5s

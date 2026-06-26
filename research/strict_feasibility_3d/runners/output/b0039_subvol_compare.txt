@@ -1,0 +1,3 @@
+B0039 24x24x24 subvolume:  shape=(3, 25, 25, 25)  init n_neg=66627  min_T=-3.0723
+  m10            INF  n_neg=    13  min_T=-0.0002  L1=  19448.50  ( 109.0s)
+  m14            INF  n_neg= 37402  min_T=-1.3393  L1=  21849.21  (  67.9s)

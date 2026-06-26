@@ -1,0 +1,68 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  unfixable=94  min_T=-0.013450
+19 clusters, sizes: [21, 16, 13, 10, 5, 5, 4, 4, 3, 2]
+
+--- Cluster 1/19: 21 target + 65 ring ---
+  (21 target + 65 ring) cubes, 684 vars: cube_feas=63/86  min_V=-0.034821  L1_added=273.2  status=0  wall=766.1s
+
+--- Cluster 2/19: 16 target + 41 ring ---
+  (16 target + 41 ring) cubes, 417 vars: cube_feas=39/57  min_V=-0.012387  L1_added=137.0  status=0  wall=299.4s
+
+--- Cluster 3/19: 13 target + 36 ring ---
+  (13 target + 36 ring) cubes, 396 vars: cube_feas=29/49  min_V=-0.002898  L1_added=108.2  status=0  wall=242.0s
+
+--- Cluster 4/19: 10 target + 44 ring ---
+  (10 target + 44 ring) cubes, 465 vars: cube_feas=41/54  min_V=-0.002819  L1_added=98.5  status=0  wall=462.3s
+
+--- Cluster 5/19: 5 target + 24 ring ---
+  (5 target + 24 ring) cubes, 300 vars: cube_feas=29/29  min_V=+0.010209  L1_added=19.6  status=0  wall=245.7s
+
+--- Cluster 6/19: 5 target + 19 ring ---
+  (5 target + 19 ring) cubes, 222 vars: cube_feas=24/24  min_V=+0.010000  L1_added=5.0  status=0  wall=137.1s
+
+--- Cluster 7/19: 4 target + 17 ring ---
+  (4 target + 17 ring) cubes, 198 vars: cube_feas=21/21  min_V=+0.010000  L1_added=4.9  status=0  wall=106.1s
+
+--- Cluster 8/19: 4 target + 16 ring ---
+  (4 target + 16 ring) cubes, 180 vars: cube_feas=20/20  min_V=+0.010000  L1_added=3.4  status=0  wall=88.7s
+
+--- Cluster 9/19: 3 target + 14 ring ---
+  (3 target + 14 ring) cubes, 174 vars: cube_feas=17/17  min_V=+0.010028  L1_added=6.5  status=0  wall=64.9s
+
+--- Cluster 10/19: 2 target + 10 ring ---
+  (2 target + 10 ring) cubes, 132 vars: cube_feas=12/12  min_V=+0.010000  L1_added=2.6  status=0  wall=36.2s
+
+--- Cluster 11/19: 2 target + 12 ring ---
+  (2 target + 12 ring) cubes, 168 vars: cube_feas=8/14  min_V=-0.000093  L1_added=29.6  status=0  wall=45.3s
+
+--- Cluster 12/19: 2 target + 12 ring ---
+  (2 target + 12 ring) cubes, 180 vars: cube_feas=14/14  min_V=+0.010000  L1_added=2.6  status=0  wall=58.4s
+
+--- Cluster 13/19: 1 target + 5 ring ---
+  (1 target + 5 ring) cubes, 84 vars: cube_feas=6/6  min_V=+0.010000  L1_added=0.5  status=1  wall=8.9s
+
+--- Cluster 14/19: 1 target + 5 ring ---
+  (1 target + 5 ring) cubes, 84 vars: cube_feas=6/6  min_V=+0.010000  L1_added=0.5  status=0  wall=10.9s
+
+--- Cluster 15/19: 1 target + 5 ring ---
+  (1 target + 5 ring) cubes, 84 vars: cube_feas=6/6  min_V=+0.010000  L1_added=1.2  status=2  wall=9.7s
+
+--- Cluster 16/19: 1 target + 6 ring ---
+  (1 target + 6 ring) cubes, 96 vars: cube_feas=7/7  min_V=+0.010000  L1_added=0.7  status=1  wall=1.4s
+
+--- Cluster 17/19: 1 target + 5 ring ---
+  (1 target + 5 ring) cubes, 84 vars: cube_feas=6/6  min_V=+0.010000  L1_added=0.5  status=1  wall=0.8s
+
+--- Cluster 18/19: 1 target + 6 ring ---
+  (1 target + 6 ring) cubes, 96 vars: cube_feas=6/7  min_V=-0.000039  L1_added=28.7  status=0  wall=12.3s
+
+--- Cluster 19/19: 1 target + 6 ring ---
+  (1 target + 6 ring) cubes, 96 vars: cube_feas=7/7  min_V=+0.010000  L1_added=0.4  status=0  wall=13.5s
+
+=== Final ===
+  total intra-cluster L1: 723.8
+  global n_neg: 1312
+  global n<0.01: 2762
+  global min_T: -50.430021
+  global L1 from input: 722.8
+  STRICT 100% feas: False

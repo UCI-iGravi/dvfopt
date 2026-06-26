@@ -96,6 +96,30 @@ def _m10_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
     return solver.fit(phi_in_3dhw).corrected
 
 
+def _m10_fast_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
+    """Cheaper m10 variant that disables the barrier polish stage.
+
+    Equivalent to harmonic + ALM only, no log-barrier interior-point
+    polish. Saves the 100-200-iter polish loop, which is ~50% of m10
+    wall on small cluster crops where the outer SLP polishes L1
+    anyway. Mirrors the 2D `m14_fast` pattern used by `cluster_slp`."""
+    from dvfopt import (
+        HarmonicALMBarrier3DStrategy,
+        Tet6Constraint3D,
+        L1Objective,
+        Solver,
+    )
+
+    D, H, W = phi_in_3dhw.shape[1:]
+    solver = Solver(
+        constraint=Tet6Constraint3D(shape=(D, H, W)),
+        objective=L1Objective(eps=1e-4),
+        strategy=HarmonicALMBarrier3DStrategy(polish=False),
+        threshold=threshold,
+    )
+    return solver.fit(phi_in_3dhw).corrected
+
+
 def _build_seed(phi_in_3dhw: np.ndarray, threshold: float, seed) -> np.ndarray:
     if isinstance(seed, np.ndarray):
         if seed.shape != phi_in_3dhw.shape:
@@ -105,6 +129,8 @@ def _build_seed(phi_in_3dhw: np.ndarray, threshold: float, seed) -> np.ndarray:
         return seed.astype(np.float64).copy()
     if seed == 'm10':
         return _m10_tet_seed(phi_in_3dhw, threshold)
+    if seed == 'm10_fast':
+        return _m10_fast_tet_seed(phi_in_3dhw, threshold)
     if seed == 'm14':
         return _m14_tet_seed(phi_in_3dhw, threshold)
     if seed == 'zero':

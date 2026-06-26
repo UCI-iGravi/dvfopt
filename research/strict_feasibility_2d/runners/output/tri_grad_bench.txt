@@ -1,0 +1,52 @@
+
+========== sparsity=0.0 ==========
+
+=== B0039 slice    shape=(320, 456)  iters=200 ===
+  equivalence  max_abs_err=1.09e-13  rel=2.39e-14
+  numpy                 200 iter    4.706 s  (23529.4 us/call)
+  numba                 200 iter    0.519 s  ( 2596.3 us/call)
+  speedup      9.06x
+
+=== small cluster  shape=(12, 16)  iters=5000 ===
+  equivalence  max_abs_err=1.87e-15  rel=5.39e-16
+  numpy                5000 iter    0.480 s  (   96.0 us/call)
+  numba                5000 iter    0.032 s  (    6.3 us/call)
+  speedup      15.18x
+
+=== med cluster    shape=(30, 40)  iters=2000 ===
+  equivalence  max_abs_err=7.33e-15  rel=2.06e-15
+  numpy                2000 iter    0.243 s  (  121.6 us/call)
+  numba                2000 iter    0.024 s  (   11.8 us/call)
+  speedup      10.33x
+
+=== large cluster  shape=(80, 100)  iters=500 ===
+  equivalence  max_abs_err=2.60e-14  rel=6.89e-15
+  numpy                 500 iter    0.129 s  (  258.9 us/call)
+  numba                 500 iter    0.022 s  (   44.2 us/call)
+  speedup      5.86x
+
+========== sparsity=0.99 ==========
+
+=== B0039 slice    shape=(320, 456)  iters=200 ===
+  equivalence  max_abs_err=7.16e-14  rel=3.38e-14
+  numpy                 200 iter    4.490 s  (22451.1 us/call)
+  numba                 200 iter    0.379 s  ( 1895.1 us/call)
+  speedup      11.85x
+
+=== small cluster  shape=(12, 16)  iters=5000 ===
+  equivalence  max_abs_err=4.44e-16  rel=8.27e-16
+  numpy                5000 iter    0.412 s  (   82.5 us/call)
+  numba                5000 iter    0.026 s  (    5.2 us/call)
+  speedup      15.99x
+
+=== med cluster    shape=(30, 40)  iters=2000 ===
+  equivalence  max_abs_err=3.47e-15  rel=3.46e-15
+  numpy                2000 iter    0.223 s  (  111.7 us/call)
+  numba                2000 iter    0.014 s  (    7.1 us/call)
+  speedup      15.72x
+
+=== large cluster  shape=(80, 100)  iters=500 ===
+  equivalence  max_abs_err=1.04e-14  rel=6.78e-15
+  numpy                 500 iter    0.154 s  (  307.4 us/call)
+  numba                 500 iter    0.009 s  (   18.7 us/call)
+  speedup      16.43x

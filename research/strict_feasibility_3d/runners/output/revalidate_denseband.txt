@@ -1,0 +1,381 @@
+dense band (3, 16, 320, 456) n_neg_in=118
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+dense band (3, 16, 320, 456) n_neg_in=118
+dense band (3, 16, 320, 456) n_neg_in=118
+dense band (3, 16, 320, 456) n_neg_in=118
+dense band (3, 16, 320, 456) n_neg_in=118
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=46272, pipe_handle=2396)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_revalidate_denseband.py", line 11, in <module>
+    out, rep = correct_dvf_3d(phi, threshold=0.01, n_workers=4, thorough=True, verbose=1)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\pipeline_3d.py", line 189, in correct_dvf_3d
+    cur, info = active_band_alm_recovery_3d(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\core\wallbreakers\_coupled_kring_3d.py", line 729, in active_band_alm_recovery_3d
+    results = list(ex.map(
+                   ~~~~~~^
+        _solve_band_crop,
+        ^^^^^^^^^^^^^^^^^
+        [(c, threshold) for c in crops],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ))
+    ^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 832, in map
+    results = super().map(partial(_process_chunk, fn),
+                          itertools.batched(zip(*iterables), chunksize),
+                          timeout=timeout)
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 608, in map
+    fs = [self.submit(fn, *args) for args in zip(*iterables)]
+          ~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 803, in submit
+    self._adjust_process_count()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 762, in _adjust_process_count
+    self._spawn_process()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 780, in _spawn_process
+    p.start()
+    ~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+                  ~~~~~~~~~~~^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\context.py", line 337, in _Popen
+    return Popen(process_obj)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\popen_spawn_win32.py", line 47, in __init__
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 164, in get_preparation_data
+    _check_not_importing_main()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 140, in _check_not_importing_main
+    raise RuntimeError('''
+    ...<16 lines>...
+    ''')
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=46272, pipe_handle=2376)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+        To fix this issue, refer to the "Safe importing of main module"
+        section in https://docs.python.org/3/library/multiprocessing.html
+        
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_revalidate_denseband.py", line 11, in <module>
+    out, rep = correct_dvf_3d(phi, threshold=0.01, n_workers=4, thorough=True, verbose=1)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\pipeline_3d.py", line 189, in correct_dvf_3d
+    cur, info = active_band_alm_recovery_3d(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\core\wallbreakers\_coupled_kring_3d.py", line 729, in active_band_alm_recovery_3d
+    results = list(ex.map(
+                   ~~~~~~^
+        _solve_band_crop,
+        ^^^^^^^^^^^^^^^^^
+        [(c, threshold) for c in crops],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ))
+    ^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 832, in map
+    results = super().map(partial(_process_chunk, fn),
+                          itertools.batched(zip(*iterables), chunksize),
+                          timeout=timeout)
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 608, in map
+    fs = [self.submit(fn, *args) for args in zip(*iterables)]
+          ~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 803, in submit
+    self._adjust_process_count()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 762, in _adjust_process_count
+    self._spawn_process()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 780, in _spawn_process
+    p.start()
+    ~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+                  ~~~~~~~~~~~^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\context.py", line 337, in _Popen
+    return Popen(process_obj)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\popen_spawn_win32.py", line 47, in __init__
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 164, in get_preparation_data
+    _check_not_importing_main()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 140, in _check_not_importing_main
+    raise RuntimeError('''
+    ...<16 lines>...
+    ''')
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+        To fix this issue, refer to the "Safe importing of main module"
+        section in https://docs.python.org/3/library/multiprocessing.html
+        
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=46272, pipe_handle=2304)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_revalidate_denseband.py", line 11, in <module>
+    out, rep = correct_dvf_3d(phi, threshold=0.01, n_workers=4, thorough=True, verbose=1)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\pipeline_3d.py", line 189, in correct_dvf_3d
+    cur, info = active_band_alm_recovery_3d(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\core\wallbreakers\_coupled_kring_3d.py", line 729, in active_band_alm_recovery_3d
+    results = list(ex.map(
+                   ~~~~~~^
+        _solve_band_crop,
+        ^^^^^^^^^^^^^^^^^
+        [(c, threshold) for c in crops],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ))
+    ^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 832, in map
+    results = super().map(partial(_process_chunk, fn),
+                          itertools.batched(zip(*iterables), chunksize),
+                          timeout=timeout)
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 608, in map
+    fs = [self.submit(fn, *args) for args in zip(*iterables)]
+          ~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 803, in submit
+    self._adjust_process_count()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 762, in _adjust_process_count
+    self._spawn_process()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 780, in _spawn_process
+    p.start()
+    ~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+                  ~~~~~~~~~~~^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\context.py", line 337, in _Popen
+    return Popen(process_obj)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\popen_spawn_win32.py", line 47, in __init__
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 164, in get_preparation_data
+    _check_not_importing_main()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 140, in _check_not_importing_main
+    raise RuntimeError('''
+    ...<16 lines>...
+    ''')
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+        To fix this issue, refer to the "Safe importing of main module"
+        section in https://docs.python.org/3/library/multiprocessing.html
+        
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=46272, pipe_handle=2340)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_revalidate_denseband.py", line 11, in <module>
+    out, rep = correct_dvf_3d(phi, threshold=0.01, n_workers=4, thorough=True, verbose=1)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\pipeline_3d.py", line 189, in correct_dvf_3d
+    cur, info = active_band_alm_recovery_3d(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\core\wallbreakers\_coupled_kring_3d.py", line 729, in active_band_alm_recovery_3d
+    results = list(ex.map(
+                   ~~~~~~^
+        _solve_band_crop,
+        ^^^^^^^^^^^^^^^^^
+        [(c, threshold) for c in crops],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ))
+    ^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 832, in map
+    results = super().map(partial(_process_chunk, fn),
+                          itertools.batched(zip(*iterables), chunksize),
+                          timeout=timeout)
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 608, in map
+    fs = [self.submit(fn, *args) for args in zip(*iterables)]
+          ~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 803, in submit
+    self._adjust_process_count()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 762, in _adjust_process_count
+    self._spawn_process()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 780, in _spawn_process
+    p.start()
+    ~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+                  ~~~~~~~~~~~^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\context.py", line 337, in _Popen
+    return Popen(process_obj)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\popen_spawn_win32.py", line 47, in __init__
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 164, in get_preparation_data
+    _check_not_importing_main()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\multiprocessing\spawn.py", line 140, in _check_not_importing_main
+    raise RuntimeError('''
+    ...<16 lines>...
+    ''')
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+        To fix this issue, refer to the "Safe importing of main module"
+        section in https://docs.python.org/3/library/multiprocessing.html
+        
+Traceback (most recent call last):
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_revalidate_denseband.py", line 11, in <module>
+    out, rep = correct_dvf_3d(phi, threshold=0.01, n_workers=4, thorough=True, verbose=1)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\pipeline_3d.py", line 189, in correct_dvf_3d
+    cur, info = active_band_alm_recovery_3d(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\dvfopt\core\wallbreakers\_coupled_kring_3d.py", line 729, in active_band_alm_recovery_3d
+    results = list(ex.map(
+        _solve_band_crop,
+        [(c, threshold) for c in crops],
+    ))
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\process.py", line 617, in _chain_from_iterable_of_lists
+    for element in iterable:
+                   ^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Andy\anaconda3\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.

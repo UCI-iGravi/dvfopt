@@ -1,0 +1,9 @@
+Input: 118 fold cells
+After 3x3x3 smoothing: 480 fold cells  (L1_from_input=356215.6)
+After 5x5x5 smoothing: 430 fold cells  (L1_from_input=440979.9)
+After 7x7x7 smoothing: 316 fold cells  (L1_from_input=513184.4)
+
+Selective smoothing (only fold cells, 5x5x5 average):
+  result: 601 folds  L1_from_input=1975.2
+
+Note: smoothing may CREATE new folds at high-shear regions.

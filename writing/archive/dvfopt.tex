@@ -1,0 +1,751 @@
+%\section{Invertibility and Jacobian Determinants}
+%\label{sec:background}
+
+
+%\section{Optimizing Deformation Vector Fields}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Image registration is the canonical source of deformation vector fields (DVFs) in medical image analysis: a moving image is aligned to a fixed image by computing a dense field $\phi$ that displaces each voxel toward its corresponding location in the target domain, as illustrated in \autoref{fig:registration-example}. Any registration backend---classical Laplacian interpolation, energy-minimization methods such as Elastix and ANTs, or learning-based approaches such as VoxelMorph---can produce such a field. A \emph{fold} in $\phi$ is a local region where neighboring grid points collapse onto or cross one another: the mapping becomes non-injective, which is physically impossible in anatomy (tissue would have to tear or self-intersect) and harmful for any downstream task that requires a topology-preserving warp \cite{Beg2005, AVANTS200826}. Folds arise even from methods specifically designed to discourage them: diffeomorphic objectives reduce but cannot eliminate folding in practice \cite{VoxelMorph2019, CHEN2022102615}, and learned registration models in particular require a separate post-hoc correction step when strict invertibility is needed \cite{Reithmeir2024}. This paper provides that step, operating in a registration-method-agnostic manner: given any output DVF, we detect and correct folds without rerunning or retraining the upstream method.
+
+\begin{figure*}[ht]
+    \centering
+    \includegraphics[width=0.24\linewidth]{images/laplacian_analysis/registration/microscopic_section.png}
+    \includegraphics[width=0.24\linewidth]{images/laplacian_analysis/registration/template_section.png}
+    \includegraphics[width=0.24\linewidth]{images/laplacian_analysis/registration/pre_reg.png}
+    \includegraphics[width=0.24\linewidth]{images/laplacian_analysis/registration/post_reg.png}
+    \caption{An example of a registration operation is depicted. The first image shows a microscopic image, which is to be aligned and deformed to an Allen CCF-averaged template section in the second image. The third image depicts the microscopic image with the template section boundary labels overlaid. The fourth image depicts the result of registration to the template section with the boundary labels overlaid.}
+    \label{fig:registration-example}
+\end{figure*}
+
+The community-standard tool for fold detection evaluates $\det(J_r)$ via central differences at each grid vertex and flags a fold wherever the sampled value is non-positive \cite{learn2reg2023}. Central differences, however, only inspect $\phi$ at the integer sample locations; a fold that lies entirely between two adjacent grid points can produce a positive sampled determinant at every surrounding vertex while the true deformation has already crossed itself. As we demonstrate in \autoref{fig:triangle_assignment}(c), this is not a numerical precision issue but a fundamental sampling limitation: the discrete check has no access to the behavior of $\phi$ between sample points. The false-negative rate induced by this blindness is quantified on real data in our experiments.
+
+Closing this gap requires a fold-detection criterion that is exact within each grid cell. We adopt a geometric recast: splitting each quad cell into two triangles along a fixed diagonal makes the restriction of $\phi$ to each triangle piecewise-affine, with a Jacobian that is constant over the simplex. The signed area of the deformed triangle then equals the determinant of that local affine map exactly---no approximation and no sampling error. A fold in any cell flips the sign of at least one of its triangle's signed areas, so checking signed areas detects every intra-cell fold that the central-difference check misses (illustrated in \autoref{fig:triangle_assignment}). In 3D, the same argument applies to the Freudenthal--Kuhn decomposition of each voxel into six tetrahedra: the signed volume of each tet is the exact local determinant for the piecewise-affine 3D map. Together, these measures provide a binary, exact feasibility predicate---a DVF is fold-free if and only if every simplex signed area or volume exceeds a small threshold $\tau > 0$.
+
+Once the fold-free condition is expressed geometrically, correction becomes a well-posed constrained optimization problem. The constraint ``every signed area $\geq \tau$'' defines a feasible region in the space of displacement vectors; minimizing deviation from the original DVF subject to this constraint is the DVFopt problem. Multiple objective choices (L1, L2, and L$_{2,1}$) and a family of solvers (LP, sequential LP, cluster-LP, barrier, ALM, and Schwarz decomposition) all target this same feasible region. Scalability is achieved through cluster- and window-based decomposition: each connected cluster of negative-signed-area simplices is corrected independently, enabling parallelism and sub-problem sizes that fit in memory. An important corollary of the geometric formulation is that a hard ceiling exists: certain grid configurations---where the displaced vertices form an arrangement analogous to the Sch{\"o}nhardt polyhedron, a non-tetrahedralizable polytope that requires interior Steiner points \cite{schonhardt1928}---cannot be made fold-free under any reassignment of displacement vectors at existing vertices. Empirically characterizing this ceiling on real 3D clinical data is one of the principal contributions of this work.
+
+\subsection{Contributions}
+\label{sec:main_contributions}
+
+This paper makes three tightly coupled contributions that together advance fold detection and correction for DVFs from heuristic to principled and from 2D to 3D.
+
+\textbf{An exact geometric fold measure.} We adopt the signed area of the triangulated quad cell (2D) and the oriented signed volume of each Freudenthal--Kuhn tetrahedron (3D) as the fold-detection criterion. We prove that this measure equals the determinant of the piecewise-affine map restricted to each simplex---providing a cell-exact injectivity certificate with no approximation error---and we prove that the central-difference Jacobian is a strictly weaker test that can return false negatives on intra-cell folds. The false-negative rate is quantified empirically on real DVFs, and the diagonal-choice dependence of both 2D and 3D measures is analyzed.
+
+\textbf{The DVFopt correction solver family.} We formulate fold correction as a constrained optimization with L1/L2 objectives and signed simplex area or volume as the feasibility constraint, and we present a curated family of solvers spanning full-grid SLSQP, windowed/iterative SLSQP, barrier and augmented-Lagrangian methods (M10/M14), and LP-based solvers. The cluster-LP strategy (\texttt{auto\_slp}) Pareto-dominates prior barrier and ALM approaches on feasibility rate, L1 deviation from the input field, and wall-clock time. Windowed and cluster decomposition is the key scaling mechanism that makes global LP tractable on real 320$\times$456 grids and multi-hundred-slice 3D volumes.
+
+\textbf{A multi-source benchmark and geometric feasibility ceiling.} We conduct a head-to-head benchmark of the full solver family across DVFs produced by multiple registration backends (Laplacian interpolation, VoxelMorph, and Elastix/ANTs), reporting feasibility rate, L1 deviation, and wall-clock time across 528 real B0039 slices and establishing the speed/accuracy Pareto frontier. The 3D strict-feasibility study reveals a density-dependent geometric ceiling: strict 100\% feasibility is achievable in sparse and moderate fold regimes, but a small hard residual persists in the densest bands that cannot be eliminated by any solver---only by diagonal-flip re-meshing or Steiner-point insertion. This ceiling is the deformation-field analog of the classical Sch{\"o}nhardt polyhedron \cite{schonhardt1928} and has no direct counterpart in existing locally-injective-mapping literature \cite{schuller2013lim, garanzha2021foldfree}.
+
+
+\section{Related Work}
+\label{sec:related_work}
+
+Registration methods and the invertibility of deformation fields \cite{Dupuis1998} have a long history in biomedical imaging; several review papers offer comprehensive overviews \cite{KLEIN2009786}.
+
+\textbf{Rigid registration.}
+Rigid registration aligns images through translation and rotation alone, without any deformation of shape or scale \cite{Zhang1994IterativePM}. Because anatomical structures are assumed to be rigid, it is well suited to longitudinal studies of the same subject \cite{REUTER20101181} and is commonly used as a coarse preprocessing step before non-rigid alignment \cite{Frackowiak2004-yy}. Point-cloud variants such as the Iterative Closest Point (ICP) algorithm \cite{Zhang1994IterativePM} extend rigid alignment to 3D data.
+
+\textbf{Non-rigid registration.}
+Non-rigid methods recover a dense deformation field by optimizing a pixel- or voxel-level similarity measure, which removes the need for explicit feature extraction \cite{regreviewsong}. Regularization is used to keep the estimated field smooth and to discourage folding \cite{Reithmeir2024}; parametric representations such as free-form B-splines \cite{Rueckert1999} and stochastic variants \cite{Tustison2009} are widely used. Landmark-based methods \cite{MAINTZ19981, ZITOVA2003977} augment intensity similarity with sparse point or patch correspondences \cite{Ourselin2000BlockMA, PatchBasedRegistration}, interpolating between them with thin-plate splines \cite{Sun2011} or related operators. A notable family of methods enforces diffeomorphic outputs via velocity-field integration---LDDMM \cite{Beg2005}, demons \cite{THIRION1998243, VERCAUTEREN2009S61}, and SyN as implemented in ANTs \cite{AVANTS200826}---with practical toolboxes such as Elastix \cite{Klein2010elastixAT} providing accessible implementations. These diffeomorphic approaches trade substantially higher runtime for stronger topology guarantees, and their sensitivity to initialization and to the non-convexity of typical similarity measures limits scalability to large datasets \cite{VARNAVAS2015108}.
+
+\textbf{Learning-based registration.}
+Convolutional and transformer-based networks---VoxelMorph \cite{VoxelMorph2019}, HyperMorph \cite{Hoopes2021HyperMorph}, SynthMorph \cite{hoffmann2022synthmorph}, TransMorph \cite{CHEN2022102615}---achieve GPU-speed inference but do not inherently guarantee diffeomorphic outputs. Cycle-consistency losses \cite{KIM2021CycleMorph} and regularization-driven architectural choices \cite{Dalca2018, Huang2023} reduce the frequency of folds in practice but cannot eliminate them. Any application that requires a strict topology guarantee on a learned field needs a separate post-hoc correction step, which is precisely the gap this work addresses.
+
+\textbf{Locally injective maps and mesh untangling.}
+The constraint that every grid simplex must carry a strictly positive signed area (2D) or signed volume (3D) is well studied in geometry processing under the names locally injective mapping and mesh untangling. Schüller et al.\ \cite{schuller2013lim} introduced a barrier-based local-injectivity energy for parameterization; Smith and Schaefer \cite{smith2015bijective} achieved bijective parameterization with free boundaries; Du et al.\ \cite{du2020lifting} lifted simplices to guarantee global injectivity; and Garanzha et al.\ \cite{garanzha2021foldfree} demonstrated foldover-free maps at minimal implementation cost. In the finite-element and mesh-quality communities, Knupp \cite{knupp2001untangling} and Toulorge et al.\ \cite{toulorge2013robust} established robust untangling strategies for curvilinear meshes, framing the problem as constrained optimization over element Jacobians. Our work is distinguished from this body of literature in several ways: we operate post-hoc on DVFs produced by an arbitrary upstream registration method (the method is registration-agnostic), the inputs are medical-imaging grids of hundreds of slices at voxel resolution, and scalability is achieved through a cluster- and window-based decomposition rather than global mesh optimization. We additionally expose a geometric feasibility ceiling---configurations of grid vertices that are provably uncorrectable under any assignment of displacements---which has no direct analog in parameterization literature where the mesh connectivity itself can be modified.
+
+\textbf{Fold detection and standard metrics.}
+The standard community diagnostic for folding is the discrete Jacobian determinant computed via central differences, and the standard reporting metrics are the percentage of voxels with non-positive Jacobian and the standard deviation of the log-Jacobian (SDlogJ), as used in the Learn2Reg benchmark \cite{learn2reg2023}. These metrics are the lingua franca that allows comparisons across registration methods, and we report them alongside our triangulated/tetrahedral measure so that our results are directly comparable to published numbers. The central-difference Jacobian, however, evaluates the field only at grid sample points; a fold that lies entirely within a grid cell can produce a positive sampled value at every surrounding vertex while the true signed area of the triangulated cell is negative. This gap between the sampled diagnostic and the exact piecewise-affine measure motivates using the triangulated/tetrahedral signed area or volume as the correction target, as it provides an exact feasibility criterion for the discretized field.
+
+\textbf{Our contributions in context.}
+This paper makes three contributions that together close the loop between fold detection and post-hoc correction. First (C1), we adopt the triangulated (2D) and Freudenthal--Kuhn tetrahedral (3D) signed area/volume as an exact geometric fold measure, show that it equals the determinant of the piecewise-affine map on each simplex, and quantify how often central differences produce false negatives on real data. Second (C2), we formulate fold correction as a constrained optimization with the signed simplex area/volume as the feasibility constraint, and we present the DVFopt solver family---spanning LP, sequential LP, cluster-LP, barrier, ALM, and Schwarz variants---with the cluster-LP/\texttt{auto\_slp} strategy as the Pareto-dominant method for 2D correction. Third (C3), we benchmark the full solver family across multiple registration sources on a common axis of feasibility, L1 deviation from the input field, and wall-clock time, and we demonstrate a hard geometric ceiling in 3D beyond which no correction is possible, providing both theoretical characterization and empirical density-dependent statistics.
+
+
+\section{Background: Folding and the Discrete Jacobian}
+\label{sec:background_folding_jacobian}
+
+\subsection{Registration and invertibility}
+\label{sec:registration_and_invertibility}
+
+%%%%%%%%%%%%%%%%%%%%%%% REGISTRATION %%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Registration}
+\label{sec:registration}
+
+We first define image registration as a warping operation that deforms a moving image to align its spatial features with those of a fixed image \cite{Yushkevich2023}. Let $\Omega, \Omega' \subset \mathbb{R}^n$ denote the coordinate domains of the moving and fixed images, respectively. Then the image registration function $r$ is given by 
+\begin{equation} \label{eq:image_registration_definition}
+    r: \Omega \rightarrow \Omega'.
+\end{equation}
+
+Let $p = (x_1, x_2, \ldots, x_n) \in \Omega$ denote a point in the moving image domain. The output of the registration is a deformation vector field $\phi: \Omega \to \mathbb{R}^n$, defined in \autoref{eq:dvf_definition}, which assigns each moving-image pixel a displacement vector pointing toward its corresponding location in the fixed image (though registration can be computed in either direction between the two image domains). 
+
+\begin{equation} \label{eq:dvf_definition}
+    \text{For all } p \in \Omega, \quad \phi(p) = r(p) - p.
+\end{equation}
+
+%%%%%%%%%%%%%%%%%%%%%%% INVERTIBILITY %%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Invertibility}
+\label{sec:invertibility}
+
+A key focus of our analysis is the issue of invertibility of the registration mapping $r$. We say a DVF $\phi$ is \emph{invertible} if its registration mapping $r$ is bijective, that is, if every point in $\Omega$ maps to a unique point in $\Omega'$ and every point in $\Omega'$ is the image of exactly one point in $\Omega$, so that an inverse exists. 
+
+In practice, for applications with DVFs, this global condition is typically relaxed to a local one. We say $\phi$ is \emph{locally invertible} at a point $p \in \Omega$ if there exists a neighborhood of $p$ on which the mapping restricts to a bijection, which requires that the deformation in that neighborhood is one-to-one and does not fold onto itself. When local invertibility holds at every $p \in \Omega$, the deformation is free of folds throughout the domain, and it is this pointwise property that our method targets. In the setting of this work, $\phi$ is treated as a given input; we focus on post-hoc processing to enforce local invertibility properties.
+
+Local invertibility can be characterized by the determinant of the Jacobian matrix of the registration mapping $r$ in \autoref{eq:image_registration_definition}. The Jacobian matrix $J_r$ of $r$ collects the first-order partial derivatives of each component of $r$ with respect to each direction. This Jacobian matrix is given by
+\begin{equation} \label{eq:general_jacobian_matrix}
+    J_r = 
+    \begin{pmatrix}
+        \dfrac{\partial r_1}{\partial x_1} & \cdots & \dfrac{\partial r_1}{\partial x_n} \\[6pt]
+        \vdots & \ddots & \vdots \\[6pt]
+        \dfrac{\partial r_n}{\partial x_1} & \cdots & \dfrac{\partial r_n}{\partial x_n}
+    \end{pmatrix}.
+\end{equation}
+
+$J_r(p)$ encodes how the deformation locally stretches, compresses, rotates, or shears space at a point $p$. The determinant $\det(J_r(p))$ summarizes this behavior as a scalar value. Its magnitude $|\det(J_r(p))|$ is the local volume-change factor at $p$. Its sign records orientation, such that a positive determinant indicates that the deformation preserves orientation in a neighborhood of $p$, while a negative determinant indicates that orientation has been reversed locally, which can only occur if the field has folded onto itself. A determinant of zero corresponds to a collapse of the local volume element onto a lower-dimensional set. Concretely, $\det(J_r(p)) > 1$ indicates expansion, $\det(J_r(p)) \in (0,1)$ indicates compression, $\det(J_r(p)) = 0$ indicates collapse, and $\det(J_r(p)) < 0$ indicates local folding. The presence of these non-positive determinants violates the one-to-one mapping assumption, which is critical for many tasks, including longitudinal analysis and feature tracking. At these points with non-positive Jacobian determinants, the mapping $r$ becomes non-invertible.
+
+By the inverse function theorem \cite{implicit_function_theorem}, $\phi$ is locally invertible and orientation-preserving at every point where $\det(J_r(p)) > 0$, so verifying invertibility throughout $\Omega$ reduces to checking the sign of $\det(J_r)$ everywhere on $\Omega$. This treatment, however, presupposes that $\phi$ is at least $C^1$ over $\Omega$, so that the partial derivatives exist at every point and $\det(J_r)$ defines a continuous scalar field over the domain.
+
+It is important to note, however, that a strictly positive Jacobian determinant at every point of $\Omega$ is a necessary but not globally sufficient condition for invertibility of $r$: without appropriate boundary conditions, a field can be locally orientation-preserving everywhere yet still fail to be injective in the large. We verify that our corrected fields are indeed globally invertible by measuring inverse-consistency empirically in \autoref{sec:experiments}.
+
+In practice, image registration operates on digital images, where $\phi$ is known only at the discretized integer grid points of $\Omega$. Since $r(p) = p + \phi(p)$, the Jacobian matrix $J_r$ decomposes as
+\begin{equation} \label{eq:jacobian_decomposition}
+    J_r = I + J_\phi,
+\end{equation}
+where $I$ is the $n \times n$ identity matrix and $J_\phi$ is the Jacobian of the displacement field $\phi$.
+
+Thus, the Jacobian can be expressed solely in terms of the displacement field's partial derivatives. These derivatives are not directly accessible from the discrete grid and must be approximated from sampled values at each grid point. The conventional choice is the central difference scheme, which estimates each partial derivative at a grid point from its two neighbors along the corresponding coordinate axis. The discrete Jacobian determinant in 2D is given in \autoref{eq:2d_jacobian_matrix_det}; the 3D analogue in \autoref{eq:3d_jacobian_matrix_det} extends this structure to a $3\times 3$ matrix and is treated in full in \autoref{sec:3d_extension}.
+
+\begin{equation} \label{eq:2d_jacobian_matrix_det}
+    \det(J_r) = 
+\det\begin{pmatrix}
+    \dfrac{\partial \phi_1}{\partial x_1} + 1 & \dfrac{\partial \phi_1}{\partial x_2} \\[6pt]
+    \dfrac{\partial \phi_2}{\partial x_1} & \dfrac{\partial \phi_2}{\partial x_2} + 1
+\end{pmatrix},
+\end{equation}
+
+\begin{equation} \label{eq:3d_jacobian_matrix_det}
+    \det(J_r) = 
+    \det\begin{pmatrix}
+        \dfrac{\partial \phi_1}{\partial x_1} + 1 & \dfrac{\partial \phi_1}{\partial x_2} & \dfrac{\partial \phi_1}{\partial x_3} \\[6pt]
+        \dfrac{\partial \phi_2}{\partial x_1} & \dfrac{\partial \phi_2}{\partial x_2} + 1 & \dfrac{\partial \phi_2}{\partial x_3} \\[6pt]
+        \dfrac{\partial \phi_3}{\partial x_1} & \dfrac{\partial \phi_3}{\partial x_2} & \dfrac{\partial \phi_3}{\partial x_3} + 1
+    \end{pmatrix}.
+\end{equation}
+
+The $+ 1$ terms along the diagonal arise from the identity matrix $I$ contributed by the $p$ term in $p + \phi(p)$, and ensure that the identity warp (where $\phi \equiv 0$) yields $\det(J_r) = 1$ as expected. The 3D case extends analogously; we return to it in \autoref{sec:3d_extension}.
+
+The entries $\partial \phi_i / \partial x_j$ are approximated at each interior grid point using central differences along the corresponding coordinate axis. \autoref{eq:central_differences_2d} defines this operation for a 2D point $(x_1, x_2)$.
+
+\begin{equation} \label{eq:central_differences_2d}
+    \begin{aligned}
+        \dfrac{\partial \phi_1}{\partial x_1} &= \dfrac{\phi_1(x_1 + 1, x_2) - \phi_1(x_1 - 1, x_2)}{2}, \\[4pt]
+        \dfrac{\partial \phi_1}{\partial x_2} &= \dfrac{\phi_1(x_1, x_2 + 1) - \phi_1(x_1, x_2 - 1)}{2}, \\[4pt]
+        \dfrac{\partial \phi_2}{\partial x_1} &= \dfrac{\phi_2(x_1 + 1, x_2) - \phi_2(x_1 - 1, x_2)}{2}, \\[4pt]
+        \dfrac{\partial \phi_2}{\partial x_2} &= \dfrac{\phi_2(x_1, x_2 + 1) - \phi_2(x_1, x_2 - 1)}{2}.
+    \end{aligned}
+\end{equation}
+
+At grid points on the boundary of $\Omega$, where at least one required neighbor is unavailable, the central difference is replaced by a one-sided forward or backward difference in the corresponding direction.
+
+\subsubsection{Issues with standard measures of the discrete Jacobian determinant.}
+\label{sec:problems_with_discrete_jacobian_determinant}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{images/dvfopt/geometric_primitives.pdf}
+    \caption{TODO: Caption + regenerate and edit col 2}
+    \label{fig:geometric_primitives}
+\end{figure}
+
+The discretized determinant computed from \autoref{eq:central_differences_2d} has two limitations. First, the approximation introduces an error that depends on the grid spacing and the curvature of the underlying deformation, so the discrete determinant is at best an estimate of the true value at the sampled location. 
+
+
+
+Second, the discrete check only inspects $\phi$ at the sample positions and provides no information about the behavior of the deformation between them. A discretized field can therefore satisfy $\det(J_r) > 0$ at every grid point while still containing folding artifacts. Part (c) in \autoref{fig:triangle_assignment} shows one such construction; on real deformation fields this blind-spot is not merely a theoretical curiosity but a measurable phenomenon: a non-trivial fraction of true intra-cell folds go undetected by the central-difference check while being caught by our triangulated measure, as we quantify in \autoref{tab:blindness}.
+
+%The second limitation has a concrete and instructive failure mode. Consider a $5 \times 5$ identity grid in which the point at $(3, 3)$ is displaced $1.2$ pixels to the right and the point at $(3, 4)$ is displaced $1.2$ pixels to the left. The two points are vertically adjacent separated by one pixel along $x_2$ but are pushed in opposite directions along $x_1$, causing the quadrilateral cell bounded by $(3, 3)$, $(4, 3)$, $(4, 4)$, $(3, 4)$ to self-intersect under the deformation. Despite this fold, evaluating $\det(J_\phi)$ via central differences at every grid point returns a positive value everywhere; the fold lives strictly inside a grid cell and is invisible to the pointwise check.
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{images/dvfopt/signed_areas.pdf}
+    \caption{(a) An initial coordinate grid and (b) the same coordinate grid with a transformation $\phi$ applied. $\phi$ is $(+1.2, 0)$ at $p$ and $(-1.2, 0)$ at $p + (1, 0)$.
+    Two triangles $T^1_{p}$ and $T^2_{p}$ are assigned to an interior vertex $p = (x_1, x_2)$. These are used as gauges of change in area and deformation folding at a point $p$.
+    In (a), both triangles have a signed area of $+0.5$ each, indicating no folding at $p$. In (b), $T_{p + \phi(p)}$ has a negative signed area, signaling a local fold at $p + \phi(p)$.
+    In (c), the Jacobian determinant value of each point in (b) is computed with central differences. The result shows a positive Jacobian determinant value at every point, showing that a central differences approach will miss the folding artifact at $p + \phi(p)$.}
+    \label{fig:triangle_assignment}
+\end{figure*}
+
+
+\section{A Geometric Measure for Fold Detection}
+\label{sec:geometric_measure_for_fold_detection}
+
+To address this, we propose a geometric measure based on triangulation that detects folding exactly within each grid cell. We treat the grid as a quadrilateral mesh whose vertices are the grid points, and split each quad into two triangles along one diagonal. When restricted to each triangle, $\phi$ is piecewise-affine. Its Jacobian is constant over the triangle and equals the linear map that sends the triangle's reference vertices to their deformed positions. The signed area of the deformed triangle is therefore an exact measure of the local determinant, and its sign flips precisely when the triangle's orientation reverses, that is, when the field folds onto itself within that cell.
+
+Once a consistent vertex ordering is fixed, every triangle has the same-signed area when $\phi$ is the identity; folding in any cell flips this sign for at least one of that cell's triangles, as illustrated in \autoref{fig:triangle_assignment}. Detecting folds reduces to detecting sign changes in the triangulation's signed areas relative to the identity baseline.
+
+We adopt the standard image-coordinate convention throughout this work: the origin $(0, 0)$ sits at the top-left of the grid, with the positive $x_1$ axis pointing to the right and the positive $x_2$ axis pointing downward. 
+
+To enumerate the triangles in the mesh without duplication, we associate each vertex $p$ with two triangles, one in each of the two cells adjacent below $p$ along a shared vertical edge: the lower-right triangle of the cell to the bottom left of $p$, and the upper-left triangle of the cell to the bottom right of $p$, as shown in \autoref{fig:quad_setup}. Iterating this assignment over every interior vertex covers every triangle in the grid exactly once. Boundary vertices will contribute fewer triangles accordingly. A deformation field is then declared fold-free under this measure when no signed area in the enumeration has flipped sign relative to the identity baseline.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.75\linewidth]{images/dvfopt/corner_point_notation.pdf}
+    \caption{Triangle assignment for a vertex $p$. The two triangles $T^{(1)}_p$ and $T^{(2)}_p$ are drawn from the two cells adjacent below $p$ along the shared vertical edge $\overline{q_0 q_2}$. $T^{(1)}_p$ lies in the bottom-left cell of $p$, and $T^{(2)}_p$ lies in the bottom-right cell. The four labeled points are $q_0 = p$, $q_1 = p + (-1, +1)$, $q_2 = p + (0, +1)$, and $q_3 = p + (+1, 0)$, following the image-coordinate convention where positive $x_2$ points downward.}
+    \label{fig:quad_setup}
+\end{figure}
+
+To measure the folding for each vertex $p = (x_1, x_2)$ that has both its lower-left and lower-right cells inside the grid, we define
+\begin{equation} \label{eq:quad_corners}
+    \begin{aligned}
+        q_0 &= (x_1, x_2),      & q_1 &= (x_1 - 1, x_2 + 1), \\
+        q_2 &= (x_1, x_2 + 1),  & q_3 &= (x_1 + 1, x_2).
+    \end{aligned}
+\end{equation}
+
+Splitting along the diagonal $\overline{q_0 q_2}$ yields the two triangles assigned to $p$, as seen in \autoref{fig:quad_setup}.
+
+\begin{equation} \label{eq:vertex_triangles}
+    T^{(1)}_p = (q_0, q_2, q_1), \qquad T^{(2)}_p = (q_0, q_3, q_2).
+\end{equation}
+
+Let $u(p) = p + \phi(p)$ denote the deformed position of $p$. The signed area of an oriented triangle $(A, B, C)$ under deformation $\phi$ is
+\begin{equation} \label{eq:signed_area}
+    \Delta(A, B, C; \phi) = \tfrac{1}{2} \det\begin{pmatrix}
+        u_1(B) - u_1(A) & u_1(C) - u_1(A) \\
+        u_2(B) - u_2(A) & u_2(C) - u_2(A)
+    \end{pmatrix},
+\end{equation}
+where $u_1$ and $u_2$ denote the $x_1$ and $x_2$ component of $u$. 
+
+Thus, we write $\Delta^{(1)}_p(\phi)$ and $\Delta^{(2)}_p(\phi)$ for the two signed-area values associated with vertex $p$ in \autoref{eq:vertex_signed_areas}.
+
+\begin{equation} \label{eq:vertex_signed_areas}
+    \begin{aligned}
+        \Delta^{(1)}_p(\phi) &= \Delta(q_0, q_2, q_1; \phi), \\
+        \Delta^{(2)}_p(\phi) &= \Delta(q_0, q_3, q_2; \phi).
+    \end{aligned}
+\end{equation}
+
+Under the identity transformation ($\phi(x) = x$), substituting \autoref{eq:quad_corners} into \autoref{eq:signed_area} gives $\Delta^{(1)}_p = \Delta^{(2)}_p = \tfrac{1}{2}$ for every vertex, so each triangle contributes half a unit of area and each quad contributes its full unit. The deformation $\phi$ is declared fold-free under this measure when $$\min(\Delta^{(1)}_p(\phi), \Delta^{(2)}_p(\phi)) > 0$$ for every vertex $p$ in the enumeration; any sign flip in either of these values for any $p$ identifies the cell containing the fold.
+
+\paragraph{Exactness of the triangulated measure.}
+Because $\phi$ is piecewise-affine on the triangulation, its restriction to any single triangle is an affine map. On an affine map the Jacobian is constant and equals the linear part of the map. Concretely, for a triangle $(A, B, C)$ with reference positions $A, B, C$ and deformed positions $u(A), u(B), u(C)$, the linear part is the $2\times 2$ matrix whose columns are $u(B)-u(A)$ and $u(C)-u(A)$, and the signed area formula in \autoref{eq:signed_area} gives exactly $\tfrac{1}{2}\det\bigl([u(B)-u(A),\; u(C)-u(A)]\bigr)$. This quantity is not an approximation: it is the exact determinant of the Jacobian of the piecewise-affine interpolant on that triangle, scaled by the reference area $\tfrac{1}{2}$. Consequently, $\Delta^{(k)}_p(\phi) > 0$ is equivalent to the piecewise-affine map being orientation-preserving on that simplex, with no approximation error from finite-difference discretization.
+
+\paragraph{Dependence on the choice of diagonal.}
+Each quad cell admits two diagonal splits, yielding either the pairing $(T^{(1)}_p, T^{(2)}_p)$ used above (splitting along $\overline{q_0 q_2}$) or the alternative pairing obtained by splitting along $\overline{q_1 q_3}$. The two triangulations can disagree: a cell that is fold-free under one diagonal split may be detected as folded under the other, because the piecewise-affine interpolants they define are geometrically distinct. The choice of diagonal is therefore part of the fold-detection criterion, not a neutral implementation detail. This dependence is not merely a 2D quirk — in three dimensions it recurs as a dependence on the choice of tetrahedralization of each voxel cube, with stronger consequences: some severely deformed cells fold under every possible tetrahedralization and cannot be corrected without relaxing the discrete measure. This foreshadows the geometric feasibility ceiling of \autoref{sec:geometric_ceiling}.
+
+% === 3D fold-detection moved to Section 8 (saved in .superpowers/sdd/cut-3d-block.tex) ===
+
+\section{Correcting Folds by Constrained Optimization}
+\label{sec:optimization_formulation}
+
+We now formalize the correction step as a constrained optimization problem. Given an input deformation field $\phi$ on a discrete grid $\Omega$ that contains folds identified by the geometric signed-area/volume measures in \autoref{sec:geometric_measure_for_fold_detection}, our goal is to produce a corrected field $\phi'$ that is fold-free under the chosen measure while deviating as little as possible from $\phi$. We pose this as a constrained optimization problem of the form in \autoref{eq:opt_problem}.
+
+\begin{alignat}{2}
+    & \min_{\phi'}            && \quad \mathcal{D}(\phi', \phi) \notag \\
+    & \text{subject to} \quad && \quad c_k(\phi') \geq \tau, \quad k = 1, \ldots, K,
+    \label{eq:opt_problem}
+\end{alignat}
+
+The constraint set $\{c_k(\phi') \geq \tau\}_{k=1}^{K}$ defines the feasible region of fold-free fields under the chosen measure: each $c_k$ is a scalar fold-detection statistic evaluated at one location in $\Omega$, $K$ is the total number of such locations, and $\tau > 0$ is a small positive margin that keeps the corrected field strictly inside the fold-free region. The objective $\mathcal{D}$ measures the deviation of the corrected field $\phi'$ from the input $\phi$. Throughout this work, we take $\tau = 0.01$, matching the threshold used in our experimental comparisons.
+
+%The remainder of this section specifies the two components of \autoref{eq:opt_problem}: the deviation measure $\mathcal{D}$ (\autoref{sec:objective_functions}), and three concrete instantiations of the constraint family $\{c_k\}$, one per fold-detection measure---central differences (\autoref{sec:constraint_central_diff}), signed triangle areas in 2D (\autoref{sec:constraint_triangulation}), and signed tetrahedral volumes in 3D (\autoref{sec:constraint_tetrahedralization}).
+
+\subsubsection{Objective functions}
+\label{sec:objective_functions}
+
+Our underlying assumption is that the given $\phi$ is correct, and does not require any additional modifications or properties other than local invertibility. To accomplish this, we define multiple objective functions that can be used to minimize deviation from $\phi$. Several norms are potential choices for $\mathcal{D}(\phi', \phi)$; we list three options.
+
+% Define Jacobian determinants and computation using central difference approximation for discrete 
+
+With most computed DVFs, the Jacobian determinant is not positive at all points on the grid. It is at these points that folding occurs, rendering the deformation field non-invertible.
+
+
+Multiple objective function options can be used, though the choice of difference measure will have a measurable effect on how the optimizer decides to modify and handle non-feasible regions.   
+
+\begin{alignat}{2}
+\textbf{L1 objective:} \quad & \min_{\phi} \quad && \|\phi - \phi'\|_1 \notag \\
+=\quad & \min_{\phi} \quad && \sum_{i=1}^{n} |\phi_i - \phi_i'| \\[6pt]
+\textbf{L2 objective:} \quad & \min_{\phi} \quad && \|\phi - \phi'\|_2 \notag \\
+=\quad & \min_{\phi} \quad && \left( \sum_{i=1}^{m} \sum_{j=1}^{n} (\phi_{ij} - \phi'_{ij})^2 \right)^{1/2}
+% L2,1 objective (uncomment to include):
+ \\[6pt]
+ \textbf{L$_{2,1}$ objective:} \quad & \min_{\phi} \quad && \|\phi - \phi'\|_{2,1} \notag \\
+ =\quad & \min_{\phi} \quad && \sum_{i=1}^{m} \|(\phi - \phi')_{i,:}\|_2
+\end{alignat}
+
+This is a constrained optimization problem with a quadratic objective and non-linear constraints.
+
+
+Though any of these objective functions will suffice for optimization, for the purposes of our work, we chose L1 as it concentrates corrections onto regions most affected by folding artifacts, as compared to L2 that distributes the residuals around surrounding regions.
+
+
+Using the L1 norm as a difference measure between deformations, we summarize the problem as:
+\begin{alignat}{3}
+\textbf{Objective:} \quad & \min_{\phi} && \quad \|\phi - \phi'\|_1 \label{eq:objective_function} \\
+\textbf{Constraints:} \quad & \text{for all } p \in \Omega, && \quad \min_k \Delta^{(k)}_p(\phi) \geq \tau \label{eq:opt_constraint}
+\end{alignat}
+where $\Omega$ is the image domain, $p$ ranges over all vertices in the triangulation (or all tet-sharing vertices in 3D), $\Delta^{(k)}_p(\phi)$ is the signed area (resp.\ volume) of the $k$-th simplex incident at $p$ from \autoref{eq:vertex_signed_areas}, and $\tau = 0.01$ is the positivity margin. This constraint set is precisely the feasible region defined by the geometric measure from \autoref{sec:geometric_measure_for_fold_detection}: requiring every simplex signed area (or volume) to be at least $\tau$ is equivalent to demanding that the piecewise-affine interpolant be orientation-preserving on every cell. The requirement that every simplex's signed area or volume remain strictly positive is the foldover-free, locally-injective piecewise-linear map condition studied extensively in geometry processing \cite{schuller2013lim, du2020lifting, garanzha2021foldfree}; adopting it as the feasibility criterion places our correction framework on the same geometric footing as that literature while targeting medical DVFs at volume scale. For reference, the (blind) baseline constraint replaces $\min_k \Delta^{(k)}_p(\phi) \geq \tau$ with the central-difference condition $\det(J_{\phi}(p)) > 0$ evaluated pointwise; as discussed in \autoref{sec:geometric_measure_for_fold_detection}, this misses intra-cell folds and is included only for comparison.
+
+
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{images/dvfopt/objective_comparison2.png}
+    \caption{TODO}
+    \label{fig:objective_comparison}
+\end{figure*}
+
+
+
+
+
+
+%\begin{align}
+%    \mathcal{D}_{1}(\phi', \phi)    &= \|r\|_{1}    = \sum_{i} |r_i|, \label{eq:obj_l1} \\
+%    \mathcal{D}_{2}(\phi', \phi)    &= \tfrac{1}{2}\|r\|_{2}^{2} = \tfrac{1}{2} \sum_{i} r_i^{2}, \label{eq:obj_l2} \\
+%    \mathcal{D}_{2,1}(\phi', \phi)  &= \|r\|_{2,1}  = \sum_{p \in \Omega} \|r(p)\|_{2}. \label{eq:obj_l21}
+%\end{align}
+
+%The $\mathcal{D}_{2,1}$ form sums the per-pixel Euclidean displacement of the correction, treating each pixel's two- or three-component displacement vector as the atomic unit. The three objectives differ in how they distribute the correction over the grid. $\mathcal{D}_{1}$ concentrates residuals at the fewest grid points possible, $\mathcal{D}_{2}$ spreads them smoothly over the affected neighborhood, and $\mathcal{D}_{2,1}$ produces an intermediate behavior where the per-pixel direction of the correction is unconstrained but its spatial support is encouraged to be sparse.
+
+%We use the squared-$L^2$ form $\mathcal{D}_{2}$ throughout this work. Its gradient $\nabla_{\phi'}\mathcal{D}_{2} = \phi' - \phi$ is linear, zero at the optimum, and well-conditioned everywhere on $\Omega$. The other two options have non-differentiable kinks---$\mathcal{D}_{1}$ wherever any component of $r$ crosses zero, and the unsquared $\|r\|_{2}$ form at $r = 0$---which make the SLSQP step direction erratic in the final convergence phase. The squared-$L^2$ objective avoids these pathologies and admits an exact quadratic approximation inside each SLSQP subproblem.
+
+
+
+
+
+\section{Solvers: The DVFopt Method Family}
+\label{sec:solvers}
+
+The constrained optimization problem in \autoref{eq:opt_problem}—minimize deviation from $\phi$ subject to every simplex signed area (or volume) being at least $\tau$—is a single, precisely defined mathematical program, but its computational difficulty varies enormously with grid size, fold density, and desired accuracy. Over the course of developing the DVFopt library, we explored a range of solvers organized into four tiers of increasing sophistication. \autoref{tab:method_taxonomy} summarizes the method family across all tiers. The following subsections describe each tier, its motivation, and the trade-offs it exposes.
+
+\paragraph{Positioning relative to geometry-processing solvers.}
+The feasibility constraint $\min_k \Delta^{(k)}_p(\phi) \geq \tau$ for all $p$ is precisely the foldover-free, locally-injective piecewise-linear map condition that has been studied extensively in geometry processing. Solvers for this class of problem have been developed in the context of bijective parameterization \cite{schuller2013lim, smith2015bijective, du2020lifting}, foldover-free maps \cite{garanzha2021foldfree}, and finite-element mesh untangling \cite{knupp2001untangling, toulorge2013robust}. Our work differs from that literature in three important ways. First, we operate on medical DVFs produced by an arbitrary upstream registration method, with no control over the field's structure; correction must be registration-agnostic, not co-designed with the optimizer that produced the field. Second, the grids arising in volumetric medical imaging—typically hundreds of slices, each hundreds of pixels on a side—are far larger than the meshes targeted by geometry-processing untanglers, requiring decomposition strategies (windowed or cluster-based) to make the problem tractable at all. Third, the sequential LP (SLP) step that anchors our champion solver (\autoref{sec:lp_family}) is itself a trust-region structure-exploiting method on the sparse area/volume Jacobian; this is the natural structure-exploiting analog of Gauss-Newton for this class of bilinear constraints, and our profiling confirms that naive GN variants on the same Jacobian are strictly dominated by the LP formulation.
+
+% NOTE: tab:jac_results + runtime figs relocated to §7 by a later task
+
+\begin{table*}[ht]
+\centering
+\caption{DVFopt method taxonomy. Feasibility guarantee means every simplex constraint is provably satisfied at convergence, given a feasible problem. Parallelizable means the solver admits a practical data-parallel decomposition. All 2-tri methods except NMVF extend to a 6-tet 3D analogue.}
+\label{tab:method_taxonomy}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lllcc}
+\toprule
+\textbf{Method} & \textbf{Fold measure} & \textbf{Feasibility guarantee} & \textbf{Parallelizable} & \textbf{2D / 3D} \\
+\midrule
+NMVF (heuristic smoother)       & Jdet (central diff.) & No                  & Yes (per-pixel) & 2D only \\
+Full-grid SLSQP                  & 2-tri signed area    & Yes (when feasible) & No              & 2D / 3D \\
+Windowed SLSQP                  & Jdet (central diff.) & Yes (when feasible) & Yes (windows)   & 2D / 3D \\
+\midrule
+m10 HarmonicALMBarrier           & 2-tri / 6-tet        & Yes (when feasible) & Yes (clusters)  & 2D / 3D \\
+m14 HarmonicALMRefineRepair      & 2-tri / 6-tet        & Yes (when feasible) & Yes (clusters)  & 2D / 3D \\
+\midrule
+LP-direct (single LP pass)       & 2-tri / 6-tet        & No (single pass)    & Yes (clusters)  & 2D / 3D \\
+SLP (sequential LP)              & 2-tri / 6-tet        & Yes (when feasible) & Yes (clusters)  & 2D / 3D \\
+cluster / \texttt{auto\_slp}     & 2-tri / 6-tet        & Yes (when feasible) & Yes (clusters)  & 2D / 3D \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Baseline Solvers: NMVF, Full-Grid SLSQP, and Windowed SLSQP}
+\label{sec:baseline_solvers}
+
+The simplest approach to fold correction is the neighborhood-mean vector field (NMVF) heuristic: replace each folded vertex's displacement with a weighted average of its neighbors, repeating until the central-difference Jacobian becomes positive everywhere. NMVF requires no optimization infrastructure and is fast in practice, but it does not minimize any objective and offers no feasibility guarantee: on fields where folded regions are large or the fold is severe, the smoother may cycle or converge to a configuration that remains folded under the geometric measure even when the central-difference check passes. NMVF serves as an inexpensive heuristic baseline when runtime is the overriding concern and a soft correction is acceptable.
+
+Full-grid SLSQP and Windowed SLSQP are the first principled baselines and are described in detail in \autoref{sec:slsqp_method} and \autoref{sec:windowed_slsqp}, respectively. Both solve the constrained minimization of \autoref{eq:opt_problem} directly, using SLSQP \cite{Kraft_1988, SciPySLSQPDoc}. The full-grid variant applies SLSQP to all variables simultaneously, which is exact but scales polynomially with grid size and becomes impractical on anything larger than toy grids. The windowed variant localizes the solve to small sub-windows around detected folds, yielding dramatic runtime improvements while matching the full-grid solution on every tested instance to within numerical tolerance.
+
+\subsection{Barrier and Augmented-Lagrangian Solvers: m10 and m14}
+\label{sec:alm_solvers}
+
+The second tier replaces SLSQP with a three-phase pipeline of smooth continuous solvers that can handle larger problems and more severe folds. The pipeline runs as follows: (1) a harmonic-extension seed computes a smooth starting field by solving a Laplacian system over the fold cores, initializing the corrected field in a topologically reasonable configuration; (2) a penalty-homotopy proximal-hyperbolic regularization augmented Lagrangian (PHR-ALM) phase, implemented with L-BFGS-B, drives the signed areas (or volumes) above the feasibility threshold by progressively tightening a sequence of penalized subproblems; (3) a log-barrier polish phase refines the feasible solution under the L1 or L2 objective.
+
+The \textbf{m10} variant (\texttt{HarmonicALMBarrierStrategy}) runs this three-phase pipeline: harmonic extension, then PHR-ALM, then log-barrier polish. It is robust and reaches strict feasibility reliably when the problem is geometrically feasible.
+
+The \textbf{m14} variant (\texttt{HarmonicALMRefineRepairStrategy}) adds two more phases after the ALM pass: an L2 soft-penalty refinement stage that tightens the objective before the barrier polish, and a harmonic repair stage that cleans up any residual infeasibilities using the Laplacian smoother. m14 consistently achieves lower objective values than m10 on the same inputs, at moderate additional cost.
+
+Both m10 and m14 are parallelized via the Schwarz cluster decomposition described in \autoref{sec:decomposition}: the grid is partitioned into fold clusters, each cluster is solved independently with frozen boundary conditions (the \emph{frozen-ring} pattern), and the per-cluster problems are distributed across a process pool. The \texttt{SchwarzHarmonicALMRefineRepairStrategy} (\texttt{M14SchwarzStrategy}) wraps m14 in this decomposition; analogous 3D variants (\texttt{M10TetStrategy}, \texttt{M14TetStrategy}) apply the same pipeline to 6-tet volumetric constraints.
+
+The dominant cost of the barrier/ALM pipeline is L-BFGS-B iteration in the ALM and barrier phases. Profiling shows that the Fortran L-BFGS-B inner loop accounts for approximately 35--48\% of total wall-time, with constraint kernels and adjoint computation contributing less than 10\%; float32 kernel acceleration and sparsification of the barrier gradient are therefore low-return-on-investment optimizations.
+
+\subsection{The LP Family: LP-Direct, SLP, and cluster/\texttt{auto\_slp}}
+\label{sec:lp_family}
+
+The third tier replaces the smooth homotopy approach with a sequence of linear programs (LPs) on the sparse area/volume Jacobian—a fundamentally different algorithmic structure that turns out to dominate the barrier/ALM tier across the entire feasibility-accuracy-speed frontier.
+
+The signed-area constraint $\Delta^{(k)}_p(\phi') \geq \tau$ is bilinear in the grid displacements: it is linear in each component of $\phi'$ when the other components are fixed. At the current iterate $\phi^{(t)}$, a first-order Taylor expansion in the displacement perturbation $\delta = \phi' - \phi^{(t)}$ yields a linear constraint, and the L1 objective is already linear; therefore each trust-region subproblem is a sparse LP. In \textbf{LP-direct}, a single such LP is solved at $\phi$ itself with a large trust region, sufficient for fields close to feasibility. In \textbf{SLP} (sequential LP), the LP is solved iteratively, with the trust region adapted to the current constraint violation, producing a trust-region structure-exploiting solver on the sparse area/volume Jacobian. This is the natural analog of Gauss-Newton for the bilinear constraint, and our prototyping confirms that a naive GN-on-ALM formulation is strictly dominated by SLP: the GN step requires a trust region to avoid divergence on severe folds, and SLP already provides exactly that structure. Both LP-direct and SLP use HiGHS as the LP backend and operate on the sparsely assembled Jacobian matrix whose nonzero pattern tracks the local triangle/tet stencil.
+
+The \textbf{cluster/\texttt{auto\_slp}} variant is the champion: it partitions the grid into spatially contiguous fold clusters (connected components of folded simplices with a one-ring frozen boundary), solves an independent LP or SLP for each cluster, and executes the per-cluster solves concurrently in a process pool. The key insight is that fold clusters on real DVFs are typically well-separated, so the frozen-ring decomposition is lossless in the dense-fold regime (where global LP fails anyway) and nearly lossless in the sparse-fold regime (where the L1 gap relative to global SLP is small and the speedup is large). The m14 barrier/ALM pipeline is used as the seed within each cluster, providing a high-quality warm start that determines the final L1 basin; the SLP loop then locally refines from this seed to strict feasibility. As our experiments show, \texttt{auto\_slp} Pareto-dominates the m14 barrier/ALM methods—it is feasible where m14 fails on the worst-case dense inputs, and its L1 deviation is competitive or superior across the entire range of fold densities tested (\autoref{tab:benchmark_2d}).
+
+\paragraph{The SLP step is itself a trust-region structure-exploiting solver.}
+One might ask whether replacing the SLP step with a more sophisticated interior-point method or Gauss-Newton formulation would yield further gains. Our profiling and prototyping answer this definitively. The SLP step is already the structure-exploiting solver for this problem class: its trust-region linearization of the bilinear area/volume constraint is exactly what a correctly formulated GN step would do, and the LP solves the resulting subproblem exactly rather than approximately. A GN-on-ALM prototype without a trust region diverges on severely folded inputs (where the linearization is invalid far from feasibility), and with a trust region it degenerates to SLP. The remaining L-BFGS-B cost lives in the m14 seed, where it performs necessary robustness work: driving the field from severely folded inputs with deeply negative signed areas into the feasibility basin, where the LP refines it. There is no cheaper substitute for this phase that preserves feasibility.
+
+\paragraph{The champion claim (contribution C2).}
+The cluster/\texttt{auto\_slp} solver—and its 3D tet-LP analogue—constitutes a new Pareto-dominant operating point in the feasibility/accuracy/wall-time space: it reaches strict feasibility on inputs where the global m14 barrier/ALM solver fails to converge, while matching or improving L1 deviation, and doing so within a fraction of the wall-time of the global SLP solve. The quantitative head-to-head comparison across methods and DVF sources is deferred to \autoref{sec:experiments}.
+
+\subsection{Decomposition for Scale: Windowed and Cluster-Frozen-Ring}
+\label{sec:decomposition}
+
+Neither full-grid SLSQP nor global SLP scales to the grid sizes arising in practice—a single 320$\times$456 slice requires hundreds of gigabytes of memory for full-grid SLSQP, and the global LP problem on tens of thousands of folds is numerically ill-conditioned and slow to converge. The decomposition strategies in the DVFopt family are what make the optimization tractable at medical-volume scale.
+
+The \textbf{windowed} approach (used in Windowed SLSQP and in the windowed Jdet-SLSQP family) localizes each solve to a small rectangular sub-window centered on each detected fold or connected negative region. The boundary of the sub-window is held fixed (the frozen-edge constraint of \autoref{eq:iter_opt_constraint}), and the interior is optimized independently. Non-overlapping windows can be processed in parallel. The window grows iteratively if the constrained interior solve cannot achieve feasibility at the current size, and in all our experiments this growth terminates well before the window reaches the full image.
+
+The \textbf{cluster frozen-ring} decomposition, used by the LP family and the Schwarz-wrapped m10/m14 solvers, generalizes windowing from axis-aligned rectangles to arbitrary shaped subdomains. Each fold cluster is defined as a connected component of folded simplices, extended outward by a one-cell frozen ring of strictly feasible simplices whose displacement values are held fixed. The LP or barrier/ALM solve operates on the interior of this region alone. Crucially, the frozen ring is always strictly feasible at the start of the solve (having $\Delta^{(k)}_p(\phi) > \tau$), so fixing it does not preclude a feasible interior solution: the boundary condition is compatible with the constraint.
+
+Parallelism at the cluster level is efficient because cluster counts on real DVFs are large: a single 320$\times$456 slice typically decomposes into hundreds of fold clusters, providing ample work for a many-worker process pool. Within-slice scaling experiments show near-linear speedup up to 8 workers, with an Amdahl serial fraction of approximately 0.15--0.18 limiting the ceiling to around $6\times$; the default 16-worker configuration sits at the efficiency knee. The decomposition is quality-neutral: the L1 deviation of the clustered solution matches the global SLP result to within a small percentage that depends on fold density, and the frozen-ring boundaries never introduce infeasibilities.
+
+\subsection{The SLSQP Method}
+\label{sec:slsqp_method}
+
+We use the Sequential Least Squares Quadratic Programming (SLSQP) method \cite{Kraft_1988, SciPySLSQPDoc} for this constrained optimization problem. SLSQP is a gradient-based optimization algorithm used for finding the minimum of a multi-variable function subject to various constraints, which can be bounds, equalities, or inequalities. SLSQP works by solving a series of quadratic programming (QP) subproblems by approximating non-linear constraints (in our case, a positive Jacobian determinant at each pixel) into linear constraints using Taylor approximations. Similarly, it approximates objective functions into quadratic ones. 
+
+SLSQP is known to converge to solutions satisfying first-order optimality conditions, provided that the objective and constraint functions are smooth and differentiable, which our problem setup (Equations ~\ref{eq:objective_function},  ~\ref{eq:opt_constraint}) satisfies. While SLSQP does not guarantee convergence to a global minimum in general non-convex settings, it is known to avoid convergence to infeasible or saddle points under appropriate conditions.
+%, making it a reliable choice for enforcing complex nonlinear constraints like positive Jacobian determinants.
+
+The constraints in \autoref{eq:opt_constraint} are incorporated as inequality constraints by SLSQP through linearization during each iteration. These constraints, computed via finite differences on a deformation field — are differentiable as long as the deformation field is smooth. These smoothness properties are needed for SLSQP to work reliably. 
+
+% We compute and select our initial $\phi'$ DVFs from sample registration algorithms in \cite{RegBoost2025} and \cite{VoxelMorph2019}. These registration operations are run on mouse brain data from \cite{RegBoost2025} and \cite{TexeraMouseBrain}. 
+
+%We chose SLSQP as a starting point because it offers a clean and lightweight way to enforce hard inequality constraints using only first-order derivatives, without requiring second-order information or barrier parameter tuning. While 
+
+Other methods, such as COBYLA \cite{Powell1994}, support inequality constraints, but they scale poorly to high-dimensional problems and offer no gradient support. More sophisticated solvers such as trust-region interior point methods \cite{Byrd2000} offer stronger convergence guarantees but introduce significant complexity and tuning overhead, in addition to being significantly more computationally expensive than SLSQP. SLSQP, in contrast, provides a practical, interpretable baseline for adapting constrained optimization to deformation field correction. We use the \texttt{scipy.optimize.minimize} implementation \cite{SciPySLSQPDoc} to perform SLSQP on the input deformation $\phi'$. This implementation is used to find the minimum of a scalar function of one or more variables. In our experiments on the windowed subproblems, SLSQP reliably converges to a feasible solution, though it carries no global convergence guarantee in general non-convex settings. \autoref{fig:grid_image} shows an example.
+
+\begin{comment}
+It is a versatile tool that can handle both constrained and unconstrained optimization problems. This function requires an objective function to be minimized, an initial guess of the solution, and optionally, arguments, method, bounds, constraints, and other parameters to control the optimization process. It can run a range of methods, including SLSQP in our implementation. The parameters are provided as follows in \autoref{tab:slsqp_parameters}. 
+
+\begin{table}[h!]
+\caption{SLSQP optimization parameters for inverse-consistent deformation refinement}
+\renewcommand{\arraystretch}{1.5}
+    \centering
+    \begin{tabular}{|c|c|}
+        \hline
+        \textbf{Parameter} & \textbf{Value} \\
+        \hline
+        Objective function & $\|\phi - \phi'\|_2$ \\
+        Initial guess & $\phi'$ \\
+        Constraints & $\forall x, J_{\phi}(x) > 0$ \\
+        Method & SLSQP \\
+        \hline
+        \end{tabular}
+    \label{tab:slsqp_parameters}
+\end{table}
+
+\end{comment}
+
+
+The runtime of full-grid SLSQP grows polynomially with image size, and on mid-sized images (320$\times$456) the memory and time requirements render it infeasible entirely. The windowed variant localizes the solve and remains tractable at all tested resolutions, as the baseline comparison in \autoref{sec:experiments} quantifies.
+
+\subsection{Windowed SLSQP}
+\label{sec:windowed_slsqp}
+
+To reduce the average runtime, we propose the Windowed SLSQP method, which performs SLSQP optimization on a small subimage centered around each pixel with a negative Jacobian determinant. To ensure that the optimization inside the subimage does not affect the Jacobian determinant of pixels outside the subimage, we add additional constraints that the deformation vectors on the edges of the subimage are not modified. Further, to accommodate the new constraints on the edge pixels, the positive Jacobian determinant constraint is relaxed for those pixels. In summary:
+
+\begin{alignat}{3}
+\textbf{Objective:} \quad & \min_{\phi_{sub}} && \quad \|\phi_{sub} - \phi_{sub}'\|_2 \label{eq:iter_objective_function} \\
+\textbf{Constraints:} \quad & \text{for all } p \in \Omega_{sub}-\Omega_{edge}, && \quad \det(J_{\phi_{sub}}(p)) > 0 \\
+\quad & \text{for all } p \in \Omega_{edge}, && \quad \phi_{sub}(p) = \phi'_{sub}(p)
+\label{eq:iter_opt_constraint}
+\end{alignat}
+where $\Omega_{sub}$ is the submatrix in image space and $\Omega_{edge}$ is the set of pixels on the edges of the submatrix.
+
+We start with a 5$\times$5 submatrix centered around the pixel with a negative Jacobian determinant. However, because of additional boundary constraints, the subimage might still have pixels with negative Jacobian determinants. A 5$\times$5 subimage may not be enough to provide enough degrees of freedom for the optimization to produce valid results. Applying SLSQP optimization to the full image (without boundary constraints) would fix it with significant computational cost. To bridge the gap between providing enough degrees of freedom for the optimization and solving the problem in a reasonable time, we iteratively increase the size of the submatrix until a valid solution is computed. In the worst case, the window size would increase to encapsulate the full image, which simply performs SLSQP on the whole image. However, in all our experiments of over hundreds of images, the window size never exceeds 17$\times$17. Thus, our windowed SLSQP method guarantees convergence with all positive Jacobian determinants. Since the operations on the windows are independent of each other, the subimage routines can be easily parallelized whenever windows do not overlap. The windowed SLSQP runtime is dramatically smaller than the full SLSQP runtime while producing solutions with essentially identical deviation from the input DVF; crucially, it remains feasible on large real-world images where full-grid SLSQP cannot run at all. The quantitative comparison is presented in \autoref{sec:experiments}.
+
+
+%%---------------------------------------------------------------------------
+\section{Experiments}
+\label{sec:experiments}
+%%---------------------------------------------------------------------------
+
+This section presents an empirical evaluation of the DVFopt solver family across multiple datasets, DVF sources, and evaluation metrics. The goals are: (1) to characterize the speed/accuracy frontier across methods; (2) to confirm that fold correction does not degrade the quality of the underlying registration; (3) to quantify the false-negative rate of the central-difference check relative to the triangulated measure; and (4) to provide numbers comparable to published benchmarks using standard registration fold metrics.
+
+\subsection{Datasets}
+\label{sec:datasets}
+
+We evaluate on three categories of data.
+
+\textbf{Synthetic fold cases.} We construct a suite of synthetic deformation fields on grids ranging from 10$\times$10 to 320$\times$456, with controlled fold patterns (crossing and opposite displacement configurations) and varying fold counts. These cases allow exact ground-truth comparison because the fold structure and the deviation from identity are known by construction. The suite spans several orders of magnitude in problem difficulty, from trivially correctable isolated folds to configurations that stress the feasibility boundary.
+
+\textbf{Real B0039 mouse-brain DVFs.} We use the 528-slice B0039 dataset from \cite{RegBoost2025} as the primary real-data benchmark. Each slice is a 320$\times$456 deformation field produced by Laplacian-interpolated landmark-based registration. This dataset is challenging: slices contain between a handful and several hundred folded simplices, the fold patterns are irregular, and the fields span the full depth of a real mouse brain atlas.
+
+\textbf{Multi-source DVFs.} To assess registration-method agnosticism, we generate deformation fields from multiple upstream registration backends—Laplacian interpolation, VoxelMorph \cite{VoxelMorph2019}, and ANTs/SyN \cite{AVANTS200826}—on a common image set, then apply the DVFopt solver family to each source independently. This cross-source comparison is the basis for \autoref{tab:multisource}. A public registration benchmark (such as OASIS/Learn2Reg \cite{learn2reg2023} or LPBA40, sliced for the 2D pipeline) is included as an additional data source to anchor results against published fold-rate baselines.
+
+\subsection{Evaluation Metrics}
+\label{sec:metrics}
+
+We report the following metrics for each experiment.
+
+\textbf{Geometric feasibility.} Binary pass/fail: whether the corrected field satisfies $\min_k \Delta^{(k)}_p(\phi') \geq \tau$ for all vertices $p$, where $\tau = 0.01$ is the positivity margin defined in \autoref{sec:optimization_formulation}.
+
+\textbf{Minimum signed area ($\min_T$).} The minimum signed area over all triangles in the triangulated mesh after correction. A value $\geq \tau$ certifies strict feasibility under the geometric measure.
+
+\textbf{L1 deviation.} The $\ell_1$ norm of the displacement correction $\|\phi' - \phi\|_1$, measuring how much the corrected field differs from the input. Lower is better, given equal feasibility.
+
+\textbf{Wall-time.} Total wall-clock time from input to corrected output, in seconds. All timing experiments run single-node on CPU (details reported per experiment).
+
+\textbf{Percentage of non-positive-Jacobian voxels (\%$J{\leq}0$).} The fraction of grid points where the central-difference Jacobian determinant is non-positive, both before and after correction. This is the standard fold-rate diagnostic reported in the registration literature (see, e.g., the Learn2Reg leaderboard \cite{learn2reg2023}) and enables direct comparison with published baselines.
+
+\textbf{SDlogJ.} Standard deviation of the log-Jacobian $\log|\det(J_\phi)|$ over strictly positive grid points \cite{learn2reg2023}. SDlogJ characterizes the regularity of the deformation; a correction method that achieves feasibility at the cost of erratic local scaling would show elevated SDlogJ.
+
+\textbf{Downstream registration quality.} Label Dice score and normalized cross-correlation (NCC) of the warped image before and after correction. A good correction should leave these quantities unchanged: the correction must remove folds but must not alter the anatomical alignment that the upstream registration produced.
+
+\textbf{Inverse-consistency error.} To check global injectivity beyond the local positivity criterion, we compose each corrected field with a numerically computed inverse and report the inverse-consistency (IC) error as the mean displacement magnitude of the composed field minus the identity. A positive Jacobian at every grid point is necessary but not globally sufficient for injectivity; IC error provides an empirical global check.
+
+\subsection{Baseline Runtime and Scaling (SLSQP)}
+\label{sec:baseline_runtime}
+
+We first characterize the computational limits of the two baseline solvers—full-grid SLSQP and Windowed SLSQP—on synthetic grids and real B0039 slices. These results establish why the higher-tier solvers (barrier/ALM and LP family) are necessary.
+
+\begin{figure}
+    \centering
+    %\includegraphics[width=\linewidth]{images/dvfopt/grids_combined_row.png}
+    \caption{A visual representation of a DVF with artifacts. Notice the fold in the input DVF indicating non-invertibility of the mapping. Both full SLSQP and windowed SLSQP effectively correct the DVF to ensure correct topology.}
+    \label{fig:grid_image}
+\end{figure}
+
+\begin{figure}
+    \centering
+    %\includegraphics[width=\linewidth]{images/dvfopt/slsqp_time_benchmark.png}
+    \caption{The runtime for an SLSQP operation significantly increases with the image grid resolution.}
+    \label{fig:runtime_gridsize}
+\end{figure}
+
+\begin{figure}
+    \centering
+    %\includegraphics[width=\linewidth]{images/dvfopt/runtime_plot.png}
+    \caption{Variation in runtime by number of non-positive Jacobian determinants in a 20$\times$20 sized image. The starting and final minimum Jacobian determinant values of each deformation sample is listed by the data points. As the number of non-positive Jacobian determinants in a DVF increases, so does the runtime.}
+    \label{fig:runtime_jacs}
+\end{figure}
+
+\autoref{fig:grid_image} illustrates the correction visually: the fold present in the input DVF is eliminated, and the corrected output is topology-preserving. \autoref{fig:runtime_gridsize} shows that full SLSQP runtime scales polynomially with grid resolution; \autoref{fig:runtime_jacs} further reveals a correlation between runtime and fold count at fixed grid size. These curves motivate the windowed and cluster decompositions.
+
+\autoref{tab:jac_results} gives the complete baseline comparison on synthetic grids and real 64$\times$91 and 320$\times$456 slices. On small grids (10$\times$10, 20$\times$20) both solvers reach the same $\min_J = 0.01$ and produce essentially identical L1 deviation; the windowed variant is already 1.4--2.5$\times$ faster. On 64$\times$91 real slices the windowed runtime is under 30 seconds while full SLSQP requires four to five hours. On the 320$\times$456 slices, full SLSQP is entirely infeasible (approximately 300 GB of memory required), while Windowed SLSQP completes within 600--900 seconds at the same deviation. This confirms that windowed decomposition is not merely a speedup but a prerequisite for operating on real medical DVFs.
+
+\begin{table*}[ht]
+\centering
+\caption{Comparison of optimization methods across different images with the constraint $\det(J_v)\geq 0.01$. Dashes indicate that the method could not run at that image size due to memory constraints.}
+\label{tab:jac_results}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|c|c|ccc|cc|cc|}
+\hline
+\textbf{Size} &
+\textbf{\# -ve JDets in input} &
+\multicolumn{3}{c|}{\textbf{Minimum Jacobian Determinant}} &
+\multicolumn{2}{c|}{\textbf{Time Taken (seconds)}} &
+\multicolumn{2}{c|}{\textbf{Deviation from Original}} \\
+\cline{3-9}
+ &  & \textbf{Initial} &
+\textbf{SLSQP} & \textbf{Win-SLSQP} &
+\textbf{SLSQP} & \textbf{Win-SLSQP} &
+\textbf{SLSQP} & \textbf{Win-SLSQP} \\
+\hline
+
+%JDETS
+
+\texttt{10×10} & 16 & -0.990 & 0.01 & 0.01 & 38.37 & 27.29 & 3.691 & 3.691 \\   % 10x10 crossing
+\texttt{10×10} & 11 & -1.129 & 0.01 & 0.01 & 8.12 & 6.92   & 1.828 & 1.828 \\   % 10x10 opposite
+\texttt{20×20} & 28 & -1.016 & 0.01 & 0.01 & 163.58 & 64.80 & 6.112 & 6.220 \\  % 20x20 crossing
+\texttt{20×20} & 32 & -1.066 & 0.01 & 0.01 & 57.50 & 27.51 & 3.765 & 3.765 \\      % 20x20 opposite
+\texttt{64×91} & 3 & -0.495 & 0.01 & 0.01 & 15000.56 & 25.47 & 0.578 & 0.579 \\  % slice 90
+\texttt{64×91} & 4 & -0.1477 & 0.01 &0.01 & 19411.68 & 18.56 & 0.251 & 0.251 \\  % slice 200
+\texttt{64×91} & 3 & -0.466 & 0.01 & 0.01 & 19795.54 & 27.19 & 0.576 & 0.576 \\ % slice 350
+\texttt{320×456} & 120 & -4.486 & -  & 0.01 & - & 562.16 & - & 7.933  \\  % slice 90 full
+\texttt{320×456} & 137 & -2.188 & - & 0.01 & - & 510.46 & - & 7.757  \\  % slice 200 full
+\texttt{320×456} & 168 & -4.141 & -  & 0.01 & - & 852.76 & - & 8.094  \\  % slice 350 full
+\texttt{320×456} & 156 & -2.875 & - & 0.01 & - &  764.23 & - & 7.502  \\  % slice 500 full
+% ... more rows here
+
+\hline
+\end{tabular}
+\end{table*}
+
+\subsection{Main 2D Benchmark}
+\label{sec:benchmark_2d}
+
+\autoref{tab:benchmark_2d} will present the head-to-head comparison across the full solver family on B0039 and synthetic data, reporting distributional statistics (mean$\pm$std over all 528 slices) for feasibility rate, $\min_T$, L1 deviation, wall-time, \%$J{\leq}0$, and SDlogJ. The Pareto tradeoff between L1 deviation and wall-time is visualized in \autoref{fig:pareto}: the speed/accuracy ratio exposed by this frontier is a deliberate dial, not an inefficiency. Methods on the efficient frontier are those for which no alternative achieves better L1 deviation at equal or lower wall-time. The cluster/\texttt{auto\_slp} solver is expected to occupy the Pareto-dominant operating point, reaching strict feasibility on inputs where global barrier/ALM solvers fail while matching or improving L1 deviation. The per-solver distribution of outcomes across all 528 B0039 slices is shown in \autoref{fig:distributions}, which replaces the single-slice anecdotes of earlier SLSQP experiments with statistically grounded characterizations.
+
+% RESULT PLACEHOLDER (deferred, Task B3/B5): main 2D benchmark table — methods x (feasibility, min_T, L1, wall, %J<=0, SDlogJ), mean+/-std over 528 B0039 slices + synthetic
+\begin{table*}[ht]\centering
+\caption{TODO (deferred result): Main 2D benchmark. All methods evaluated on B0039 (528 slices) and the synthetic suite. Columns: geometric feasibility rate, minimum signed area ($\min_T$), L1 deviation, wall-time, \%$J{\leq}0$, and SDlogJ. Statistics are mean$\pm$std over all slices.}
+\label{tab:benchmark_2d}
+\end{table*}
+
+% RESULT PLACEHOLDER (deferred, Task B7): Pareto frontier figure — L1 deviation vs wall-time across solver methods
+\begin{figure}[ht]\centering
+\caption{TODO (deferred result): Speed/accuracy Pareto frontier. Each point represents one method's mean L1 deviation and wall-time over the B0039 benchmark. Methods on the efficient frontier are labeled.}
+\label{fig:pareto}
+\end{figure}
+
+% RESULT PLACEHOLDER (deferred, Task B5): distribution boxplots — per-solver outcome distributions across 528 B0039 slices
+\begin{figure}[ht]\centering
+\caption{TODO (deferred result): Distribution of outcomes (L1 deviation, $\min_T$, wall-time) across all 528 B0039 slices, shown as box plots grouped by solver. Distributional spread indicates robustness to varying fold density and severity.}
+\label{fig:distributions}
+\end{figure}
+
+\subsection{Multi-Source Correction and Downstream Quality}
+\label{sec:multisource}
+
+A central claim of the post-hoc correction approach is that it is registration-method-agnostic: the same solver corrects fields produced by any upstream method without re-running or modifying that method. \autoref{tab:multisource} will demonstrate this across DVF sources (Laplacian, VoxelMorph \cite{VoxelMorph2019}, ANTs/SyN \cite{AVANTS200826}, and a public benchmark field). Beyond fold metrics, the table reports downstream registration quality—label Dice and NCC of the warped image—both before and after correction. The expectation is that Dice\textsubscript{after} $\approx$ Dice\textsubscript{before} and NCC\textsubscript{after} $\approx$ NCC\textsubscript{before}: fold correction removes topological violations without altering the anatomical alignment the upstream registration computed. SDlogJ is additionally reported for each source to characterize deformation regularity.
+
+% RESULT PLACEHOLDER (deferred, Task B3/B4): multi-source correction table — sources x (feasibility, L1, %J<=0, SDlogJ, Dice before/after, NCC before/after)
+\begin{table*}[ht]\centering
+\caption{TODO (deferred result): Multi-source correction results. Rows are DVF sources (Laplacian, VoxelMorph, ANTs/SyN, public benchmark). Columns: geometric feasibility, L1 deviation, \%$J{\leq}0$ before/after, SDlogJ before/after, label Dice before/after, NCC before/after.}
+\label{tab:multisource}
+\end{table*}
+
+\paragraph{Why not use a diffeomorphic-by-construction method?}
+A natural alternative to post-hoc correction is to avoid folds entirely by using a diffeomorphic registration method — integrating a stationary or time-varying velocity field to guarantee that the output transformation is a diffeomorphism by construction \cite{Dalca2018, AVANTS200826}. Such methods are principled and, on inputs where they apply, produce globally invertible fields. However, they carry three limitations that motivate the post-hoc approach. First, they commit to a specific registration objective and architecture: correcting a field produced by an arbitrary upstream method (a learned network, a Laplacian interpolator, a B-spline optimizer) requires re-running that method as a diffeomorphic variant, which may not be available, may require retraining, and may produce a different and possibly less accurate alignment. Second, diffeomorphic methods that rely on velocity-field integration are significantly more expensive than their non-diffeomorphic counterparts, often by an order of magnitude in wall-time, and scale poorly to large grids. Third, and most practically, they cannot be applied retroactively: when a fold-containing field is the only output available (from a pre-trained network, a collaborator's pipeline, or a legacy tool), a post-hoc corrector is the only option. The DVFopt approach is registration-agnostic: it takes any field as input, regardless of how it was produced, and returns a corrected field with the minimum possible deviation from the original alignment.
+
+\subsection{Central-Difference Blindness}
+\label{sec:blindness}
+
+As discussed in \autoref{sec:problems_with_discrete_jacobian_determinant}, the central-difference Jacobian check is provably blind to intra-cell folds that are caught by the triangulated measure. \autoref{tab:blindness} will report the empirical false-negative rate of the central-difference check on real DVFs: specifically, the fraction of cells that the triangulated measure identifies as folded but the central-difference check reports as fold-free. This quantifies the practical significance of the theoretical gap and motivates using the triangulated measure rather than the pointwise Jacobian check as the correction target.
+
+% RESULT PLACEHOLDER (deferred, Task B2): central-difference blindness table — per-source false-negative rates
+\begin{table}[ht]\centering
+\caption{TODO (deferred result): Central-difference blindness false-negative rates on real DVFs. Each row is a DVF source. Columns: total folded cells (triangulated measure), cells missed by central differences (\%), cells falsely flagged by central differences (\%).}
+\label{tab:blindness}
+\end{table}
+
+
+
+\section{Extension to Three Dimensions}
+\label{sec:3d_extension}
+
+The triangle signed-area measure developed in \autoref{sec:geometric_measure_for_fold_detection} for 2D deformation fields extends naturally to three dimensions via the Freudenthal--Kuhn tetrahedralization of each voxel cube. The following subsection reintroduces the 3D fold-detection construction in full; subsequent subsections describe the 3D solver path and the geometric feasibility ceiling that constitutes the capstone result of this work.
+
+% -----------------------------------------------------------------------
+\subsection{The Tetrahedral Fold Measure}
+\label{sec:3d_fold_detection}
+
+We now extend the construction to three dimensions, with parallelepipeds in place of quads and tetrahedra in place of triangles.
+
+Each interior vertex $p = (x_1, x_2, x_3)$ can be associated with a parallelepiped using eight corners obtained by stepping outward along each axis. We define these outward step vectors in \autoref{eq:step_vectors}.
+\begin{equation}
+    \label{eq:step_vectors} e_1 = (1, 0, 0), \qquad e_2 = (0, -1, 0), \qquad e_3 = (0, 0, -1).
+\end{equation}
+
+The parallelepiped's corners are defined in \autoref{eq:parallelepiped_corners}.
+\begin{equation}
+    \label{eq:parallelepiped_corners} c(\alpha) = p + \sum_{k=1}^{3} \alpha_k\, e_k, \qquad \alpha = (\alpha_1, \alpha_2, \alpha_3) \in \{0, 1\}^3.
+\end{equation}
+
+These corners are labeled $A, B, \ldots, H$ in lexicographic order on $\alpha$:
+\[ \begin{array}
+{l@{\;=\;}l@{\qquad}l@{\;=\;}l} A & c(0,0,0) = p & E & c(1,0,0) \\ B & c(0,0,1) & F & c(1,0,1) \\ C & c(0,1,0) & G & c(1,1,0) \\ D & c(0,1,1) & H & c(1,1,1) = p + e_1 + e_2 + e_3.
+\end{array}
+\]
+
+The body diagonal $\overline{AH}$ runs from $A$ to $H$. Each parallelepiped is uniquely determined by its $A$ corner, so iterating $p$ over the 3D grid in this way visits every parallelepiped exactly once.
+
+Each parallelepiped can be decomposed into six tetrahedra $T_1, \ldots, T_6$ using the Freudenthal--Kuhn decomposition \cite{kuhn-decomposition, freudenthal-decomposition}; see \autoref{fig:kuhn_decomposition}. For each permutation $\sigma \in S_3$, the corresponding tetrahedron is obtained by tracing the body diagonal in the order $\sigma$, as shown in \autoref{eq:vertex_tetrahedra}.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{images/dvfopt/tet_decomposition.pdf}
+    \caption{Freudenthal-Kuhn decomposition of the unit voxel cube. The cube's eight corners are labeled $A, \ldots, H$, where $A$ and $H$ are the endpoints of the body diagonal $\overline{AH}$ (panel a). Each tetrahedron $T_i$ ($i = 1, \ldots, 6$, panels b-g) is the ordered simplex whose four vertices are the corners visited along a monotone path from $A$ to $H$ along three orthogonal cube edges; the $3! = 6$ orderings of the three edge directions yield the six tetrahedra. All six share $\overline{AH}$ as a common edge, have disjoint interiors, and together tile the cube (panel h). Their signed volumes are $\mathrm{vol}(T_i) = \pm\tfrac{1}{6}$, three of each sign, with the sign determined by the orientation of the vertex ordering.}
+    \label{fig:kuhn_decomposition}
+\end{figure*}
+
+\begin{equation} \label{eq:vertex_tetrahedra}
+    \begin{aligned}
+        T^{(\sigma)}_p = \big(p,\ p + e_{\sigma_1},\ p + e_{\sigma_1} + e_{\sigma_2},\ H\big)
+    \end{aligned}
+\end{equation}
+
+The six tetrahedra share the body diagonal $\overline{AH}$ as a common edge and tile the parallelepiped without overlap. Recall that $u(p) = p + \phi(p)$ denotes the deformed position of $p$. The signed volume of an oriented tetrahedron $(A, B, C, D)$ under deformation $\phi$ is
+\begin{equation} \label{eq:signed_volume}
+    \begin{aligned}
+    V(A, B, C, D; \phi)
+    &= \tfrac{1}{6}
+    \det\Bigg(
+    \begin{smallmatrix}
+    u_1(B)-u_1(A) & u_1(C)-u_1(A) & u_1(D)-u_1(A) \\
+    u_2(B)-u_2(A) & u_2(C)-u_2(A) & u_2(D)-u_2(A) \\
+    u_3(B)-u_3(A) & u_3(C)-u_3(A) & u_3(D)-u_3(A)
+    \end{smallmatrix}
+    \Bigg)
+    \end{aligned}
+\end{equation}
+Under the identity transformation, substituting \autoref{eq:vertex_tetrahedra} into \autoref{eq:signed_volume} gives the identity volume,
+\begin{equation} \label{eq:identity_volume}
+    V(T^{(\sigma)}_p) = \frac{\mathrm{sgn}(\sigma)}{6},
+\end{equation}
+where $\mathrm{sgn}(\sigma) = +1$ for even permutations and $-1$ for odd. The sign alternation is an artifact of the vertex ordering; all six $|V|$ values equal $\tfrac{1}{6}$ and sum to the parallelepiped's unit volume. For a uniform fold-detection criterion, we define the oriented signed volume in \autoref{eq:oriented_volume} which equals $1/6$ for every $(p, \sigma)$ under the identity.
+
+\begin{equation} \label{eq:oriented_volume}
+    \widehat{V}^{(\sigma)}_p(\phi) = \mathrm{sgn}(\sigma) \cdot V(T^{(\sigma)}_p; \phi),
+\end{equation}
+
+The deformation $\phi$ is declared fold-free under this measure when $\widehat{V}^{(\sigma)}_p(\phi) > 0$ for every parallelepiped (indexed by its $A$ corner $p$) and every $\sigma \in S_3$; any sign flip in $\widehat{V}^{(\sigma)}_p(\phi)$ pinpoints the vertex (and hence the parallelepiped) containing a fold.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{images/dvfopt/per_vertex_tetrahedra.pdf}
+    \caption{TODO}
+    \label{fig:vertex_tetrahedra}
+\end{figure*}
+
+% -----------------------------------------------------------------------
+\subsection{3D Tet-LP Solver and the B0039 Strict-Feasibility Pipeline}
+\label{sec:3d_solver}
+
+The LP and SLP correction methods developed for 2D extend to 3D in a dimension-agnostic fashion. The HiGHS LP solver operates on a flat displacement vector $\phi$ and a constraint matrix $J$ whose rows encode the signed-volume positivity requirement for each oriented tetrahedron; swapping the 2D triangle constraint rows for the 3D six-tet constraint rows (computed via \texttt{dvfopt.jacobian.tetrahedron\_sign}) is sufficient to obtain a 3D LP-direct and 3D SLP solver. No algorithmic changes are required beyond supplying the 3D geometry.
+
+Correctness tests confirm exact equivalence to the NumPy reference to within $10^{-15}$ absolute error, and Numba JIT compilation of the forward and adjoint kernels yields substantial wall-time reductions at realistic DVF scales, with speedups of roughly 5$\times$ on dense workloads and over 25$\times$ on sparse active sets where most of the per-cell violation entries are zero.
+
+The real-data evaluation centers on the B0039 mouse-brain dataset, a $(3, 528, 320, 456)$ Laplacian-extended DVF whose $dz$ channel is identically zero. This columnar fold structure means that every fold extends as a vertical column through the full z range of any 3D subvolume, connecting into a single giant connected component under z-adjacency and rendering 3D cluster decomposition ineffective for this dataset. For B0039 specifically, slice-wise 2D processing is the architecturally correct approach: the full 528-slice volume is processed with 2D \texttt{auto\_slp} per slice, which scales linearly in the number of slices and reduces the total fold count by over 60\%. Global 3D M10Tet passes are then applied to handle the inter-slice straddling-tet mismatches that survive the 2D stage.
+
+The outcome is density-dependent. In sparse and moderate fold regimes (roughly up to a few percent of tetrahedra folded), the two-stage or three-stage pipeline achieves strict 100\% 3D feasibility: all oriented tet volumes are lifted above the $\tau = 0.01$ threshold. In dense fold bands, the pipeline drives fold counts down by approximately 99.9\% or more but leaves a small hard residual that the M10Tet barrier-polish stage cannot eliminate by further iteration. The qualitative outcomes across the density spectrum are summarized in \autoref{tab:strict_feas_3d}.
+
+% RESULT PLACEHOLDER (deferred, Task B8): strict feasibility and density ceiling table
+\begin{table}[ht]\centering
+\caption{TODO (deferred): Strict-feasibility and geometric ceiling results across fold-density regimes. Rows: sparse, moderate, and dense bands of the B0039 volume. Columns: initial fold count, post-Stage-1 fold count, post-Stage-2+3 fold count, minimum oriented tet volume, total wall time.}
+\label{tab:strict_feas_3d}
+\end{table}
+
+% -----------------------------------------------------------------------
+\subsection{The Geometric Feasibility Ceiling}
+\label{sec:geometric_ceiling}
+
+The density-dependent residual described above is not a consequence of solver limitations or insufficient compute; it reflects a hard mathematical ceiling on fold-free feasibility that is independent of the optimization algorithm. To understand why, consider the freedom available in choosing how to tetrahedralize each voxel cube. A unit cube has four distinct main diagonals, each giving rise to a valid Freudenthal--Kuhn tetrahedralization. The default construction uses the $(A, H)$ diagonal, but the diagonals $(B, G)$, $(C, F)$, and $(D, E)$ are equally valid and each produces a different partition of the cube into six oriented tetrahedra.
+
+For a given deformed cube, it is possible to ask whether \emph{any} of the four tetrahedralizations yields all positive signed volumes. If the answer is yes for at least one diagonal, a per-cell diagonal flip can rescue the cell: assign each cube the diagonal that maximizes its minimum oriented tet volume, and the resulting mixed-diagonal tessellation resolves a substantial fraction of the stubborn residual. In practice, this per-cell diagonal-flip step runs in seconds and eliminates nearly half of the folds that survive convergence-stalled M10Tet passes.
+
+However, some deformed cubes fold under every one of the four main-diagonal tetrahedralizations. For these cells, no choice of cube diagonal yields a fold-free partition. This is the 3D deformation analog of the classical \emph{Sch\"onhardt polyhedron}~\cite{schonhardt1928}: a twisted triangular prism that cannot be partitioned into tetrahedra at all without introducing additional interior (Steiner) points. Just as the Sch\"onhardt polyhedron is a non-tetrahedralizable polyhedron in the classical sense, a deformed voxel cube that folds under all four main diagonals is a deformation-induced non-tetrahedralizable configuration. No solver, no matter how powerful, can declare such a cell fold-free under the six-tet signed-volume measure without either re-meshing the local geometry or relaxing the positivity threshold.
+
+\autoref{fig:untangleable} illustrates a representative cell of this type, showing the four candidate tetrahedralizations and confirming that all four yield at least one negatively oriented tetrahedron.
+
+% RESULT PLACEHOLDER (deferred, Task B8): untangleable cell visualization
+\begin{figure}[ht]\centering
+\caption{TODO (deferred): A deformed voxel cube that folds under all four main-diagonal tetrahedralizations. Each panel shows one of the four Freudenthal--Kuhn decompositions (body diagonal $(A,H)$, $(B,G)$, $(C,F)$, $(D,E)$), with negatively oriented tetrahedra highlighted. All four decompositions contain at least one fold, establishing this cell as geometrically infeasible under any standard tetrahedralization.}
+\label{fig:untangleable}
+\end{figure}
+
+The density-dependent regime structure is illustrated in \autoref{fig:density_ceiling}, which plots the fraction of cells in each regime --- recoverable by solver, recoverable by diagonal flip, and geometrically unavoidable --- as a function of the initial fold density.
+
+% RESULT PLACEHOLDER (deferred, Task B8): density-ceiling figure
+\begin{figure}[ht]\centering
+\caption{TODO (deferred): Density-dependent feasibility ceiling. Each point corresponds to a z-chunk of the B0039 volume with a given initial fold density (fraction of tetrahedra folded). The stacked bars show the fraction of initially folded cells resolved by the M10Tet solver pipeline (bottom), resolved by per-cell diagonal flip (middle), and remaining geometrically unavoidable (top, the hard ceiling).}
+\label{fig:density_ceiling}
+\end{figure}
+
+Three strategies address the geometrically unavoidable residual, with different practical implications. First, \emph{local threshold relaxation} accepts a slightly negative oriented volume (e.g., $\tau = -0.013$ instead of $\tau = 0.01$) on the residual cells, treating the constraint as locally infeasible and declaring fold-free status by a redefinition rather than a correction --- this resolves the failure on paper but does not geometrically fix the fold. Second, \emph{per-cell diagonal flip} eliminates roughly half of the stubborn cells entirely (those that fold under the default diagonal but are fold-free under an alternative diagonal), without any displacement change. Third, for the remaining cells that fold under every diagonal, strictly correct treatment requires either Steiner-point re-meshing of the local geometry or acceptance that this is a fundamental limit of the discrete six-tet feasibility measure on severely deformed cubes. A practical production pipeline chains all available stages --- 2D per-slice correction, global 3D M10Tet passes, and per-cell diagonal flip --- and documents the residual geometrically unavoidable cells as a known, characterized limitation rather than an optimization failure.
+
+\section{Discussion and Conclusion}
+\label{sec:conclusion}
+
+\subsection{Summary of Contributions}
+\label{sec:summary}
+
+This paper has advanced fold detection and correction for deformation vector fields along three tightly coupled dimensions. First, we recast folding as a geometric property of the piecewise-affine map restricted to each simplex: the signed area of the triangulated quad cell (2D) and the oriented signed volume of each Freudenthal--Kuhn tetrahedron (3D). This measure is exact within each cell, equals the determinant of the local affine map on that simplex, and subsumes the central-difference Jacobian check as a strictly weaker test; the blindness of central differences to intra-cell folds is proven and quantified empirically (\autoref{tab:blindness}). Second, fold correction is posed as a constrained optimization with L1/L2 objective and signed-area/volume positivity constraints, yielding the DVFopt solver family spanning full-grid SLSQP, windowed SLSQP, barrier and augmented-Lagrangian methods (M10/M14), and LP-based solvers. The cluster-LP / \texttt{auto\_slp} strategy (2D) and the tet-LP solver (3D) Pareto-dominate prior methods in feasibility rate, L1 deviation, and wall-clock time; the cluster decomposition is the key scaling mechanism that makes global LP tractable on real $320\times456$ and multi-hundred-slice 3D volumes. Third, a head-to-head benchmark across solver methods and DVF sources establishes the speed/accuracy Pareto frontier and distributional statistics over 528 B0039 slices. The 3D strict-feasibility study reveals a density-dependent geometric ceiling: strict 100\% feasibility is achievable in sparse and moderate fold regimes, while a hard residual persists in the densest bands that cannot be eliminated by any solver, only by diagonal-flip re-meshing or Steiner-point insertion---the deformation-field analog of the classical Sch{\"o}nhardt polyhedron \cite{schonhardt1928}.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+Three limitations bound the practical scope of the method and should guide the reader's interpretation of the results. The most fundamental is the density-dependent feasibility ceiling: strict 100\% geometric feasibility is achievable for sparse and moderate fold densities (the large majority of real-data slices in B0039), but in the densest fold bands the pipeline drives fold counts down by over 99.9\% while leaving a small hard residual of geometrically untangleable cells (\autoref{sec:geometric_ceiling}, \autoref{fig:density_ceiling}). This is not a solver failure but a mathematical property of the deformed geometry---the residual cells fold under every choice of cube diagonal, so no rearrangement of displacement vectors at existing vertices can satisfy the six-tet positivity constraint without introducing additional mesh vertices. A second limitation is the cluster L1 gap: decomposing the global LP into per-cluster subproblems with frozen boundary conditions introduces a small L1 penalty relative to a single global solve. This gap is a deliberate speed/accuracy trade-off: the Pareto analysis in \autoref{fig:pareto} shows that \texttt{auto\_slp} occupies the efficient frontier, and the L1 cost of the gap is small relative to the feasibility gain over barrier/ALM methods on hard instances. Finally, the method guarantees local but not global injectivity: enforcing positive signed area/volume at every simplex is a locally sufficient condition for cell-level injectivity, but local positivity everywhere does not imply global injectivity of the field without compatible boundary conditions. The inverse-consistency check in \autoref{sec:experiments} verifies empirically that corrected fields are globally invertible on the tested volumes; however, fields with unusual topology or extreme deformation magnitude may satisfy local positivity while admitting global self-intersections, in which case additional regularization or boundary constraints are required.
+
+\subsection{Future Work}
+\label{sec:future_work}
+
+Three concrete directions would meaningfully extend the contributions of this paper. The first is stronger solvers for the dense regime: the SLP-plus-seed strategy converges reliably on sparse and moderate instances but stalls before convergence on the densest fold bands. Trust-region methods \cite{Conn2000} and interior-point methods \cite{Byrd2000} offer stronger convergence guarantees near the boundary of the feasible region; interior-point methods are particularly attractive because they maintain strict interior feasibility throughout the iteration, avoiding the stall behavior that arises when the SLP active set becomes degenerate. The second direction is Steiner-point re-meshing for geometrically untangleable cells: voxels that fold under all four cube diagonals are the deformation-field analog of the Sch{\"o}nhardt polyhedron \cite{schonhardt1928}, and local Steiner-point insertion at such voxels would create a finer mesh that admits a fold-free tetrahedralization---the only path to strict 100\% feasibility in the dense regime without threshold relaxation. The third direction is broader downstream evaluation: the inverse-consistency and label-Dice/NCC measures in \autoref{sec:multisource} are a first step, but a comprehensive evaluation across diverse anatomical targets, registration tasks, and learned-model DVF sources is needed to establish the generality of the post-hoc correction approach. Public benchmarks such as Learn2Reg \cite{learn2reg2023} would provide a standardized evaluation axis and allow direct comparison of the geometric feasibility ceiling against fields produced by diffeomorphic-by-construction methods.

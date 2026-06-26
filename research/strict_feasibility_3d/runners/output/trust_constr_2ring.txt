@@ -1,0 +1,8 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  unfixable=94  min_T=-0.013450
+19 clusters, sizes: [21, 16, 13, 10, 5, 5, 4, 4, 3, 2]
+
+--- Cluster 1/19: 21 target + 163 2-ring ---
+  cluster (184 cubes, 1146 vars): cube_feas=144/184  min_V=-0.400004  wall=7032.5s  status=0
+
+--- Cluster 2/19: 16 target + 106 2-ring ---

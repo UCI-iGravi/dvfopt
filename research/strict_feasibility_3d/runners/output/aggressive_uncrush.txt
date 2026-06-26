@@ -1,0 +1,26 @@
+94 unfixable cells
+19 clusters
+
+--- target_extent=1.5 ---
+  uncrush total L1: 73.4  applied L1: 73.4
+  discrete: n_neg=578  n<0.01=1976  unfixable=238  min_T=-6.407817
+  continuous: 4/94 of original unfixable cells now have det(J) > 0 everywhere
+  remaining-bad-det stats: worst=-90.3988  median=-1.5984
+
+--- target_extent=2.0 ---
+  uncrush total L1: 121.9  applied L1: 121.9
+  discrete: n_neg=696  n<0.01=2085  unfixable=270  min_T=-10.182150
+  continuous: 4/94 of original unfixable cells now have det(J) > 0 everywhere
+  remaining-bad-det stats: worst=-90.3988  median=-1.6959
+
+--- target_extent=3.0 ---
+  uncrush total L1: 219.1  applied L1: 219.1
+  discrete: n_neg=885  n<0.01=2238  unfixable=312  min_T=-18.328808
+  continuous: 5/94 of original unfixable cells now have det(J) > 0 everywhere
+  remaining-bad-det stats: worst=-90.3988  median=-1.9384
+
+--- target_extent=5.0 ---
+  uncrush total L1: 576.2  applied L1: 576.2
+  discrete: n_neg=1383  n<0.01=2703  unfixable=464  min_T=-53.673024
+  continuous: 6/94 of original unfixable cells now have det(J) > 0 everywhere
+  remaining-bad-det stats: worst=-298.9775  median=-3.6435

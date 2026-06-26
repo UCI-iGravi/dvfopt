@@ -146,6 +146,7 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
             # defaults to preserve the universal-strict-feasibility goal.
             phi_out, info = cluster_slp_iter(
                 phi_2hw, threshold=THRESHOLD, max_outer_iters=6, n_workers=16,
+                scheduler='continuous',
             )
             info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}
         return phi_out, info

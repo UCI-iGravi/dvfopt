@@ -1,0 +1,37 @@
+Slices: [12, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+Methods: ['auto_slp']
+
+=== b0039_z012  shape=(320, 456)  init_n_neg=4902 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=182855.2  (31.2s)
+
+=== b0039_z050  shape=(320, 456)  init_n_neg=702 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=712.9  (7.8s)
+
+=== b0039_z100  shape=(320, 456)  init_n_neg=399 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=429.9  (6.7s)
+
+=== b0039_z150  shape=(320, 456)  init_n_neg=588 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=573.4  (7.6s)
+
+=== b0039_z200  shape=(320, 456)  init_n_neg=1003 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1080.2  (14.1s)
+
+=== b0039_z250  shape=(320, 456)  init_n_neg=1594 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1970.3  (26.4s)
+
+=== b0039_z300  shape=(320, 456)  init_n_neg=1847 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2092.3  (14.3s)
+
+=== b0039_z350  shape=(320, 456)  init_n_neg=1661 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2081.3  (12.4s)
+
+=== b0039_z400  shape=(320, 456)  init_n_neg=1348 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1466.4  (16.6s)
+
+=== b0039_z450  shape=(320, 456)  init_n_neg=1432 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2470.8  (20.0s)
+
+=== b0039_z500  shape=(320, 456)  init_n_neg=1186 ===
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2274.4  (18.6s)
+
+Wrote C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_2d\runners\output\comparison_b0039.csv

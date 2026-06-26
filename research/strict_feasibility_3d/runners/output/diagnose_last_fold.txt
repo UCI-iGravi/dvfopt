@@ -1,0 +1,36 @@
+Loaded: n_neg=1  n<0.01=1  min_T=-0.000323
+
+Folded cells: 1
+  cell 0: (z, y, x) = (1, 215, 220)  min_T = -0.000323
+
+=== Cube (1, 215, 220) under 4 diagonal triangulations ===
+  diagonal (0, 7): tet vols = [0.580268, 0.696592, 0.01294, -0.000323, 0.980017, 0.012879]  min = -0.000323
+  diagonal (1, 6): tet vols = [-0.010278, 0.81495, -0.011275, 0.234195, 0.382538, 0.253509]  min = -0.011275
+  diagonal (2, 5): tet vols = [0.450352, 0.635637, 0.701521, 0.748965, -0.002524, -0.00704]  min = -0.007040
+  diagonal (3, 4): tet vols = [0.262394, 1.869935, -0.000453, -0.005715, 0.188942, 1.065034]  min = -0.005715
+
+  BEST diagonal: (0, 7)  min_T = -0.000323
+  Cell INFEASIBLE under all 4 diagonals — combinatorial obstruction.
+
+=== Cell (1, 215, 220) corner positions ===
+  corner 0 (lattice 1, 215, 220): displacement (dz, dy, dx) = (+1.2768, -55.2648, -7.2297)  position = (+2.2768, +159.7352, +212.7703)
+  corner 1 (lattice 1, 215, 221): displacement (dz, dy, dx) = (+1.0612, -53.9600, -6.9964)  position = (+2.0612, +161.0400, +214.0036)
+  corner 2 (lattice 1, 216, 220): displacement (dz, dy, dx) = (+2.1092, -53.6904, -5.0201)  position = (+3.1092, +162.3096, +214.9799)
+  corner 3 (lattice 1, 216, 221): displacement (dz, dy, dx) = (+0.8653, -52.3118, -5.9072)  position = (+1.8653, +163.6882, +215.0928)
+  corner 4 (lattice 2, 215, 220): displacement (dz, dy, dx) = (+0.6740, -55.5071, -4.5571)  position = (+2.6740, +159.4929, +215.4429)
+  corner 5 (lattice 2, 215, 221): displacement (dz, dy, dx) = (+0.4371, -54.0403, -5.4904)  position = (+2.4371, +160.9597, +215.5096)
+  corner 6 (lattice 2, 216, 220): displacement (dz, dy, dx) = (+1.1060, -53.6622, -5.0314)  position = (+3.1060, +162.3378, +214.9686)
+  corner 7 (lattice 2, 216, 221): displacement (dz, dy, dx) = (+1.5580, -52.2422, -4.7716)  position = (+3.5580, +163.7578, +216.2284)
+
+=== Local SLSQP on cell (1, 215, 220) ===
+  Initial diagonal-0 tet volumes: [0.580268, 0.696592, 0.01294, -0.000323, 0.980017, 0.012879]
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: 0.014537273542398935
+            Iterations: 11
+            Function evaluations: 277
+            Gradient evaluations: 11
+  SLSQP success=True  fun=0.014537  message=Optimization terminated successfully
+  Final diagonal-0 tet volumes: [0.577, 0.709995, 0.011, 0.011, 0.98502, 0.042857]
+
+=== After local solve, global check ===
+  n_neg=5  n<0.01=6  min_T=-0.225523

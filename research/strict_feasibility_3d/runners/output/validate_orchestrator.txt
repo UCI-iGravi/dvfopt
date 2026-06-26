@@ -1,0 +1,91 @@
+
+=== subvol_8_easy  shape=(3, 9, 9, 9)  n_neg_in=15 ===
+[triage] n_neg=15 n<thr=47 min_T=-0.00921 best-diag-floor=15
+  active-band bbox z[0:8] y[0:8] x[0:8] crop=(9, 9, 9) n_neg 15->0
+[bulk:active_band] n_neg=0 min_T=+0.01300 (1.6s)
+  RESULT feasible=True n_neg 15->0 n<0.01=0 min_T=+0.013000 floor_in=15 floor_out=0 L1=4.6 wall=1.6s
+
+=== subvol_16_moderate  shape=(3, 17, 17, 17)  n_neg_in=614 ===
+[triage] n_neg=614 n<thr=721 min_T=-3.70916 best-diag-floor=590
+  active-band bbox z[0:16] y[0:16] x[0:16] crop=(17, 17, 17) n_neg 614->2
+[bulk:active_band] n_neg=2 min_T=-0.00251 (48.5s)
+[escape 1] n_neg 2->1 min_T=-0.00009 (52.7s)
+[escape 2] n_neg 1->1 min_T=-0.00008 (25.2s)
+[escape 3] n_neg 1->1 min_T=-0.00007 (21.7s)
+[escape] stalled 2 iters — stopping
+  RESULT feasible=False n_neg 614->1 n<0.01=1 min_T=-0.000069 floor_in=590 floor_out=1 L1=1277.5 wall=148.2s
+
+=== dense_band_z0_15  shape=(3, 16, 320, 456)  n_neg_in=118 ===
+[triage] n_neg=118 n<thr=739 min_T=-0.01345 best-diag-floor=94
+  active-band bbox z[0:10] y[110:153] x[214:248] crop=(11, 44, 35) n_neg 118->118
+  active-band bbox z[0:13] y[121:177] x[176:214] crop=(14, 57, 39) n_neg 118->154
+  active-band bbox z[0:15] y[117:181] x[172:218] crop=(16, 65, 47) n_neg 118->140
+  active-band bbox z[0:7] y[151:160] x[214:224] crop=(8, 10, 11) n_neg 118->118
+  active-band bbox z[0:6] y[160:172] x[238:248] crop=(7, 13, 11) n_neg 118->119
+  active-band bbox z[0:10] y[156:176] x[234:252] crop=(11, 21, 19) n_neg 118->117
+  active-band bbox z[0:7] y[165:178] x[209:219] crop=(8, 14, 11) n_neg 117->117
+  active-band bbox z[0:8] y[167:196] x[241:262] crop=(9, 30, 22) n_neg 117->122
+  active-band bbox z[0:12] y[163:200] x[237:266] crop=(13, 38, 30) n_neg 117->114
+  active-band bbox z[0:6] y[169:178] x[181:190] crop=(7, 10, 10) n_neg 114->114
+  active-band bbox z[0:11] y[166:190] x[270:287] crop=(12, 25, 18) n_neg 114->108
+  active-band bbox z[0:5] y[181:190] x[211:220] crop=(6, 10, 10) n_neg 108->108
+  active-band bbox z[0:6] y[193:206] x[259:274] crop=(7, 14, 16) n_neg 108->134
+  active-band bbox z[0:10] y[189:210] x[255:278] crop=(11, 22, 24) n_neg 108->122
+  active-band bbox z[0:9] y[200:227] x[260:288] crop=(10, 28, 29) n_neg 108->74
+  active-band bbox z[0:7] y[208:221] x[214:229] crop=(8, 14, 16) n_neg 74->96
+  active-band bbox z[0:11] y[204:225] x[210:233] crop=(12, 22, 24) n_neg 74->65
+  active-band bbox z[0:7] y[223:235] x[166:178] crop=(8, 13, 13) n_neg 65->66
+  active-band bbox z[0:11] y[219:239] x[162:182] crop=(12, 21, 21) n_neg 65->65
+  active-band bbox z[0:9] y[219:228] x[164:173] crop=(10, 10, 10) n_neg 65->65
+  active-band bbox z[1:13] y[182:202] x[253:278] crop=(13, 21, 26) n_neg 65->103
+  active-band bbox z[0:15] y[178:206] x[249:282] crop=(16, 29, 34) n_neg 65->38
+  active-band bbox z[2:11] y[178:192] x[276:288] crop=(10, 15, 13) n_neg 38->38
+  active-band bbox z[2:12] y[209:219] x[223:234] crop=(11, 11, 12) n_neg 38->38
+  active-band bbox z[4:15] y[149:181] x[221:236] crop=(12, 33, 16) n_neg 38->35
+[bulk:active_band] n_neg=35 min_T=-0.96469 (1068.9s)
+[escape 1] n_neg 35->15 min_T=-0.01972 (383.4s)
+[escape 2] n_neg 15->8 min_T=-0.00022 (131.9s)
+[escape 3] n_neg 8->8 min_T=-0.00020 (195.4s)
+[escape 4] n_neg 8->8 min_T=-0.00019 (161.3s)
+[escape] stalled 2 iters — stopping
+  RESULT feasible=False n_neg 118->8 n<0.01=424 min_T=-0.000189 floor_in=94 floor_out=8 L1=2033.7 wall=1941.3s
+
+=== band_z10_14  shape=(3, 5, 320, 456)  n_neg_in=5395 ===
+[triage] n_neg=5395 n<thr=13956 min_T=-1.15635 best-diag-floor=2595
+  active-band bbox z[0:4] y[0:319] x[0:455] crop=(5, 320, 456) n_neg 5395->0
+  active-band bbox z[0:4] y[117:138] x[284:303] crop=(5, 22, 20) n_neg 0->0
+  active-band bbox z[0:4] y[129:139] x[162:190] crop=(5, 11, 29) n_neg 0->0
+  active-band bbox z[0:4] y[141:151] x[143:153] crop=(5, 11, 11) n_neg 0->0
+  active-band bbox z[0:4] y[169:180] x[145:156] crop=(5, 12, 12) n_neg 0->0
+  active-band bbox z[0:4] y[0:319] x[0:455] crop=(5, 320, 456) n_neg 0->0
+  active-band bbox z[0:4] y[181:190] x[147:156] crop=(5, 10, 10) n_neg 0->0
+  active-band bbox z[0:4] y[0:319] x[0:455] crop=(5, 320, 456) n_neg 0->0
+  active-band bbox z[0:4] y[193:203] x[292:303] crop=(5, 11, 12) n_neg 0->0
+  active-band bbox z[0:4] y[206:215] x[197:206] crop=(5, 10, 10) n_neg 0->0
+  active-band bbox z[0:4] y[228:237] x[209:218] crop=(5, 10, 10) n_neg 0->0
+  active-band bbox z[0:4] y[233:242] x[293:302] crop=(5, 10, 10) n_neg 0->0
+  active-band bbox z[0:4] y[0:319] x[0:455] crop=(5, 320, 456) n_neg 0->0
+  active-band bbox z[0:4] y[193:202] x[300:309] crop=(5, 10, 10) n_neg 0->0
+[bulk:active_band] n_neg=0 min_T=+0.01300 (2427.3s)
+  RESULT feasible=True n_neg 5395->0 n<0.01=0 min_T=+0.012999 floor_in=2595 floor_out=0 L1=4107.2 wall=2427.5s
+
+=== subvol_24_dense  shape=(3, 25, 25, 25)  n_neg_in=11659 ===
+[triage] n_neg=11659 n<thr=12166 min_T=-3.07229 best-diag-floor=11646
+[bulk:global] n_neg=17 min_T=-0.00039 (92.8s)
+[escape 1] n_neg 17->14 min_T=-0.00142 (1344.5s)
+[escape 2] n_neg 14->13 min_T=-0.00039 (1122.2s)
+[escape 3] n_neg 13->13 min_T=-0.00039 (1349.2s)
+[escape 4] n_neg 13->13 min_T=-0.00039 (1175.7s)
+[escape] stalled 2 iters — stopping
+  RESULT feasible=False n_neg 11659->13 n<0.01=47 min_T=-0.000394 floor_in=11646 floor_out=13 L1=19951.3 wall=5084.3s
+
+====================================================================================
+ORCHESTRATOR VALIDATION SUMMARY
+====================================================================================
+section                   n_in  feasible   n_out   n<.01   floor   wall(s)
+------------------------------------------------------------------------------------
+subvol_8_easy               15      True       0       0       0       1.6
+subvol_16_moderate         614     False       1       1       1     148.2
+dense_band_z0_15           118     False       8     424       8    1941.3
+band_z10_14               5395      True       0       0       0    2427.5
+subvol_24_dense          11659     False      13      47      13    5084.3

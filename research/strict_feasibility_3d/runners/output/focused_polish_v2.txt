@@ -1,0 +1,6 @@
+Loaded C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy  shape=(3, 16, 320, 456)
+[focused iter 0] n_neg=173  n<thresh=1572  min_T=-0.013450  trust=0.5000
+    LP FAIL: n_active=999341  n_vars=778533  status=The HiGHS status code was not recognized. (HiGHS Status 15: model_status is Unknown; primal_status is Infeasible)
+[focused iter 1] n_neg=173  n<thresh=1572  min_T=-0.013450  trust=0.2500
+    LP FAIL: n_active=999341  n_vars=778533  status=The problem is infeasible. (HiGHS Status 8: model_status is Infeasible; primal_status is None)
+[focused iter 2] n_neg=173  n<thresh=1572  min_T=-0.013450  trust=0.1250

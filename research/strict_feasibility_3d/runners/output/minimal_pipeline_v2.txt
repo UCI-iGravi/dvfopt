@@ -1,0 +1,60 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Cluster raw-input fold cubes (radius=3) ===
+  # fold cubes: 118
+  # clusters: 13
+
+=== Re-cluster big clusters (radius>4) at radius=1 ===
+  big cluster 5 (size=42, r=10) -> 9 sub-clusters
+    sub 0: centroid=(0, 220, 276), size=1, r=0
+    sub 1: centroid=(1, 219, 282), size=9, r=2
+    sub 2: centroid=(1, 218, 266), size=18, r=3
+    sub 3: centroid=(1, 215, 271), size=4, r=2
+    sub 4: centroid=(1, 215, 282), size=4, r=2
+    sub 5: centroid=(1, 221, 278), size=1, r=0
+    sub 6: centroid=(2, 217, 275), size=1, r=0
+    sub 7: centroid=(3, 218, 277), size=3, r=1
+    sub 8: centroid=(4, 219, 280), size=1, r=0
+  big cluster 9 (size=7, r=6) -> 3 sub-clusters
+    sub 0: centroid=(7, 188, 259), size=5, r=2
+    sub 1: centroid=(7, 192, 263), size=1, r=0
+    sub 2: centroid=(7, 192, 266), size=1, r=0
+
+  total refined (sub-)clusters: 23
+
+=== Step 2: Per-cluster coupled SLSQP @ thr=1e-3 ===
+  cluster 0 ((0, 165, 243), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 173 -> 173 (delta=+0) wall=1.4s [ACCEPT]
+  cluster 1 ((0, 188, 248), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 173 -> 172 (delta=-1) wall=2.7s [ACCEPT]
+  cluster 2 ((0, 199, 266), size=15, r=3, k=5): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=9554.6s
+  cluster 3 ((0, 207, 274), size=27, r=4, k=5): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=4208.8s
+  cluster 4 ((1, 214, 220), size=5, r=3, k=5): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=5791.8s
+  cluster 5 ((0, 220, 276), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 172 -> 173 (delta=+1) wall=2.9s [REJECT]
+  cluster 6 ((1, 219, 282), size=9, r=2, k=4): SLSQP NOT converged (msg=More than 3*n iterations in LSQ subproblem) wall=1021.5s
+  cluster 7 ((1, 218, 266), size=18, r=3, k=5): SLSQP NOT converged (msg=More than 3*n iterations in LSQ subproblem) wall=8755.5s
+  cluster 8 ((1, 215, 271), size=4, r=2, k=4, cubes=486, DOF=2100): n_neg 172 -> 171 (delta=-1) wall=2587.9s [ACCEPT]
+  cluster 9 ((1, 215, 282), size=4, r=2, k=4): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=1214.5s
+  cluster 10 ((1, 221, 278), size=1, r=0, k=2): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=14.2s
+  cluster 11 ((2, 217, 275), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 171 -> 171 (delta=+0) wall=24.7s [ACCEPT]
+  cluster 12 ((3, 218, 277), size=3, r=1, k=3): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=316.4s
+  cluster 13 ((4, 219, 280), size=1, r=0, k=2): SLSQP NOT converged (msg=Positive directional derivative for linesearch) wall=22.3s
+  cluster 14 ((1, 136, 191), size=2, r=1, k=3, cubes=245, DOF=1152): n_neg 171 -> 169 (delta=-2) wall=5.3s [ACCEPT]
+  cluster 15 ((5, 188, 271), size=8, r=2, k=4, cubes=729, DOF=3000): n_neg 169 -> 158 (delta=-11) wall=3790.9s [ACCEPT]
+  cluster 16 ((6, 213, 228), size=6, r=1, k=3, cubes=343, DOF=1536): n_neg 158 -> 150 (delta=-8) wall=132.9s [ACCEPT]
+  cluster 17 ((7, 188, 259), size=5, r=2, k=4, cubes=729, DOF=3000): n_neg 150 -> 149 (delta=-1) wall=4830.9s [ACCEPT]
+  cluster 18 ((7, 192, 263), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 149 -> 143 (delta=-6) wall=1.0s [ACCEPT]
+  cluster 19 ((7, 192, 266), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 143 -> 142 (delta=-1) wall=9.5s [ACCEPT]
+  cluster 20 ((7, 195, 271), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 142 -> 141 (delta=-1) wall=2.2s [ACCEPT]
+  cluster 21 ((14, 165, 227), size=2, r=1, k=3, cubes=196, DOF=960): n_neg 141 -> 139 (delta=-2) wall=3.2s [ACCEPT]
+  cluster 22 ((14, 170, 228), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 139 -> 138 (delta=-1) wall=0.2s [ACCEPT]
+
+  Accepted: 13, rejected: 1, skipped: 9
+  total cluster-SLSQP wall = 42295.1s (704.9 min)
+  after all cluster SLSQPs: n_neg=138  n<0.01=1781  min_T=-0.316804  L1=20.8
+
+=== Step 3: M10Tet @ 0.012 recovery ===
+  recovery wall=4440.5s (74.0 min)
+  FINAL: n_neg=27  n<0.01=45  min_T=-0.005974  L1=54952.4
+
+=== VARIANT D' FINAL ===
+  n_neg=27, n<0.01=45
+  total wall = 46735.6s (778.9 min)

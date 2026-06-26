@@ -79,6 +79,18 @@ def _partition_clusters_nonoverlapping(clusters):
     return rounds
 
 
+def _boxes_conflict(a, b):
+    """True if two cluster bboxes overlap or are adjacent (<1-cell gap).
+
+    Same predicate ``_partition_clusters_nonoverlapping`` uses; factored
+    out for the continuous (as-completed) scheduler's admission test.
+    """
+    return not (
+        a['y1'] < b['y0'] or b['y1'] < a['y0']
+        or a['x1'] < b['x0'] or b['x1'] < a['x0']
+    )
+
+
 def _fold_clusters(
     phi_2hw: np.ndarray,
     merge_dilation: int = MERGE_DILATION_BASE,
@@ -149,6 +161,7 @@ def cluster_slp_iter(
     merge_dilation: int = MERGE_DILATION_BASE,
     final_global_polish: bool = True,
     n_workers: int = DEFAULT_PARALLEL_WORKERS,
+    scheduler: str = 'subround',
     verbose: int = 0,
 ):
     """Per-cluster SLP with frozen-edge splice.
@@ -214,7 +227,47 @@ def cluster_slp_iter(
         # on sparse slices and worse L1 on dense.
         inner_threshold = threshold + 1e-4
 
-        if n_workers > 1:
+        if n_workers > 1 and scheduler == 'continuous':
+            # Continuous (as-completed) scheduler: instead of barrier
+            # sub-rounds (where a slow large cluster idles the workers that
+            # finished small ones), keep the pool full — admit any pending
+            # cluster that doesn't conflict (overlap/adjacent) with an
+            # in-flight one, and splice each as it completes. Crop at
+            # admission time so a cluster adjacent to a just-spliced
+            # neighbour still sees the update in its frozen ring. Removes
+            # the inter-sub-round straggler idle (the recoverable part of
+            # the ~16% serial fraction measured on B0039 slices).
+            from concurrent.futures import FIRST_COMPLETED, wait as _wait
+            pending = list(clusters)  # largest-first
+            inflight = {}  # future -> cluster
+            while pending or inflight:
+                # Greedily admit non-conflicting clusters.
+                while len(inflight) < n_workers:
+                    pick = None
+                    for i, c in enumerate(pending):
+                        if not any(_boxes_conflict(c, c2)
+                                   for c2 in inflight.values()):
+                            pick = i
+                            break
+                    if pick is None:
+                        break
+                    c = pending.pop(pick)
+                    y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
+                    phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
+                    fut = pool.submit(_solve_cluster_worker, (
+                        phi_crop, inner_threshold,
+                        inner_trust_radius_0, inner_max_iter, inner_seed,
+                    ))
+                    inflight[fut] = c
+                if not inflight:
+                    break  # nothing admittable and nothing running
+                done, _ = _wait(list(inflight), return_when=FIRST_COMPLETED)
+                for fut in done:
+                    c = inflight.pop(fut)
+                    _splice_interior(phi_out, c, fut.result())
+                    info['total_cluster_solves'] += 1
+                    round_runs.append({**c})
+        elif n_workers > 1:
             # Parallel via processes (Windows-spawn cost ~1s/worker —
             # only worth it on dense slices with multi-second per-cluster
             # solves). Threads were ruled out (scipy linprog not

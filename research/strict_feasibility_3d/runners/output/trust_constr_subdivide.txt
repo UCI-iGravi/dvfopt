@@ -1,0 +1,78 @@
+Start: n_neg=173  unfixable=94  min_T=-0.013450
+19 clusters, sizes: [21, 16, 13, 10, 5, 5, 4, 4, 3, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1]
+
+--- Cluster 1/19 (21 cells) split into 5 sub-clusters ---
+  sub 1/5 (5 target + 55 ring): 42/60  min_V=-0.0034  L1+=74.1  wall=482s
+  sub 2/5 (5 target + 52 ring): 57/57  min_V=+0.0100  L1+=14.4  wall=334s
+  sub 3/5 (5 target + 62 ring): 60/67  min_V=-0.1281  L1+=234.0  wall=590s
+  sub 4/5 (5 target + 61 ring): 66/66  min_V=+0.0100  L1+=44.9  wall=373s
+  sub 5/5 (1 target + 24 ring): 25/25  min_V=+0.0100  L1+=13.7  wall=39s
+
+--- Cluster 2/19 (16 cells) split into 4 sub-clusters ---
+  sub 1/4 (5 target + 53 ring): 41/58  min_V=-0.0060  L1+=163.6  wall=440s
+  sub 2/4 (5 target + 54 ring): 42/59  min_V=-0.0116  L1+=150.3  wall=484s
+  sub 3/4 (5 target + 64 ring): 69/69  min_V=+0.0101  L1+=51.7  wall=876s
+  sub 4/4 (1 target + 23 ring): 24/24  min_V=+0.0100  L1+=13.4  wall=101s
+
+--- Cluster 3/19 (13 cells) split into 3 sub-clusters ---
+  sub 1/3 (5 target + 54 ring): 47/59  min_V=-0.0029  L1+=287.1  wall=465s
+  sub 2/3 (5 target + 44 ring): 39/49  min_V=-0.0131  L1+=118.0  wall=328s
+  sub 3/3 (3 target + 38 ring): 36/41  min_V=-0.0001  L1+=90.3  wall=239s
+
+--- Cluster 4/19 (10 cells) split into 2 sub-clusters ---
+  sub 1/2 (5 target + 66 ring): 61/71  min_V=-0.0149  L1+=138.5  wall=597s
+  sub 2/2 (5 target + 83 ring): 80/88  min_V=-0.0237  L1+=195.4  wall=1038s
+
+--- Cluster 5/19 (5 cells) split into 1 sub-clusters ---
+  sub 1/1 (5 target + 79 ring): 84/84  min_V=+0.0100  L1+=12.4  wall=445s
+
+--- Cluster 6/19 (5 cells) split into 1 sub-clusters ---
+  sub 1/1 (5 target + 60 ring): 65/65  min_V=+0.0100  L1+=8.2  wall=163s
+
+--- Cluster 7/19 (4 cells) split into 1 sub-clusters ---
+  sub 1/1 (4 target + 56 ring): 60/60  min_V=+0.0100  L1+=6.2  wall=154s
+
+--- Cluster 8/19 (4 cells) split into 1 sub-clusters ---
+  sub 1/1 (4 target + 52 ring): 56/56  min_V=+0.0100  L1+=5.6  wall=64s
+
+--- Cluster 9/19 (3 cells) split into 1 sub-clusters ---
+  sub 1/1 (3 target + 46 ring): 49/49  min_V=+0.0100  L1+=63.1  wall=374s
+
+--- Cluster 10/19 (2 cells) split into 1 sub-clusters ---
+  sub 1/1 (2 target + 34 ring): 36/36  min_V=+0.0100  L1+=5.3  wall=189s
+
+--- Cluster 11/19 (2 cells) split into 1 sub-clusters ---
+  sub 1/1 (2 target + 44 ring): 46/46  min_V=+0.0100  L1+=11.2  wall=234s
+
+--- Cluster 12/19 (2 cells) split into 1 sub-clusters ---
+  sub 1/1 (2 target + 46 ring): 48/48  min_V=+0.0100  L1+=2.8  wall=51s
+
+--- Cluster 13/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 18 ring): 19/19  min_V=+0.0100  L1+=3.2  wall=24s
+
+--- Cluster 14/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 18 ring): 19/19  min_V=+0.0100  L1+=3.5  wall=24s
+
+--- Cluster 15/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 18 ring): 19/19  min_V=+0.0100  L1+=3.1  wall=11s
+
+--- Cluster 16/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 23 ring): 24/24  min_V=+0.0100  L1+=2.8  wall=18s
+
+--- Cluster 17/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 18 ring): 19/19  min_V=+0.0100  L1+=0.6  wall=4s
+
+--- Cluster 18/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 23 ring): 21/24  min_V=-0.0038  L1+=38.3  wall=95s
+
+--- Cluster 19/19 (1 cells) split into 1 sub-clusters ---
+  sub 1/1 (1 target + 24 ring): 25/25  min_V=+0.0100  L1+=0.6  wall=20s
+
+=== Final ===
+  sub-clusters fully feasible: 19/29
+  intra-NLP L1 cost: 1756.2
+  global n_neg: 1813
+  global n<0.01: 3171
+  global min_T: -103.111046
+  global L1 from input: 1430.0
+  STRICT 100% feas: False

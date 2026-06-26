@@ -1,0 +1,18 @@
+Slice: z=300  shape=(320, 456)  init_n_neg=1847
+Baseline: {'threshold': 0.01, 'n_workers': 8, 'merge_dilation': 2, 'inner_max_iter': 10, 'inner_trust_radius_0': 0.5}
+
+experiment                              wall        L1  n_neg      min_T
+---------------------------------------------------------------------------
+baseline                                19.4    2096.9      0    +0.0101
+n_workers=4                             27.5    2096.9      0    +0.0101  [dW=+41.9%  dL1= +0.0%]
+n_workers=12                            19.0    2096.9      0    +0.0101  [dW= -2.1%  dL1= +0.0%]
+n_workers=16                            17.2    2096.9      0    +0.0101  [dW=-11.0%  dL1= +0.0%]
+merge_dilation=1                        24.1    2003.1      0    +0.0101  [dW=+24.2%  dL1= -4.5%]
+merge_dilation=3                        19.0    2063.4      0    +0.0101  [dW= -1.8%  dL1= -1.6%]
+merge_dilation=4                        18.4    2062.9      0    +0.0101  [dW= -5.0%  dL1= -1.6%]
+inner_max_iter=5                        17.7    2096.2      0    +0.0101  [dW= -8.5%  dL1= -0.0%]
+inner_max_iter=15                       22.0    2087.6      0    +0.0101  [dW=+13.7%  dL1= -0.4%]
+inner_max_iter=20                       24.4    2078.4      0    +0.0101  [dW=+25.8%  dL1= -0.9%]
+trust_radius_0=0.25                     20.2    2105.3      0    +0.0101  [dW= +4.4%  dL1= +0.4%]
+trust_radius_0=1.0                      20.3    2088.0      0    +0.0101  [dW= +5.0%  dL1= -0.4%]
+trust_radius_0=2.0                      20.1    2094.0      0    +0.0101  [dW= +3.9%  dL1= -0.1%]

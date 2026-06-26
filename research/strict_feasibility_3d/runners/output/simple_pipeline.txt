@@ -1,0 +1,11 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+======================================================================
+VARIANT A: M14Tet -> per-fold k=2 SLSQP @ thr=1e-3 -> M10Tet recover
+======================================================================
+  M14Tet wall=1629.2s
+  after M14Tet @ 0.015: n_neg=10045  n<0.01=17416  min_T=-4919.768375  L1=525820.8
+  [VARIANT-A] iter 0: worst fold at (0,215,274) (min=-4919.7684) is too close to chunk boundary; stopping
+  per-fold SLSQP total wall=0.0s
+  after SLSQP loop: n_neg=10045  n<0.01=17416  min_T=-4919.768375  L1=525820.8
+  M10Tet @ 0.012 recovery on residual...

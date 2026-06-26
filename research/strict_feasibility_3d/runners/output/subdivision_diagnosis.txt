@@ -1,0 +1,26 @@
+94 unfixable cells
+
+--- K=2 (8 sub-cubes per cell) ---
+  cells fully sub-feasible:                  0/94
+  total sub-cubes feasible:                  230/752  (30.6%)
+  per-cell sub-feasibility fraction stats:
+    mean   = 30.6%
+    median = 25.0%
+    worst  = 0.0%
+    best   = 87.5%
+--- K=4 (64 sub-cubes per cell) ---
+  cells fully sub-feasible:                  0/94
+  total sub-cubes feasible:                  3033/6016  (50.4%)
+  per-cell sub-feasibility fraction stats:
+    mean   = 50.4%
+    median = 50.8%
+    worst  = 0.0%
+    best   = 95.3%
+--- K=8 (512 sub-cubes per cell) ---
+  cells fully sub-feasible:                  0/94
+  total sub-cubes feasible:                  29231/48128  (60.7%)
+  per-cell sub-feasibility fraction stats:
+    mean   = 60.7%
+    median = 61.4%
+    worst  = 5.3%
+    best   = 99.8%

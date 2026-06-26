@@ -1,0 +1,69 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  unfixable=94  min_T=-0.013450
+19 clusters, sizes: [21, 16, 13, 10, 5, 5, 4, 4, 3, 2]
+
+--- Cluster 1/19: 21 cubes ---
+  cluster (21 cubes, 297 vars): cube_feas=15/21  min_V=-0.004957  wall=34.1s  status=0
+
+--- Cluster 2/19: 16 cubes ---
+  cluster (16 cubes, 159 vars): cube_feas=3/16  min_V=-0.005075  wall=14.1s  status=0
+
+--- Cluster 3/19: 13 cubes ---
+  cluster (13 cubes, 174 vars): cube_feas=13/13  min_V=+0.010001  wall=10.5s  status=1
+
+--- Cluster 4/19: 10 cubes ---
+  cluster (10 cubes, 171 vars): cube_feas=10/10  min_V=+0.010000  wall=10.0s  status=1
+
+--- Cluster 5/19: 5 cubes ---
+  cluster (5 cubes, 96 vars): cube_feas=5/5  min_V=+0.010002  wall=0.9s  status=1
+
+--- Cluster 6/19: 5 cubes ---
+  cluster (5 cubes, 72 vars): cube_feas=5/5  min_V=+0.010002  wall=2.3s  status=0
+
+--- Cluster 7/19: 4 cubes ---
+  cluster (4 cubes, 60 vars): cube_feas=4/4  min_V=+0.010001  wall=1.5s  status=0
+
+--- Cluster 8/19: 4 cubes ---
+  cluster (4 cubes, 54 vars): cube_feas=4/4  min_V=+0.010001  wall=0.7s  status=1
+
+--- Cluster 9/19: 3 cubes ---
+  cluster (3 cubes, 54 vars): cube_feas=3/3  min_V=+0.010002  wall=0.4s  status=1
+
+--- Cluster 10/19: 2 cubes ---
+  cluster (2 cubes, 36 vars): cube_feas=2/2  min_V=+0.010000  wall=0.3s  status=1
+
+--- Cluster 11/19: 2 cubes ---
+  cluster (2 cubes, 48 vars): cube_feas=2/2  min_V=+0.010002  wall=0.5s  status=1
+
+--- Cluster 12/19: 2 cubes ---
+  cluster (2 cubes, 48 vars): cube_feas=2/2  min_V=+0.010000  wall=0.2s  status=1
+
+--- Cluster 13/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010003  wall=0.1s  status=1
+
+--- Cluster 14/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010003  wall=0.1s  status=1
+
+--- Cluster 15/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010066  wall=0.0s  status=1
+
+--- Cluster 16/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010002  wall=0.1s  status=1
+
+--- Cluster 17/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010002  wall=0.0s  status=1
+
+--- Cluster 18/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010000  wall=0.1s  status=1
+
+--- Cluster 19/19: 1 cubes ---
+  cluster (1 cubes, 24 vars): cube_feas=1/1  min_V=+0.010001  wall=0.0s  status=1
+
+=== Final ===
+  cluster cubes fixed: 75/94
+  total intra-cluster L1: 149.4
+  global n_neg: 584
+  global n<0.01: 1908
+  global min_T: -55.780696
+  L1 from input: 149.4
+  STRICT 100% feas: False

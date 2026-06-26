@@ -1,0 +1,8 @@
+Loading checkpoint...
+  full shape: (3, 16, 320, 456)
+  fold bbox: z[0,7] y[136,221] x[191,283]
+  crop (with pad=4): shape=(3, 13, 95, 102)
+  crop start: n_neg=170  n<0.01=1462  min_T=-0.013450
+  problem: 377910 vars, 683568 constraints
+
+Starting Ipopt solve...

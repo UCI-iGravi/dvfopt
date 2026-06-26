@@ -1,0 +1,16 @@
+Loaded; 94 unfixable cells found.
+
+Results across all 94 unfixable cells:
+  continuously fold-free everywhere (det(J) > 0 always):   1 (1.1%)
+  near-singular (0 < det(J) < threshold somewhere):         1 (1.1%)
+  continuously folded (det(J) < 0 somewhere):               92 (97.9%)
+
+  min(det(J)) statistics: min=-90.398755  max=0.050710  mean=-5.207297  median=-1.173243
+
+  Distribution:
+    -inf < min(det(J)) <= -0.100:  76
+    -0.100 < min(det(J)) <= -0.010:  15
+    -0.010 < min(det(J)) <= +0.000:  1
+    +0.000 < min(det(J)) <= +0.010:  1
+    +0.010 < min(det(J)) <= +0.100:  1
+    +0.100 < min(det(J)) <= +inf:  0

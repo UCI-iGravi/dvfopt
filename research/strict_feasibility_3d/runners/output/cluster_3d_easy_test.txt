@@ -1,0 +1,12 @@
+
+=== B0039 8^3 easy  shape=(3, 9, 9, 9)  init n_neg=48  min_T=-0.0092 ===
+  m10            OK   n_neg=    0  min_T=+0.0110  L1=      3.56  (   0.9s)
+  cluster_slp    INF  n_neg=   42  min_T=-0.0092  L1=      0.23  (   4.1s)
+
+=== dense_random_3d 10^3  shape=(3, 10, 10, 10)  init n_neg=1433  min_T=-1.9497 ===
+  m10            OK   n_neg=    0  min_T=+0.0110  L1=    328.77  (   5.3s)
+  cluster_slp    INF  n_neg=  517  min_T=-1.3677  L1=    213.95  (  40.7s)
+
+=== bowtie_3d_cube 12^3  shape=(3, 12, 12, 12)  init n_neg=6  min_T=-0.3333 ===
+  m10            OK   n_neg=    0  min_T=+0.0110  L1=      2.07  (   0.3s)
+  cluster_slp    OK   n_neg=    0  min_T=+0.0101  L1=      2.06  (   1.4s)

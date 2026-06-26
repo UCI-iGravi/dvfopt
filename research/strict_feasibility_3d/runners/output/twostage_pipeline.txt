@@ -1,0 +1,13 @@
+Loading B0039 + z=10..14 chunk...
+
+Stage 1: 2D auto_slp on z=10..14
+  z=10: feas=True wall=161.9s
+  z=11: feas=True wall=163.1s
+  z=12: feas=True wall=49.2s
+  z=13: feas=True wall=40.0s
+  z=14: feas=True wall=39.9s
+Stage 1 total: 454.2s
+
+Stage 1 output stacked: 3D shape=(3, 5, 320, 456)  n_neg=6375 (0.1830%)  min_T=-1.1114
+
+Stage 2: 3D cluster_slp post-pass...

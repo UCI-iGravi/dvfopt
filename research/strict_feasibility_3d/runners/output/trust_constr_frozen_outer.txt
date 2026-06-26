@@ -1,0 +1,14 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  unfixable=94  min_T=-0.013450
+
+--- Cluster 1/19: 21 target + 65 ring + 98 outer-frozen ---
+C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\.venv\Lib\site-packages\scipy\optimize\_trustregion_constr\equality_constrained_sqp.py:217: UserWarning: Singular Jacobian matrix. Using SVD decomposition to perform the factorizations.
+  Z, LS, Y = projections(A, factorization_method)
+C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\.venv\Lib\site-packages\scipy\optimize\_trustregion_constr\equality_constrained_sqp.py:81: UserWarning: Singular Jacobian matrix. Using SVD decomposition to perform the factorizations.
+  Z, LS, Y = projections(A, factorization_method)
+  (21 target + 65 ring), free=22 corners (66 vars), frozen=206 corners: cube_feas=51/86  min_V=-0.007176  L1_added=12.5  status=0  wall=262.6s
+
+--- Cluster 2/19: 16 target + 41 ring + 65 outer-frozen ---
+  (16 target + 41 ring), free=14 corners (42 vars), frozen=125 corners: cube_feas=34/57  min_V=-0.012888  L1_added=2.5  status=0  wall=118.9s
+
+--- Cluster 3/19: 13 target + 36 ring + 58 outer-frozen ---

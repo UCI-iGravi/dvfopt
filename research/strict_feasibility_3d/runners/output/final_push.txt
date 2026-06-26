@@ -1,0 +1,45 @@
+Original input: n_neg=173  n<0.01=1572  min_T=-0.013450
+START (saved 1-fold): n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+
+=== cyc_0.020_0.012: over-tighten @ 0.02 + recover @ 0.012 ===
+  over-tightened @ 0.02: n_neg=1  n<0.01=1  min_T=-0.000752  L1=432413.2
+    wall=2940.5s
+  recovered @ 0.012: n_neg=1  n<0.01=1  min_T=-0.000258  L1=432413.4
+    recover wall=2194.8s
+
+=== cyc_0.022_0.012: over-tighten @ 0.022 + recover @ 0.012 ===
+  over-tightened @ 0.022: n_neg=1  n<0.01=1  min_T=-0.000879  L1=433559.1
+    wall=3130.0s
+  recovered @ 0.012: n_neg=1  n<0.01=1  min_T=-0.000241  L1=433559.1
+    recover wall=1802.5s
+
+=== cyc_0.025_0.012: over-tighten @ 0.025 + recover @ 0.012 ===
+  over-tightened @ 0.025: n_neg=1  n<0.01=1  min_T=-0.001041  L1=436029.8
+    wall=3205.4s
+  recovered @ 0.012: n_neg=1  n<0.01=1  min_T=-0.000240  L1=436029.9
+    recover wall=1936.5s
+
+=== cyc_0.030_0.012: over-tighten @ 0.03 + recover @ 0.012 ===
+  over-tightened @ 0.03: n_neg=1  n<0.01=1  min_T=-0.001271  L1=443254.4
+    wall=2932.4s
+  recovered @ 0.012: n_neg=1  n<0.01=1  min_T=-0.000204  L1=443254.5
+    recover wall=2110.6s
+
+=== Direct M10Tet @ 0.011 ===
+  result @ 0.011: n_neg=1  n<0.01=1  min_T=-0.000258  L1=431788.7
+    wall=1860.6s
+
+=== Direct M10Tet @ 0.01 ===
+  result @ 0.01: n_neg=1  n<0.01=1  min_T=-0.000217  L1=431788.7
+    wall=1772.7s
+
+=== Direct M10Tet @ 0.009 ===
+  result @ 0.009: n_neg=1  n<0.01=8  min_T=-0.000181  L1=431788.7
+    wall=1783.3s
+
+=== Direct M10Tet @ 0.008 ===
+  result @ 0.008: n_neg=1  n<0.01=19  min_T=-0.000146  L1=431788.7
+    wall=1865.3s
+
+=== Final ===
+  best: n_neg=1

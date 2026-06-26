@@ -1,0 +1,40 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Stage 1: M10Tet @ 0.015 on raw input ===
+  wall=4497.0s (74.9 min)
+  after M10Tet @ 0.015: n_neg=17  n<0.01=23  min_T=-0.005547  L1=164473.8
+
+=== Stage 2: ITERATE cluster-SLSQP only (no recovery) ===
+
+-- Outer iter 1/15, current n_neg=17 --
+  -> 8 (sub-)clusters
+    cluster 2/8: n_neg 17->16 wall=6.6s [ACCEPT]
+    cluster 5/8: n_neg 16->15 wall=1.0s [ACCEPT]
+    cluster 7/8: n_neg 15->14 wall=226.7s [ACCEPT]
+    cluster 8/8: n_neg 14->11 wall=33.7s [ACCEPT]
+  after SLSQP iter 1: n_neg=11  n<0.01=65  min_T=-0.005547  L1=164476.9
+  iter wall=592.8s, accepted=4, cumulative=84.8min
+
+-- Outer iter 2/15, current n_neg=11 --
+  -> 4 (sub-)clusters
+    cluster 4/4: n_neg 11->7 wall=297.2s [ACCEPT]
+  after SLSQP iter 2: n_neg=7  n<0.01=82  min_T=-0.021141  L1=164476.9
+  iter wall=391.6s, accepted=1, cumulative=91.4min
+
+-- Outer iter 3/15, current n_neg=7 --
+  -> 3 (sub-)clusters
+  after SLSQP iter 3: n_neg=7  n<0.01=82  min_T=-0.021141  L1=164476.9
+  iter wall=84.8s, accepted=0, cumulative=92.8min
+  no improvement (stall 1/2)
+
+-- Outer iter 4/15, current n_neg=7 --
+  -> 3 (sub-)clusters
+  after SLSQP iter 4: n_neg=7  n<0.01=82  min_T=-0.021141  L1=164476.9
+  iter wall=84.7s, accepted=0, cumulative=94.2min
+  no improvement (stall 2/2)
+  STALL: no progress in 2 consecutive iters, stopping
+
+=== Stage 3: final M10Tet @ 0.012 recovery ===
+  recovery wall=3357.8s (56.0 min)
+  FINAL: n_neg=11  n<0.01=15  min_T=-0.004002  L1=164496.6
+  total wall = 9008.7s (150.1 min)

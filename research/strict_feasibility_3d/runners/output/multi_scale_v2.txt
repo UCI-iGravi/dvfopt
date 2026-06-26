@@ -1,0 +1,25 @@
+Input: n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== STAGE 1: multi-scale pyramid (coarse + upsample + fine polish) ===
+  coarse: n_neg=322  n<0.01=1184  min_T=-105.206866
+  coarse polish wall=769.7s
+  coarse polished: n_neg=2  n<0.01=2  min_T=-0.001181
+  upsampled: n_neg=494  n<0.01=616  min_T=-32.387921
+  fine polish wall=2872.6s
+MS_V1 result: n_neg=9  n<0.01=10  min_T=-0.003572  L1_from_input=428812.1
+
+=== STAGE 2: M14Tet polish on multi-scale residual ===
+  m14 wall=711.9s
+after M14Tet: n_neg=497  n<0.01=533  min_T=-31.411675  L1_from_input=430612.3
+
+=== STAGE 3: M14Schwarz3D on residual ===
+  schwarz wall=129.9s
+after M14Schwarz3D: n_neg=251  n<0.01=274  min_T=-7.329795  L1_from_input=431481.7
+
+=== STAGE 4: M10Tet @ 0.012 final tightening ===
+  tighten wall=2993.9s
+after M10Tet @ 0.012: n_neg=2  n<0.01=2  min_T=-0.000756  L1_from_input=431484.6
+
+=== Final ===
+  best residual after 4 stages: n_neg=2, n<0.01=2, min_T=-0.000756
+  STRICT 100% feas: False
