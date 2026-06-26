@@ -15,11 +15,10 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import LineCollection
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-
+from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
 OUTPUT = _HERE / 'output'
 FIG = _HERE / 'figures'
@@ -213,7 +212,7 @@ def fig_rank_deficiency_analysis():
     fig, axes = plt.subplots(2, 3, figsize=(18, 11))
 
     # Row 1: sigma_3 (smallest singular value) cross-sections.
-    titles = [f'sigma_3 at u=0 (x-min)', 'sigma_3 at u=0.5 (mid)',
+    titles = ['sigma_3 at u=0 (x-min)', 'sigma_3 at u=0.5 (mid)',
               'sigma_3 at u=1 (x-max)']
     slices = [sigma3[:, :, 0], sigma3[:, :, N//2], sigma3[:, :, -1]]
     for ax, t, s in zip(axes[0], titles, slices):
@@ -265,7 +264,7 @@ def fig_feasibility_landscape():
     # We vary their dz channels by +-shift around their current values.
     base = phi_best.copy()
 
-    from dvfopt.jacobian.tetrahedron_sign import _TET_VERTICES, _TET_SIGN
+    from dvfopt.jacobian.tetrahedron_sign import _TET_SIGN, _TET_VERTICES
     def cube_vol(phi):
         pos = cube_corners(phi, cz, cy, cx)
         vols = np.empty(6)

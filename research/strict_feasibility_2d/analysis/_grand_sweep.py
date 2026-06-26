@@ -23,8 +23,8 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
+from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from research.strict_feasibility_2d.algorithms import cluster_lp_2tri as cmod
 from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
     cluster_slp_iter,

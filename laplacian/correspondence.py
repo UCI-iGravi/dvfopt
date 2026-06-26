@@ -13,25 +13,23 @@ Performance optimizations:
 """
 import inspect
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import scipy
-from scipy.sparse.linalg import lgmres, cg
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
+import skimage
 from joblib import Parallel, delayed
+from scipy.sparse.linalg import cg, lgmres
+from skimage import feature, measure
+from tqdm import tqdm
+
+from .utils import laplacianA3D, propagate_dirichlet_rhs
 
 # SciPy < 1.12 uses 'tol'; >= 1.12 uses 'rtol' (and deprecates 'tol').
 _CG_TOL_KW = 'rtol' if 'rtol' in inspect.signature(cg).parameters else 'tol'
 _LGMRES_TOL_KW = 'rtol' if 'rtol' in inspect.signature(lgmres).parameters else 'tol'
-
-import skimage
-from skimage import feature
-from skimage import filters
-from skimage import measure
-
-from .utils import laplacianA3D, propagate_dirichlet_rhs
 
 
 def _default_log(msg, level='info'):
@@ -75,7 +73,7 @@ def getDataContours(dataImage):
 
     edges = feature.canny(binary, sigma=3)
     all_labels = measure.label(edges)
-    
+
     for label in range(1, np.max(all_labels) + 1):
         if( np.sum(all_labels==label)<100):
             edges[all_labels==label] = 0
@@ -283,16 +281,16 @@ def get2DCorrespondences_batch(fpoints, fnormals, mpoints, mnormals,
     dists_safe = np.where(finite_mask, dists, np.nan)
     with np.errstate(invalid='ignore'):
         p90 = np.nanpercentile(dists_safe, 90, axis=1)  # (Nf,)
-    
+
     # For each source point, compute cosine similarity with all k target normals at once
     # target_normals shape: (Nf, k, 2)
     target_normals = mnormals[indices]
     # Dot product of each source normal with its k target normals: (Nf, k)
     sims = np.einsum('ij,ikj->ik', fnormals, target_normals)
-    
+
     # Build combined mask: finite distance, within 90th percentile, and normal similarity above threshold
     valid = finite_mask & (dists < p90[:, None]) & (sims >= cos_thresh)
-    
+
     # For each row, pick the first valid column (smallest distance due to KDTree ordering)
     has_match = valid.any(axis=1)
     # argmax on bool axis returns first True index per row
@@ -326,8 +324,6 @@ def get2DCorrespondences(fsection, msection, fbinary, mbinary, inner=True):
     if len(cid) <5:
         return [], []
 
-    cindices = cid.astype(int)
-
     dx = mpoints[correspondences[c],0] - fpoints[c,0]
     dy = mpoints[correspondences[c],1] - fpoints[c,1]
 
@@ -338,14 +334,14 @@ def get2DCorrespondences(fsection, msection, fbinary, mbinary, inner=True):
     dy_abs = np.abs(dy)
     dx_valid = dx_abs[~np.isnan(dx_abs)]
     dy_valid = dy_abs[~np.isnan(dy_abs)]
-    
+
     # Handle edge case of empty or all-NaN arrays
     if len(dx_valid) == 0 or len(dy_valid) == 0:
         return [], []
-    
+
     dx_thresh = max(10, np.percentile(dx_valid, 90))
     dy_thresh = max(10, np.percentile(dy_valid, 90))
-    
+
     valid_idx = dx_abs < dx_thresh
     valid_idy = dy_abs < dy_thresh
 
@@ -363,9 +359,9 @@ def get2DCorrespondences(fsection, msection, fbinary, mbinary, inner=True):
 def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis=0, output_dir=None, rtol=1e-2, maxiter=1000, return_residuals=False, spacing=None, solver_dtype='float64', solver_method='cg', log_fn=None):
     """
     Perform slice-to-slice 3D Laplacian registration.
-    
-    Assumes both the images are matched slice to slice according to sliceMatchList 
-    along the specified axis. Gets 2D correspondences between the slices and 
+
+    Assumes both the images are matched slice to slice according to sliceMatchList
+    along the specified axis. Gets 2D correspondences between the slices and
     interpolates them smoothly across the volume.
 
     Performance optimizations over original implementation:
@@ -373,7 +369,7 @@ def sliceToSlice3DLaplacian(fixedImage, movingImage, sliceMatchList="same", axis
     - Single boundary array instead of three redundant copies
     - CG solver with AMG preconditioner (5-20x faster than LGMRES)
     - Threaded parallel solves for independent RHS vectors
-    
+
     Parameters
     ----------
     fixedImage : np.ndarray

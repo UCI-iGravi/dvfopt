@@ -7,10 +7,10 @@ where schedule tuning or a better solver helps), or Python overhead?
 
 Guarded for Windows spawn (the 2D auto_slp path may spawn a worker pool).
 """
-import sys
 import cProfile
-import pstats
 import io
+import pstats
+import sys
 import time
 from pathlib import Path
 

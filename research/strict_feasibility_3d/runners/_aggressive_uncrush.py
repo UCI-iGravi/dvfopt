@@ -16,23 +16,23 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from scipy.ndimage import label as cc_label, binary_dilation
+from scipy.ndimage import binary_dilation
+from scipy.ndimage import label as cc_label
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    _voxel_corner_positions,
     _tet_volume_from_vertices,
+    _voxel_corner_positions,
     six_tet_volumes_3d,
-)
-
-# Reuse v2's logic.
-from research.strict_feasibility_3d.runners._uncrush_v2 import (
-    uncrush_cluster_coherent,
-    _best_min_per_cell,
 )
 from research.strict_feasibility_3d.runners._jacobian_diagnosis import (
     _trilinear_jacobian_det,
 )
 
+# Reuse v2's logic.
+from research.strict_feasibility_3d.runners._uncrush_v2 import (
+    _best_min_per_cell,
+    uncrush_cluster_coherent,
+)
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -115,7 +115,7 @@ def main():
             min_mns = sorted([c[3] for c in cells_still_negdet])
             print(f'  remaining-bad-det stats: worst={min_mns[0]:.4f}  median={min_mns[len(min_mns)//2]:.4f}', flush=True)
         else:
-            print(f'  *** ALL originally-unfixable cells now have positive continuous Jacobian ***', flush=True)
+            print('  *** ALL originally-unfixable cells now have positive continuous Jacobian ***', flush=True)
 
 
 if __name__ == '__main__':

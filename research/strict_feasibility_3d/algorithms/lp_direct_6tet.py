@@ -21,15 +21,14 @@ import time
 
 import numpy as np
 
-from research.strict_feasibility_2d.algorithms.highs_solver import (
-    solve_l1_lp_step,
-)
 from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
     six_tet_volumes_3d,
     tet_volumes_flat,
 )
-
+from research.strict_feasibility_2d.algorithms.highs_solver import (
+    solve_l1_lp_step,
+)
 
 # ---------- phi pack helpers ----------
 
@@ -61,9 +60,9 @@ def _m14_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
     further from there."""
     from dvfopt import (
         HarmonicALMRefineRepair3DStrategy,
-        Tet6Constraint3D,
         L1Objective,
         Solver,
+        Tet6Constraint3D,
     )
 
     D, H, W = phi_in_3dhw.shape[1:]
@@ -81,9 +80,9 @@ def _m10_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
     (``HarmonicALMBarrier3DStrategy``). Skips L2-refine."""
     from dvfopt import (
         HarmonicALMBarrier3DStrategy,
-        Tet6Constraint3D,
         L1Objective,
         Solver,
+        Tet6Constraint3D,
     )
 
     D, H, W = phi_in_3dhw.shape[1:]
@@ -105,9 +104,9 @@ def _m10_fast_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
     anyway. Mirrors the 2D `m14_fast` pattern used by `cluster_slp`."""
     from dvfopt import (
         HarmonicALMBarrier3DStrategy,
-        Tet6Constraint3D,
         L1Objective,
         Solver,
+        Tet6Constraint3D,
     )
 
     D, H, W = phi_in_3dhw.shape[1:]

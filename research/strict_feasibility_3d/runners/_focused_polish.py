@@ -17,7 +17,6 @@ import numpy as np
 
 from research.strict_feasibility_3d.algorithms.focused_lp_6tet import focused_slp
 
-
 OUTPUT = _HERE / 'output'
 
 

@@ -34,12 +34,13 @@ sys.path.insert(0, str(_REPO))
 import itertools
 
 import numpy as np
+
 from dvfopt.jacobian.tetrahedron_sign import (
     _TET_SIGN,
     _TET_VERTICES,
+    _tet_volume_from_vertices,
     _voxel_corner_positions,
     six_tet_volumes_3d,
-    _tet_volume_from_vertices,
 )
 
 OUTPUT = _HERE / 'output'
@@ -73,7 +74,7 @@ def option3_threshold_relaxation(phi):
     )
     # How many tets fail at each candidate threshold?
     for tau in [0.01, 0.005, 0.001, 0.0, -0.001, -0.005, -0.013, -0.014]:
-        n_fail = int((V < tau).sum())
+        n_fail = int((tau > V).sum())
         print(
             f'  threshold = {tau:+.4f}:  {n_fail:>5d} tets below '
             f'({n_fail / V.size * 100:.6f}%)',

@@ -17,21 +17,19 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-
-from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
 from research.strict_feasibility_3d.runners._jacobian_diagnosis import (
     _trilinear_jacobian_det,
 )
+from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
 from research.strict_feasibility_3d.runners._unfixable_properties import (
     _corner_positions_for_cell,
 )
-
 
 OUTPUT = _HERE / 'output'
 

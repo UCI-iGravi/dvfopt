@@ -4,10 +4,12 @@ import sys
 
 sys.path.insert(0, ".")
 
-import numpy as np
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 from dvfopt import jacobian_det2D
 from dvfopt.jacobian import triangle_sign_areas2D
 from test_cases import make_deformation

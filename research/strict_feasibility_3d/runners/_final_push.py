@@ -29,7 +29,6 @@ import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
-
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
 

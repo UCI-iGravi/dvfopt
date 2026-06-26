@@ -29,7 +29,6 @@ import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
-
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
 
@@ -95,10 +94,10 @@ def main():
                 np.save(OUTPUT / 'b0039_z0_15_strict_via_ms_v3.npy', new)
                 return
 
-    print(f'\n=== Final ===', flush=True)
+    print('\n=== Final ===', flush=True)
     print(f'  best across all schedules: n_neg={best_n_neg}', flush=True)
     np.save(OUTPUT / 'b0039_z0_15_ms_v3_best.npy', best_state)
-    print(f'  saved best state to b0039_z0_15_ms_v3_best.npy', flush=True)
+    print('  saved best state to b0039_z0_15_ms_v3_best.npy', flush=True)
 
 
 if __name__ == '__main__':

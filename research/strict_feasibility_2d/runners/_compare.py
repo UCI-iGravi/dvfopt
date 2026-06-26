@@ -10,7 +10,6 @@ import time
 import numpy as np
 
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
 from research.strict_feasibility_2d.algorithms.lp_direct_2tri import (
     lp_oneshot,
     slp_iter,

@@ -19,13 +19,12 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
+from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
     cluster_slp_iter,
 )
 from research.strict_feasibility_2d.worst_cases._load import load_b0039_slice
-
 
 SLICES = [12, 100, 300]
 N_WORKERS = [1, 2, 4, 8]

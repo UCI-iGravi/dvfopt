@@ -34,14 +34,13 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from scipy.optimize import minimize, NonlinearConstraint
+from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d,
-    _TET_VERTICES,
     _TET_SIGN,
+    _TET_VERTICES,
+    six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -344,7 +343,7 @@ def main():
             cur.copy(), FOLD_CZ, FOLD_CY, FOLD_CX, eps=eps)
         print(f'\n  best after push (eps={eps}): n_neg={n_pushed}', flush=True)
         # Recover with M10Tet @ 0.012.
-        print(f'  M10Tet @ 0.012 recovery ...', flush=True)
+        print('  M10Tet @ 0.012 recovery ...', flush=True)
         from dvfopt import (
             HarmonicALMBarrier3DStrategy,
             L1Objective,

@@ -10,7 +10,8 @@ start method each worker re-imports this module, so any top-level heavy
 work (loading the 1.85 GB field, calling the solver) MUST sit under the
 guard or every worker re-runs it (fork bomb).
 """
-import sys, time
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +31,7 @@ def main():
     per_z = (mv <= 0).reshape(mv.shape[0], -1).sum(axis=1)
     csum = np.concatenate([[0], np.cumsum(per_z)])
     best_z0, best_cnt = 0, -1
-    for z0 in range(0, D - band):
+    for z0 in range(D - band):
         c = int(csum[min(z0 + band, len(csum) - 1)] - csum[z0])
         if c > best_cnt:
             best_cnt, best_z0 = c, z0

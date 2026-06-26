@@ -17,7 +17,7 @@ sys.path.insert(0, str(_REPO))
 
 import numpy as np
 
-from research.strict_feasibility_3d.runners._compare_3d import run_method, _stats
+from research.strict_feasibility_3d.runners._compare_3d import _stats, run_method
 
 
 def main():

@@ -10,8 +10,8 @@ RESUMABLE: results are appended to a CSV one row per slice (flushed), which
 doubles as the checkpoint — re-running skips slices already in the CSV.
 GUARDED for Windows spawn.
 """
-import sys
 import csv
+import sys
 import time
 from pathlib import Path
 

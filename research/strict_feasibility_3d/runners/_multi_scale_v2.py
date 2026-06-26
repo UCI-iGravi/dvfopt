@@ -33,7 +33,6 @@ from scipy.ndimage import zoom
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
-
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
 
@@ -77,8 +76,8 @@ def main():
     from dvfopt import (
         HarmonicALMBarrier3DStrategy,
         HarmonicALMRefineRepair3DStrategy,
-        SchwarzHarmonicALMRefineRepair3DStrategy,
         L1Objective,
+        SchwarzHarmonicALMRefineRepair3DStrategy,
         Solver,
         Tet6Constraint3D,
     )

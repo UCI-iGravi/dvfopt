@@ -14,28 +14,28 @@ Usage::
     from test_cases import SYNTHETIC_CASES, load_slice, make_deformation
 """
 
-from test_cases._cases import (
-    SYNTHETIC_CASES,
-    RANDOM_DVF_CASES,
-    REAL_DATA_SLICES,
-    CANONICAL_2TRI_2D_KEYS,
-)
 from test_cases._builders import (
+    canonical_2tri_2d,
+    load_slice,
     make_deformation,
     make_random_dvf,
-    load_slice,
     save_and_summarize,
-    canonical_2tri_2d,
+)
+from test_cases._cases import (
+    CANONICAL_2TRI_2D_KEYS,
+    RANDOM_DVF_CASES,
+    REAL_DATA_SLICES,
+    SYNTHETIC_CASES,
 )
 
 __all__ = [
-    "SYNTHETIC_CASES",
+    "CANONICAL_2TRI_2D_KEYS",
     "RANDOM_DVF_CASES",
     "REAL_DATA_SLICES",
-    "CANONICAL_2TRI_2D_KEYS",
+    "SYNTHETIC_CASES",
+    "canonical_2tri_2d",
+    "load_slice",
     "make_deformation",
     "make_random_dvf",
-    "load_slice",
     "save_and_summarize",
-    "canonical_2tri_2d",
 ]

@@ -40,6 +40,6 @@ def __getattr__(name):
     if name in _CORRESPONDENCE_NAMES:
         global _correspondence_module
         if _correspondence_module is None:
-            from . import correspondence as _correspondence_module  # noqa: F401
+            from . import correspondence as _correspondence_module
         return getattr(_correspondence_module, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

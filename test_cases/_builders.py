@@ -10,11 +10,12 @@ import warnings
 
 import numpy as np
 
-from laplacian import solveLaplacianFromCorrespondences
 from dvfopt.dvf import generate_random_dvf, scale_dvf
-
+from laplacian import solveLaplacianFromCorrespondences
 from test_cases._cases import (
-    SYNTHETIC_CASES, RANDOM_DVF_CASES, CANONICAL_2TRI_2D_KEYS,
+    CANONICAL_2TRI_2D_KEYS,
+    RANDOM_DVF_CASES,
+    SYNTHETIC_CASES,
 )
 
 

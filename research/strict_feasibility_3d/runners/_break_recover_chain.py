@@ -30,7 +30,6 @@ import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
-
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
 
@@ -171,7 +170,7 @@ def main():
         best_n_neg = n_neg; best_state = rec3.copy()
         print(f'    *** new best: n_neg={n_neg} ***', flush=True)
     if n_neg == 0 and n_below == 0:
-        print(f'\n*** STRICT 100% feas at cycle 3 ***', flush=True)
+        print('\n*** STRICT 100% feas at cycle 3 ***', flush=True)
         np.save(OUTPUT / 'b0039_z0_15_strict_via_chain.npy', rec3)
         return
 
@@ -189,7 +188,7 @@ def main():
         best_n_neg = n_neg; best_state = rec4.copy()
         print(f'    *** new best: n_neg={n_neg} ***', flush=True)
     if n_neg == 0 and n_below == 0:
-        print(f'\n*** STRICT 100% feas at cycle 4 ***', flush=True)
+        print('\n*** STRICT 100% feas at cycle 4 ***', flush=True)
         np.save(OUTPUT / 'b0039_z0_15_strict_via_chain.npy', rec4)
         return
 

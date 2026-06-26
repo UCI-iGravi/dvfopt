@@ -23,18 +23,17 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    _TET_VERTICES,
     _TET_SIGN,
+    _TET_VERTICES,
     _tet_volume_from_vertices,
     _voxel_corner_positions,
     six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 

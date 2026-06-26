@@ -14,6 +14,7 @@ Performance optimizations:
 
 import gc
 import inspect
+
 import numpy as np
 
 from .utils import laplacianA3D, propagate_dirichlet_rhs
@@ -69,7 +70,8 @@ def solveLaplacianFromCorrespondences(
         return np.zeros((nd, n0, n1, n2))
 
     from scipy.sparse import diags as sparse_diags
-    from scipy.sparse.linalg import cg as sp_cg, lgmres as sp_lgmres
+    from scipy.sparse.linalg import cg as sp_cg
+    from scipy.sparse.linalg import lgmres as sp_lgmres
     _use_cg = solver_method.lower() != 'lgmres'
     _solver_label = 'CG+Jacobi' if _use_cg else 'LGMRES'
 

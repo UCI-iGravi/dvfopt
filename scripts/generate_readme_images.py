@@ -5,18 +5,22 @@ Each image shows Jacobian determinant heatmap + quiver plot.
 """
 import os
 import sys
-import matplotlib
-matplotlib.use("Agg")  # non-interactive backend
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import numpy as np
 
-from test_cases import (
-    SYNTHETIC_CASES, RANDOM_DVF_CASES,
-    make_deformation, make_random_dvf,
-)
+import matplotlib
+
+matplotlib.use("Agg")  # non-interactive backend
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 from dvfopt import jacobian_det2D
+from test_cases import (
+    RANDOM_DVF_CASES,
+    SYNTHETIC_CASES,
+    make_deformation,
+    make_random_dvf,
+)
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "docs", "images")
 os.makedirs(OUT_DIR, exist_ok=True)

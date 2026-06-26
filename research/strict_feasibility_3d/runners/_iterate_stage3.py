@@ -12,7 +12,6 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
 from dvfopt import (
     HarmonicALMBarrier3DStrategy,
@@ -20,7 +19,7 @@ from dvfopt import (
     Solver,
     Tet6Constraint3D,
 )
-
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
 OUTPUT = _HERE / 'output'
 

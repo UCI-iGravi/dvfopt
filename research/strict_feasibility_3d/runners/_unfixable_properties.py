@@ -19,20 +19,18 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    _voxel_corner_positions,
     _tet_volume_from_vertices,
+    _voxel_corner_positions,
     six_tet_volumes_3d,
 )
-
-from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
 from research.strict_feasibility_3d.runners._jacobian_diagnosis import (
     _trilinear_jacobian_det,
 )
-
+from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
 
 OUTPUT = _HERE / 'output'
 
@@ -153,7 +151,7 @@ def main():
     print('\n=== Continuous Jacobian inside ===', flush=True)
     print(f'  det(J) at center:  min={det_J_centroid.min():.3f}  median={float(np.median(det_J_centroid)):.3f}  max={det_J_centroid.max():.3f}', flush=True)
     print(f'  det(J) min (5x5x5 grid):  min={det_J_min.min():.3f}  median={float(np.median(det_J_min)):.3f}  max={det_J_min.max():.3f}', flush=True)
-    print(f'  fraction of internal grid with det(J)<0:', flush=True)
+    print('  fraction of internal grid with det(J)<0:', flush=True)
     print(f'    min={det_J_frac_neg.min():.2%}  median={float(np.median(det_J_frac_neg)):.2%}  max={det_J_frac_neg.max():.2%}', flush=True)
 
     print('\n=== Jacobian eigenvalues at center ===', flush=True)

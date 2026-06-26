@@ -13,9 +13,9 @@ metrics-only benchmark).
 
 GUARDED for Windows spawn.
 """
-import sys
 import csv
 import json
+import sys
 import time
 from pathlib import Path
 

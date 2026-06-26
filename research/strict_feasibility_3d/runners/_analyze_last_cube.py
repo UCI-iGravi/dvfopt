@@ -23,17 +23,16 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d,
-    _TET_VERTICES,
     _TET_SIGN,
+    _TET_VERTICES,
+    six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 FIG = _HERE / 'figures'
@@ -128,7 +127,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
     pos = cube_corners(phi, cz, cy, cx)
     print(f'\n{"="*70}\n[{label}] Cube at ({cz}, {cy}, {cx})\n{"="*70}',
           flush=True)
-    print(f'\nLattice corner displacements:', flush=True)
+    print('\nLattice corner displacements:', flush=True)
     for i in range(8):
         iz = (i >> 2) & 1; iy = (i >> 1) & 1; ix = i & 1
         z, y, x = cz + iz, cy + iy, cx + ix
@@ -136,7 +135,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
         print(f'  corner {i} (lattice {z},{y},{x}): d=({d[0]:+.4f},'
               f'{d[1]:+.4f},{d[2]:+.4f})', flush=True)
 
-    print(f'\nDeformed positions:', flush=True)
+    print('\nDeformed positions:', flush=True)
     for i in range(8):
         print(f'  corner {i}: pos=({pos[i,0]:+.4f},{pos[i,1]:+.4f},{pos[i,2]:+.4f})',
               flush=True)
@@ -147,7 +146,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
         (0,2), (1,3), (4,6), (5,7),  # y-axis edges
         (0,4), (1,5), (2,6), (3,7),  # z-axis edges
     ]
-    print(f'\nDeformed edge lengths:', flush=True)
+    print('\nDeformed edge lengths:', flush=True)
     for (a, b) in edges_lattice:
         d_vec = pos[b] - pos[a]
         d_len = np.linalg.norm(d_vec)
@@ -156,7 +155,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
               flush=True)
 
     # 6-tet under all 4 diagonals.
-    print(f'\n6-tet volumes under all 4 main diagonals:', flush=True)
+    print('\n6-tet volumes under all 4 main diagonals:', flush=True)
     all_diag_vols = []
     for di in range(4):
         vols, _, _ = vols_for_diag(pos, di)
@@ -169,7 +168,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
     all_diag_vols = np.array(all_diag_vols)
 
     # Continuous trilinear Jacobian det on a 9x9x9 grid inside cube.
-    print(f'\nTrilinear Jacobian det on 9x9x9 interior grid:', flush=True)
+    print('\nTrilinear Jacobian det on 9x9x9 interior grid:', flush=True)
     N = 9
     grid_vals = np.empty((N, N, N))
     for iz in range(N):
@@ -187,7 +186,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
     # SVD of Jacobian at cube center.
     _, J_center = trilinear_jacobian_det(pos, 0.5, 0.5, 0.5)
     sv = np.linalg.svd(J_center, compute_uv=False)
-    print(f'\nJacobian at cube center (u=v=w=0.5):', flush=True)
+    print('\nJacobian at cube center (u=v=w=0.5):', flush=True)
     print(f'  J = \n{J_center}', flush=True)
     print(f'  singular values: sigma_1={sv[0]:.4f}  '
           f'sigma_2={sv[1]:.4f}  sigma_3={sv[2]:.4f}', flush=True)
@@ -196,7 +195,7 @@ def analyse_cube(phi, label, cz, cy, cx, phi_input=None):
           flush=True)
 
     # SVDs at all 8 sample positions (corners in parametric space).
-    print(f'\nSVD at parametric corners (sigma_1, sigma_2, sigma_3):',
+    print('\nSVD at parametric corners (sigma_1, sigma_2, sigma_3):',
           flush=True)
     for i in range(8):
         iz = (i >> 2) & 1; iy = (i >> 1) & 1; ix = i & 1
@@ -381,7 +380,7 @@ def main():
 
     # Compare delta of corners between INPUT and BEST_1fold.
     pos_delta = pos - pos_in
-    print(f'\nCorner shifts (BEST_1fold - INPUT):', flush=True)
+    print('\nCorner shifts (BEST_1fold - INPUT):', flush=True)
     for i in range(8):
         d = pos_delta[i]
         m = np.linalg.norm(d)

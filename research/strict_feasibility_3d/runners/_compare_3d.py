@@ -13,8 +13,8 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.algorithms.cluster_lp_6tet import (
     cluster_slp_iter_3d,
 )
@@ -26,7 +26,6 @@ from research.strict_feasibility_3d.worst_cases._synthetic_3d import (
     bowtie_3d_cube,
     dense_random_3d,
 )
-
 
 THRESHOLD = 0.01
 SAFETY_TOL = 1e-5
@@ -43,9 +42,9 @@ def _stats(phi_3dhw):
 def _solve_via_3d_strategy(strategy_cls, phi_in_3dhw, **strategy_kwargs):
     """Helper to run a 3D strategy via the v0.2 Solver API."""
     from dvfopt import (
-        Tet6Constraint3D,
         L1Objective,
         Solver,
+        Tet6Constraint3D,
     )
 
     D, H, W = phi_in_3dhw.shape[1:]

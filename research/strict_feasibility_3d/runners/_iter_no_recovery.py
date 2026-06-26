@@ -24,11 +24,12 @@ sys.path.insert(0, str(_REPO))
 import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-from research.strict_feasibility_3d.runners._coupled_kring import report
 from research.strict_feasibility_3d.runners._cluster_pipeline import (
-    cluster_fold_cubes, run_slsqp_around, m10tet,
+    cluster_fold_cubes,
+    m10tet,
+    run_slsqp_around,
 )
-
+from research.strict_feasibility_3d.runners._coupled_kring import report
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

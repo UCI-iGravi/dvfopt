@@ -18,9 +18,10 @@ Usage:
   python tools/latex_check.py writing/tvcg/tvcg_manuscript.tex
   # follows one level of \\input{} (e.g. dvfopt) and reads sibling .bib files
 """
+import os
 import re
 import sys
-import os
+from pathlib import Path
 
 COMMENT_RE = re.compile(r'(?<!\\)%.*')
 # verbatim-like environments whose body must NOT be parsed as live LaTeX
@@ -39,7 +40,7 @@ def strip_comments(text: str) -> str:
 def read_tex(root_path: str):
     """Read root + one level of \\input{} files (skipping commented inputs)."""
     base = os.path.dirname(root_path)
-    raw = open(root_path, encoding='utf-8').read()
+    raw = Path(root_path).read_text(encoding='utf-8')
     src = strip_comments(raw)
     chunks = [(root_path, src)]
     for m in re.finditer(r'\\input\{([^}]+)\}', src):
@@ -48,7 +49,7 @@ def read_tex(root_path: str):
             name += '.tex'
         p = os.path.join(base, name)
         if os.path.exists(p):
-            chunks.append((p, strip_comments(open(p, encoding='utf-8').read())))
+            chunks.append((p, strip_comments(Path(p).read_text(encoding='utf-8'))))
     return chunks
 
 
@@ -57,7 +58,7 @@ def bib_keys(root_path: str):
     keys = set()
     for fn in os.listdir(base or '.'):
         if fn.endswith('.bib'):
-            txt = open(os.path.join(base, fn), encoding='utf-8', errors='ignore').read()
+            txt = Path(os.path.join(base, fn)).read_text(encoding='utf-8', errors='ignore')
             keys |= set(re.findall(r'@\w+\s*\{\s*([^,\s]+)', txt))
     return keys
 

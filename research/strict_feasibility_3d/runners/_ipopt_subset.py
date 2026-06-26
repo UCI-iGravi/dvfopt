@@ -17,17 +17,15 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import cyipopt
+import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
-    tet_volumes_flat,
     six_tet_volumes_3d,
+    tet_volumes_flat,
 )
-
 from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

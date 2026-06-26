@@ -34,11 +34,11 @@ def _n_neg(out):
 def _global_l1_polish(phi_2hw, phi_in_2hw, threshold, n_steps=3, trust=0.25):
     """A few global trust-region L1-LP steps from a feasible iterate,
     anchored to the original input. Returns (phi_out, info)."""
-    from research.strict_feasibility_2d.algorithms.tri_linearize import (
-        linearize_T_2tri,
-    )
     from research.strict_feasibility_2d.algorithms.highs_solver import (
         solve_l1_lp_step,
+    )
+    from research.strict_feasibility_2d.algorithms.tri_linearize import (
+        linearize_T_2tri,
     )
     H, W = phi_2hw.shape[1:]
     anchor = np.concatenate([phi_in_2hw[0].ravel(), phi_in_2hw[1].ravel()])
