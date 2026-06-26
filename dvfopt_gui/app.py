@@ -1167,6 +1167,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             history_snaps=snaps,
             history_total=history_total,
             input_volume=self._original_volume,
+            dim=3 if getattr(self, '_is_3d_run', False) else 2,
         )
 
     def _load_array(self, arr: np.ndarray) -> None:

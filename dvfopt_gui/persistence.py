@@ -60,6 +60,7 @@ def build_save_payload(
     history_snaps: list[StateSnapshot],
     history_total: int,
     input_volume: np.ndarray | None = None,
+    dim: int = 2,
 ) -> dict:
     """Assemble the NPZ payload dict from plain values + a snapshot list.
 
@@ -82,6 +83,7 @@ def build_save_payload(
         'time_budget_s': np.float64(time_budget_s),
         'max_iterations': np.int64(max_iterations),
         'history_max_size': np.int64(history_max_size),
+        'dim': np.int64(dim),
     }
     if input_volume is not None:
         payload['phi_input_volume'] = np.asarray(input_volume, dtype=np.float64)
@@ -95,8 +97,12 @@ def build_save_payload(
 
     n = len(history_snaps)
     if n > 0:
-        H, W = phi_active.shape[1:]
-        phi_hist = np.empty((n, 2, H, W), dtype=np.float64)
+        if dim == 3:
+            _, Dv, Hv, Wv = history_snaps[0].phi.shape
+            phi_hist = np.empty((n, 3, Dv, Hv, Wv), dtype=np.float64)
+        else:
+            H, W = phi_active.shape[1:]
+            phi_hist = np.empty((n, 2, H, W), dtype=np.float64)
         n_neg_arr = np.empty(n, dtype=np.int64)
         min_T_arr = np.empty(n, dtype=np.float64)
         outer_arr = np.empty(n, dtype=np.int64)

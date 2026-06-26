@@ -505,3 +505,44 @@ def test_worker_3d_memory_guard_keeps_init_and_final(monkeypatch):
     w._run_via_solver_3d(w._build_strategy(), 'tet3d', metric_kind='tet3d')
     # Guard tripped: only the input + final snapshots, no mid stages.
     assert w.history_len() == 2
+
+
+# ---------------------------------------------------------------------------
+# persistence: 3D history round-trip
+# ---------------------------------------------------------------------------
+
+
+def test_persistence_3d_history_roundtrip(tmp_path):
+    from dvfopt_gui.worker import _volume_snapshot
+
+    D, H, W = 3, 5, 5
+    vol = np.zeros((3, D, H, W))
+    snaps = [
+        _volume_snapshot(np.full((3, D, H, W), float(i)), n_neg=i, min_T=float(-i), outer_iter=i)
+        for i in range(3)
+    ]
+    payload = persistence.build_save_payload(
+        phi_active=vol[1:, 0],
+        full_volume=vol,
+        z=0,
+        constraint='tet3d',
+        method='m14_tet3d',
+        objective='l2',
+        time_budget_s=60.0,
+        max_iterations=200,
+        history_max_size=8,
+        history_snaps=snaps,
+        history_total=3,
+        input_volume=vol,
+        dim=3,
+    )
+    assert int(payload['dim']) == 3
+    assert payload['history_phi'].shape == (3, 3, D, H, W)
+    path = tmp_path / 'run3d.npz'
+    np.savez_compressed(path, **payload)
+    loaded = np.load(path, allow_pickle=False)
+    run = persistence.parse_loaded(loaded)
+    loaded.close()
+    assert len(run.snapshots) == 3
+    assert run.snapshots[2].phi.shape == (3, D, H, W)
+    assert run.snapshots[1].n_neg == 1
