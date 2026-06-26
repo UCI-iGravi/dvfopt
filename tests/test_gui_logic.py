@@ -466,6 +466,14 @@ def test_worker_3d_trajectory_metric_and_strategy():
         BarrierStrategy,
     )
 
+    from dvfopt import SLSQPWindowedStrategy
+
+    w = SolverWorker(deformation_i=vol, method_id='slsqp_windowed_jdet3d')
+    assert w._trajectory_metric_kind() == 'jdet3d'
+    assert isinstance(w._build_strategy(), SLSQPWindowedStrategy)
+    assert SolverWorker(deformation_i=vol, method_id='m10_tet3d')._trajectory_metric_kind() == 'tet3d'
+    assert SolverWorker(deformation_i=vol, method_id='m14_schwarz_tet3d')._trajectory_metric_kind() == 'tet3d'
+
 
 def test_worker_3d_solve_reaches_feasibility():
     # Small folded volume; M14Tet should clear folds end-to-end.

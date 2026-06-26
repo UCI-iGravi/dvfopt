@@ -744,17 +744,19 @@ class SolverWorker(QtCore.QThread):
 
         The windowed-SLSQP path reports Jdet stats straight from the
         solver's own bookkeeping — regardless of its 2-tri *constraint*
-        flag — so its trajectory is Jdet-based. Every other path goes
-        through ``_run_via_solver`` and counts folds with the
-        constraint's own metric (``_2tri`` → 2-tri, ``_jdet`` → Jdet).
+        flag — so its trajectory is Jdet-based. 3D methods (``_tet3d``
+        / ``_jdet3d`` suffix) go through ``_run_via_solver_3d`` and use
+        the 3D metric. Every other path goes through ``_run_via_solver``
+        and counts folds with the constraint's own metric (``_2tri`` →
+        2-tri, ``_jdet`` → Jdet).
         """
         mid = self._method_id
-        if mid.startswith('slsqp_windowed'):
-            return 'jdet'
         if mid.endswith('_tet3d'):
             return 'tet3d'
         if mid.endswith('_jdet3d'):
             return 'jdet3d'
+        if mid.startswith('slsqp_windowed'):
+            return 'jdet'
         return '2tri' if mid.endswith('_2tri') else 'jdet'
 
     # -- main entrypoint ------------------------------------------------------
