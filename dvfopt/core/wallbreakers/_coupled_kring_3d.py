@@ -67,18 +67,16 @@ M10Tet recovery cost.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
+    _TET_SIGN,
+    _TET_VERTICES,
     six_tet_min_volume_3d,
     six_tet_volumes_3d,
-    _TET_VERTICES,
-    _TET_SIGN,
 )
-
 
 _TET_VERTICES_ARR = np.array(_TET_VERTICES, dtype=np.int64)
 _TET_SIGN_ARR = np.array(_TET_SIGN, dtype=np.float64)
@@ -219,7 +217,7 @@ def _make_constraint_jacobian(cube_corner_x_idx, cube_corner_base,
         grad_D = cross_BC * sgn
         J = np.zeros((n_cubes * 6, n_dof))
         rows = (np.arange(n_cubes)[:, None] * 6 + np.arange(6)[None, :]).reshape(-1)
-        for k_local, (grad_corner, corner_axis) in enumerate(
+        for _k_local, (grad_corner, corner_axis) in enumerate(
             zip((grad_A, grad_B, grad_C, grad_D), (0, 1, 2, 3))
         ):
             corner_indices = tets[:, corner_axis]
@@ -497,7 +495,7 @@ def local_alm_recovery_3d(
         crop = phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1].copy()
         try:
             crop_out = inner_solve(crop)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if verbose:
                 print(f'  local recovery inner_solve failed: {exc}', flush=True)
             break
@@ -544,7 +542,7 @@ def _solve_band_crop(args):
     inner = _default_m10tet_inner(threshold)
     try:
         return inner(crop)
-    except Exception:  # noqa: BLE001 — failed crops are dropped (None)
+    except Exception:
         return None
 
 
@@ -598,6 +596,8 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
     from scipy.ndimage import (
         binary_dilation,
         generate_binary_structure,
+    )
+    from scipy.ndimage import (
         label as cc_label,
     )
 
@@ -759,7 +759,6 @@ def active_band_alm_recovery_3d(
             (cy1 - cy0 + 1) / max(1, Hc),
             (cx1 - cx0 + 1) / max(1, Wc),
         )
-        accepted = False
         for widen in range(max_widen + 1):
             p = pad + widen * pad
             z0 = max(0, cz0 - p); z1 = min(D - 1, cz1 + 1 + p)
@@ -774,7 +773,7 @@ def active_band_alm_recovery_3d(
             n_before = int((six_tet_min_volume_3d(cur) <= 0).sum())
             try:
                 crop_out = inner_solve(crop)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 if verbose:
                     print(f'  active-band cluster solve failed: {exc}', flush=True)
                 break
@@ -786,7 +785,6 @@ def active_band_alm_recovery_3d(
                       f'crop={crop.shape[1:]} n_neg {n_before}->{n_after}', flush=True)
             if n_after <= n_before:
                 cur = trial
-                accepted = True
                 per_cluster.append(dict(bbox=(z0, z1, y0, y1, x0, x1),
                                         crop_shape=tuple(int(s) for s in crop.shape[1:]),
                                         n_before=n_before, n_after=n_after))
@@ -816,7 +814,7 @@ def _solve_zband_worker(args):
             band, threshold=threshold, pad=pad, n_workers=1, verbose=0
         )
         return out
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -911,7 +909,7 @@ def parallel_zband_solve(
             )
         # Paste each band's INTERIOR corner planes (cubes [s, e) -> corner
         # planes [s, e); the last band also writes its top corner plane e).
-        for (cz0, cz1, si, ei), solved in zip(bands, results):
+        for (cz0, _cz1, si, ei), solved in zip(bands, results):
             if solved is None:
                 continue
             # corner planes to write: [si, ei] inclusive for the last band,

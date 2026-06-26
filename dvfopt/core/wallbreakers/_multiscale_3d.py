@@ -91,7 +91,9 @@ def multiscale_seed_3d(
     if inner_solve is None:
         def inner_solve(field, thr):
             from dvfopt import (
-                HarmonicALMBarrier3DStrategy, L1Objective, Solver,
+                HarmonicALMBarrier3DStrategy,
+                L1Objective,
+                Solver,
                 Tet6Constraint3D,
             )
             return Solver(

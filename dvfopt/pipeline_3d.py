@@ -136,7 +136,6 @@ def correct_dvf_3d(
     )
     from dvfopt.core.wallbreakers._coupled_kring_3d import (
         active_band_alm_recovery_3d,
-        find_worst_fold_cube,
     )
 
     constraint = Tet6Constraint3D(shape=phi0.shape[1:])
@@ -338,4 +337,4 @@ def _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0):
     )
 
 
-__all__ = ['correct_dvf_3d', 'Correct3DReport']
+__all__ = ['Correct3DReport', 'correct_dvf_3d']

@@ -20,11 +20,11 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-from scipy.ndimage import binary_dilation, find_objects, label as cc_label
+from scipy.ndimage import binary_dilation, find_objects
+from scipy.ndimage import label as cc_label
 
+from dvfopt.core.slp.lp_direct_2tri import slp_iter
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
-from dvfopt.core.slp.lp_direct_2tri import slp_iter  # noqa: E402
 
 BBOX_PAD = 4  # cell-units of padding around each cluster's bbox
 MERGE_DILATION_BASE = 2
@@ -237,7 +237,8 @@ def cluster_slp_iter(
             # neighbour still sees the update in its frozen ring. Removes
             # the inter-sub-round straggler idle (the recoverable part of
             # the ~16% serial fraction measured on B0039 slices).
-            from concurrent.futures import FIRST_COMPLETED, wait as _wait
+            from concurrent.futures import FIRST_COMPLETED
+            from concurrent.futures import wait as _wait
             pending = list(clusters)  # largest-first
             inflight = {}  # future -> cluster
             while pending or inflight:

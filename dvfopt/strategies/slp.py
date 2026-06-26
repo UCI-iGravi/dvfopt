@@ -85,7 +85,7 @@ class SLPStrategy(Strategy):
         # area lower bound.
         phi = np.asarray(phi_in, dtype=np.float64)
         H, W = phi.shape[1:]
-        if H * W <= self.cluster_pixel_threshold:
+        if self.cluster_pixel_threshold >= H * W:
             phi_out, info = slp_iter(
                 phi, threshold=threshold, seed=self.global_seed,
             )

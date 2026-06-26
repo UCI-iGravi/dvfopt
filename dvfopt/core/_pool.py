@@ -72,7 +72,7 @@ def get_pool(n_workers: int) -> ProcessPoolExecutor:
     """
     global _POOL, _POOL_N
     with _LOCK:
-        if _POOL is None or _POOL_N != n_workers:
+        if _POOL is None or n_workers != _POOL_N:
             if _POOL is not None:
                 _POOL.shutdown(wait=False)
             _POOL = ProcessPoolExecutor(
