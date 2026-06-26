@@ -11,6 +11,7 @@ the raw B0039); these folds are localised to z-boundaries between
 slices with different corrections, so cluster decomposition can
 break them into small per-cluster LP problems.
 """
+
 from __future__ import annotations
 
 import sys
@@ -32,7 +33,9 @@ from research.strict_feasibility_3d.algorithms.cluster_lp_6tet import (
 
 def main():
     print('Loading B0039 + z=10..14 chunk...', flush=True)
-    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(np.float64)
+    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(
+        np.float64
+    )
 
     z_range = list(range(10, 15))
     t0 = time.time()
@@ -57,7 +60,7 @@ def main():
     n_neg_stack = int((V_stack <= 0).sum())
     print(
         f'\nStage 1 output stacked: 3D shape={stack.shape}  '
-        f'n_neg={n_neg_stack} ({n_neg_stack/V_stack.size*100:.4f}%)  '
+        f'n_neg={n_neg_stack} ({n_neg_stack / V_stack.size * 100:.4f}%)  '
         f'min_T={float(V_stack.min()):+.4f}',
         flush=True,
     )
@@ -70,13 +73,16 @@ def main():
     print('\nStage 2: 3D cluster_slp post-pass...', flush=True)
     t1 = time.time()
     phi_out, info = cluster_slp_iter_3d(
-        stack, threshold=0.01, inner_seed='m10', verbose=1,
+        stack,
+        threshold=0.01,
+        inner_seed='m10',
+        verbose=1,
     )
     stage2_wall = time.time() - t1
     V_final = six_tet_volumes_3d(phi_out)
     n_neg_final = int((V_final <= 0).sum())
     below = int((V_final < 0.01 - 1e-5).sum())
-    L1_total = float(np.abs(phi_out[1:3] - arr[1:3, z_range[0]:z_range[-1]+1]).sum())
+    L1_total = float(np.abs(phi_out[1:3] - arr[1:3, z_range[0] : z_range[-1] + 1]).sum())
     print(f'\nStage 2 total: {stage2_wall:.1f}s', flush=True)
     print(
         f'\n=== Final ===\n'

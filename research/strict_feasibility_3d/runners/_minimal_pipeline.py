@@ -17,6 +17,7 @@ clusters since clusters are >=3 cells apart in Chebyshev distance).
 Estimated wall: ~2 minutes per-cluster SLSQP + ~30-45 min recovery
 = ~35-50 minutes total.
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,7 +59,7 @@ def main():
     print('\n=== Step 1: Cluster raw-input fold cubes ===', flush=True)
     V = six_tet_volumes_3d(phi_input)
     min_per_cube = V.min(axis=0)
-    fold_mask = (min_per_cube <= 0)
+    fold_mask = min_per_cube <= 0
     fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
     print(f'  raw # fold cubes: {len(fold_cells)}', flush=True)
     _, centroids, members, radii = cluster_fold_cubes(fold_cells, radius=3)
@@ -66,13 +67,13 @@ def main():
     print(f'  # clusters: {n_clusters}', flush=True)
     for i, (c, mem, r) in enumerate(zip(centroids, members, radii)):
         chosen_k = max(2, min(K_RING_MAX, r + 2))
-        print(f'    cluster {i}: centroid={c}, size={len(mem)}, '
-              f'radius={r}, chosen_k_ring={chosen_k}',
-              flush=True)
+        print(
+            f'    cluster {i}: centroid={c}, size={len(mem)}, radius={r}, chosen_k_ring={chosen_k}',
+            flush=True,
+        )
 
     # === Step 2: Per-cluster SLSQP. ===
-    print('\n=== Step 2: Per-cluster coupled SLSQP @ thr=1e-3 (raw input) ===',
-          flush=True)
+    print('\n=== Step 2: Per-cluster coupled SLSQP @ thr=1e-3 (raw input) ===', flush=True)
     cur = phi_input.copy()
     total_wall = 0
     for i, (c, mem, r) in enumerate(zip(centroids, members, radii)):
@@ -84,8 +85,7 @@ def main():
         safe_k_x = min(cx, W - 1 - cx - 1)
         safe_k = min(safe_k_z, safe_k_y, safe_k_x)
         if safe_k < 1:
-            print(f'  cluster {i}: too close to boundary (safe_k={safe_k}); skipping',
-                  flush=True)
+            print(f'  cluster {i}: too close to boundary (safe_k={safe_k}); skipping', flush=True)
             continue
         k_ring = max(1, min(k_ring, safe_k))
 
@@ -96,23 +96,26 @@ def main():
         new, res, wall, n_cubes, n_dof = run_slsqp_around(cur, cz, cy, cx, k_ring)
         total_wall += wall
         if res is None or not res.success:
-            print(f'  cluster {i}: SLSQP NOT converged '
-                  f'(success={res.success if res else None}, '
-                  f'msg={res.message if res else None})',
-                  flush=True)
+            print(
+                f'  cluster {i}: SLSQP NOT converged '
+                f'(success={res.success if res else None}, '
+                f'msg={res.message if res else None})',
+                flush=True,
+            )
             continue
         V_new = six_tet_volumes_3d(new)
         n_new = int((V_new <= 0).sum())
-        print(f'  cluster {i}: k={k_ring} cubes={n_cubes} DOF={n_dof} '
-              f'wall={wall:.1f}s  n_neg {n_before}->{n_new}',
-              flush=True)
+        print(
+            f'  cluster {i}: k={k_ring} cubes={n_cubes} DOF={n_dof} '
+            f'wall={wall:.1f}s  n_neg {n_before}->{n_new}',
+            flush=True,
+        )
         # Accept if global n_neg dropped substantially or stayed close.
         if n_new <= n_before:
             cur = new
         else:
             print('    rejected (n_neg increased)', flush=True)
-    print(f'\n  total cluster-SLSQP wall={total_wall:.1f}s '
-          f'({total_wall/60:.2f} min)', flush=True)
+    print(f'\n  total cluster-SLSQP wall={total_wall:.1f}s ({total_wall / 60:.2f} min)', flush=True)
     n_after, b_after, _ = report(cur, '  after all cluster SLSQPs', phi_input)
 
     # === Step 3: M10Tet @ 0.012 recovery. ===
@@ -124,11 +127,13 @@ def main():
     n, b, mn = report(final, '  FINAL', phi_input)
 
     total_pipeline_wall = total_wall + wall_rec
-    print(f'\n=== VARIANT D FINAL ===\n'
-          f'  n_neg={n}, n<0.01={b}\n'
-          f'  total wall = {total_pipeline_wall:.1f}s = '
-          f'{total_pipeline_wall/60:.1f} min',
-          flush=True)
+    print(
+        f'\n=== VARIANT D FINAL ===\n'
+        f'  n_neg={n}, n<0.01={b}\n'
+        f'  total wall = {total_pipeline_wall:.1f}s = '
+        f'{total_pipeline_wall / 60:.1f} min',
+        flush=True,
+    )
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_D.npy', final)
         print('  *** STRICT FEASIBLE via VARIANT D ***', flush=True)

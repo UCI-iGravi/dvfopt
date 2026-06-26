@@ -4,6 +4,7 @@ Run from any directory:
 
     python research/strict_feasibility_2d/analysis/_build_01.py
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,7 +14,9 @@ import nbformat as nbf
 HERE = Path(__file__).parent
 
 CELLS = [
-    ('md', """\
+    (
+        'md',
+        """\
 # 01 — Baseline L1 gap
 
 Loads `comparison_synthetic.csv` (+ `comparison_b0039.csv` if present),
@@ -22,8 +25,11 @@ by method.
 
 **Strict-feasibility rule:** rows with `feasible=False` are EXCLUDED
 from the L1 ranking. No averaging over infeasible solutions.
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 from pathlib import Path
 import pandas as pd
 
@@ -45,8 +51,11 @@ df_b0039 = pd.read_csv(OUTDIR / 'comparison_b0039.csv') if (OUTDIR / 'comparison
 df = pd.concat([df_synth, df_b0039], ignore_index=True)
 print(f'Loaded {len(df)} rows across {df.case_id.nunique()} cases and {df.method.nunique()} methods.')
 df.head()
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 # Per-method feasibility summary.
 summary = df.groupby('method').agg(
     n_runs=('feasible', 'size'),
@@ -55,8 +64,11 @@ summary = df.groupby('method').agg(
     feasible_frac=lambda d: d['n_feasible'] / d['n_runs'],
 )
 summary.sort_values('feasible_frac', ascending=False)
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 # Headline table: L1 deviation per case x method (feasible-only).
 df_feas = df[df['feasible']].copy()
 pivot_L1 = df_feas.pivot_table(
@@ -67,15 +79,21 @@ pivot_L1 = df_feas.pivot_table(
 if 'lp_oneshot' in pivot_L1.columns and 'm14' in pivot_L1.columns:
     pivot_L1['_gap_m14_minus_lp'] = pivot_L1['m14'] - pivot_L1['lp_oneshot']
 pivot_L1
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 # Wall-time table.
 pivot_wall = df.pivot_table(
     index='case_id', columns='method', values='wall_s', aggfunc='first',
 ).round(2)
 pivot_wall
-"""),
-    ('md', """\
+""",
+    ),
+    (
+        'md',
+        """\
 ## Reading the headline table
 
 * A blank cell means that (case, method) was infeasible at exact eval
@@ -85,8 +103,11 @@ pivot_wall
   numbers mean LP wins on L1, negative means M14 wins.
 * `cluster_pipeline` rows are expected to be empty / errored — the
   adapter is not wired yet (see Task 9 note in the plan).
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -111,7 +132,8 @@ if cases and methods:
     plt.show()
 else:
     print('No feasible rows to plot.')
-"""),
+""",
+    ),
 ]
 
 

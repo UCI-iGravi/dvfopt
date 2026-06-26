@@ -15,6 +15,7 @@ Stages:
 
 Save best result at each stage.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,8 +40,7 @@ def report(phi, label, phi_input=None):
     n_below = int((V < THRESHOLD - 1e-5).sum())
     mn = float(V.min())
     L1 = '' if phi_input is None else f'  L1_from_input={float(np.abs(phi - phi_input).sum()):.1f}'
-    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}',
-          flush=True)
+    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}', flush=True)
     return n_neg, n_below, mn
 
 
@@ -69,8 +69,7 @@ def main():
     ]
 
     for sched_name, thr, n_iter in SCHEDULES:
-        print(f'\n=== {sched_name}: threshold={thr}, iterations={n_iter} ===',
-              flush=True)
+        print(f'\n=== {sched_name}: threshold={thr}, iterations={n_iter} ===', flush=True)
         for it in range(n_iter):
             t0 = time.time()
             solver = Solver(
@@ -81,7 +80,7 @@ def main():
             )
             new = solver.fit(cur).corrected
             wall = time.time() - t0
-            n_neg, n_below, mn = report(new, f'  {sched_name} iter {it+1}/{n_iter}', phi_input)
+            n_neg, n_below, mn = report(new, f'  {sched_name} iter {it + 1}/{n_iter}', phi_input)
             print(f'    wall={wall:.1f}s', flush=True)
             if n_neg < best_n_neg:
                 best_n_neg = n_neg
@@ -89,8 +88,7 @@ def main():
                 print(f'    *** new best: n_neg={n_neg} ***', flush=True)
             cur = new
             if n_neg == 0 and n_below == 0:
-                print(f'\n*** STRICT 100% feasible at {sched_name} iter {it+1} ***',
-                      flush=True)
+                print(f'\n*** STRICT 100% feasible at {sched_name} iter {it + 1} ***', flush=True)
                 np.save(OUTPUT / 'b0039_z0_15_strict_via_ms_v3.npy', new)
                 return
 

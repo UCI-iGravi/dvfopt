@@ -12,6 +12,7 @@ Uses sparse Jacobian via build_tet_sparse_jac (already exists).
 Run with: C:/Users/Andy/anaconda3/python.exe (cyipopt only in
 anaconda base, not in .venv).
 """
+
 from __future__ import annotations
 
 import sys
@@ -123,8 +124,8 @@ def main():
     # Unpack and check feasibility.
     n = nlp.D * nlp.H * nlp.W
     dx_out = x_opt[:n].reshape(nlp.D, nlp.H, nlp.W)
-    dy_out = x_opt[n:2 * n].reshape(nlp.D, nlp.H, nlp.W)
-    dz_out = x_opt[2 * n:].reshape(nlp.D, nlp.H, nlp.W)
+    dy_out = x_opt[n : 2 * n].reshape(nlp.D, nlp.H, nlp.W)
+    dz_out = x_opt[2 * n :].reshape(nlp.D, nlp.H, nlp.W)
     phi_out = np.stack([dz_out, dy_out, dx_out])
     V_final = six_tet_volumes_3d(phi_out)
     n_neg = int((V_final <= 0).sum())

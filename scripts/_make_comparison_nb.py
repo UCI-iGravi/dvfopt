@@ -1,4 +1,5 @@
 """Build triangle-sign-constraint-comparison.ipynb."""
+
 import json
 
 path = "notebooks/two-triangle-check/triangle-sign-constraint-comparison.ipynb"
@@ -391,11 +392,7 @@ cells.append(
 )
 
 # --- 4. Per-case visualization cells -----------------------------------
-per_case_code = (
-    "for name in CASES:\n"
-    "    r = results[name]\n"
-    "    plot_case(name, r['phi_init'], r)"
-)
+per_case_code = "for name in CASES:\n    r = results[name]\n    plot_case(name, r['phi_init'], r)"
 cells.append(
     md(
         "## Warped-grid comparison per case\n"

@@ -13,6 +13,7 @@ This is the last untested local-fix strategy. Unlike Strategy A
 to a single mean value), Strategy D moves the 8 corners minimally
 — ideally just enough to make this cube non-collapsed.
 """
+
 from __future__ import annotations
 
 import sys
@@ -42,8 +43,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -62,11 +62,13 @@ def _best_min_per_cell(phi):
         tets = _six_tets_for_diagonal(s, e)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
     return min_per_diag.max(axis=0)
 
@@ -99,9 +101,11 @@ def _cell_six_tet_volumes(disp_24, id_pos):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
@@ -117,8 +121,8 @@ def fix_cell(phi, z, y, x, threshold=THRESHOLD):
         oz = (i >> 2) & 1
         oy = (i >> 1) & 1
         ox = i & 1
-        cur[i] = float(phi[0, z + oz, y + oy, x + ox])       # dz
-        cur[i + 8] = float(phi[1, z + oz, y + oy, x + ox])   # dy
+        cur[i] = float(phi[0, z + oz, y + oy, x + ox])  # dz
+        cur[i + 8] = float(phi[1, z + oz, y + oy, x + ox])  # dy
         cur[i + 16] = float(phi[2, z + oz, y + oy, x + ox])  # dx
 
     # Objective: 0.5 * ||x - x_in||^2.
@@ -131,6 +135,7 @@ def fix_cell(phi, z, y, x, threshold=THRESHOLD):
         def fun(x):
             V = _cell_six_tet_volumes(x, id_pos)
             return V[k] - threshold
+
         return fun
 
     constraints = [{'type': 'ineq', 'fun': con_factory(k)} for k in range(6)]
@@ -138,7 +143,10 @@ def fix_cell(phi, z, y, x, threshold=THRESHOLD):
     # SLSQP doesn't natively use the analytic objective gradient; pass
     # jac=True to obj wrapper.
     res = minimize(
-        obj, cur, method='SLSQP', jac=True,
+        obj,
+        cur,
+        method='SLSQP',
+        jac=True,
         constraints=constraints,
         options={'maxiter': 100, 'ftol': 1e-9, 'disp': False},
     )
@@ -161,7 +169,7 @@ def strategy_d(phi, target_threshold=THRESHOLD, max_passes=8, verbose=True):
         # safety margin).
         V_default = six_tet_volumes_3d(phi_out)
         default_min = V_default.min(axis=0)
-        target_mask = (default_min < target_threshold - 1e-5)
+        target_mask = default_min < target_threshold - 1e-5
         n_target = int(target_mask.sum())
         if n_target == 0:
             if verbose:
@@ -176,7 +184,7 @@ def strategy_d(phi, target_threshold=THRESHOLD, max_passes=8, verbose=True):
         order = np.argsort(mins)
         n_fixed = 0
         n_failed = 0
-        for k in order[:min(500, len(order))]:  # cap to top-500 per pass
+        for k in order[: min(500, len(order))]:  # cap to top-500 per pass
             z, y, x = int(nz[k]), int(ny[k]), int(nx[k])
             sol, res = fix_cell(phi_out, z, y, x, threshold=target_threshold)
             if sol is None:
@@ -216,8 +224,8 @@ def main():
     V = six_tet_volumes_3d(phi)
     best_min = _best_min_per_cell(phi)
     print(
-        f'Start:  default n_neg={int((V<=0).sum())}  '
-        f'unfixable={int((best_min<=0).sum())}  '
+        f'Start:  default n_neg={int((V <= 0).sum())}  '
+        f'unfixable={int((best_min <= 0).sum())}  '
         f'min_T={float(V.min()):+.6f}',
         flush=True,
     )

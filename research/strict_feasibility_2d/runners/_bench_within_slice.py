@@ -9,6 +9,7 @@ perturbs solution quality (clustering/batch order can change the result).
 
 Guarded for Windows spawn.
 """
+
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parents[3]))
 
 def _n_neg_2tri(out):
     from dvfopt.core.tri_primitives import tri_areas_flat
+
     H, W = out.shape[1:]
     flat = np.concatenate([out[0].ravel(), out[1].ravel()])  # DY_FIRST
     return int((tri_areas_flat(flat, H, W) <= 0).sum())
@@ -43,14 +45,16 @@ def main():
         sl = raw[1:3, z].astype(np.float64)
         n0 = _n_neg_2tri(sl)
         print(f'\n=== slice z={z} {sl.shape} input n_neg={n0} ===', flush=True)
-        print(f'{"n_workers":>9} | {"wall(s)":>8} | {"speedup":>7} | '
-              f'{"n_neg":>5} | {"L1":>12} | {"L1 vs nw=1":>10}', flush=True)
+        print(
+            f'{"n_workers":>9} | {"wall(s)":>8} | {"speedup":>7} | '
+            f'{"n_neg":>5} | {"L1":>12} | {"L1 vs nw=1":>10}',
+            flush=True,
+        )
         base_wall = None
         base_l1 = None
         for nw in workers:
             t0 = time.time()
-            out, _ = cluster_slp_iter(sl, threshold=THR, max_outer_iters=6,
-                                      n_workers=nw)
+            out, _ = cluster_slp_iter(sl, threshold=THR, max_outer_iters=6, n_workers=nw)
             dt = time.time() - t0
             nneg = _n_neg_2tri(out)
             l1 = float(np.abs(out - sl).sum())
@@ -58,8 +62,10 @@ def main():
                 base_wall, base_l1 = dt, l1
             sp = base_wall / dt
             dl1 = (l1 - base_l1) / base_l1 * 100.0
-            print(f'{nw:>9} | {dt:>8.1f} | {sp:>6.2f}x | {nneg:>5} | '
-                  f'{l1:>12.1f} | {dl1:>+9.2f}%', flush=True)
+            print(
+                f'{nw:>9} | {dt:>8.1f} | {sp:>6.2f}x | {nneg:>5} | {l1:>12.1f} | {dl1:>+9.2f}%',
+                flush=True,
+            )
 
 
 if __name__ == '__main__':

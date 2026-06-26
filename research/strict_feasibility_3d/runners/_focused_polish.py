@@ -3,6 +3,7 @@
 If this works, the same approach scales to the 19-fold final
 residual (it should — fewer active constraints, smaller LP).
 """
+
 from __future__ import annotations
 
 import sys

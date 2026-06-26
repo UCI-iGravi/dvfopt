@@ -1,6 +1,7 @@
 """Iterate Stage 3 (M10Tet @ threshold=0.015) on the z=0..15 chunk
 output until convergence or fold-count plateau.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,7 +39,9 @@ def main():
     phi = np.load(cache)
     print(f'Loaded {cache}', flush=True)
     s = _stats(phi)
-    print(f'  start: n_neg={s["n_neg"]}  n<0.01={s["n_below"]}  min_T={s["min_T"]:+.6f}', flush=True)
+    print(
+        f'  start: n_neg={s["n_neg"]}  n<0.01={s["n_below"]}  min_T={s["min_T"]:+.6f}', flush=True
+    )
 
     prev_n_neg = s['n_neg']
     for iteration in range(4):

@@ -15,6 +15,7 @@ The HiGHS L1 solver (``research.strict_feasibility_2d.algorithms.
 highs_solver.solve_l1_lp_step``) is dimension-agnostic; we reuse it
 directly here.
 """
+
 from __future__ import annotations
 
 import time
@@ -31,6 +32,7 @@ from research.strict_feasibility_2d.algorithms.highs_solver import (
 )
 
 # ---------- phi pack helpers ----------
+
 
 def _phi3hw_to_flat(phi_3dhw: np.ndarray) -> np.ndarray:
     """``(3, D, H, W)`` ``[dz, dy, dx]`` -> flat ``[dx, dy, dz]`` (DX_FIRST)."""
@@ -52,6 +54,7 @@ def _exact_min_T(phi_3dhw: np.ndarray) -> float:
 
 
 # ---------- seeds ----------
+
 
 def _m14_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
     """Feasible seed via the 3D M14 pipeline
@@ -122,9 +125,7 @@ def _m10_fast_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
 def _build_seed(phi_in_3dhw: np.ndarray, threshold: float, seed) -> np.ndarray:
     if isinstance(seed, np.ndarray):
         if seed.shape != phi_in_3dhw.shape:
-            raise ValueError(
-                f'seed shape {seed.shape} != phi_in shape {phi_in_3dhw.shape}'
-            )
+            raise ValueError(f'seed shape {seed.shape} != phi_in shape {phi_in_3dhw.shape}')
         return seed.astype(np.float64).copy()
     if seed == 'm10':
         return _m10_tet_seed(phi_in_3dhw, threshold)
@@ -138,6 +139,7 @@ def _build_seed(phi_in_3dhw: np.ndarray, threshold: float, seed) -> np.ndarray:
 
 
 # ---------- LP / SLP public API ----------
+
 
 def lp_oneshot(
     phi_in_3dhw: np.ndarray,

@@ -71,7 +71,7 @@ HISTORY_MAX = DEFAULT_HISTORY_MAX
 # (3, D, H, W) volume. Cap the deque small and guard total bytes: past
 # the budget we keep only the input + final snapshots.
 DEFAULT_HISTORY_MAX_3D = 8
-MAX_3D_HISTORY_BYTES = 2 * 1024 ** 3  # ~2 GB
+MAX_3D_HISTORY_BYTES = 2 * 1024**3  # ~2 GB
 
 
 class StateSnapshot:
@@ -184,11 +184,21 @@ def _volume_snapshot(phi3d, *, n_neg: int, min_T: float, outer_iter: int) -> Sta
     window/opt rects collapse to zero (no active-window overlay in 3D)."""
     return StateSnapshot(
         phi=np.asarray(phi3d, dtype=np.float64).copy(),
-        window_y0=0, window_y1=0, window_x0=0, window_x1=0,
-        opt_y0=0, opt_y1=0, opt_x0=0, opt_x1=0,
-        is_padded=False, neg_y=0, neg_x=0,
-        per_index_iter=0, outer_iter=int(outer_iter),
-        n_neg=int(n_neg), min_T=float(min_T),
+        window_y0=0,
+        window_y1=0,
+        window_x0=0,
+        window_x1=0,
+        opt_y0=0,
+        opt_y1=0,
+        opt_x0=0,
+        opt_x1=0,
+        is_padded=False,
+        neg_y=0,
+        neg_x=0,
+        per_index_iter=0,
+        outer_iter=int(outer_iter),
+        n_neg=int(n_neg),
+        min_T=float(min_T),
     )
 
 

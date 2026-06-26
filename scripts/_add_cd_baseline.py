@@ -1,4 +1,5 @@
 """Add CD-constraint SLSQP baseline + fix misleading [OK] tag on initial."""
+
 import json
 
 path = "notebooks/two-triangle-check/triangle-sign-solver-engineering.ipynb"
@@ -6,11 +7,23 @@ nb = json.load(open(path, encoding="utf-8"))
 
 
 def md(text, cid):
-    return {"cell_type": "markdown", "id": cid, "metadata": {}, "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "markdown",
+        "id": cid,
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
 
 
 def code(text, cid):
-    return {"cell_type": "code", "id": cid, "metadata": {}, "execution_count": None, "outputs": [], "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "code",
+        "id": cid,
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": text.splitlines(keepends=True),
+    }
 
 
 # ------------------------------------------------------------------

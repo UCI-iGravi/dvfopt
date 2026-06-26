@@ -11,6 +11,7 @@ Pipeline:
     - check: stop if n_neg=0 or no improvement in 2 consecutive iters
   Stage 3: M10Tet @ 0.012 recovery (final, once)
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,7 +42,7 @@ STALL_PATIENCE = 2  # stop if no improvement in this many consecutive iters
 def cluster_slsqp_pass(phi, phi_input):
     V = six_tet_volumes_3d(phi)
     min_per_cube = V.min(axis=0)
-    fold_mask = (min_per_cube <= 0)
+    fold_mask = min_per_cube <= 0
     fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
     if not fold_cells:
         return phi, 0.0, 0
@@ -62,8 +63,7 @@ def cluster_slsqp_pass(phi, phi_input):
         cz, cy, cx = c
         k_ring = max(2, min(K_RING_MAX, r + 2))
         try:
-            new, res, wall, n_cubes, n_dof = run_slsqp_around(
-                cur, cz, cy, cx, k_ring)
+            new, res, wall, n_cubes, n_dof = run_slsqp_around(cur, cz, cy, cx, k_ring)
         except Exception as e:
             continue
         total_wall += wall
@@ -77,8 +77,11 @@ def cluster_slsqp_pass(phi, phi_input):
         if delta <= 0:
             cur = new
             accepted += 1
-            print(f'    cluster {i+1}/{len(refined)}: n_neg {n_before}->{n_new} '
-                  f'wall={wall:.1f}s [ACCEPT]', flush=True)
+            print(
+                f'    cluster {i + 1}/{len(refined)}: n_neg {n_before}->{n_new} '
+                f'wall={wall:.1f}s [ACCEPT]',
+                flush=True,
+            )
     return cur, total_wall, accepted
 
 
@@ -90,34 +93,35 @@ def main():
     t0 = time.time()
     cur = m10tet(phi_input, 0.015)
     wall1 = time.time() - t0
-    print(f'  wall={wall1:.1f}s ({wall1/60:.1f} min)', flush=True)
+    print(f'  wall={wall1:.1f}s ({wall1 / 60:.1f} min)', flush=True)
     n, b, _ = report(cur, '  after M10Tet @ 0.015', phi_input)
     if n == 0 and b == 0:
         return
 
-    print('\n=== Stage 2: ITERATE cluster-SLSQP only (no recovery) ===',
-          flush=True)
+    print('\n=== Stage 2: ITERATE cluster-SLSQP only (no recovery) ===', flush=True)
     total_wall = wall1
     last_n = n
     stall_count = 0
     for outer in range(MAX_OUTER_ITERS):
-        print(f'\n-- Outer iter {outer+1}/{MAX_OUTER_ITERS}, current n_neg={last_n} --',
-              flush=True)
+        print(
+            f'\n-- Outer iter {outer + 1}/{MAX_OUTER_ITERS}, current n_neg={last_n} --', flush=True
+        )
         cur, slsqp_wall, accepted = cluster_slsqp_pass(cur, phi_input)
         total_wall += slsqp_wall
-        n, b, mn = report(cur, f'  after SLSQP iter {outer+1}', phi_input)
-        print(f'  iter wall={slsqp_wall:.1f}s, accepted={accepted}, '
-              f'cumulative={total_wall/60:.1f}min', flush=True)
+        n, b, mn = report(cur, f'  after SLSQP iter {outer + 1}', phi_input)
+        print(
+            f'  iter wall={slsqp_wall:.1f}s, accepted={accepted}, '
+            f'cumulative={total_wall / 60:.1f}min',
+            flush=True,
+        )
         if n == 0:
             print('  *** REACHED n_neg=0 ***', flush=True)
             break
         if n >= last_n:
             stall_count += 1
-            print(f'  no improvement (stall {stall_count}/{STALL_PATIENCE})',
-                  flush=True)
+            print(f'  no improvement (stall {stall_count}/{STALL_PATIENCE})', flush=True)
             if stall_count >= STALL_PATIENCE:
-                print('  STALL: no progress in 2 consecutive iters, stopping',
-                      flush=True)
+                print('  STALL: no progress in 2 consecutive iters, stopping', flush=True)
                 break
         else:
             stall_count = 0
@@ -128,11 +132,9 @@ def main():
     final = m10tet(cur, 0.012)
     wall_rec = time.time() - t0
     total_wall += wall_rec
-    print(f'  recovery wall={wall_rec:.1f}s ({wall_rec/60:.1f} min)',
-          flush=True)
+    print(f'  recovery wall={wall_rec:.1f}s ({wall_rec / 60:.1f} min)', flush=True)
     n, b, mn = report(final, '  FINAL', phi_input)
-    print(f'  total wall = {total_wall:.1f}s ({total_wall/60:.1f} min)',
-          flush=True)
+    print(f'  total wall = {total_wall:.1f}s ({total_wall / 60:.1f} min)', flush=True)
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_iter_norec.npy', final)
         print('  *** STRICT FEASIBLE via ITER-NO-RECOVERY ***', flush=True)

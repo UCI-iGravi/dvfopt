@@ -10,6 +10,7 @@ ring layer absorbs perturbations from the inner layers, and since
 it has plenty of feasibility margin (positive V_k initially), it
 can flex without breaking.
 """
+
 from __future__ import annotations
 
 import sys
@@ -54,7 +55,7 @@ def main():
         flush=True,
     )
 
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     # Group unfix cells by 1-cell connectivity.
     grid = binary_dilation(unfix_mask, iterations=1)
     labels, n_comp = cc_label(grid)
@@ -73,19 +74,22 @@ def main():
     for i, target_cells in enumerate(clusters):
         # Build 2-ring (target + 2 dilation steps).
         target_mask = np.zeros(cube_shape, dtype=bool)
-        for (z, y, x) in target_cells:
+        for z, y, x in target_cells:
             target_mask[z, y, x] = True
         ring2_mask = binary_dilation(target_mask, iterations=2)
         ring2_cells = list(zip(*np.where(ring2_mask)))
         ring2_cells = [(int(z), int(y), int(x)) for z, y, x in ring2_cells]
         print(
-            f'\n--- Cluster {i+1}/{len(clusters)}: {len(target_cells)} target + '
+            f'\n--- Cluster {i + 1}/{len(clusters)}: {len(target_cells)} target + '
             f'{len(ring2_cells) - len(target_cells)} 2-ring ---',
             flush=True,
         )
         phi_new, info = solve_cluster_nlp(
-            phi_new, ring2_cells, threshold=THRESHOLD,
-            max_iter=1000, verbose=True,
+            phi_new,
+            ring2_cells,
+            threshold=THRESHOLD,
+            max_iter=1000,
+            verbose=True,
         )
         total_L1 += info['L1_added']
 

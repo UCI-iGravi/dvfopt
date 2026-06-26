@@ -22,6 +22,7 @@ GOAL: explore whether the closest diffeomorphism to B0039 is
 within reasonable L1 of the input, even if not the global L1
 optimum.
 """
+
 from __future__ import annotations
 
 import sys
@@ -71,7 +72,10 @@ def compose_phi(phi, phi_inner):
     # grid_sample on phi (treat each channel as a separate scalar field).
     # phi shape (1, 3, D, H, W); grid shape (1, D, H, W, 3).
     sampled = F.grid_sample(
-        phi, grid, mode='bilinear', padding_mode='border',
+        phi,
+        grid,
+        mode='bilinear',
+        padding_mode='border',
         align_corners=True,
     )
     # phi(x + phi_inner(x)) = sampled. Result is the displacement of the
@@ -81,7 +85,7 @@ def compose_phi(phi, phi_inner):
 
 def scaling_and_squaring(v, N=6):
     """Approximate exp(v) by phi_0 = v / 2**N then N compositions."""
-    phi = v / (2.0 ** N)
+    phi = v / (2.0**N)
     for _ in range(N):
         phi = compose_phi(phi, phi)
     return phi
@@ -92,7 +96,7 @@ def grad_loss(v):
     dz = v[:, :, 1:, :, :] - v[:, :, :-1, :, :]
     dy = v[:, :, :, 1:, :] - v[:, :, :, :-1, :]
     dx = v[:, :, :, :, 1:] - v[:, :, :, :, :-1]
-    return (dz ** 2).sum() + (dy ** 2).sum() + (dx ** 2).sum()
+    return (dz**2).sum() + (dy**2).sum() + (dx**2).sum()
 
 
 def main():
@@ -121,8 +125,11 @@ def main():
 
     opt = torch.optim.Adam([v], lr=LR)
     t0 = time.time()
-    print(f'\n=== Diffeomorphic optimization: N_squaring={N_SQUARE}, '
-          f'lr={LR}, lambda_grad={LAMBDA_GRAD}, epochs={EPOCHS} ===', flush=True)
+    print(
+        f'\n=== Diffeomorphic optimization: N_squaring={N_SQUARE}, '
+        f'lr={LR}, lambda_grad={LAMBDA_GRAD}, epochs={EPOCHS} ===',
+        flush=True,
+    )
 
     best_n_neg = int((V0 <= 0).sum())
     for epoch in range(EPOCHS):

@@ -3,6 +3,7 @@
 Both use the now-parallel tet kernels. Active-band crops to the fold
 clusters and solves M10Tet only there; global solves the whole field.
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,17 +31,24 @@ def main():
 
     print('\n=== GLOBAL M10Tet @ 0.012 (parallel kernels) ===', flush=True)
     t0 = time.time()
-    out_g = Solver(
-        constraint=Tet6Constraint3D(shape=phi.shape[1:]),
-        objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMBarrier3DStrategy(),
-        threshold=0.012,
-    ).fit(phi).corrected
+    out_g = (
+        Solver(
+            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            objective=L1Objective(eps=1e-4),
+            strategy=HarmonicALMBarrier3DStrategy(),
+            threshold=0.012,
+        )
+        .fit(phi)
+        .corrected
+    )
     wg = time.time() - t0
     mvg = six_tet_min_volume_3d(out_g)
     L1g = float(np.abs(out_g - phi).sum())
-    print(f'  GLOBAL: n_neg={int((mvg <= 0).sum())} min_T={mvg.min():+.6f} '
-          f'L1={L1g:.1f} wall={wg:.1f}s', flush=True)
+    print(
+        f'  GLOBAL: n_neg={int((mvg <= 0).sum())} min_T={mvg.min():+.6f} '
+        f'L1={L1g:.1f} wall={wg:.1f}s',
+        flush=True,
+    )
 
     print('\n=== ACTIVE-BAND M10Tet @ 0.012 ===', flush=True)
     t0 = time.time()
@@ -48,11 +56,16 @@ def main():
     wa = time.time() - t0
     mva = six_tet_min_volume_3d(out_a)
     L1a = float(np.abs(out_a - phi).sum())
-    print(f'  ACTIVE-BAND: n_neg={int((mva <= 0).sum())} min_T={mva.min():+.6f} '
-          f'L1={L1a:.1f} wall={wa:.1f}s clusters={info["n_clusters"]}', flush=True)
+    print(
+        f'  ACTIVE-BAND: n_neg={int((mva <= 0).sum())} min_T={mva.min():+.6f} '
+        f'L1={L1a:.1f} wall={wa:.1f}s clusters={info["n_clusters"]}',
+        flush=True,
+    )
 
-    print(f'\n=== SPEEDUP: {wg / max(wa, 0.1):.1f}x  '
-          f'(global {wg:.0f}s -> active-band {wa:.0f}s) ===', flush=True)
+    print(
+        f'\n=== SPEEDUP: {wg / max(wa, 0.1):.1f}x  (global {wg:.0f}s -> active-band {wa:.0f}s) ===',
+        flush=True,
+    )
 
 
 if __name__ == '__main__':

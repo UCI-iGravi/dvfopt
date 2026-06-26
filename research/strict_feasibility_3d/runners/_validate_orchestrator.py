@@ -6,6 +6,7 @@ best-diagonal floor (irreducible-under-fixed-triangulation set), L1, wall.
 This answers the standing question: does the packaged pipeline fix the
 problematic sections, and where is the genuine floor.
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,24 +56,33 @@ def main():
         mvo = six_tet_min_volume_3d(out)
         n_out = int((mvo <= 0).sum())
         n_below = int((mvo < 0.01 - 1e-5).sum())
-        print(f'  RESULT feasible={rep.feasible} n_neg {n0}->{n_out} '
-              f'n<0.01={n_below} min_T={mvo.min():+.6f} '
-              f'floor_in={rep.best_diag_floor_in} floor_out={rep.best_diag_floor_out} '
-              f'L1={rep.l1_from_input:.1f} wall={rep.wall_s:.1f}s', flush=True)
+        print(
+            f'  RESULT feasible={rep.feasible} n_neg {n0}->{n_out} '
+            f'n<0.01={n_below} min_T={mvo.min():+.6f} '
+            f'floor_in={rep.best_diag_floor_in} floor_out={rep.best_diag_floor_out} '
+            f'L1={rep.l1_from_input:.1f} wall={rep.wall_s:.1f}s',
+            flush=True,
+        )
         if rep.feasible:
             np.save(OUT / f'orch_strict_{name}.npy', out)
-        results.append((name, n0, rep.feasible, n_out, n_below,
-                        rep.best_diag_floor_out, rep.wall_s))
+        results.append(
+            (name, n0, rep.feasible, n_out, n_below, rep.best_diag_floor_out, rep.wall_s)
+        )
 
     print('\n' + '=' * 84, flush=True)
     print('ORCHESTRATOR VALIDATION SUMMARY', flush=True)
     print('=' * 84, flush=True)
-    print(f'{"section":<22}{"n_in":>8}{"feasible":>10}{"n_out":>8}'
-          f'{"n<.01":>8}{"floor":>8}{"wall(s)":>10}', flush=True)
+    print(
+        f'{"section":<22}{"n_in":>8}{"feasible":>10}{"n_out":>8}'
+        f'{"n<.01":>8}{"floor":>8}{"wall(s)":>10}',
+        flush=True,
+    )
     print('-' * 84, flush=True)
-    for (name, n0, feas, n_out, n_below, floor, wall) in results:
-        print(f'{name:<22}{n0:>8}{feas!s:>10}{n_out!s:>8}'
-              f'{n_below!s:>8}{floor!s:>8}{wall:>10.1f}', flush=True)
+    for name, n0, feas, n_out, n_below, floor, wall in results:
+        print(
+            f'{name:<22}{n0:>8}{feas!s:>10}{n_out!s:>8}{n_below!s:>8}{floor!s:>8}{wall:>10.1f}',
+            flush=True,
+        )
 
 
 if __name__ == '__main__':

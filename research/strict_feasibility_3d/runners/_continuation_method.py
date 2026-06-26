@@ -12,6 +12,7 @@ slightly. The cumulative effect of small perturbations may reach
 a different local minimum than a direct M10Tet @ 0.015 from the
 M10Tet plateau state.
 """
+
 from __future__ import annotations
 
 import sys
@@ -52,7 +53,7 @@ def main():
     for ti, thr in enumerate(schedule):
         V_cur = six_tet_volumes_3d(cur)
         print(
-            f'\n--- Step {ti+1}/{len(schedule)}: threshold={thr:+.4f} '
+            f'\n--- Step {ti + 1}/{len(schedule)}: threshold={thr:+.4f} '
             f'(current n_neg={int((V_cur <= 0).sum())}, '
             f'n<0.01={int((V_cur < TRUE_THRESHOLD - 1e-5).sum())}, '
             f'min_T={float(V_cur.min()):+.6f}) ---',
@@ -77,7 +78,7 @@ def main():
             flush=True,
         )
         if n_neg == 0 and n_below == 0:
-            print(f'  *** STRICT 100% feasible at step {ti+1}, threshold={thr} ***', flush=True)
+            print(f'  *** STRICT 100% feasible at step {ti + 1}, threshold={thr} ***', flush=True)
             np.save(OUTPUT / 'b0039_z0_15_strict_via_continuation.npy', cur)
             break
 

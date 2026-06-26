@@ -1,4 +1,5 @@
 """Rename the two-triangle-check notebooks into reading order and update links."""
+
 import json
 import os
 import shutil
@@ -6,11 +7,11 @@ import shutil
 FOLDER = "notebooks/two-triangle-check"
 
 RENAMES = [
-    ("triangle-sign-vs-central-diff.ipynb",          "01_vs-central-diff.ipynb"),
-    ("triangle-sign-optimization.ipynb",             "02_optimization.ipynb"),
-    ("triangle-sign-demos.ipynb",                    "03_demos.ipynb"),
-    ("triangle-sign-constraint-comparison.ipynb",    "04_constraint-comparison.ipynb"),
-    ("triangle-sign-solver-engineering.ipynb",       "05_solver-engineering.ipynb"),
+    ("triangle-sign-vs-central-diff.ipynb", "01_vs-central-diff.ipynb"),
+    ("triangle-sign-optimization.ipynb", "02_optimization.ipynb"),
+    ("triangle-sign-demos.ipynb", "03_demos.ipynb"),
+    ("triangle-sign-constraint-comparison.ipynb", "04_constraint-comparison.ipynb"),
+    ("triangle-sign-solver-engineering.ipynb", "05_solver-engineering.ipynb"),
 ]
 
 # Map old filename → new filename for link rewriting.

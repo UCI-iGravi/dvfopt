@@ -3,6 +3,7 @@
 Verifies numerical equivalence (atol=1e-10) then times both on
 representative shapes (full B0039 slice + a few cluster crops).
 """
+
 from __future__ import annotations
 
 import sys

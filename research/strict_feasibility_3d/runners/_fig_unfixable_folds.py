@@ -14,6 +14,7 @@ Pipeline:
   5. Render each as a 3D wire-frame of the deformed cube, with
      edges colored by whether their incident tets are folded
 """
+
 from __future__ import annotations
 
 import sys
@@ -43,8 +44,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -59,9 +59,7 @@ def _cube_corner_positions(phi, z, y, x):
         oy = (i >> 1) & 1
         ox = i & 1
         cz, cy, cx = z + oz, y + oy, x + ox
-        pos[i] = ((z + oz) + dz[cz, cy, cx],
-                  (y + oy) + dy[cz, cy, cx],
-                  (x + ox) + dx[cz, cy, cx])
+        pos[i] = ((z + oz) + dz[cz, cy, cx], (y + oy) + dy[cz, cy, cx], (x + ox) + dx[cz, cy, cx])
     return pos
 
 
@@ -77,8 +75,7 @@ def _identity_corners(z, y, x):
 
 
 # Cube edges (pairs of corners differing in 1 bit).
-CUBE_EDGES = [(v, w) for v in range(8) for w in range(v + 1, 8)
-              if (v ^ w) in (1, 2, 4)]
+CUBE_EDGES = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
 
 
 def main():
@@ -103,16 +100,18 @@ def main():
         pos_id = _voxel_corner_positions(z0, z0, z0)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
 
     best_min = min_per_diag.max(axis=0)
     # Cells unfixable under any diagonal:
-    unfixable_mask = (best_min <= 0)
+    unfixable_mask = best_min <= 0
     n_unfix = int(unfixable_mask.sum())
     print(f'  Unfixable cells (under any of 4 diagonals): {n_unfix}', flush=True)
 
@@ -134,7 +133,8 @@ def main():
         'Geometrically unavoidable 3D folds on B0039 z=0..15 dense band\n'
         f'(12 of {n_unfix} cells whose 8 deformed cube-corners admit no\n'
         f' tetrahedralization with all-positive signed volumes)',
-        fontsize=12, y=0.98,
+        fontsize=12,
+        y=0.98,
     )
     for plot_idx, k in enumerate(pick[:12]):
         z, y, x = int(nz[k]), int(ny[k]), int(nx[k])
@@ -160,8 +160,7 @@ def main():
         # 6 tet volumes for the chosen diagonal.
         vols_at_cell = min_per_diag[best_di, z, y, x]
         ax.set_title(
-            f'cell ({z},{y},{x})\n'
-            f'best diag={_DIAGONALS[best_di]}  min_T={vols_at_cell:+.4f}',
+            f'cell ({z},{y},{x})\nbest diag={_DIAGONALS[best_di]}  min_T={vols_at_cell:+.4f}',
             fontsize=9,
         )
         # Make axes equal-ish so the twist is visible.
@@ -202,9 +201,13 @@ def main():
         ax = axes[plot_idx // 4, plot_idx % 4]
         # Deformed edges (solid blue).
         for u, v in CUBE_EDGES:
-            ax.plot([pos_c[u, 2], pos_c[v, 2]],
-                    [pos_c[u, 1], pos_c[v, 1]],
-                    color='C0', linewidth=1.8, alpha=0.85)
+            ax.plot(
+                [pos_c[u, 2], pos_c[v, 2]],
+                [pos_c[u, 1], pos_c[v, 1]],
+                color='C0',
+                linewidth=1.8,
+                alpha=0.85,
+            )
         # Corners red with labels.
         for i in range(8):
             ax.scatter(pos_c[i, 2], pos_c[i, 1], c='red', s=80, zorder=10)
@@ -212,8 +215,12 @@ def main():
             ax.annotate(
                 f'C{i}',
                 (pos_c[i, 2], pos_c[i, 1]),
-                xytext=(6, 6), textcoords='offset points',
-                fontsize=8, ha='left', va='bottom', zorder=11,
+                xytext=(6, 6),
+                textcoords='offset points',
+                fontsize=8,
+                ha='left',
+                va='bottom',
+                zorder=11,
                 bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='red', alpha=0.85),
             )
         # Reference: identity unit cube (small dashed at same centroid).
@@ -228,11 +235,24 @@ def main():
         # Reference 1x1 square in upper-right.
         ref_x0 = ax_xhi + margin * 0.1
         ref_y0 = ax_yhi - 1
-        ref_box = plt.Rectangle((ref_x0 - 1.2, ref_y0), 1.0, 1.0,
-                                 fill=False, edgecolor='gray', linestyle='--', linewidth=1)
+        ref_box = plt.Rectangle(
+            (ref_x0 - 1.2, ref_y0),
+            1.0,
+            1.0,
+            fill=False,
+            edgecolor='gray',
+            linestyle='--',
+            linewidth=1,
+        )
         ax.add_patch(ref_box)
-        ax.text(ref_x0 - 0.7, ref_y0 - 0.3, 'undeformed\nunit cell',
-                fontsize=6, ha='center', color='gray')
+        ax.text(
+            ref_x0 - 0.7,
+            ref_y0 - 0.3,
+            'undeformed\nunit cell',
+            fontsize=6,
+            ha='center',
+            color='gray',
+        )
         ax.set_title(
             f'cell ({z},{y},{x})  best diagonal min_T={severity[k]:+.4f}',
             fontsize=9,

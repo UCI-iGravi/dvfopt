@@ -16,6 +16,7 @@ adjacent slices have very different corrections, they may flip.
 
 This script runs the test on z=0..20 (the densest part of B0039).
 """
+
 from __future__ import annotations
 
 import sys
@@ -35,7 +36,9 @@ from research.strict_feasibility_2d.runners._compare import run_method as run_2d
 
 def main():
     print('Loading B0039...', flush=True)
-    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(np.float64)
+    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(
+        np.float64
+    )
     print(f'  full shape: {arr.shape}', flush=True)
 
     # Process a smaller range of representative slices.
@@ -81,11 +84,11 @@ def main():
         flush=True,
     )
     print(
-        f'  n_neg (V<=0):         {n_neg:>8d}  ({n_neg/n_tets*100:.4f}%)',
+        f'  n_neg (V<=0):         {n_neg:>8d}  ({n_neg / n_tets * 100:.4f}%)',
         flush=True,
     )
     print(
-        f'  n_below_thresh:       {n_below:>8d}  ({n_below/n_tets*100:.4f}%)',
+        f'  n_below_thresh:       {n_below:>8d}  ({n_below / n_tets * 100:.4f}%)',
         flush=True,
     )
     print(f'  min_T: {float(V.min()):+.4f}  max_T: {float(V.max()):+.4f}', flush=True)
@@ -96,7 +99,9 @@ def main():
         print('\nPer-z fold cell count (after 2D processing, stacked):', flush=True)
         for i in range(n_slices - 1):
             if fold_per_z[i] > 0:
-                print(f'  z={z_range[i]:3d} (cube z={i}): {int(fold_per_z[i])} fold cells', flush=True)
+                print(
+                    f'  z={z_range[i]:3d} (cube z={i}): {int(fold_per_z[i])} fold cells', flush=True
+                )
 
 
 if __name__ == '__main__':

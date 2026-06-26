@@ -5,6 +5,7 @@ stage 2's M10Tet at threshold=0.01 landed at min_T=+0.0049 — it
 under-shot the target by ~50%. Re-running on its own output with
 threshold=0.02 (2x) should push the barrier path higher.
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,8 +31,8 @@ def main():
     phi_s2 = np.load(STAGE2_CACHE)
     V = six_tet_volumes_3d(phi_s2)
     print(
-        f'Stage 2 cache: n_neg={int((V<=0).sum())}  '
-        f'n<thresh={int((V<TRUE_THRESHOLD-1e-5).sum())}  min_T={float(V.min()):+.6f}',
+        f'Stage 2 cache: n_neg={int((V <= 0).sum())}  '
+        f'n<thresh={int((V < TRUE_THRESHOLD - 1e-5).sum())}  min_T={float(V.min()):+.6f}',
         flush=True,
     )
 
@@ -65,7 +66,9 @@ def main():
         )
         if n_neg == 0 and n_below == 0:
             print(f'  *** STRICT 100% FEASIBLE *** at threshold={overshoot_threshold}', flush=True)
-            np.save(OUTPUT / f'b0039_z10_14_strict_feas_threshold{overshoot_threshold:.3f}.npy', phi_out)
+            np.save(
+                OUTPUT / f'b0039_z10_14_strict_feas_threshold{overshoot_threshold:.3f}.npy', phi_out
+            )
             break
 
 

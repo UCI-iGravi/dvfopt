@@ -8,6 +8,7 @@ unfixable cubes from breaking external neighbours.
 
 Increased maxiter to handle the larger problem.
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,9 +42,11 @@ def _cube_six_tet_signed(corner_pos):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
@@ -53,15 +56,16 @@ def expand_cluster_with_ring(unfix_cells, cube_shape):
     cells within distance 1 in cube space."""
     D, H, W = cube_shape
     mask = np.zeros(cube_shape, dtype=bool)
-    for (z, y, x) in unfix_cells:
+    for z, y, x in unfix_cells:
         mask[z, y, x] = True
     expanded = binary_dilation(mask, iterations=1)
     cz, cy, cx = np.where(expanded)
     return list(zip(cz.tolist(), cy.tolist(), cx.tolist()))
 
 
-def solve_cluster_nlp(phi, target_cells, ring_cells, threshold=THRESHOLD,
-                      max_iter=500, verbose=False):
+def solve_cluster_nlp(
+    phi, target_cells, ring_cells, threshold=THRESHOLD, max_iter=500, verbose=False
+):
     """target_cells must be satisfied (unfixable); ring_cells must ALSO
     be satisfied (they're neighbours). Both are constrained.
     Variables: union of phi vars touching any (target + ring) cube.
@@ -69,7 +73,7 @@ def solve_cluster_nlp(phi, target_cells, ring_cells, threshold=THRESHOLD,
     all_cubes = list(target_cells) + [c for c in ring_cells if c not in set(target_cells)]
     corner_set = set()
     cube_corner_ids = []
-    for (cz, cy, cx) in all_cubes:
+    for cz, cy, cx in all_cubes:
         ids_for_cube = []
         for i in range(8):
             iz = (i >> 2) & 1
@@ -91,10 +95,9 @@ def solve_cluster_nlp(phi, target_cells, ring_cells, threshold=THRESHOLD,
         x_in[i * 3 + 2] = phi[2, cz, cy, cx]
         ref_pos[i] = (cz, cy, cx)
 
-    cube_var_idx = np.stack([
-        np.array([corner_index[c] for c in ids], dtype=np.int64)
-        for ids in cube_corner_ids
-    ])
+    cube_var_idx = np.stack(
+        [np.array([corner_index[c] for c in ids], dtype=np.int64) for ids in cube_corner_ids]
+    )
 
     n_cubes = len(all_cubes)
 
@@ -104,7 +107,7 @@ def solve_cluster_nlp(phi, target_cells, ring_cells, threshold=THRESHOLD,
         for cube_i, var_idx in enumerate(cube_var_idx):
             pos = ref_pos[var_idx] + disp[var_idx]
             V = _cube_six_tet_signed(pos)
-            out[6 * cube_i:6 * (cube_i + 1)] = V
+            out[6 * cube_i : 6 * (cube_i + 1)] = V
         return out
 
     def objective(x):
@@ -118,7 +121,9 @@ def solve_cluster_nlp(phi, target_cells, ring_cells, threshold=THRESHOLD,
 
     t0 = time.time()
     res = minimize(
-        objective, x_in, jac=grad,
+        objective,
+        x_in,
+        jac=grad,
         method='trust-constr',
         constraints=[nlc],
         options={'maxiter': max_iter, 'verbose': 0, 'gtol': 1e-8, 'xtol': 1e-12},
@@ -166,7 +171,7 @@ def main():
         flush=True,
     )
 
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     nz, ny, nx = np.where(unfix_mask)
     # Cluster unfix cells.
     grid = unfix_mask.copy()
@@ -186,10 +191,14 @@ def main():
     total_L1 = 0.0
     for i, target_cells in enumerate(clusters):
         ring_cells = expand_cluster_with_ring(target_cells, cube_shape)
-        print(f'\n--- Cluster {i+1}/{len(clusters)}: {len(target_cells)} target + '
-              f'{len(ring_cells) - len(target_cells)} ring ---', flush=True)
-        phi_new, info = solve_cluster_nlp(phi_new, target_cells, ring_cells,
-                                           threshold=THRESHOLD, verbose=True)
+        print(
+            f'\n--- Cluster {i + 1}/{len(clusters)}: {len(target_cells)} target + '
+            f'{len(ring_cells) - len(target_cells)} ring ---',
+            flush=True,
+        )
+        phi_new, info = solve_cluster_nlp(
+            phi_new, target_cells, ring_cells, threshold=THRESHOLD, verbose=True
+        )
         total_L1 += info['L1_added']
 
     V_final = six_tet_volumes_3d(phi_new)

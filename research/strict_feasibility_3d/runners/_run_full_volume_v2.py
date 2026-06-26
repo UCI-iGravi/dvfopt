@@ -21,6 +21,7 @@ work is reused. Checkpoints after Phase A and after Phase B.
 
 GUARDED for Windows spawn (workers re-import this module).
 """
+
 import sys
 import time
 from pathlib import Path
@@ -37,7 +38,7 @@ def main():
 
     OUT = Path(__file__).parent / 'output'
     SRC = OUT / 'b0039_FULL_stage1.npy'
-    V1_CKPT = OUT / 'b0039_FULL_corrected_ckpt.npy'   # reuse band-1 work
+    V1_CKPT = OUT / 'b0039_FULL_corrected_ckpt.npy'  # reuse band-1 work
     CKPT_A = OUT / 'b0039_FULL_v2_phaseA.npy'
     FINAL = OUT / 'b0039_FULL_corrected.npy'
 
@@ -50,8 +51,7 @@ def main():
 
     if CKPT_A.exists():
         cur = np.load(CKPT_A)
-        print('RESUME: Phase A checkpoint found — skipping to Phase B',
-              flush=True)
+        print('RESUME: Phase A checkpoint found — skipping to Phase B', flush=True)
         phase_a_done = True
     elif V1_CKPT.exists():
         cur = np.load(V1_CKPT)
@@ -69,14 +69,23 @@ def main():
     if not phase_a_done:
         t0 = time.time()
         cur, info = parallel_zband_solve(
-            cur, threshold=THR, band_size=24, overlap=4, pad=4,
-            n_workers=n_workers_bulk, seam_cleanup=True, verbose=1,
+            cur,
+            threshold=THR,
+            band_size=24,
+            overlap=4,
+            pad=4,
+            n_workers=n_workers_bulk,
+            seam_cleanup=True,
+            verbose=1,
         )
         np.save(CKPT_A, cur)
-        print(f'[Phase A] band-parallel bulk: {info["n_neg_before"]}->'
-              f'{info["n_neg_after"]} bands={info["n_bands"]} '
-              f'seam_cleanup={info["seam_cleanup_ran"]} '
-              f'({(time.time()-t0)/3600:.2f}h)', flush=True)
+        print(
+            f'[Phase A] band-parallel bulk: {info["n_neg_before"]}->'
+            f'{info["n_neg_after"]} bands={info["n_bands"]} '
+            f'seam_cleanup={info["seam_cleanup_ran"]} '
+            f'({(time.time() - t0) / 3600:.2f}h)',
+            flush=True,
+        )
 
     # ---- Phase B: global escape on residual ----
     gtot = int((six_tet_min_volume_3d(cur) <= 0).sum())
@@ -84,18 +93,23 @@ def main():
     if gtot > 0:
         t0 = time.time()
         cur, rep = correct_dvf_3d(
-            cur, threshold=THR, n_workers=n_workers_escape,
-            thorough=True, verbose=1,
+            cur,
+            threshold=THR,
+            n_workers=n_workers_escape,
+            thorough=True,
+            verbose=1,
         )
-        print(f'[Phase B] global escape: ->{rep.n_neg_out} '
-              f'feasible={rep.feasible} min_T={rep.min_T_out:+.6f} '
-              f'({(time.time()-t0)/3600:.2f}h)', flush=True)
+        print(
+            f'[Phase B] global escape: ->{rep.n_neg_out} '
+            f'feasible={rep.feasible} min_T={rep.min_T_out:+.6f} '
+            f'({(time.time() - t0) / 3600:.2f}h)',
+            flush=True,
+        )
 
     mv = six_tet_min_volume_3d(cur)
     n_neg = int((mv <= 0).sum())
     n_below = int((mv < THR - 1e-5).sum())
-    print(f'FINAL n_neg={n_neg} n<0.01={n_below} min_T={float(mv.min()):+.6f}',
-          flush=True)
+    print(f'FINAL n_neg={n_neg} n<0.01={n_below} min_T={float(mv.min()):+.6f}', flush=True)
     # Gate the canonical save on strict feasibility (never silently deliver a
     # folded/sub-threshold field as the corrected output).
     if n_neg == 0 and n_below == 0:
@@ -103,10 +117,14 @@ def main():
         print(f'saved {FINAL} (strict-feasible)', flush=True)
     else:
         import sys
+
         partial = OUT / 'b0039_FULL_corrected_v2_PARTIAL.npy'
         np.save(partial, cur)
-        print(f'NOT strict-feasible (n_neg={n_neg}, n<0.01={n_below}) — wrote '
-              f'{partial}; NOT overwriting {FINAL.name}', flush=True)
+        print(
+            f'NOT strict-feasible (n_neg={n_neg}, n<0.01={n_below}) — wrote '
+            f'{partial}; NOT overwriting {FINAL.name}',
+            flush=True,
+        )
         sys.exit(1)
 
 

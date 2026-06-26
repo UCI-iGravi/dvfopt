@@ -12,7 +12,13 @@ Touches four cells:
 import json
 from pathlib import Path
 
-NB = Path(__file__).resolve().parents[1] / "benchmarks" / "solvers" / "slsqp" / "benchmark-constraint-modes.ipynb"
+NB = (
+    Path(__file__).resolve().parents[1]
+    / "benchmarks"
+    / "solvers"
+    / "slsqp"
+    / "benchmark-constraint-modes.ipynb"
+)
 
 
 A1 = """# Benchmark: Constraint Mode Comparison

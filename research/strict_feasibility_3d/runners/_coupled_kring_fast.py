@@ -18,6 +18,7 @@ where each of A, B, C, D is a point in R^3.
 The gradient of V w.r.t. each component of each corner is computed
 in closed form (cross-product structure).
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,8 +56,7 @@ def signed_vol_grad(A, B, C, D):
     return V, grad_A, grad_B, grad_C, grad_D
 
 
-def make_constraint_fn_with_jacobian(cubes, corner_idx_map, feasibility_thr,
-                                      n_dof):
+def make_constraint_fn_with_jacobian(cubes, corner_idx_map, feasibility_thr, n_dof):
     """Return (fn(x) -> g, jac(x) -> J) for the coupled cube-feasibility
     constraint set.
 
@@ -70,7 +70,9 @@ def make_constraint_fn_with_jacobian(cubes, corner_idx_map, feasibility_thr,
     cube_corner_base = np.zeros((n_cubes, 8, 3))
     for ci, (cz, cy, cx) in enumerate(cubes):
         for k in range(8):
-            iz = (k >> 2) & 1; iy = (k >> 1) & 1; ix = k & 1
+            iz = (k >> 2) & 1
+            iy = (k >> 1) & 1
+            ix = k & 1
             corner = (cz + iz, cy + iy, cx + ix)
             corner_i = corner_idx_map[corner]
             cube_corner_x_idx[ci, k, 0] = 3 * corner_i + 0
@@ -87,10 +89,14 @@ def make_constraint_fn_with_jacobian(cubes, corner_idx_map, feasibility_thr,
         B = pos[:, tets[:, 1], :]
         C = pos[:, tets[:, 2], :]
         D = pos[:, tets[:, 3], :]
-        AB = B - A; AC = C - A; AD = D - A
-        vols = (AB[..., 0] * (AC[..., 1] * AD[..., 2] - AC[..., 2] * AD[..., 1])
-                - AB[..., 1] * (AC[..., 0] * AD[..., 2] - AC[..., 2] * AD[..., 0])
-                + AB[..., 2] * (AC[..., 0] * AD[..., 1] - AC[..., 1] * AD[..., 0])) / 6.0
+        AB = B - A
+        AC = C - A
+        AD = D - A
+        vols = (
+            AB[..., 0] * (AC[..., 1] * AD[..., 2] - AC[..., 2] * AD[..., 1])
+            - AB[..., 1] * (AC[..., 0] * AD[..., 2] - AC[..., 2] * AD[..., 0])
+            + AB[..., 2] * (AC[..., 0] * AD[..., 1] - AC[..., 1] * AD[..., 0])
+        ) / 6.0
         vols = vols * signs[None, :]
         return (vols - feasibility_thr).reshape(-1)
 
@@ -103,25 +109,36 @@ def make_constraint_fn_with_jacobian(cubes, corner_idx_map, feasibility_thr,
         for ci in range(n_cubes):
             for k in range(6):
                 i0, i1, i2, i3 = tets[k]
-                A = pos[ci, i0]; B = pos[ci, i1]; C = pos[ci, i2]; D = pos[ci, i3]
-                AB = B - A; AC = C - A; AD = D - A
+                A = pos[ci, i0]
+                B = pos[ci, i1]
+                C = pos[ci, i2]
+                D = pos[ci, i3]
+                AB = B - A
+                AC = C - A
+                AD = D - A
                 # V = (1/6) * AB . (AC x AD)
                 # dV/dB = (1/6) * (AC x AD)
-                cross_CD = np.array([
-                    AC[1] * AD[2] - AC[2] * AD[1],
-                    AC[2] * AD[0] - AC[0] * AD[2],
-                    AC[0] * AD[1] - AC[1] * AD[0],
-                ])
-                cross_DB = np.array([
-                    AD[1] * AB[2] - AD[2] * AB[1],
-                    AD[2] * AB[0] - AD[0] * AB[2],
-                    AD[0] * AB[1] - AD[1] * AB[0],
-                ])
-                cross_BC = np.array([
-                    AB[1] * AC[2] - AB[2] * AC[1],
-                    AB[2] * AC[0] - AB[0] * AC[2],
-                    AB[0] * AC[1] - AB[1] * AC[0],
-                ])
+                cross_CD = np.array(
+                    [
+                        AC[1] * AD[2] - AC[2] * AD[1],
+                        AC[2] * AD[0] - AC[0] * AD[2],
+                        AC[0] * AD[1] - AC[1] * AD[0],
+                    ]
+                )
+                cross_DB = np.array(
+                    [
+                        AD[1] * AB[2] - AD[2] * AB[1],
+                        AD[2] * AB[0] - AD[0] * AB[2],
+                        AD[0] * AB[1] - AD[1] * AB[0],
+                    ]
+                )
+                cross_BC = np.array(
+                    [
+                        AB[1] * AC[2] - AB[2] * AC[1],
+                        AB[2] * AC[0] - AB[0] * AC[2],
+                        AB[0] * AC[1] - AB[1] * AC[0],
+                    ]
+                )
                 grad_B = cross_CD / 6.0
                 grad_C = cross_DB / 6.0
                 grad_D = cross_BC / 6.0

@@ -1,6 +1,7 @@
 """H1: try M10Tet with progressively higher target thresholds on
 the 173-fold residual. Hypothesis: a much higher target threshold
 forces the barrier path to push harder and resolve stuck folds."""
+
 from __future__ import annotations
 
 import sys
@@ -23,7 +24,7 @@ def main():
     phi_in = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     V = six_tet_volumes_3d(phi_in)
     print(
-        f'Input: n_neg={int((V<=0).sum())}  n<0.01={int((V<TRUE_THRESHOLD-1e-5).sum())}  '
+        f'Input: n_neg={int((V <= 0).sum())}  n<0.01={int((V < TRUE_THRESHOLD - 1e-5).sum())}  '
         f'min_T={float(V.min()):+.6f}',
         flush=True,
     )
@@ -57,8 +58,13 @@ def main():
             flush=True,
         )
         if n_neg == 0 and n_below == 0:
-            print(f'  *** STRICT 100% FEASIBLE *** at target threshold {target_threshold}', flush=True)
-            np.save(OUTPUT / f'b0039_z0_15_strict_via_h1_{int(target_threshold * 1000):03d}.npy', phi_out)
+            print(
+                f'  *** STRICT 100% FEASIBLE *** at target threshold {target_threshold}', flush=True
+            )
+            np.save(
+                OUTPUT / f'b0039_z0_15_strict_via_h1_{int(target_threshold * 1000):03d}.npy',
+                phi_out,
+            )
             phi_in = phi_out  # continue from improved state
             break
         else:

@@ -10,6 +10,7 @@ imported lazily on first access so that callers who only need the PDE
 solver or matrix builders do not pay the cost of those optional
 dependencies at import time.
 """
+
 from .solver import solveLaplacianFromCorrespondences
 from .utils import (
     laplacianA1D,
@@ -19,18 +20,20 @@ from .utils import (
 )
 
 # Names provided by the lazily-loaded correspondence module.
-_CORRESPONDENCE_NAMES = frozenset({
-    "getDataContours",
-    "getTemplateContours",
-    "getContours",
-    "estimate_normal",
-    "orient_normals_nd",
-    "orient2Dnormals",
-    "estimate2Dnormals",
-    "get2DCorrespondences_batch",
-    "get2DCorrespondences",
-    "sliceToSlice3DLaplacian",
-})
+_CORRESPONDENCE_NAMES = frozenset(
+    {
+        "getDataContours",
+        "getTemplateContours",
+        "getContours",
+        "estimate_normal",
+        "orient_normals_nd",
+        "orient2Dnormals",
+        "estimate2Dnormals",
+        "get2DCorrespondences_batch",
+        "get2DCorrespondences",
+        "sliceToSlice3DLaplacian",
+    }
+)
 
 _correspondence_module = None
 

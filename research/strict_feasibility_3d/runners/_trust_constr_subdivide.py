@@ -10,6 +10,7 @@ them into ~5-cell sub-clusters lets each converge reliably (as
 demonstrated by 100% success on the 5-cell clusters in the 1-ring
 test).
 """
+
 from __future__ import annotations
 
 import sys
@@ -65,7 +66,7 @@ def main():
         flush=True,
     )
 
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     grid = binary_dilation(unfix_mask, iterations=1)
     labels, n_comp = cc_label(grid)
     clusters = []
@@ -84,27 +85,33 @@ def main():
     n_fully_feas = 0
     for ci, cluster in enumerate(clusters):
         sub_clusters = subdivide_cluster(cluster, max_size=MAX_TARGET_PER_SUB)
-        print(f'\n--- Cluster {ci+1}/{len(clusters)} ({len(cluster)} cells) split into '
-              f'{len(sub_clusters)} sub-clusters ---', flush=True)
+        print(
+            f'\n--- Cluster {ci + 1}/{len(clusters)} ({len(cluster)} cells) split into '
+            f'{len(sub_clusters)} sub-clusters ---',
+            flush=True,
+        )
         for si, sub in enumerate(sub_clusters):
             total_subs += 1
             # Build 2-ring around this sub-cluster.
             sub_mask = np.zeros(cube_shape, dtype=bool)
-            for (z, y, x) in sub:
+            for z, y, x in sub:
                 sub_mask[z, y, x] = True
             ring2 = binary_dilation(sub_mask, iterations=2)
             ring2_cells = list(zip(*np.where(ring2)))
             ring2_cells = [(int(z), int(y), int(x)) for z, y, x in ring2_cells]
             t0 = time.time()
             phi_new, info = solve_cluster_nlp(
-                phi_new, ring2_cells, threshold=THRESHOLD,
-                max_iter=500, verbose=False,
+                phi_new,
+                ring2_cells,
+                threshold=THRESHOLD,
+                max_iter=500,
+                verbose=False,
             )
             wall = time.time() - t0
             n_cubes = info['n_cubes']
             cf = info['n_cubes_feasible']
             print(
-                f'  sub {si+1}/{len(sub_clusters)} ({len(sub)} target + '
+                f'  sub {si + 1}/{len(sub_clusters)} ({len(sub)} target + '
                 f'{n_cubes - len(sub)} ring): {cf}/{n_cubes}  '
                 f'min_V={info["min_V"]:+.4f}  L1+={info["L1_added"]:.1f}  '
                 f'wall={wall:.0f}s',

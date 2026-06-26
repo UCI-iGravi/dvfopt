@@ -15,6 +15,7 @@ The 1-fold residual has min_T=-0.000323, so the over-tighten
 needs to move T_k from -0.0003 across 0 — a tiny absolute shift
 but the barrier homotopy must find a different basin.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,8 +40,7 @@ def report(phi, label, phi_input=None):
     n_below = int((V < THRESHOLD - 1e-5).sum())
     mn = float(V.min())
     L1 = '' if phi_input is None else f'  L1={float(np.abs(phi - phi_input).sum()):.1f}'
-    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}',
-          flush=True)
+    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}', flush=True)
     return n_neg, n_below, mn
 
 
@@ -51,6 +51,7 @@ def m10tet(phi, thr):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -83,16 +84,15 @@ def main():
     ]
 
     for label, ot, rec in SCHED:
-        print(f'\n=== {label}: over-tighten @ {ot} + recover @ {rec} ===',
-              flush=True)
+        print(f'\n=== {label}: over-tighten @ {ot} + recover @ {rec} ===', flush=True)
         t0 = time.time()
         over = m10tet(best_state.copy(), ot)
         n_o, _, _ = report(over, f'  over-tightened @ {ot}', phi_input)
-        print(f'    wall={time.time()-t0:.1f}s', flush=True)
+        print(f'    wall={time.time() - t0:.1f}s', flush=True)
         t1 = time.time()
         rec_state = m10tet(over, rec)
         n_neg, n_below, mn = report(rec_state, f'  recovered @ {rec}', phi_input)
-        print(f'    recover wall={time.time()-t1:.1f}s', flush=True)
+        print(f'    recover wall={time.time() - t1:.1f}s', flush=True)
         if n_neg < best_n_neg:
             best_n_neg = n_neg
             best_state = rec_state.copy()
@@ -108,7 +108,7 @@ def main():
         t0 = time.time()
         result = m10tet(best_state.copy(), thr)
         n_neg, n_below, mn = report(result, f'  result @ {thr}', phi_input)
-        print(f'    wall={time.time()-t0:.1f}s', flush=True)
+        print(f'    wall={time.time() - t0:.1f}s', flush=True)
         if n_neg < best_n_neg:
             best_n_neg = n_neg
             best_state = result.copy()

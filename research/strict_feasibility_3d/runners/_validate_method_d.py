@@ -10,6 +10,7 @@ Checkpoints tested (those that exist):
   - iter result (will exist once iter pipeline saves it)
   - any others
 """
+
 from __future__ import annotations
 
 import sys
@@ -44,6 +45,7 @@ def m10tet(phi, thr):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -56,16 +58,18 @@ def m10tet(phi, thr):
 def run_method_d(phi, fold_cz, fold_cy, fold_cx, k_ring=2):
     """Method D: k=2 SLSQP @ thr=1e-3 (FEASIBILITY_THR=1e-3)."""
     ck.FEASIBILITY_THR = 1e-3
-    cubes, free_corners, x0 = build_coupled_problem(
-        phi, fold_cz, fold_cy, fold_cx, k_ring)
+    cubes, free_corners, x0 = build_coupled_problem(phi, fold_cz, fold_cy, fold_cx, k_ring)
     apply_x, corner_idx_map = make_apply_x(cubes, free_corners, phi)
     constraint_fn, _ = make_constraint_fn(cubes, corner_idx_map)
     obj, obj_grad = make_objective(x0.copy())
     cons = [{'type': 'ineq', 'fun': constraint_fn}]
     t0 = time.time()
     res = minimize(
-        obj, x0, jac=obj_grad,
-        constraints=cons, method='SLSQP',
+        obj,
+        x0,
+        jac=obj_grad,
+        constraints=cons,
+        method='SLSQP',
         options={'maxiter': 200, 'ftol': 1e-9, 'disp': False},
     )
     wall = time.time() - t0
@@ -107,7 +111,7 @@ def validate(npy_path, label, phi_input):
     print('  M10Tet @ 0.012 recovery...', flush=True)
     t0 = time.time()
     final = m10tet(new, 0.012)
-    print(f'  recovery wall={time.time()-t0:.1f}s', flush=True)
+    print(f'  recovery wall={time.time() - t0:.1f}s', flush=True)
     n, b, mn = report(final, '  FINAL', phi_input)
     if n == 0 and b == 0:
         print(f'  *** STRICT FEASIBLE via Method D on {label} ***', flush=True)

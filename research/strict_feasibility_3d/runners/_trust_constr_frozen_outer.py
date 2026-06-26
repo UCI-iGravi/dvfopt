@@ -16,6 +16,7 @@ Concretely:
 The NLP varies only free_corners while constraining all (target +
 ring) cubes' 6-tet volumes >= threshold.
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,9 +50,11 @@ def _cube_six_tet_signed(corner_pos):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
@@ -66,8 +69,9 @@ def _corners_of_cube(cz, cy, cx):
     return out
 
 
-def solve_cluster_frozen(phi, target_cells, ring_cells, outer_cells,
-                          threshold=THRESHOLD, max_iter=1000, verbose=False):
+def solve_cluster_frozen(
+    phi, target_cells, ring_cells, outer_cells, threshold=THRESHOLD, max_iter=1000, verbose=False
+):
     """outer_cells: cubes ADJACENT to ring cells that are NOT in target+ring.
     Their corners (shared with ring) get FROZEN."""
     cluster_cubes = list(target_cells) + [c for c in ring_cells if c not in set(target_cells)]
@@ -75,14 +79,14 @@ def solve_cluster_frozen(phi, target_cells, ring_cells, outer_cells,
     # All corners touched by ANY cluster cube.
     cluster_corner_set = set()
     cube_corner_ids = []
-    for (cz, cy, cx) in cluster_cubes:
+    for cz, cy, cx in cluster_cubes:
         ids = _corners_of_cube(cz, cy, cx)
         cluster_corner_set.update(ids)
         cube_corner_ids.append(ids)
 
     # Corners touched by an outer cube.
     outer_corner_set = set()
-    for (cz, cy, cx) in outer_cells:
+    for cz, cy, cx in outer_cells:
         outer_corner_set.update(_corners_of_cube(cz, cy, cx))
 
     # Frozen corners: cluster corners that are ALSO touched by outer cubes.
@@ -113,10 +117,9 @@ def solve_cluster_frozen(phi, target_cells, ring_cells, outer_cells,
     x_frozen = x_in_all[n_free_vars:].copy()
 
     # Map each cube to its 8 corner-indices (in all_corners ordering).
-    cube_var_idx = np.stack([
-        np.array([corner_index[c] for c in ids], dtype=np.int64)
-        for ids in cube_corner_ids
-    ])
+    cube_var_idx = np.stack(
+        [np.array([corner_index[c] for c in ids], dtype=np.int64) for ids in cube_corner_ids]
+    )
 
     n_cubes = len(cluster_cubes)
 
@@ -130,7 +133,7 @@ def solve_cluster_frozen(phi, target_cells, ring_cells, outer_cells,
         for cube_i, var_idx in enumerate(cube_var_idx):
             pos = ref_pos[var_idx] + disp[var_idx]
             V = _cube_six_tet_signed(pos)
-            out[6 * cube_i:6 * (cube_i + 1)] = V
+            out[6 * cube_i : 6 * (cube_i + 1)] = V
         return out
 
     def objective(x_free):
@@ -144,7 +147,9 @@ def solve_cluster_frozen(phi, target_cells, ring_cells, outer_cells,
 
     t0 = time.time()
     res = minimize(
-        objective, x_in_free, jac=grad,
+        objective,
+        x_in_free,
+        jac=grad,
         method='trust-constr',
         constraints=[nlc],
         options={'maxiter': max_iter, 'verbose': 0, 'gtol': 1e-8, 'xtol': 1e-12},
@@ -196,7 +201,7 @@ def main():
         flush=True,
     )
 
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     grid = unfix_mask.copy()
     grid_dilated1 = binary_dilation(grid, iterations=1)
     labels, n_comp = cc_label(grid_dilated1)
@@ -214,7 +219,7 @@ def main():
     for i, target_cells in enumerate(clusters):
         # Build ring (1-cell expansion of target).
         target_mask = np.zeros(cube_shape, dtype=bool)
-        for (z, y, x) in target_cells:
+        for z, y, x in target_cells:
             target_mask[z, y, x] = True
         ring_mask = binary_dilation(target_mask, iterations=1)
         ring_cells = list(zip(*np.where(ring_mask)))
@@ -224,13 +229,18 @@ def main():
         outer_cells = list(zip(*np.where(outer_mask)))
         outer_cells = [(int(z), int(y), int(x)) for z, y, x in outer_cells]
         print(
-            f'\n--- Cluster {i+1}/{len(clusters)}: {len(target_cells)} target + '
+            f'\n--- Cluster {i + 1}/{len(clusters)}: {len(target_cells)} target + '
             f'{len(ring_cells) - len(target_cells)} ring + {len(outer_cells)} outer-frozen ---',
             flush=True,
         )
         phi_new, info = solve_cluster_frozen(
-            phi_new, target_cells, ring_cells, outer_cells,
-            threshold=THRESHOLD, max_iter=1000, verbose=True,
+            phi_new,
+            target_cells,
+            ring_cells,
+            outer_cells,
+            threshold=THRESHOLD,
+            max_iter=1000,
+            verbose=True,
         )
         total_L1 += info['L1_added']
 

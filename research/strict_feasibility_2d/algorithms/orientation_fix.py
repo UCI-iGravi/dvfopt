@@ -5,6 +5,7 @@ under canonical winding — every triangle is positively oriented when
 ``phi = 0``. Locking ``T_k >= +tau`` (i.e. sign = +1 for every triangle)
 makes the constraint affine in ``phi`` after one linearisation step.
 """
+
 from __future__ import annotations
 
 import numpy as np

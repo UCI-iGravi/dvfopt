@@ -12,6 +12,7 @@ Outputs:
   are folded but only by a small margin. Stresses linearisation since
   LP steps must be small.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

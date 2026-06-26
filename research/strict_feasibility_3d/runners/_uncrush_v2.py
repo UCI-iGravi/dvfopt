@@ -7,6 +7,7 @@ Hypothesis: v1 failed because cells sharing corners had different
 intended deltas, which averaged out destructively. v2 processes
 contiguous clusters as one geometric unit.
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,8 +35,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -53,11 +53,13 @@ def _best_min_per_cell(phi):
         tets = _six_tets_for_diagonal(s, e)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
     return min_per_diag.max(axis=0)
 
@@ -70,7 +72,7 @@ def _gather_cluster_corners(phi, cells):
     """Collect unique (z, y, x) corner indices touched by any cell in
     the cluster."""
     corners = set()
-    for (z, y, x) in cells:
+    for z, y, x in cells:
         for i in range(8):
             iz = (i >> 2) & 1
             iy = (i >> 1) & 1
@@ -133,7 +135,7 @@ def main():
     print(f'Loaded, shape={phi.shape}', flush=True)
 
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     print(f'Start: {len(nz)} unfixable cells', flush=True)
 
@@ -178,6 +180,7 @@ def main():
         Solver,
         Tet6Constraint3D,
     )
+
     t0 = time.time()
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi_new.shape[1:]),

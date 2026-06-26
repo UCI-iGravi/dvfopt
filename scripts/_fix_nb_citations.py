@@ -6,6 +6,7 @@ After the existing jdet-only summary table, inserts:
   B) Aggregate summary table: for each mode, report total pixel-neg /
      cell-neg / sub-pixel counts before vs after.
 """
+
 import io
 import json
 import sys

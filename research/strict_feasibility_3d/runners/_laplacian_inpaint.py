@@ -16,6 +16,7 @@ intent in the fold zone and replacing with smooth interpolation.
 
 This is a deliberate trade-off: pay L1 for guaranteed feasibility.
 """
+
 from __future__ import annotations
 
 import sys
@@ -64,8 +65,7 @@ def laplacian_inpaint(phi, mask_corners, verbose=True):
         print(f'  Building Laplacian system: {n_inside} interior corners', flush=True)
 
     # Map (z, y, x) → linear index for inside corners.
-    inside_set = {(int(z), int(y), int(x)): i
-                  for i, (z, y, x) in enumerate(zip(*inside_idx))}
+    inside_set = {(int(z), int(y), int(x)): i for i, (z, y, x) in enumerate(zip(*inside_idx))}
 
     # Build 7-point Laplacian on inside corners with Dirichlet BCs from outside.
     # A_ii = number of neighbours; A_ij = -1 for inside neighbours.
@@ -75,18 +75,22 @@ def laplacian_inpaint(phi, mask_corners, verbose=True):
     for i, (z, y, x) in enumerate(zip(*inside_idx)):
         z, y, x = int(z), int(y), int(x)
         n_neigh = 0
-        for (dz, dy, dx) in ((-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 0, -1), (0, 0, 1)):
+        for dz, dy, dx in ((-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 0, -1), (0, 0, 1)):
             zn, yn, xn = z + dz, y + dy, x + dx
             if not (0 <= zn < D and 0 <= yn < H and 0 <= xn < W):
                 continue  # outside the grid — treat as boundary at 0 displacement
             n_neigh += 1
             if (zn, yn, xn) in inside_set:
                 j = inside_set[(zn, yn, xn)]
-                rows.append(i); cols.append(j); vals.append(-1.0)
+                rows.append(i)
+                cols.append(j)
+                vals.append(-1.0)
             else:
                 # Outside the inpaint mask → boundary value from phi.
                 b[i] += phi[:, zn, yn, xn]
-        rows.append(i); cols.append(i); vals.append(float(n_neigh))
+        rows.append(i)
+        cols.append(i)
+        vals.append(float(n_neigh))
 
     A = csr_matrix((vals, (rows, cols)), shape=(n_inside, n_inside))
     if verbose:
@@ -116,7 +120,7 @@ def main():
 
     # Identify unfixable cells.
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     print(f'Unfixable cells: {int(unfix_mask.sum())}', flush=True)
 
     # Convert unfixable cell mask to corner mask.
@@ -139,7 +143,9 @@ def main():
         for dz in range(2):
             for dy in range(2):
                 for dx in range(2):
-                    sz = slice(dz, dz + Dc); sy = slice(dy, dy + Hc); sx = slice(dx, dx + Wc)
+                    sz = slice(dz, dz + Dc)
+                    sy = slice(dy, dy + Hc)
+                    sx = slice(dx, dx + Wc)
                     corner_mask[sz, sy, sx] |= dilated
         n_corners_in = int(corner_mask.sum())
         print(f'  inpaint corner mask: {n_corners_in} corners', flush=True)
@@ -156,7 +162,9 @@ def main():
         )
         if n_neg == 0 and n_below == 0:
             print(f'  *** STRICT 100% FEASIBLE at ring_pad={ring_pad} ***', flush=True)
-            np.save(OUTPUT / f'b0039_z0_15_strict_via_laplacian_inpaint_ring{ring_pad}.npy', phi_new)
+            np.save(
+                OUTPUT / f'b0039_z0_15_strict_via_laplacian_inpaint_ring{ring_pad}.npy', phi_new
+            )
 
 
 if __name__ == '__main__':

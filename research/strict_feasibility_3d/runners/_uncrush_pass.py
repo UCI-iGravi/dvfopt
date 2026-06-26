@@ -16,6 +16,7 @@ Committing to pay L1 cost upfront — unlike Strategy A/D which try
 to minimize L1 and plateau, this commits to the perturbation
 needed to make det(J) positive.
 """
+
 from __future__ import annotations
 
 import sys
@@ -42,8 +43,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -61,11 +61,13 @@ def _best_min_per_cell(phi):
         tets = _six_tets_for_diagonal(s, e)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
     return min_per_diag.max(axis=0)
 
@@ -212,6 +214,7 @@ def main():
         Solver,
         Tet6Constraint3D,
     )
+
     t0 = time.time()
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi_new.shape[1:]),

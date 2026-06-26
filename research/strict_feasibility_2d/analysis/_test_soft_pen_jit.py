@@ -5,6 +5,7 @@ one JIT kernel saves additional Python/numpy overhead vs the current
 two-separate-JITs approach. The current per-call cost of
 _soft_pen_objective was ~4.5 us tottime; this would reduce that.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,9 +24,7 @@ from dvfopt.core.wallbreakers._l2_refine import _soft_pen_objective as _ref_obj
 
 
 @njit(cache=True, fastmath=True, boundscheck=False)
-def _soft_pen_fused_kernel(
-    dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1
-):
+def _soft_pen_fused_kernel(dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1):
     """Fused l1-anchor + T-areas + viol + grad in one kernel.
 
     Returns (val, g_dy, g_dx) where the gradient is split per-channel
@@ -78,20 +77,20 @@ def _soft_pen_fused_kernel(
             # T1 contribution.
             if v1 != 0.0:
                 c1 = -2.0 * lam * 0.5 * v1
-                g_dx[i, j + 1]     +=  c1 * (y_br - y_bl)
-                g_dy[i, j + 1]     +=  c1 * (x_bl - x_br)
-                g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
-                g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
-                g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
+                g_dx[i, j + 1] += c1 * (y_br - y_bl)
+                g_dy[i, j + 1] += c1 * (x_bl - x_br)
+                g_dx[i + 1, j] += -c1 * (y_br - y_tr)
+                g_dy[i + 1, j] += c1 * (x_br - x_tr)
+                g_dx[i + 1, j + 1] += c1 * (y_bl - y_tr)
                 g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
             if v2 != 0.0:
                 c2 = -2.0 * lam * 0.5 * v2
-                g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
-                g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
-                g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
-                g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
-                g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
-                g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
+                g_dx[i, j] += c2 * (y_tr - y_bl)
+                g_dy[i, j] += c2 * (x_bl - x_tr)
+                g_dx[i + 1, j] += -c2 * (y_tr - y_tl)
+                g_dy[i + 1, j] += c2 * (x_tr - x_tl)
+                g_dx[i, j + 1] += c2 * (y_bl - y_tl)
+                g_dy[i, j + 1] += -c2 * (x_bl - x_tl)
     return val, g_dy, g_dx
 
 

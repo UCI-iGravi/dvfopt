@@ -49,9 +49,7 @@ class ConvergencePlot(pg.PlotWidget):
         self._min_T_curve = pg.PlotDataItem(pen=pg.mkPen(_MIN_T_COLOR, width=2))
         self._vb2.addItem(self._min_T_curve)
         # Dashed zero line on the right axis — the feasibility boundary.
-        self._zero = pg.InfiniteLine(
-            angle=0, pen=pg.mkPen('#999', style=QtCore.Qt.DashLine)
-        )
+        self._zero = pg.InfiniteLine(angle=0, pen=pg.mkPen('#999', style=QtCore.Qt.DashLine))
         self._vb2.addItem(self._zero)
         self._zero.setValue(0.0)
 

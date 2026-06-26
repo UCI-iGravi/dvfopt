@@ -10,6 +10,7 @@ start method each worker re-imports this module, so any top-level heavy
 work (loading the 1.85 GB field, calling the solver) MUST sit under the
 guard or every worker re-runs it (fork bomb).
 """
+
 import sys
 import time
 from pathlib import Path
@@ -39,19 +40,26 @@ def main():
     crop = phi[:, z0:z1, :, :].copy()
     cmv = six_tet_min_volume_3d(crop)
     n0 = int((cmv <= 0).sum())
-    print(f'worst band z[{z0}:{z1}] crop={crop.shape[1:]} n_neg={n0} '
-          f'min_T={float(cmv.min()):+.4f}', flush=True)
+    print(
+        f'worst band z[{z0}:{z1}] crop={crop.shape[1:]} n_neg={n0} min_T={float(cmv.min()):+.4f}',
+        flush=True,
+    )
 
     t0 = time.time()
-    out, rep = correct_dvf_3d(crop, threshold=0.01, n_workers=24,
-                              thorough=False, verbose=1)
+    out, rep = correct_dvf_3d(crop, threshold=0.01, n_workers=24, thorough=False, verbose=1)
     dt = time.time() - t0
-    print(f'\nBAND feasible={rep.feasible} {rep.n_neg_in}->{rep.n_neg_out} '
-          f'n<0.01={rep.n_below_out} min_T={rep.min_T_out:+.5f} '
-          f'floor_out={rep.best_diag_floor_out} wall={dt:.1f}s', flush=True)
-    print(f'PROJECTION: ~{D // band} such bands; worst-band wall={dt:.0f}s '
-          f'=> rough upper-bound total ~{dt * (D // band) / 3600:.1f} h '
-          f'(most bands are far lighter than this worst one)', flush=True)
+    print(
+        f'\nBAND feasible={rep.feasible} {rep.n_neg_in}->{rep.n_neg_out} '
+        f'n<0.01={rep.n_below_out} min_T={rep.min_T_out:+.5f} '
+        f'floor_out={rep.best_diag_floor_out} wall={dt:.1f}s',
+        flush=True,
+    )
+    print(
+        f'PROJECTION: ~{D // band} such bands; worst-band wall={dt:.0f}s '
+        f'=> rough upper-bound total ~{dt * (D // band) / 3600:.1f} h '
+        f'(most bands are far lighter than this worst one)',
+        flush=True,
+    )
 
 
 if __name__ == '__main__':

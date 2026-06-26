@@ -62,14 +62,18 @@ def laplacianA1D(n, boundaryIndices):
     valid_left = ~is_boundary[rows_left]
     r_left = rows_left[valid_left]
     c_left = r_left - 1
-    keep = ~is_boundary[c_left]; r_left = r_left[keep]; c_left = c_left[keep]
+    keep = ~is_boundary[c_left]
+    r_left = r_left[keep]
+    c_left = c_left[keep]
 
     # Right neighbour: row i, col i+1 for i in [0, n-1)
     rows_right = np.arange(0, n - 1)
     valid_right = ~is_boundary[rows_right]
     r_right = rows_right[valid_right]
     c_right = r_right + 1
-    keep = ~is_boundary[c_right]; r_right = r_right[keep]; c_right = c_right[keep]
+    keep = ~is_boundary[c_right]
+    r_right = r_right[keep]
+    c_right = c_right[keep]
 
     row = np.concatenate([np.arange(n), r_left, r_right])
     col = np.concatenate([np.arange(n), c_left, c_right])
@@ -111,15 +115,15 @@ def laplacianA2D(shape, boundaryIndices):
 
     # Compute row/col grid coordinates arithmetically (no meshgrid)
     ids = np.arange(N, dtype=np.int64)
-    R = ids // n1        # row coordinate
-    C = ids % n1         # col coordinate
+    R = ids // n1  # row coordinate
+    C = ids % n1  # col coordinate
 
     # Diagonal: start at 2*k = 4 for interior points
     data = np.full(N, 4.0)
     # Subtract 1 for each missing neighbour at volume edges
-    data[R == 0] -= 1       # no (r-1) neighbour
+    data[R == 0] -= 1  # no (r-1) neighbour
     data[n0 - 1 == R] -= 1  # no (r+1) neighbour
-    data[C == 0] -= 1       # no (c-1) neighbour
+    data[C == 0] -= 1  # no (c-1) neighbour
     data[n1 - 1 == C] -= 1  # no (c+1) neighbour
     # Dirichlet BCs: diagonal = 1
     data[boundaryIndices] = 1.0
@@ -134,25 +138,33 @@ def laplacianA2D(shape, boundaryIndices):
     mask = (R > 0) & ~is_boundary
     r_up = ids[mask]
     c_up = r_up - n1
-    keep = ~is_boundary[c_up]; r_up = r_up[keep]; c_up = c_up[keep]
+    keep = ~is_boundary[c_up]
+    r_up = r_up[keep]
+    c_up = c_up[keep]
 
     # (r+1, c): valid when R < n0-1 and not boundary
     mask = (n0 - 1 > R) & ~is_boundary
     r_dn = ids[mask]
     c_dn = r_dn + n1
-    keep = ~is_boundary[c_dn]; r_dn = r_dn[keep]; c_dn = c_dn[keep]
+    keep = ~is_boundary[c_dn]
+    r_dn = r_dn[keep]
+    c_dn = c_dn[keep]
 
     # (r, c-1): valid when C > 0 and not boundary
     mask = (C > 0) & ~is_boundary
     r_lt = ids[mask]
     c_lt = r_lt - 1
-    keep = ~is_boundary[c_lt]; r_lt = r_lt[keep]; c_lt = c_lt[keep]
+    keep = ~is_boundary[c_lt]
+    r_lt = r_lt[keep]
+    c_lt = c_lt[keep]
 
     # (r, c+1): valid when C < n1-1 and not boundary
     mask = (n1 - 1 > C) & ~is_boundary
     r_rt = ids[mask]
     c_rt = r_rt + 1
-    keep = ~is_boundary[c_rt]; r_rt = r_rt[keep]; c_rt = c_rt[keep]
+    keep = ~is_boundary[c_rt]
+    r_rt = r_rt[keep]
+    c_rt = c_rt[keep]
 
     n_offdiag = len(r_up) + len(r_dn) + len(r_lt) + len(r_rt)
     row = np.concatenate([ids, r_up, r_dn, r_lt, r_rt])
@@ -252,35 +264,54 @@ def laplacianA3D(shape, boundaryIndices, spacing=None, dtype=None, log_fn=None):
 
     # (i-1, j, k)
     mask = (I0 > 0) & ~is_boundary
-    r_0m = ids[mask];  c_0m = r_0m - stride_0
-    keep = ~is_boundary[c_0m]; r_0m = r_0m[keep]; c_0m = c_0m[keep]
+    r_0m = ids[mask]
+    c_0m = r_0m - stride_0
+    keep = ~is_boundary[c_0m]
+    r_0m = r_0m[keep]
+    c_0m = c_0m[keep]
 
     # (i+1, j, k)
     mask = (n0 - 1 > I0) & ~is_boundary
-    r_0p = ids[mask];  c_0p = r_0p + stride_0
-    keep = ~is_boundary[c_0p]; r_0p = r_0p[keep]; c_0p = c_0p[keep]
+    r_0p = ids[mask]
+    c_0p = r_0p + stride_0
+    keep = ~is_boundary[c_0p]
+    r_0p = r_0p[keep]
+    c_0p = c_0p[keep]
 
     # (i, j-1, k)
     mask = (I1 > 0) & ~is_boundary
-    r_1m = ids[mask];  c_1m = r_1m - stride_1
-    keep = ~is_boundary[c_1m]; r_1m = r_1m[keep]; c_1m = c_1m[keep]
+    r_1m = ids[mask]
+    c_1m = r_1m - stride_1
+    keep = ~is_boundary[c_1m]
+    r_1m = r_1m[keep]
+    c_1m = c_1m[keep]
 
     # (i, j+1, k)
     mask = (n1 - 1 > I1) & ~is_boundary
-    r_1p = ids[mask];  c_1p = r_1p + stride_1
-    keep = ~is_boundary[c_1p]; r_1p = r_1p[keep]; c_1p = c_1p[keep]
+    r_1p = ids[mask]
+    c_1p = r_1p + stride_1
+    keep = ~is_boundary[c_1p]
+    r_1p = r_1p[keep]
+    c_1p = c_1p[keep]
 
     # (i, j, k-1)
     mask = (I2 > 0) & ~is_boundary
-    r_2m = ids[mask];  c_2m = r_2m - 1
-    keep = ~is_boundary[c_2m]; r_2m = r_2m[keep]; c_2m = c_2m[keep]
+    r_2m = ids[mask]
+    c_2m = r_2m - 1
+    keep = ~is_boundary[c_2m]
+    r_2m = r_2m[keep]
+    c_2m = c_2m[keep]
 
     # (i, j, k+1)
     mask = (n2 - 1 > I2) & ~is_boundary
-    r_2p = ids[mask];  c_2p = r_2p + 1
-    keep = ~is_boundary[c_2p]; r_2p = r_2p[keep]; c_2p = c_2p[keep]
+    r_2p = ids[mask]
+    c_2p = r_2p + 1
+    keep = ~is_boundary[c_2p]
+    r_2p = r_2p[keep]
+    c_2p = c_2p[keep]
 
-    del I0, I1, I2, is_boundary, mask; gc.collect()
+    del I0, I1, I2, is_boundary, mask
+    gc.collect()
 
     # Build off-diagonal weight arrays per axis direction
     w_0m = np.full(len(r_0m), -w0, dtype=dtype)
@@ -353,12 +384,12 @@ def propagate_dirichlet_rhs(shape, boundary_indices, *rhs_arrays, spacing=None):
     bI2 = boundary_indices % stride_1
 
     directions = [
-        (stride_0,  bI0 < n0 - 1, w0),   # axis-0 forward
-        (-stride_0, bI0 > 0,      w0),   # axis-0 backward
-        (stride_1,  bI1 < n1 - 1, w1),   # axis-1 forward
-        (-stride_1, bI1 > 0,      w1),   # axis-1 backward
-        (1,         bI2 < n2 - 1, w2),   # axis-2 forward
-        (-1,        bI2 > 0,      w2),   # axis-2 backward
+        (stride_0, bI0 < n0 - 1, w0),  # axis-0 forward
+        (-stride_0, bI0 > 0, w0),  # axis-0 backward
+        (stride_1, bI1 < n1 - 1, w1),  # axis-1 forward
+        (-stride_1, bI1 > 0, w1),  # axis-1 backward
+        (1, bI2 < n2 - 1, w2),  # axis-2 forward
+        (-1, bI2 > 0, w2),  # axis-2 backward
     ]
 
     for offset, valid_mask, weight in directions:

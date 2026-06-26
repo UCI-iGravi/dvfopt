@@ -3,6 +3,7 @@
 Dumps a cProfile stats file to runners/output/profile_z300.prof and
 prints the top time-consumers grouped by package.
 """
+
 from __future__ import annotations
 
 import cProfile
@@ -24,8 +25,11 @@ OUT = _HERE.parent / 'runners' / 'output' / 'profile_z300_seq.prof'
 
 def main():
     case_id, phi_in, meta = load_b0039_slice(300)
-    print(f'Profiling {case_id}  shape={meta["shape"]}  init_n_neg={meta["init_n_neg"]}  '
-          f'(SEQUENTIAL, n_workers=1)', flush=True)
+    print(
+        f'Profiling {case_id}  shape={meta["shape"]}  init_n_neg={meta["init_n_neg"]}  '
+        f'(SEQUENTIAL, n_workers=1)',
+        flush=True,
+    )
     prof = cProfile.Profile()
     prof.enable()
     phi_out, info = cluster_slp_iter(phi_in, threshold=0.01, n_workers=1)
@@ -35,6 +39,7 @@ def main():
     # Build a minimal rec dict for the print line below
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
     from research.strict_feasibility_2d.runners._compare import run_method
+
     T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
     Tmin = np.minimum(T1, T2)
     rec = {
@@ -45,8 +50,10 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     prof.dump_stats(str(OUT))
-    print(f'\nResult: feasible={rec["feasible"]}  n_neg={rec["final_n_neg_2tri"]}  '
-          f'L1={rec["L1_dev"]:.1f}  wall={rec["wall_s"]:.1f}s')
+    print(
+        f'\nResult: feasible={rec["feasible"]}  n_neg={rec["final_n_neg_2tri"]}  '
+        f'L1={rec["L1_dev"]:.1f}  wall={rec["wall_s"]:.1f}s'
+    )
     print(f'Wrote {OUT}\n')
 
     stats = pstats.Stats(prof)

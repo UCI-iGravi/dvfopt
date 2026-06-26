@@ -7,6 +7,7 @@ Unlike Strategy D (per-cell SLSQP with L1 objective), this:
   - Searches in a local neighborhood of the current corner value
   - Cycles through fold-zone corners in Gauss-Seidel order
 """
+
 from __future__ import annotations
 
 import sys
@@ -60,9 +61,11 @@ def _cube_min_V(phi, cz, cy, cx):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return float(out.min())
 
@@ -94,8 +97,10 @@ def search_corner_3d(phi, z, y, x, search_radius=2.0):
     # Use scipy minimize starting from current value, bounded search.
     bounds = [(cur[c] - search_radius, cur[c] + search_radius) for c in range(3)]
     res = minimize(
-        neg_min_V, cur,
-        method='L-BFGS-B', bounds=bounds,
+        neg_min_V,
+        cur,
+        method='L-BFGS-B',
+        bounds=bounds,
         options={'maxiter': 50, 'ftol': 1e-9, 'gtol': 1e-7},
     )
     return res.x.copy()
@@ -112,10 +117,10 @@ def main():
     )
 
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     # Get all unique CORNERS touched by unfixable cubes.
     corners = set()
-    for (z, y, x) in zip(*np.where(unfix_mask)):
+    for z, y, x in zip(*np.where(unfix_mask)):
         for i in range(8):
             iz = (i >> 2) & 1
             iy = (i >> 1) & 1
@@ -137,8 +142,8 @@ def main():
         n_below = int((V < THRESHOLD - 1e-5).sum())
         L1 = float(np.abs(phi_cur - phi).sum())
         print(
-            f'Sweep {sweep+1}: n_neg={n_neg}  n<0.01={n_below}  '
-            f'min_T={float(V.min()):+.6f}  L1+={L1:.1f}  wall={time.time()-t0:.1f}s',
+            f'Sweep {sweep + 1}: n_neg={n_neg}  n<0.01={n_below}  '
+            f'min_T={float(V.min()):+.6f}  L1+={L1:.1f}  wall={time.time() - t0:.1f}s',
             flush=True,
         )
         if n_neg == 0 and n_below == 0:

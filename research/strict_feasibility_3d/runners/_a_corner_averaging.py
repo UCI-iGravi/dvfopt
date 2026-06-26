@@ -12,6 +12,7 @@ re-target the still-unfixable cells.
 
 Reports L1 cost and convergence per pass.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,8 +39,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -59,11 +59,13 @@ def _best_min_per_cell(phi):
         tets = _six_tets_for_diagonal(s, e)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
     return min_per_diag.max(axis=0)
 
@@ -82,10 +84,10 @@ def corner_avg_fix(phi, target_threshold=THRESHOLD, max_passes=5, mode='unfixabl
     for pass_idx in range(max_passes):
         if mode == 'unfixable_only':
             best_min = _best_min_per_cell(phi_out)
-            target_mask = (best_min <= 0)
+            target_mask = best_min <= 0
         else:
             V = six_tet_volumes_3d(phi_out)
-            target_mask = (V.min(axis=0) <= 0)
+            target_mask = V.min(axis=0) <= 0
         n_target = int(target_mask.sum())
         if n_target == 0:
             print(f'  pass {pass_idx}: 0 target cells, done.', flush=True)
@@ -146,8 +148,8 @@ def main():
     V = six_tet_volumes_3d(phi)
     best_min = _best_min_per_cell(phi)
     print(
-        f'Start:  default n_neg={int((V<=0).sum())}  '
-        f'unfixable (any-diag-fails)={int((best_min<=0).sum())}  '
+        f'Start:  default n_neg={int((V <= 0).sum())}  '
+        f'unfixable (any-diag-fails)={int((best_min <= 0).sum())}  '
         f'min_T={float(V.min()):+.6f}',
         flush=True,
     )
@@ -157,8 +159,8 @@ def main():
     V_unfix = six_tet_volumes_3d(phi_unfix)
     print(
         f'\nUnfixable-only result:\n'
-        f'  n_neg={int((V_unfix<=0).sum())}\n'
-        f'  n<0.01={int((V_unfix<THRESHOLD-1e-5).sum())}\n'
+        f'  n_neg={int((V_unfix <= 0).sum())}\n'
+        f'  n<0.01={int((V_unfix < THRESHOLD - 1e-5).sum())}\n'
         f'  min_T={float(V_unfix.min()):+.6f}\n'
         f'  L1_from_orig={float(np.abs(phi_unfix - phi).sum()):.1f}',
         flush=True,
@@ -169,8 +171,8 @@ def main():
     V_all = six_tet_volumes_3d(phi_all)
     print(
         f'\nAll-folds result:\n'
-        f'  n_neg={int((V_all<=0).sum())}\n'
-        f'  n<0.01={int((V_all<THRESHOLD-1e-5).sum())}\n'
+        f'  n_neg={int((V_all <= 0).sum())}\n'
+        f'  n<0.01={int((V_all < THRESHOLD - 1e-5).sum())}\n'
         f'  min_T={float(V_all.min()):+.6f}\n'
         f'  L1_from_orig={float(np.abs(phi_all - phi).sum()):.1f}',
         flush=True,

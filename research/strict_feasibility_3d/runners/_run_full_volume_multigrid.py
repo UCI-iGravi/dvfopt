@@ -21,6 +21,7 @@ observable and resumable.
 
 GUARDED for Windows spawn.
 """
+
 import sys
 import time
 from pathlib import Path
@@ -56,16 +57,17 @@ def main():
         pyr.append(_downsample_2x(pyr[-1]))
     for k, p in enumerate(pyr):
         n, nb, mt = stats(p)
-        print(f'pyramid L{k} {p.shape[1:]} n_neg={n} n<thr={nb} min_T={mt:+.3f}',
-              flush=True)
+        print(f'pyramid L{k} {p.shape[1:]} n_neg={n} n<thr={nb} min_T={mt:+.3f}', flush=True)
 
     # Solve the coarsest level (L3, /8) to feasibility.
     t0 = time.time()
-    sol, rep = correct_dvf_3d(pyr[3], threshold=THR, n_workers=24,
-                              thorough=True, verbose=0)
+    sol, rep = correct_dvf_3d(pyr[3], threshold=THR, n_workers=24, thorough=True, verbose=0)
     n, nb, mt = stats(sol)
-    print(f'[L3 solve] /8 -> n_neg={n} feasible={rep.feasible} min_T={mt:+.4f} '
-          f'({time.time()-t0:.0f}s)', flush=True)
+    print(
+        f'[L3 solve] /8 -> n_neg={n} feasible={rep.feasible} min_T={mt:+.4f} '
+        f'({time.time() - t0:.0f}s)',
+        flush=True,
+    )
 
     # V-cycle upward: prolongate correction, add to original level, polish.
     for lvl in (2, 1, 0):
@@ -78,19 +80,27 @@ def main():
         seeded = target + corr_fine
         n0, nb0, mt0 = stats(seeded)
         tag = {0: 'fine', 1: '/2', 2: '/4'}[lvl]
-        print(f'[L{lvl} seed] {tag} seeded n_neg={n0} n<thr={nb0} '
-              f'min_T={mt0:+.4f}  (was {stats(target)[0]} unseeded)', flush=True)
+        print(
+            f'[L{lvl} seed] {tag} seeded n_neg={n0} n<thr={nb0} '
+            f'min_T={mt0:+.4f}  (was {stats(target)[0]} unseeded)',
+            flush=True,
+        )
         t0 = time.time()
-        sol, rep = correct_dvf_3d(seeded, threshold=THR, n_workers=24,
-                                  thorough=True, verbose=1)
+        sol, rep = correct_dvf_3d(seeded, threshold=THR, n_workers=24, thorough=True, verbose=1)
         n, nb, mt = stats(sol)
-        print(f'[L{lvl} solve] {tag} -> n_neg={n} feasible={rep.feasible} '
-              f'min_T={mt:+.4f} ({(time.time()-t0)/3600:.2f}h)', flush=True)
+        print(
+            f'[L{lvl} solve] {tag} -> n_neg={n} feasible={rep.feasible} '
+            f'min_T={mt:+.4f} ({(time.time() - t0) / 3600:.2f}h)',
+            flush=True,
+        )
         np.save(OUT / f'b0039_FULL_mg_L{lvl}.npy', sol)
 
     n, nb, mt = stats(sol)
-    print(f'FINAL n_neg={n} n<0.01={nb} min_T={mt:+.6f} '
-          f'total_wall={(time.time()-t_run)/3600:.2f}h', flush=True)
+    print(
+        f'FINAL n_neg={n} n<0.01={nb} min_T={mt:+.6f} '
+        f'total_wall={(time.time() - t_run) / 3600:.2f}h',
+        flush=True,
+    )
     np.save(FINAL, sol)
     print(f'saved {FINAL}', flush=True)
 

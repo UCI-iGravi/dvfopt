@@ -4,6 +4,7 @@ The default polish_max_iter is 200. The barrier polish stage may
 just be giving up before reaching the central path. Try
 polish_max_iter=5000 + tighter alm_inner_maxiter and outer_max.
 """
+
 from __future__ import annotations
 
 import sys
@@ -26,7 +27,7 @@ def main():
     phi_in = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     V = six_tet_volumes_3d(phi_in)
     print(
-        f'Input: n_neg={int((V<=0).sum())}  n<0.01={int((V<TRUE_THRESHOLD-1e-5).sum())}  '
+        f'Input: n_neg={int((V <= 0).sum())}  n<0.01={int((V < TRUE_THRESHOLD - 1e-5).sum())}  '
         f'min_T={float(V.min()):+.6f}',
         flush=True,
     )

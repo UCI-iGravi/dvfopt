@@ -13,6 +13,7 @@ If this achieves 100% 3D feasibility, we have a working pipeline:
   Stage 2: 3D M10Tet on the stack → cleans up the straddling-tet
                                    folds, achieves 100% 3D feasibility
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,7 +38,9 @@ from research.strict_feasibility_2d.runners._compare import run_method as run_2d
 
 def main():
     print('Loading B0039 + z=10..14 chunk...', flush=True)
-    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(np.float64)
+    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(
+        np.float64
+    )
 
     z_range = list(range(10, 15))
     t_start = time.time()
@@ -62,7 +65,7 @@ def main():
     V_stack = six_tet_volumes_3d(stack)
     print(
         f'\nStage 1 stacked: 3D shape={stack.shape}  '
-        f'n_neg={int((V_stack <= 0).sum())} ({int((V_stack <= 0).sum())/V_stack.size*100:.4f}%)  '
+        f'n_neg={int((V_stack <= 0).sum())} ({int((V_stack <= 0).sum()) / V_stack.size * 100:.4f}%)  '
         f'min_T={float(V_stack.min()):+.4f}  wall={t_stage1:.1f}s',
         flush=True,
     )
@@ -83,7 +86,7 @@ def main():
     V_final = six_tet_volumes_3d(phi_out)
     n_neg = int((V_final <= 0).sum())
     n_below = int((V_final < 0.01 - 1e-5).sum())
-    L1 = float(np.abs(phi_out[1:3] - arr[1:3, z_range[0]:z_range[-1] + 1]).sum())
+    L1 = float(np.abs(phi_out[1:3] - arr[1:3, z_range[0] : z_range[-1] + 1]).sum())
     print(f'\nStage 2 wall: {t_stage2:.1f}s', flush=True)
     print(
         f'\n=== Final ===\n'

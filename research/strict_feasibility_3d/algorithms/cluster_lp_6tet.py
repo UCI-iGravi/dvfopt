@@ -11,6 +11,7 @@ interior back into the full field.
 Same architecture as the 2D version, but with 3D bboxes, 3D dilation,
 6-tet constraint, 3D phi-pack convention (DX_FIRST: [dx, dy, dz]).
 """
+
 from __future__ import annotations
 
 import time
@@ -54,9 +55,12 @@ def _partition_clusters_nonoverlapping(clusters):
             ok = True
             for c2 in r:
                 if not (
-                    z1 < c2['z0'] or c2['z1'] < z0
-                    or y1 < c2['y0'] or c2['y1'] < y0
-                    or x1 < c2['x0'] or c2['x1'] < x0
+                    z1 < c2['z0']
+                    or c2['z1'] < z0
+                    or y1 < c2['y0']
+                    or c2['y1'] < y0
+                    or x1 < c2['x0']
+                    or c2['x1'] < x0
                 ):
                     ok = False
                     break
@@ -82,8 +86,7 @@ def _fold_clusters_3d(
     if not fold_mask.any():
         return []
     merged = (
-        binary_dilation(fold_mask, iterations=merge_dilation)
-        if merge_dilation > 0 else fold_mask
+        binary_dilation(fold_mask, iterations=merge_dilation) if merge_dilation > 0 else fold_mask
     )
     labels, n_comp = cc_label(merged)
     Dc, Hc, Wc = fold_mask.shape
@@ -102,18 +105,22 @@ def _fold_clusters_3d(
         x0 = max(0, cx0 - BBOX_PAD)
         x1 = min(Wc, cx1 + BBOX_PAD)
         comp_cells = int(
-            ((labels[z0:z1, y0:y1, x0:x1] == (idx + 1))
-             & fold_mask[z0:z1, y0:y1, x0:x1]).sum()
+            ((labels[z0:z1, y0:y1, x0:x1] == (idx + 1)) & fold_mask[z0:z1, y0:y1, x0:x1]).sum()
         )
-        out.append({
-            'z0': z0, 'z1': z1,
-            'y0': y0, 'y1': y1,
-            'x0': x0, 'x1': x1,
-            'crop_cells_z': z1 - z0,
-            'crop_cells_y': y1 - y0,
-            'crop_cells_x': x1 - x0,
-            'n_fold_cells': comp_cells,
-        })
+        out.append(
+            {
+                'z0': z0,
+                'z1': z1,
+                'y0': y0,
+                'y1': y1,
+                'x0': x0,
+                'x1': x1,
+                'crop_cells_z': z1 - z0,
+                'crop_cells_y': y1 - y0,
+                'crop_cells_x': x1 - x0,
+                'n_fold_cells': comp_cells,
+            }
+        )
     # Largest clusters first — they tend to dominate the wall time on
     # parallel runs, so dispatching them early keeps cores busy.
     out.sort(key=lambda c: -c['n_fold_cells'])
@@ -121,7 +128,10 @@ def _fold_clusters_3d(
 
 
 def _splice_interior_3d(
-    phi_full: np.ndarray, c: dict, phi_crop_corrected: np.ndarray, full_shape=None,
+    phi_full: np.ndarray,
+    c: dict,
+    phi_crop_corrected: np.ndarray,
+    full_shape=None,
 ):
     """Splice the cluster crop back into the full volume, freezing only
     the corner ring that touches OTHER clusters.
@@ -139,8 +149,7 @@ def _splice_interior_3d(
     crop_d = z1 - z0 + 1
     crop_h = y1 - y0 + 1
     crop_w = x1 - x0 + 1
-    D_full, H_full, W_full = (full_shape if full_shape is not None
-                              else phi_full.shape[1:])
+    D_full, H_full, W_full = full_shape if full_shape is not None else phi_full.shape[1:]
     # Per-side: shrink by 1 if NOT at volume boundary, else keep flush.
     sd0 = 1 if z0 > 0 else 0
     sd1 = 1 if (z0 + crop_d) < D_full else 0
@@ -150,17 +159,16 @@ def _splice_interior_3d(
     sw1 = 1 if (x0 + crop_w) < W_full else 0
     # Degenerate-crop fallback: splice everything.
     if crop_d - sd0 - sd1 <= 0 or crop_h - sh0 - sh1 <= 0 or crop_w - sw0 - sw1 <= 0:
-        phi_full[:, z0:z0 + crop_d, y0:y0 + crop_h, x0:x0 + crop_w] = phi_crop_corrected
+        phi_full[:, z0 : z0 + crop_d, y0 : y0 + crop_h, x0 : x0 + crop_w] = phi_crop_corrected
         return
-    phi_full[:,
-             z0 + sd0:z0 + crop_d - sd1,
-             y0 + sh0:y0 + crop_h - sh1,
-             x0 + sw0:x0 + crop_w - sw1] = phi_crop_corrected[
-                 :,
-                 sd0:crop_d - sd1,
-                 sh0:crop_h - sh1,
-                 sw0:crop_w - sw1,
-             ]
+    phi_full[
+        :, z0 + sd0 : z0 + crop_d - sd1, y0 + sh0 : y0 + crop_h - sh1, x0 + sw0 : x0 + crop_w - sw1
+    ] = phi_crop_corrected[
+        :,
+        sd0 : crop_d - sd1,
+        sh0 : crop_h - sh1,
+        sw0 : crop_w - sw1,
+    ]
 
 
 def cluster_slp_iter_3d(
@@ -231,14 +239,19 @@ def cluster_slp_iter_3d(
                 for c in sub_round:
                     phi_crop = phi_out[
                         :,
-                        c['z0']:c['z1'] + 1,
-                        c['y0']:c['y1'] + 1,
-                        c['x0']:c['x1'] + 1,
+                        c['z0'] : c['z1'] + 1,
+                        c['y0'] : c['y1'] + 1,
+                        c['x0'] : c['x1'] + 1,
                     ].copy()
-                    arg_list.append((
-                        phi_crop, inner_threshold,
-                        inner_trust_radius_0, inner_max_iter, inner_seed,
-                    ))
+                    arg_list.append(
+                        (
+                            phi_crop,
+                            inner_threshold,
+                            inner_trust_radius_0,
+                            inner_max_iter,
+                            inner_seed,
+                        )
+                    )
                 if len(sub_round) > 1:
                     results = list(pool.map(_solve_cluster_worker, arg_list))
                 else:
@@ -251,9 +264,9 @@ def cluster_slp_iter_3d(
             for c in clusters:
                 phi_crop = phi_out[
                     :,
-                    c['z0']:c['z1'] + 1,
-                    c['y0']:c['y1'] + 1,
-                    c['x0']:c['x1'] + 1,
+                    c['z0'] : c['z1'] + 1,
+                    c['y0'] : c['y1'] + 1,
+                    c['x0'] : c['x1'] + 1,
                 ].copy()
                 t_c = time.time()
                 try:
@@ -274,15 +287,17 @@ def cluster_slp_iter_3d(
         V = six_tet_volumes_3d(phi_out)
         post_n_neg = int((V <= 0).sum())
         post_n_below_threshold = int((threshold - 1e-5 > V).sum())
-        info['rounds'].append({
-            'outer': outer_it,
-            'n_clusters': len(clusters),
-            'pre_n_neg': pre_n_neg,
-            'post_n_neg': post_n_neg,
-            'post_n_below_threshold': post_n_below_threshold,
-            'wall': time.time() - t0,
-            'cluster_runs': round_runs if verbose else None,
-        })
+        info['rounds'].append(
+            {
+                'outer': outer_it,
+                'n_clusters': len(clusters),
+                'pre_n_neg': pre_n_neg,
+                'post_n_neg': post_n_neg,
+                'post_n_below_threshold': post_n_below_threshold,
+                'wall': time.time() - t0,
+                'cluster_runs': round_runs if verbose else None,
+            }
+        )
         if verbose:
             print(
                 f'[outer {outer_it}] {len(clusters)} clusters: '

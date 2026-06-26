@@ -8,6 +8,7 @@
    per cell, plot the spectrum of det(J) values.
 4. Comparison: unfixable vs fixable spectra side-by-side.
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,7 +38,7 @@ OUTPUT = _HERE / 'output'
 def main():
     phi = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     n_unfix = len(nz)
     print(f'{n_unfix} unfixable cubes', flush=True)
@@ -52,13 +53,16 @@ def main():
     # 3D scatter.
     ax3d = fig.add_subplot(2, 3, 1, projection='3d')
     ax3d.scatter(nx, ny, nz, c=nz, cmap='viridis', s=40, edgecolors='k', linewidth=0.4)
-    ax3d.set_xlabel('x'); ax3d.set_ylabel('y'); ax3d.set_zlabel('z')
+    ax3d.set_xlabel('x')
+    ax3d.set_ylabel('y')
+    ax3d.set_zlabel('z')
     ax3d.set_title('3D scatter (colored by z)')
 
     # xy projection with z as color.
     ax_xy = fig.add_subplot(2, 3, 2)
     sc_xy = ax_xy.scatter(nx, ny, c=nz, cmap='viridis', s=60, edgecolors='k')
-    ax_xy.set_xlabel('x cell index'); ax_xy.set_ylabel('y cell index')
+    ax_xy.set_xlabel('x cell index')
+    ax_xy.set_ylabel('y cell index')
     ax_xy.set_title(f'(x, y) projection, colored by z\n{n_unfix} cubes')
     ax_xy.set_aspect('equal')
     plt.colorbar(sc_xy, ax=ax_xy, label='z')
@@ -68,7 +72,8 @@ def main():
     # xz projection.
     ax_xz = fig.add_subplot(2, 3, 3)
     sc_xz = ax_xz.scatter(nx, nz, c=ny, cmap='plasma', s=60, edgecolors='k')
-    ax_xz.set_xlabel('x'); ax_xz.set_ylabel('z')
+    ax_xz.set_xlabel('x')
+    ax_xz.set_ylabel('z')
     ax_xz.set_title('(x, z) projection, colored by y')
     plt.colorbar(sc_xz, ax=ax_xz, label='y')
     ax_xz.grid(True, alpha=0.3)
@@ -116,11 +121,16 @@ def main():
     ax_sv = fig.add_subplot(2, 3, 5)
     colors = {'rank-1': 'red', 'rank-2': 'orange', 'full rank': 'C0'}
     for tag, col in colors.items():
-        mask = (rank_classification == tag)
+        mask = rank_classification == tag
         if mask.any():
             ax_sv.scatter(
-                svd_min[mask], detJ_min[mask],
-                c=col, s=40, edgecolors='k', linewidth=0.4, alpha=0.7,
+                svd_min[mask],
+                detJ_min[mask],
+                c=col,
+                s=40,
+                edgecolors='k',
+                linewidth=0.4,
+                alpha=0.7,
                 label=f'{tag} ({int(mask.sum())})',
             )
     ax_sv.set_xlabel('smallest singular value (sigma_3)')
@@ -160,10 +170,15 @@ def main():
     fix_detJ_min = np.array(fix_detJ_min)
 
     ax_cmp = fig.add_subplot(2, 3, 6)
-    ax_cmp.scatter(fix_svd_min, fix_detJ_min, c='lightgray', s=20, alpha=0.5,
-                    label=f'random fixable ({len(fix_svd_min)})')
-    ax_cmp.scatter(svd_min, detJ_min, c='red', s=30, alpha=0.7,
-                    label=f'unfixable ({len(svd_min)})')
+    ax_cmp.scatter(
+        fix_svd_min,
+        fix_detJ_min,
+        c='lightgray',
+        s=20,
+        alpha=0.5,
+        label=f'random fixable ({len(fix_svd_min)})',
+    )
+    ax_cmp.scatter(svd_min, detJ_min, c='red', s=30, alpha=0.7, label=f'unfixable ({len(svd_min)})')
     ax_cmp.set_xlabel('smallest singular value (sigma_3)')
     ax_cmp.set_ylabel('min det(J) inside cube')
     ax_cmp.set_title('Unfixable vs fixable cells')

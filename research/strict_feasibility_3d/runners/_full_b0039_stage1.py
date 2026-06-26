@@ -10,6 +10,7 @@ Caches the per-slice corrected fields to a single .npz so reruns
 (e.g. to test different stage 2+3 strategies) don't have to redo
 the 2-hour Stage 1.
 """
+
 from __future__ import annotations
 
 import sys
@@ -35,7 +36,9 @@ def main():
         stack = np.load(FULL_STAGE1_CACHE)
     else:
         print('Loading raw B0039...', flush=True)
-        arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(np.float64)
+        arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(
+            np.float64
+        )
         D, H, W = arr.shape[1:]
         print(f'  full shape: {arr.shape}', flush=True)
 
@@ -61,7 +64,9 @@ def main():
                 flush=True,
             )
         np.save(FULL_STAGE1_CACHE, stack)
-        print(f'\n[stage 1] cached to {FULL_STAGE1_CACHE}  ({time.time() - t_start:.1f}s)', flush=True)
+        print(
+            f'\n[stage 1] cached to {FULL_STAGE1_CACHE}  ({time.time() - t_start:.1f}s)', flush=True
+        )
 
     # Check 3D feasibility on stacked field.
     print('\n=== Checking 3D 6-tet feasibility on full stacked field ===', flush=True)
@@ -73,8 +78,8 @@ def main():
     n_below = int((V < 0.01 - 1e-5).sum())
     print(
         f'\n  total tets: {n_tets:,}\n'
-        f'  n_neg (V<=0):         {n_neg:>10d}  ({n_neg/n_tets*100:.6f}%)\n'
-        f'  n_below_threshold:    {n_below:>10d}  ({n_below/n_tets*100:.6f}%)\n'
+        f'  n_neg (V<=0):         {n_neg:>10d}  ({n_neg / n_tets * 100:.6f}%)\n'
+        f'  n_below_threshold:    {n_below:>10d}  ({n_below / n_tets * 100:.6f}%)\n'
         f'  min_T:                {float(V.min()):+.6f}\n'
         f'  max_T:                {float(V.max()):+.6f}',
         flush=True,
@@ -83,7 +88,10 @@ def main():
     # Where are the residual 3D folds? Per-z fold density.
     fold_per_z = (V.min(axis=0) <= 0).sum(axis=(1, 2))
     nz_with_folds = np.where(fold_per_z > 0)[0]
-    print(f'\n  z-layers with at least one 3D fold: {len(nz_with_folds)} of {len(fold_per_z)}', flush=True)
+    print(
+        f'\n  z-layers with at least one 3D fold: {len(nz_with_folds)} of {len(fold_per_z)}',
+        flush=True,
+    )
     if len(nz_with_folds) > 0:
         print('  Top 10 z-layers by 3D fold count:', flush=True)
         top = sorted(nz_with_folds, key=lambda z: -fold_per_z[z])[:10]

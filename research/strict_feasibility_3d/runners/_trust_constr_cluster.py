@@ -10,6 +10,7 @@ directly (unlike SLP's linearization or M10Tet's smoothed
 barrier). Trust region bounds the step size, so deep-fold
 constraints become tractable.
 """
+
 from __future__ import annotations
 
 import sys
@@ -45,9 +46,11 @@ def _cube_six_tet_signed(corner_pos):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
@@ -68,7 +71,7 @@ def solve_cluster_nlp(phi, cluster_cells, threshold=THRESHOLD, max_iter=200, ver
     # Collect unique corners touched by any cluster cube.
     corner_set = set()
     cube_corner_ids = []  # for each cube in cluster, the 8 corner ids (indices into corner list)
-    for (cz, cy, cx) in cluster_cells:
+    for cz, cy, cx in cluster_cells:
         ids_for_cube = []
         for i in range(8):
             iz = (i >> 2) & 1
@@ -111,7 +114,7 @@ def solve_cluster_nlp(phi, cluster_cells, threshold=THRESHOLD, max_iter=200, ver
             # 8 corners' deformed positions for this cube.
             pos = ref_pos[var_idx] + disp[var_idx]  # (8, 3)
             V = _cube_six_tet_signed(pos)
-            out[6 * cube_i:6 * (cube_i + 1)] = V
+            out[6 * cube_i : 6 * (cube_i + 1)] = V
         return out
 
     def objective(x):
@@ -130,7 +133,9 @@ def solve_cluster_nlp(phi, cluster_cells, threshold=THRESHOLD, max_iter=200, ver
 
     t0 = time.time()
     res = minimize(
-        objective, x_in, jac=grad,
+        objective,
+        x_in,
+        jac=grad,
         method='trust-constr',
         constraints=[nlc],
         options={'maxiter': max_iter, 'verbose': 0, 'gtol': 1e-6, 'xtol': 1e-10},
@@ -180,7 +185,7 @@ def main():
     )
 
     # Cluster unfixable cells.
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     nz, ny, nx = np.where(unfix_mask)
     grid = np.zeros(unfix_mask.shape, dtype=bool)
     grid[nz, ny, nx] = True
@@ -202,7 +207,7 @@ def main():
     n_total_cubes = 0
     total_L1 = 0.0
     for i, cells in enumerate(clusters):
-        print(f'\n--- Cluster {i+1}/{len(clusters)}: {len(cells)} cubes ---', flush=True)
+        print(f'\n--- Cluster {i + 1}/{len(clusters)}: {len(cells)} cubes ---', flush=True)
         phi_new, info = solve_cluster_nlp(phi_new, cells, threshold=THRESHOLD, verbose=True)
         n_total_cubes_fixed += info['n_cubes_feasible']
         n_total_cubes += info['n_cubes']

@@ -7,6 +7,7 @@ Cropping to this bounding box (with some padding) gives a problem
 Crop the chunk to its fold bbox + ring of 4 cells. Solve. Splice
 back. Verify global feasibility.
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,11 +38,13 @@ class IpoptTet6NLP:
         self.D, self.H, self.W = phi_in_3dhw.shape[1:]
         self.threshold = threshold
         n = self.D * self.H * self.W
-        self.x0 = np.concatenate([
-            phi_in_3dhw[2].ravel(),  # dx
-            phi_in_3dhw[1].ravel(),  # dy
-            phi_in_3dhw[0].ravel(),  # dz
-        ])
+        self.x0 = np.concatenate(
+            [
+                phi_in_3dhw[2].ravel(),  # dx
+                phi_in_3dhw[1].ravel(),  # dy
+                phi_in_3dhw[0].ravel(),  # dz
+            ]
+        )
         self.n_vars = 3 * n
         self.n_constr = 6 * (self.D - 1) * (self.H - 1) * (self.W - 1)
         self.jac_builder = build_tet_sparse_jac(self.D, self.H, self.W)
@@ -76,7 +79,7 @@ def main():
 
     # Find unfixable cells.
     best_min = _best_min_per_cell(phi_full)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     z_min, z_max = int(nz.min()), int(nz.max())
     y_min, y_max = int(ny.min()), int(ny.max())
@@ -95,7 +98,9 @@ def main():
     V0 = six_tet_volumes_3d(crop)
     n_neg0 = int((V0 <= 0).sum())
     n_below0 = int((V0 < THRESHOLD - 1e-5).sum())
-    print(f'  crop start: n_neg={n_neg0}  n<0.01={n_below0}  min_T={float(V0.min()):+.6f}', flush=True)
+    print(
+        f'  crop start: n_neg={n_neg0}  n<0.01={n_below0}  min_T={float(V0.min()):+.6f}', flush=True
+    )
 
     nlp = IpoptTet6NLP(crop, THRESHOLD)
     print(f'  problem: {nlp.n_vars} vars, {nlp.n_constr} constraints', flush=True)
@@ -131,8 +136,8 @@ def main():
 
     n = nlp.D * nlp.H * nlp.W
     dx_out = x_opt[:n].reshape(nlp.D, nlp.H, nlp.W)
-    dy_out = x_opt[n:2 * n].reshape(nlp.D, nlp.H, nlp.W)
-    dz_out = x_opt[2 * n:].reshape(nlp.D, nlp.H, nlp.W)
+    dy_out = x_opt[n : 2 * n].reshape(nlp.D, nlp.H, nlp.W)
+    dz_out = x_opt[2 * n :].reshape(nlp.D, nlp.H, nlp.W)
     crop_out = np.stack([dz_out, dy_out, dx_out])
     V_final = six_tet_volumes_3d(crop_out)
     n_neg = int((V_final <= 0).sum())

@@ -166,9 +166,7 @@ def normalise_to_volume(arr: np.ndarray) -> np.ndarray:
     elif arr.ndim == 4 and arr.shape[0] == 3:
         vol = arr
     else:
-        raise ValueError(
-            f'expected (2,H,W), (3,H,W), (3,1,H,W), or (3,D,H,W); got {arr.shape}'
-        )
+        raise ValueError(f'expected (2,H,W), (3,H,W), (3,1,H,W), or (3,D,H,W); got {arr.shape}')
     return vol.astype(np.float64)
 
 
@@ -206,9 +204,7 @@ def parse_loaded(mapping) -> LoadedRun:
     volume = normalise_to_volume(vol_src)
 
     input_volume = (
-        normalise_to_volume(mapping['phi_input_volume'])
-        if 'phi_input_volume' in files
-        else None
+        normalise_to_volume(mapping['phi_input_volume']) if 'phi_input_volume' in files else None
     )
 
     z = int(mapping['z']) if 'z' in files else 0
@@ -258,7 +254,9 @@ def parse_loaded(mapping) -> LoadedRun:
         input_volume=input_volume,
         snapshots=snapshots,
         history_total=history_total,
-        history_max_size=(int(mapping['history_max_size']) if 'history_max_size' in files else None),
+        history_max_size=(
+            int(mapping['history_max_size']) if 'history_max_size' in files else None
+        ),
         constraint=_as_str(mapping['constraint']) if 'constraint' in files else None,
         method=_as_str(mapping['method']) if 'method' in files else None,
         objective=_as_str(mapping['objective']) if 'objective' in files else None,

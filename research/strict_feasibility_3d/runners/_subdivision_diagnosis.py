@@ -13,6 +13,7 @@ Two questions answered:
      path forward. If it doesn't (fold pervades), subdivision
      can't resolve these cells.
 """
+
 from __future__ import annotations
 
 import sys
@@ -74,9 +75,11 @@ def _sub_cube_six_tet(sub_disp, sub_ref):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
@@ -84,7 +87,7 @@ def _sub_cube_six_tet(sub_disp, sub_ref):
 def main():
     phi = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     print(f'{len(nz)} unfixable cells\n', flush=True)
 
@@ -137,12 +140,12 @@ def main():
         print(
             f'  cells fully sub-feasible:                  {n_cells_fully_feasible}/{len(nz)}\n'
             f'  total sub-cubes feasible:                  {n_sub_feasible}/{total_sub}  '
-            f'({n_sub_feasible/total_sub*100:.1f}%)\n'
+            f'({n_sub_feasible / total_sub * 100:.1f}%)\n'
             f'  per-cell sub-feasibility fraction stats:\n'
-            f'    mean   = {per_cell_arr.mean()*100:.1f}%\n'
-            f'    median = {float(np.median(per_cell_arr))*100:.1f}%\n'
-            f'    worst  = {per_cell_arr.min()*100:.1f}%\n'
-            f'    best   = {per_cell_arr.max()*100:.1f}%',
+            f'    mean   = {per_cell_arr.mean() * 100:.1f}%\n'
+            f'    median = {float(np.median(per_cell_arr)) * 100:.1f}%\n'
+            f'    worst  = {per_cell_arr.min() * 100:.1f}%\n'
+            f'    best   = {per_cell_arr.max() * 100:.1f}%',
             flush=True,
         )
 

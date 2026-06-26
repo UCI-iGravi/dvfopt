@@ -10,6 +10,7 @@ warm-started state.
 Hypothesis: the coarse-scale optimum corresponds to a different
 local minimum at fine scale than direct M10Tet @ 0.015 finds.
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,7 +35,7 @@ def downsample_2x(phi):
     _, D, H, W = phi.shape
     Dh, Hh, Wh = D // 2, H // 2, W // 2
     # Truncate to even.
-    phi_t = phi[:, :2*Dh, :2*Hh, :2*Wh]
+    phi_t = phi[:, : 2 * Dh, : 2 * Hh, : 2 * Wh]
     coarse = phi_t.reshape(3, Dh, 2, Hh, 2, Wh, 2).mean(axis=(2, 4, 6))
     # Scale displacements by 0.5 (since the coarse grid has spacing 2 in original units).
     return coarse * 0.5
@@ -49,7 +50,11 @@ def upsample_2x(coarse, target_shape):
         if out[c].shape != target_shape:
             out_c = out[c]
             out_full = np.zeros(target_shape, dtype=out_c.dtype)
-            mz, my, mx = min(out_c.shape[0], target_shape[0]), min(out_c.shape[1], target_shape[1]), min(out_c.shape[2], target_shape[2])
+            mz, my, mx = (
+                min(out_c.shape[0], target_shape[0]),
+                min(out_c.shape[1], target_shape[1]),
+                min(out_c.shape[2], target_shape[2]),
+            )
             out_full[:mz, :my, :mx] = out_c[:mz, :my, :mx]
             out[c] = out_full
     return out * 2.0
@@ -71,8 +76,7 @@ def main():
     print(f'Coarse shape: {coarse.shape}', flush=True)
     V_c = six_tet_volumes_3d(coarse)
     print(
-        f'  coarse stats: n_neg={int((V_c <= 0).sum())}  '
-        f'min_T={float(V_c.min()):+.6f}',
+        f'  coarse stats: n_neg={int((V_c <= 0).sum())}  min_T={float(V_c.min()):+.6f}',
         flush=True,
     )
 
@@ -84,6 +88,7 @@ def main():
         Solver,
         Tet6Constraint3D,
     )
+
     t0 = time.time()
     solver = Solver(
         constraint=Tet6Constraint3D(shape=coarse.shape[1:]),
@@ -113,7 +118,10 @@ def main():
     )
 
     # Final polish at fine scale with warm-start from upsampled.
-    print('\n=== Final polish at fine scale (M10Tet @ 0.015 from upsampled warm-start) ===', flush=True)
+    print(
+        '\n=== Final polish at fine scale (M10Tet @ 0.015 from upsampled warm-start) ===',
+        flush=True,
+    )
     t1 = time.time()
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
@@ -133,8 +141,7 @@ def main():
         flush=True,
     )
     print(
-        f'\n=== Final ===\n'
-        f'  STRICT 100% feas: {n_neg == 0 and n_below == 0}',
+        f'\n=== Final ===\n  STRICT 100% feas: {n_neg == 0 and n_below == 0}',
         flush=True,
     )
     if n_neg == 0 and n_below == 0:
