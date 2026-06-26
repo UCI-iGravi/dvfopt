@@ -89,6 +89,7 @@ def iterative_3d_tet_refine_repair(
     time_budget_s: float = 600.0,
     verbose: int = 1,
     record_history: bool = False,
+    step_callback=None,
 ):
     """Full 4-stage 3D m14 refine-repair pipeline.
 
@@ -104,6 +105,10 @@ def iterative_3d_tet_refine_repair(
     if phi_in.ndim != 4 or phi_in.shape[0] != 3:
         raise ValueError(f'expected (3, D, H, W) input; got shape {phi_in.shape}')
     _, D, H, W = phi_in.shape
+
+    def _emit(phi_stage, stage):
+        if step_callback is not None:
+            step_callback({'phi': phi_stage, 'stage': stage})
 
     t0 = time.time()
     info: dict = {}
@@ -135,6 +140,7 @@ def iterative_3d_tet_refine_repair(
     seed_min = _min_V(seed)
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))
     info['stage1_seed'] = dict(min_T=seed_min, L2=seed_L2, wall=time.time() - t0)
+    _emit(seed, 'seed')
     if verbose:
         print(
             f'  stage1 seed  min_V={seed_min:+.5f}  L2={seed_L2:.3f}  ({time.time() - t0:.1f}s)',
@@ -161,6 +167,7 @@ def iterative_3d_tet_refine_repair(
     pulled_min = _min_V(pulled)
     pulled_L2 = float(np.linalg.norm((pulled - phi_in).ravel()))
     info['stage2_pull'] = dict(min_T=pulled_min, L2=pulled_L2, wall=time.time() - t0)
+    _emit(pulled, 'pull')
     if verbose:
         print(
             f'  stage2 pull  min_V={pulled_min:+.5f}  L2={pulled_L2:.3f}  '
@@ -190,6 +197,7 @@ def iterative_3d_tet_refine_repair(
         L2=repaired_L2,
         wall=time.time() - t0,
     )
+    _emit(repaired, 'repair')
     if verbose:
         print(
             f'  stage3 patch min_V={repaired_min:+.5f}  L2={repaired_L2:.3f}  '
@@ -203,6 +211,7 @@ def iterative_3d_tet_refine_repair(
         info['final_min_T'] = repaired_min
         info['final_L2'] = repaired_L2
         info['stage4_polish'] = {'skipped': 'still-not-strict-interior'}
+        _emit(repaired, 'polish')
         return (repaired, info) if record_history else repaired
 
     # -----------------------------------------------------------------
@@ -259,6 +268,7 @@ def iterative_3d_tet_refine_repair(
     )
     info['final_min_T'] = final_min
     info['final_L2'] = final_L2
+    _emit(phi_out, 'polish')
 
     if record_history:
         return phi_out, info
