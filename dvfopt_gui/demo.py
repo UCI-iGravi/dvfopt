@@ -7,10 +7,10 @@ Usage::
     python -m dvfopt_gui.demo --canonical 03d  # canonical synthetic
     python -m dvfopt_gui.demo --b0039 100 --max-iter 20
 
-The demo wires the windowed-SLSQP path (``iterative_serial``) into the
-live-viz window. Other solvers don't currently expose the
-``step_callback`` hook — see :mod:`dvfopt_gui.worker` docstring for
-the contract to add.
+The demo just loads a sample DVF and opens the live-viz window — the
+solver family, objective, and per-run parameters are chosen from the
+toolbar once the window is up. ``--max-iter`` / ``--max-per-index-iter``
+seed the windowed-SLSQP spinbox values for convenience.
 """
 
 from __future__ import annotations

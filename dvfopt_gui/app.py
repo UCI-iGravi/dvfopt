@@ -29,7 +29,25 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from dvfopt_gui.worker import DEFAULT_HISTORY_MAX, SolverWorker, StateSnapshot
+from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt_gui.convergence import ConvergencePlot
+from dvfopt_gui.history import HistoryController
+from dvfopt_gui.persistence import (
+    LoadedRun,
+    build_save_payload,
+    normalise_to_volume,
+    parse_loaded,
+)
+from dvfopt_gui.worker import (
+    DEFAULT_HISTORY_MAX,
+    FEASIBILITY_THRESHOLD,
+    ReplayHistory,
+    SolverWorker,
+    StateSnapshot,
+    _infeasible_count,
+    _metric_counts,
+)
 
 # Repo root used to anchor the default file-dialog directory. The GUI
 # can be launched from anywhere, but ``data/dvfs/`` is the project's
@@ -71,8 +89,6 @@ def _min_tri_from_phi(phi_2hw: np.ndarray) -> np.ndarray:
     system as the Jdet heatmap. Lifts the ``_triangle_areas_2d``
     primitive from :mod:`dvfopt.jacobian.triangle_sign`.
     """
-    from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
     T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
     min_T = np.minimum(T1, T2)
     H, W = phi_2hw.shape[1:]
@@ -118,6 +134,50 @@ def _grid_lines(phi_2hw: np.ndarray, stride: int = 1):
     return np.concatenate(xs_list), np.concatenate(ys_list)
 
 
+def _quiver_lines(phi_2hw: np.ndarray, stride: int = 1, head_frac: float = 0.3):
+    """Return ``(xs, ys)`` for a displacement-arrow field as one
+    NaN-separated line series (shaft + a small two-segment arrowhead per
+    sample), drawable by a single ``PlotDataItem``.
+
+    Each arrow runs from the grid point ``(x, y)`` to the warped point
+    ``(x + dx, y + dy)`` — the per-pixel displacement. ``stride``
+    subsamples the grid; ``head_frac`` scales the arrowhead relative to
+    each arrow's length.
+    """
+    dy, dx = phi_2hw[0], phi_2hw[1]
+    H, W = dy.shape
+    yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing='ij')
+    bx = xx[::stride, ::stride].ravel().astype(np.float64)
+    by = yy[::stride, ::stride].ravel().astype(np.float64)
+    vx = dx[::stride, ::stride].ravel()
+    vy = dy[::stride, ::stride].ravel()
+    tx = bx + vx
+    ty = by + vy
+
+    # Arrowhead: two short segments swept ±25° back from the tip along the
+    # reversed arrow direction. Zero-length arrows get no head.
+    ang = np.arctan2(vy, vx)
+    length = np.hypot(vx, vy)
+    hl = head_frac * length
+    left = ang + np.deg2rad(180 - 25)
+    right = ang + np.deg2rad(180 + 25)
+    hlx, hrx = tx + hl * np.cos(left), tx + hl * np.cos(right)
+    hly, hry = ty + hl * np.sin(left), ty + hl * np.sin(right)
+
+    nan = np.nan
+    xs_list = []
+    ys_list = []
+    for i in range(bx.size):
+        if length[i] == 0:
+            continue
+        # shaft, then left head segment, then right head segment.
+        xs_list.extend((bx[i], tx[i], nan, hlx[i], tx[i], hrx[i], nan))
+        ys_list.extend((by[i], ty[i], nan, hly[i], ty[i], hry[i], nan))
+    if not xs_list:
+        return np.array([]), np.array([])
+    return np.asarray(xs_list), np.asarray(ys_list)
+
+
 def _folded_cells_path(phi_2hw: np.ndarray, max_cells: int = 10_000):
     """Build a ``QPainterPath`` outlining every cell where
     ``min(T1, T2) <= 0`` (i.e. at least one of the cell's two
@@ -130,8 +190,6 @@ def _folded_cells_path(phi_2hw: np.ndarray, max_cells: int = 10_000):
     folds (by ``min(T1, T2)``) are kept and the rest dropped.
     """
     from PyQt5.QtGui import QPainterPath
-
-    from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
     dy, dx = phi_2hw[0], phi_2hw[1]
     T1, T2 = _triangle_areas_2d(dy, dx)
@@ -172,6 +230,7 @@ def _folded_cells_path(phi_2hw: np.ndarray, max_cells: int = 10_000):
 VIEW_JDET = 'jdet'
 VIEW_2TRI = '2tri'
 VIEW_GRID = 'grid'
+VIEW_DIFF = 'diff'
 
 
 # Constraint families. The worker dispatches on ``method_id`` which is
@@ -227,6 +286,34 @@ DEFAULT_OBJECTIVE = OBJECTIVE_L1
 def _compose_method_id(algo: str, constraint: str) -> str:
     """Combine ``algo`` + ``constraint`` into the worker dispatch key."""
     return f'{algo}_{constraint}'
+
+
+def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:
+    """Return ``(x, y, w, h)`` for the initial section ROI on an ``H×W``
+    field — a centred rectangle ~¼ the field, but **clamped to the field
+    and never negative**.
+
+    Without the clamp, small fields produced an oversized ROI that
+    overhung the image: e.g. the default 7×7 bowtie fixture gave
+    ``max(8, 7//4) = 8`` → an 8×8 ROI at position ``(7-8)//2 = -1``, a
+    dashed rectangle spilling past the grid (the very first thing the
+    demo shows). Clamping keeps the handles on the image for any size.
+    """
+    # Target ~¼ the field (min 8, the historical default), then clamp to
+    # [3 (the "Run section" floor), field size] so it always fits.
+    roi_w = max(3, min(max(8, W // 4), W))
+    roi_h = max(3, min(max(8, H // 4), H))
+    x = max(0, (W - roi_w) // 2)
+    y = max(0, (H - roi_h) // 2)
+    return x, y, roi_w, roi_h
+
+
+def _toolbar_separator() -> QtWidgets.QFrame:
+    """A thin vertical divider for visually grouping toolbar widgets."""
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.VLine)
+    line.setFrameShadow(QtWidgets.QFrame.Sunken)
+    return line
 
 
 class ParamsDialog(QtWidgets.QDialog):
@@ -308,10 +395,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     ``None`` to start empty and use **Load DVF...** to pick a file.
     """
 
-    def __init__(self, deformation_i=None, *, parent=None):
+    def __init__(self, deformation_i=None, *, initial_params=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('dvfopt — live solver visualisation')
         self.resize(1500, 900)
+        # Floor below which the two dense toolbar rows start clipping
+        # their controls; keeps every button reachable on small displays.
+        self.setMinimumSize(1100, 640)
+
+        # Extra windowed-SLSQP knobs that have no toolbar widget but are
+        # accepted by ``iterative_serial`` (scipy method name, per-pixel
+        # sub-iteration cap). Seeded from ``initial_params`` (e.g. the
+        # demo's CLI flags) and forwarded to the worker on each run.
+        self._initial_params = dict(initial_params or {})
+        self._slsqp_method_name = str(self._initial_params.get('method_name', 'SLSQP'))
+        self._max_per_index_iter = self._initial_params.get('max_per_index_iter', None)
 
         # ---- state -----------------------------------------------------
         # ``_volume`` is the full 3D field, shape ``(3, D, H, W)``; ``_z``
@@ -337,12 +435,41 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # on render and share that single copy across the heatmap, the
         # inspector, and any stats reads in the same frame.
         self._latest_jacobian: np.ndarray | None = None
+        # Inspector T1/T2 cache: ``_triangle_areas_2d`` over the whole
+        # slice is recomputed at most once per displayed field, so
+        # hovering doesn't recompute it on every mouse-move — cheap at
+        # 7×7, but O(H·W) per move otherwise. Invalidated whenever the
+        # displayed field changes.
+        self._inspector_tri: tuple[np.ndarray, np.ndarray] | None = None
         self._worker: SolverWorker | None = None
         self._picked_yx: tuple[int, int] | None = None
+        # Active "Run section" crop bounds ``(y0, y1, x0, x1)`` or None for
+        # a full-slice run. Set per-run; initialised here so any read
+        # (e.g. ``_on_finished``) before the first run is well-defined.
+        self._section_bounds: tuple[int, int, int, int] | None = None
+        # When non-None, a "Run all z" batch is in flight; holds the
+        # z-slice indices still to be solved (current one already popped
+        # and running). Drives the sequential chain in ``_on_finished``.
+        self._run_all_remaining: list[int] | None = None
+        # Active run bookkeeping for the progress bar / ETA and the
+        # before→after stats delta.
+        self._active_method_id: str | None = None
+        self._run_elapsed = QtCore.QElapsedTimer()
+        self._input_n_neg: int | None = None
+        # Undo/redo of corrections: each entry is a full ``(3, D, H, W)``
+        # volume snapshot. A run pushes the pre-run volume before splicing
+        # its result; Undo/Redo swap between them. Capped to bound memory.
+        self._undo_stack: list[np.ndarray] = []
+        self._redo_stack: list[np.ndarray] = []
+        self._UNDO_MAX = 30
         # Window-level params editable via the Params dialog. New
         # workers pick these up at construction; in-flight workers
         # retain whatever they were started with.
         self._history_max_size: int = DEFAULT_HISTORY_MAX
+        # Starting directory for the load/save dialogs — seeded from the
+        # canonical DVF folder, then remembered across sessions (and
+        # updated to the last file's folder) via QSettings.
+        self._last_dir: str = _DEFAULT_DVF_DIR
 
         # ---- toolbar (top) ---------------------------------------------
         central = QtWidgets.QWidget()
@@ -353,23 +480,56 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         outer.addLayout(bar)
 
         load_btn = QtWidgets.QPushButton('Load DVF…')
+        load_btn.setShortcut('Ctrl+O')
+        load_btn.setToolTip('Load a .npy DVF or a saved .npz run (Ctrl+O).')
         load_btn.clicked.connect(self._on_load)
         bar.addWidget(load_btn)
 
         self._save_btn = QtWidgets.QPushButton('Save…')
+        self._save_btn.setShortcut('Ctrl+S')
         self._save_btn.setToolTip(
             'Save the current DVF + per-step optimization history as a '
-            'compressed .npz. Enabled once a DVF is loaded.'
+            'compressed .npz (Ctrl+S). Enabled once a DVF is loaded.'
         )
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._on_save)
         bar.addWidget(self._save_btn)
 
+        self._revert_btn = QtWidgets.QPushButton('Revert')
+        self._revert_btn.setToolTip(
+            'Discard all corrections and restore the originally-loaded '
+            'DVF (and clear the run history). Enabled once a DVF is loaded.'
+        )
+        self._revert_btn.setEnabled(False)
+        self._revert_btn.clicked.connect(self._on_revert)
+        bar.addWidget(self._revert_btn)
+
+        self._undo_btn = QtWidgets.QPushButton('Undo')
+        self._undo_btn.setShortcut('Ctrl+Z')
+        self._undo_btn.setToolTip('Undo the last correction (Ctrl+Z).')
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.clicked.connect(self._on_undo)
+        bar.addWidget(self._undo_btn)
+
+        self._redo_btn = QtWidgets.QPushButton('Redo')
+        self._redo_btn.setShortcut('Ctrl+Y')
+        self._redo_btn.setToolTip('Redo the last undone correction (Ctrl+Y).')
+        self._redo_btn.setEnabled(False)
+        self._redo_btn.clicked.connect(self._on_redo)
+        bar.addWidget(self._redo_btn)
+
+        bar.addWidget(_toolbar_separator())
         bar.addWidget(QtWidgets.QLabel('View:'))
         self._view_combo = QtWidgets.QComboBox()
         self._view_combo.addItem('Jdet (CD)', VIEW_JDET)
         self._view_combo.addItem('2-tri (min T1, T2)', VIEW_2TRI)
         self._view_combo.addItem('Deformation grid', VIEW_GRID)
+        self._view_combo.addItem('Δ Jdet vs input', VIEW_DIFF)
+        self._view_combo.setToolTip(
+            'Central image. "Δ Jdet vs input" shows the current minus the '
+            'originally-loaded per-pixel Jdet (red = increased, blue = '
+            'decreased) — pair it with Auto levels to read the change.'
+        )
         # Keep the dropdown in sync with the default ``_view_mode``.
         # The grid view is the only one that always makes folds visible
         # (Jdet view is uniformly red when min Jdet > 0, even with
@@ -381,6 +541,33 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._view_combo.currentIndexChanged.connect(self._on_view_changed)
         bar.addWidget(self._view_combo)
 
+        # Auto-levels toggle for the heatmap colour scale. Off → fixed
+        # ±1 levels (the historical default, good for reading Jdet as
+        # feasible/folded). On → per-frame symmetric autoscale so fields
+        # whose values exceed ±1 don't saturate to flat blue/red.
+        self._autolevel_check = QtWidgets.QCheckBox('Auto levels')
+        self._autolevel_check.setChecked(False)
+        self._autolevel_check.setToolTip(
+            'Heatmap colour scale. Off: fixed ±1 (white = 0). On: '
+            'per-frame symmetric autoscale to the displayed extent, so '
+            'large-magnitude fields stay readable. (No effect in the '
+            'deformation-grid view.)'
+        )
+        self._autolevel_check.toggled.connect(self._on_autolevel_toggled)
+        bar.addWidget(self._autolevel_check)
+
+        # Displacement-arrow overlay toggle — draws per-pixel arrows
+        # (grid point → warped point) on top of any view.
+        self._arrows_check = QtWidgets.QCheckBox('Arrows')
+        self._arrows_check.setChecked(False)
+        self._arrows_check.setToolTip(
+            'Overlay per-pixel displacement arrows (grid point → warped '
+            'point) on the current view. Subsampled on large fields.'
+        )
+        self._arrows_check.toggled.connect(self._on_arrows_toggled)
+        bar.addWidget(self._arrows_check)
+
+        bar.addWidget(_toolbar_separator())
         bar.addWidget(QtWidgets.QLabel('z:'))
         self._z_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self._z_slider.setMinimum(0)
@@ -391,13 +578,28 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z_label = QtWidgets.QLabel('—')
         bar.addWidget(self._z_label)
 
+        bar.addWidget(_toolbar_separator())
         self._run_full_btn = QtWidgets.QPushButton('Run full')
+        self._run_full_btn.setShortcut('F5')
+        self._run_full_btn.setToolTip('Solve the full current slice (F5).')
         self._run_full_btn.clicked.connect(lambda: self._on_run(use_roi=False))
         bar.addWidget(self._run_full_btn)
         self._run_roi_btn = QtWidgets.QPushButton('Run section')
+        self._run_roi_btn.setShortcut('Ctrl+R')
+        self._run_roi_btn.setToolTip('Solve only inside the ROI rectangle (Ctrl+R).')
         self._run_roi_btn.clicked.connect(lambda: self._on_run(use_roi=True))
         bar.addWidget(self._run_roi_btn)
+        self._run_all_btn = QtWidgets.QPushButton('Run all z')
+        self._run_all_btn.setToolTip(
+            'Solve every z-slice of a 3D volume in sequence with the '
+            'current method (disabled for single-slice 2D fields).'
+        )
+        self._run_all_btn.setEnabled(False)
+        self._run_all_btn.clicked.connect(self._on_run_all)
+        bar.addWidget(self._run_all_btn)
         self._stop_btn = QtWidgets.QPushButton('Stop')
+        self._stop_btn.setShortcut('Esc')
+        self._stop_btn.setToolTip('Request the running solve to stop (Esc).')
         self._stop_btn.clicked.connect(self._on_stop)
         self._stop_btn.setEnabled(False)
         bar.addWidget(self._stop_btn)
@@ -459,7 +661,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._max_iter_spin = QtWidgets.QSpinBox()
         self._max_iter_spin.setRange(1, 100_000)
         self._max_iter_spin.setSingleStep(10)
-        self._max_iter_spin.setValue(200)
+        _init_max_iter = self._initial_params.get('max_iterations', None)
+        self._max_iter_spin.setValue(int(_init_max_iter) if _init_max_iter else 200)
         self._max_iter_spin.setToolTip(
             'Outer-iteration cap for SLSQP-windowed. Ignored by '
             'wallbreaker methods (they use time_budget_s instead).'
@@ -493,9 +696,26 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._img.setLevels((-1.0, 1.0))
         self._plot.addItem(self._img)
 
+        # Colour-scale legend for the heatmap, docked to the right of the
+        # plot. Non-interactive — the GUI drives its levels (fixed ±1 or
+        # per-frame autoscale) via ``_apply_levels``. Hidden in the
+        # deformation-grid view (no heatmap to scale).
+        self._cbar = pg.ColorBarItem(
+            values=(-1.0, 1.0), colorMap=cmap, interactive=False, width=14
+        )
+        self._cbar.setImageItem(self._img, insert_in=self._plot.getPlotItem())
+
         self._grid_curve = pg.PlotDataItem(pen=pg.mkPen(color=(0, 0, 0), width=2), connect='finite')
         self._grid_curve.setVisible(False)
         self._plot.addItem(self._grid_curve)
+
+        # Displacement-arrow overlay (toggled by the Arrows checkbox).
+        # Green so it reads over both the heatmap and the black wireframe.
+        self._quiver_curve = pg.PlotDataItem(
+            pen=pg.mkPen(color=(0, 140, 0), width=1), connect='finite'
+        )
+        self._quiver_curve.setVisible(False)
+        self._plot.addItem(self._quiver_curve)
 
         # Folded-cell overlay (deformation-grid view only). Filled
         # magenta with a dark-magenta outline so flipped cells stand
@@ -545,6 +765,17 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._inspector_label.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
         right.addWidget(self._inspector_label, stretch=1)
 
+        # Live convergence chart — fold count + worst area vs step, with a
+        # cursor tracking the history slider. Populated from the worker's
+        # recorded trajectories; see ``_refresh_convergence``.
+        right.addWidget(QtWidgets.QLabel('<b>Convergence</b>'))
+        self._conv_plot = ConvergencePlot()
+        self._conv_plot.setMinimumHeight(150)
+        right.addWidget(self._conv_plot, stretch=2)
+        # Number of history entries last plotted — lets us rebuild the
+        # curve only when it grows (the cursor still moves every frame).
+        self._conv_len = -1
+
         # ---- history scrub row -----------------------------------------
         # Every snapshot the worker emits lands in ``worker._history``
         # (in addition to the bounded live queue). The slider scrubs
@@ -564,7 +795,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._history_prev_btn.setArrowType(QtCore.Qt.LeftArrow)
         self._history_prev_btn.setEnabled(False)
         self._history_prev_btn.setToolTip('Previous step')
-        self._history_prev_btn.clicked.connect(self._on_history_prev)
         history_bar.addWidget(self._history_prev_btn)
 
         self._history_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -576,9 +806,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'current run. The leftmost position (step 0) is the input '
             'field before any optimization.'
         )
-        self._history_slider.valueChanged.connect(self._on_history_slider)
-        # Pressing on the slider counts as a user grab — disengage Live.
-        self._history_slider.sliderPressed.connect(self._on_history_grab)
         history_bar.addWidget(self._history_slider, stretch=1)
 
         # ▶ step-forward button.
@@ -586,7 +813,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._history_next_btn.setArrowType(QtCore.Qt.RightArrow)
         self._history_next_btn.setEnabled(False)
         self._history_next_btn.setToolTip('Next step')
-        self._history_next_btn.clicked.connect(self._on_history_next)
         history_bar.addWidget(self._history_next_btn)
 
         # Editable step number. Shows the *absolute* step index (so
@@ -600,7 +826,6 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'Jump to a specific step by typing its index. '
             'Mirrors the slider position.'
         )
-        self._history_spin.valueChanged.connect(self._on_history_spin)
         history_bar.addWidget(self._history_spin)
         self._history_total_label = QtWidgets.QLabel('/ —')
         self._history_total_label.setFont(QtGui.QFont('Consolas', 9))
@@ -613,24 +838,48 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'Auto-track the latest solver step. Uncheck (drag the '
             'slider, click ◀/▶, or type a step) to freeze.'
         )
-        self._live_check.toggled.connect(self._on_live_toggled)
         history_bar.addWidget(self._live_check)
-        # Internal flag — distinguishes user-driven moves (valueChanged
-        # with the user dragging / typing / clicking) from programmatic
-        # ones (auto-track advancing, slider↔spinbox cross-sync). Without
-        # it, every auto-advance would re-fire the user-grab path and
-        # uncheck Live in an infinite loop.
-        self._history_programmatic = False
+
+        # The history-scrub state machine (slider/spin/buttons/Live sync)
+        # lives in its own controller; it reaches back for the current
+        # worker and renders chosen snapshots through the window.
+        self._history = HistoryController(
+            slider=self._history_slider,
+            spin=self._history_spin,
+            prev_btn=self._history_prev_btn,
+            next_btn=self._history_next_btn,
+            total_label=self._history_total_label,
+            live_check=self._live_check,
+            get_worker=lambda: self._worker,
+            render_snapshot=self._render_snapshot,
+        )
 
         # ---- bottom status row -----------------------------------------
         statusbar = QtWidgets.QHBoxLayout()
         outer.addLayout(statusbar)
+        self._progress = QtWidgets.QProgressBar()
+        self._progress.setMaximumWidth(280)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._progress.setFormat('')
+        self._progress.setToolTip(
+            'Run progress: elapsed/budget for the wallbreaker family, '
+            'outer-iter/max for SLSQP, or a busy indicator otherwise.'
+        )
+        statusbar.addWidget(self._progress)
         statusbar.addStretch(1)
         self._fps_label = QtWidgets.QLabel('idle')
         statusbar.addWidget(self._fps_label)
 
-        # Mouse pick
+        # Mouse pick — click pins a pixel; hover tracks the cursor so the
+        # inspector reads out live without requiring a click. The hover
+        # signal is rate-limited (≤30 Hz) via a SignalProxy because
+        # ``_format_inspector`` recomputes triangle areas over the whole
+        # field per call — unthrottled mouse-move would thrash big slices.
         self._plot.scene().sigMouseClicked.connect(self._on_mouse_click)
+        self._hover_proxy = pg.SignalProxy(
+            self._plot.scene().sigMouseMoved, rateLimit=30, slot=self._on_mouse_moved
+        )
 
         # Render timer — drain the worker queue at 10 Hz; idle if no
         # worker. 100 ms (10 Hz) instead of 33 ms (30 Hz): at the
@@ -651,9 +900,86 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # protection kicks in for typical large research slices.
         self._fast_render_pixel_threshold = 50_000
 
+        # Menu bar mirroring the toolbar actions — pure discoverability
+        # (the toolbar buttons own the keyboard shortcuts; the menu just
+        # surfaces them as hint text, plus a shortcuts/about page).
+        self._build_menus()
+
+        # Restore window geometry + last selections from the previous
+        # session (before loading any initial DVF so the restored view
+        # mode / levels apply to it).
+        self._restore_settings()
+
         # Initial DVF if supplied.
         if deformation_i is not None:
             self._load_array(np.asarray(deformation_i))
+
+    # ----- menus -------------------------------------------------------------
+
+    def _build_menus(self) -> None:
+        """Populate the menu bar from the existing action handlers.
+
+        Shortcut keys stay owned by the toolbar buttons (which set them);
+        the menu items only *display* the key as hint text (via a ``\\t``
+        in the label) so we don't double-register a shortcut and trigger
+        Qt's ambiguous-overload warning.
+        """
+        menubar = self.menuBar()
+
+        file_menu = menubar.addMenu('&File')
+        file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
+        file_menu.addAction('Save…\tCtrl+S', self._on_save)
+        file_menu.addAction('Revert', self._on_revert)
+        file_menu.addSeparator()
+        # Quit owns its own shortcut (no toolbar button competes for it).
+        quit_act = file_menu.addAction('Quit', self.close)
+        quit_act.setShortcut('Ctrl+Q')
+
+        edit_menu = menubar.addMenu('&Edit')
+        edit_menu.addAction('Undo\tCtrl+Z', self._on_undo)
+        edit_menu.addAction('Redo\tCtrl+Y', self._on_redo)
+        edit_menu.addSeparator()
+        edit_menu.addAction('Params…', self._on_open_params)
+
+        run_menu = menubar.addMenu('&Run')
+        run_menu.addAction('Run full\tF5', lambda: self._on_run(use_roi=False))
+        run_menu.addAction('Run section\tCtrl+R', lambda: self._on_run(use_roi=True))
+        run_menu.addAction('Run all z', self._on_run_all)
+        run_menu.addAction('Stop\tEsc', self._on_stop)
+
+        help_menu = menubar.addMenu('&Help')
+        help_menu.addAction('Keyboard shortcuts…', self._show_shortcuts)
+        help_menu.addAction('About', self._show_about)
+
+    def _show_shortcuts(self) -> None:
+        QtWidgets.QMessageBox.information(
+            self,
+            'Keyboard shortcuts',
+            '<b>Keyboard shortcuts</b>'
+            '<pre>'
+            'Ctrl+O   Load DVF (.npy / .npz)\n'
+            'Ctrl+S   Save run (.npz)\n'
+            'Ctrl+Z   Undo correction\n'
+            'Ctrl+Y   Redo correction\n'
+            'F5       Run full slice\n'
+            'Ctrl+R   Run section (ROI)\n'
+            'Esc      Stop the running solve\n'
+            'Ctrl+Q   Quit\n'
+            '←  / →   Step history (slider focused)'
+            '</pre>',
+        )
+
+    def _show_about(self) -> None:
+        QtWidgets.QMessageBox.about(
+            self,
+            'About dvfopt GUI',
+            '<b>dvfopt — live solver visualisation</b><br><br>'
+            'Load a 2D section or 3D volume (.npy / .npz) to inspect its '
+            'Jacobian-determinant / 2-triangle fold structure, or run a '
+            'correction solver and scrub its per-step history.<br><br>'
+            'Loading is view-only until you press Run — no solve happens '
+            'on open.'
+        )
 
     # ----- public ------------------------------------------------------------
 
@@ -673,34 +999,33 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             'Load DVF (.npy or .npz)',
-            _DEFAULT_DVF_DIR,
+            self._last_dir,
             'DVF files (*.npy *.npz);;NumPy arrays (*.npy);;NumPy compressed (*.npz);;All files (*)',
         )
         if not path:
             return
+        self._last_dir = str(Path(path).parent)
         try:
             loaded = np.load(path, allow_pickle=False)
-            # NPZ archives carry multiple arrays; the canonical
-            # data/dvfs/ schema uses the key ``phi`` for the field.
-            # Fall back to the first array if ``phi`` isn't present.
-            if isinstance(loaded, np.lib.npyio.NpzFile):
-                if 'phi' in loaded.files:
-                    arr = loaded['phi']
-                else:
-                    arr = loaded[loaded.files[0]]
-                loaded.close()
-            else:
-                arr = loaded
-            arr = np.asarray(arr).astype(np.float64)
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, 'Load failed', f'{type(exc).__name__}: {exc}')
-            return
-        try:
-            self._load_array(arr)
+            try:
+                # ``parse_loaded`` handles both a bare ``.npy`` DVF and a
+                # full saved run (``phi_full_volume`` + ``history_*`` keys),
+                # reconstructing the per-step snapshots so a saved run can
+                # be re-scrubbed in the history slider.
+                run = parse_loaded(loaded)
+            finally:
+                if isinstance(loaded, np.lib.npyio.NpzFile):
+                    loaded.close()
         except ValueError as exc:
             QtWidgets.QMessageBox.critical(self, 'Bad shape', str(exc))
             return
-        self.statusBar().showMessage(f'Loaded {path}', 5_000)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, 'Load failed', f'{type(exc).__name__}: {exc}')
+            return
+        self._apply_loaded_run(run)
+        n_hist = len(run.snapshots)
+        suffix = f'  ({n_hist} history step(s))' if n_hist else ''
+        self.statusBar().showMessage(f'Loaded {path}{suffix}', 5_000)
 
     def _on_save(self):
         """Open a save dialog and write the current DVF + run history
@@ -719,13 +1044,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             'Save DVF + optimization run (.npz)',
-            str(Path(_DEFAULT_DVF_DIR) / suggested),
+            str(Path(self._last_dir) / suggested),
             'NumPy compressed (*.npz);;All files (*)',
         )
         if not path:
             return
         if not path.lower().endswith('.npz'):
             path = path + '.npz'
+        self._last_dir = str(Path(path).parent)
         try:
             payload = self._build_save_payload()
             np.savez_compressed(path, **payload)
@@ -739,140 +1065,204 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'Saved {Path(path).name}  ({n_steps} history step(s))', 10_000
         )
 
+    def _on_revert(self):
+        """Discard all corrections: restore the originally-loaded volume
+        and clear the run history. No-op (with a hint) if a solve is
+        running or nothing is loaded."""
+        if self._original_volume is None:
+            QtWidgets.QMessageBox.information(
+                self, 'Nothing to revert', 'Load a DVF first via "Load DVF…".'
+            )
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Run in progress', 'Stop the current run before reverting.'
+            )
+            return
+        self._volume = self._original_volume.copy()
+        self._worker = None
+        self._latest = None
+        self._latest_jacobian = None
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._update_undo_redo_enabled()
+        self._history.reset()
+        self._history.set_live(True)
+        self._refresh_display_from_volume()
+        self.statusBar().showMessage('Reverted to the loaded DVF.', 5_000)
+
+    # ----- undo / redo -------------------------------------------------------
+
+    def _push_undo_state(self) -> None:
+        """Snapshot the current volume onto the undo stack (capped) and
+        invalidate the redo stack. Called just before a run splices its
+        result in."""
+        if self._volume is None:
+            return
+        self._undo_stack.append(self._volume.copy())
+        if len(self._undo_stack) > self._UNDO_MAX:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+        self._update_undo_redo_enabled()
+
+    def _on_undo(self):
+        """Restore the volume to before the last applied correction."""
+        if not self._undo_stack or (self._worker is not None and self._worker.isRunning()):
+            return
+        self._redo_stack.append(self._volume.copy())
+        self._volume = self._undo_stack.pop()
+        self._after_undo_redo('Undid last correction.')
+
+    def _on_redo(self):
+        """Re-apply the most recently undone correction."""
+        if not self._redo_stack or (self._worker is not None and self._worker.isRunning()):
+            return
+        self._undo_stack.append(self._volume.copy())
+        self._volume = self._redo_stack.pop()
+        self._after_undo_redo('Redid correction.')
+
+    def _after_undo_redo(self, message: str) -> None:
+        """Shared tail for undo/redo: the restored volume has no live run,
+        so drop the worker + history and repaint from the volume."""
+        self._worker = None
+        self._latest = None
+        self._latest_jacobian = None
+        self._history.reset()
+        self._history.set_live(True)
+        self._update_undo_redo_enabled()
+        self._refresh_display_from_volume()
+        self.statusBar().showMessage(message, 5_000)
+
+    def _update_undo_redo_enabled(self) -> None:
+        self._undo_btn.setEnabled(bool(self._undo_stack))
+        self._redo_btn.setEnabled(bool(self._redo_stack))
+
     def _build_save_payload(self) -> dict:
         """Assemble the NPZ payload from the current window + worker state.
 
-        Schema (all keys present unless noted):
-
-        * ``phi`` — ``(2, H, W)`` float64, the current (possibly
-          corrected) field for the active z-slice.
-        * ``phi_full_volume`` — ``(3, D, H, W)`` float64, the full
-          volume (with the ``dz`` channel). Provenance for multi-slice
-          datasets.
-        * ``z`` — 0-d int, the active slice index.
-        * ``constraint``, ``method``, ``objective`` — 0-d strings (the
-          dropdown selections at save time).
-        * ``time_budget_s``, ``max_iterations`` — 0-d floats/ints.
-        * ``history_max_size`` — 0-d int, the cap that bounded the run's
-          history buffer.
-
-        When a worker exists (i.e. at least one run happened), also:
-
-        * ``n_history_steps`` — 0-d int, ``= history_len``.
-        * ``history_phi`` — ``(N, 2, H, W)`` float64, every snapshot's
-          phi (init → final). Largest array; ``savez_compressed`` keeps
-          it manageable.
-        * ``history_n_neg``, ``history_min_T`` — ``(N,)`` arrays of the
-          running fold-count and worst-area trajectory.
-        * ``history_outer_iter``, ``history_per_index_iter`` — ``(N,)``
-          int arrays of solver bookkeeping (mostly meaningful for the
-          SLSQP-windowed path).
-        * ``history_total`` — 0-d int, total snapshots ever emitted
-          (may exceed ``n_history_steps`` if some aged out of the cap).
+        Thin Qt adapter over :func:`dvfopt_gui.persistence.build_save_payload`
+        — it just reads widget/worker state and hands plain values to the
+        headless builder (which owns the schema; see that module's
+        docstring).
         """
-        payload: dict = {}
-        # Active slice + full volume.
-        phi_active = self._volume[1:, self._z].astype(np.float64)
-        payload['phi'] = phi_active
-        payload['phi_full_volume'] = self._volume.astype(np.float64)
-        payload['z'] = np.int64(self._z)
-
-        # Current dropdown selections (truth at save time, not run time).
-        payload['constraint'] = np.asarray(self._constraint_combo.currentData() or '')
-        payload['method'] = np.asarray(self._method_combo.currentData() or '')
-        payload['objective'] = np.asarray(self._objective_combo.currentData() or '')
-        payload['time_budget_s'] = np.float64(self._budget_spin.value())
-        payload['max_iterations'] = np.int64(self._max_iter_spin.value())
-        payload['history_max_size'] = np.int64(self._history_max_size)
-
-        # Per-slice fold stats, computed fresh on save.
-        from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
-        jac = jacobian_det2D(phi_active)[0]
-        payload['final_min_jdet'] = np.float64(jac.min())
-        payload['final_n_neg_jdet'] = np.int64((jac < 0).sum())
-
-        # History (if a worker has populated any).
         worker = self._worker
         if worker is not None and worker.history_len() > 0:
-            n = worker.history_len()
-            H, W = phi_active.shape[1:]
-            phi_hist = np.empty((n, 2, H, W), dtype=np.float64)
-            n_neg_arr = np.empty(n, dtype=np.int64)
-            min_T_arr = np.empty(n, dtype=np.float64)
-            outer_arr = np.empty(n, dtype=np.int64)
-            sub_arr = np.empty(n, dtype=np.int64)
-            for i in range(n):
-                snap = worker.history_get(i)
-                phi_hist[i] = snap.phi
-                n_neg_arr[i] = snap.n_neg
-                min_T_arr[i] = snap.min_T
-                outer_arr[i] = snap.outer_iter
-                sub_arr[i] = snap.per_index_iter
-            payload['n_history_steps'] = np.int64(n)
-            payload['history_phi'] = phi_hist
-            payload['history_n_neg'] = n_neg_arr
-            payload['history_min_T'] = min_T_arr
-            payload['history_outer_iter'] = outer_arr
-            payload['history_per_index_iter'] = sub_arr
-            payload['history_total'] = np.int64(worker.history_total)
+            snaps = [worker.history_get(i) for i in range(worker.history_len())]
+            history_total = worker.history_total
         else:
-            payload['n_history_steps'] = np.int64(0)
-
-        return payload
+            snaps = []
+            history_total = 0
+        return build_save_payload(
+            phi_active=self._volume[1:, self._z],
+            full_volume=self._volume,
+            z=self._z,
+            constraint=self._constraint_combo.currentData() or '',
+            method=self._method_combo.currentData() or '',
+            objective=self._objective_combo.currentData() or '',
+            time_budget_s=self._budget_spin.value(),
+            max_iterations=self._max_iter_spin.value(),
+            history_max_size=self._history_max_size,
+            history_snaps=snaps,
+            history_total=history_total,
+            input_volume=self._original_volume,
+        )
 
     def _load_array(self, arr: np.ndarray) -> None:
         """Accept any of: ``(2, H, W)``, ``(3, H, W)``, ``(3, 1, H, W)``,
-        ``(3, D, H, W)``. Normalises to a ``(3, D, H, W)`` volume."""
-        if arr.ndim == 3 and arr.shape[0] == 2:
-            # (2, H, W) — 2D, channels [dy, dx]. Pad dz=0 + D=1.
-            H, W = arr.shape[1:]
-            vol = np.zeros((3, 1, H, W), dtype=np.float64)
-            vol[1, 0] = arr[0]
-            vol[2, 0] = arr[1]
-        elif arr.ndim == 3 and arr.shape[0] == 3:
-            # (3, H, W) — 2D with dz channel. Pad D=1.
-            vol = arr[:, None, :, :]
-        elif arr.ndim == 4 and arr.shape[0] == 3:
-            # (3, D, H, W) — already in canonical layout.
-            vol = arr
-        else:
-            raise ValueError(f'expected (2,H,W), (3,H,W), (3,1,H,W), or (3,D,H,W); got {arr.shape}')
-        self._volume = vol.astype(np.float64)
+        ``(3, D, H, W)``. Normalises to a ``(3, D, H, W)`` volume and
+        loads it as a fresh (history-less) DVF.
+
+        Raises ``ValueError`` on any other shape.
+        """
+        self._apply_loaded_run(LoadedRun(volume=normalise_to_volume(arr)))
+
+    def _apply_loaded_run(self, run: LoadedRun) -> None:
+        """Install a parsed :class:`LoadedRun` into the window.
+
+        Handles both a bare DVF (``run.snapshots`` empty) and a full
+        saved run — in the latter case the per-step snapshots are loaded
+        into a :class:`ReplayHistory` so the scrub slider can replay the
+        run, and the saved constraint/method/objective selections are
+        restored to the toolbar.
+        """
+        self._volume = np.asarray(run.volume, dtype=np.float64)
         # Pristine copy of what was loaded — every Run reads its input
         # from here, never from ``self._volume`` (which is mutated by
         # ``_on_finished`` for the post-run display). Without this,
         # clicking Run twice would optimize the already-optimized
         # volume — history[0] would equal history[-1] and the scrub
         # slider would show "the same DVF" at both ends.
-        self._original_volume = self._volume.copy()
-        D = vol.shape[1]
-        self._z = 0
+        #
+        # A saved run carries its original pre-correction field as
+        # ``input_volume``; prefer it so Revert and a fresh Run after
+        # loading restore the *input*, not the already-corrected
+        # ``phi_full_volume``. Bare DVFs / older archives fall back to the
+        # loaded field itself.
+        if run.input_volume is not None and run.input_volume.shape == self._volume.shape:
+            self._original_volume = np.asarray(run.input_volume, dtype=np.float64)
+        else:
+            self._original_volume = self._volume.copy()
+        D = self._volume.shape[1]
+        self._z = max(0, min(D - 1, int(run.z)))
         self._z_slider.blockSignals(True)
         self._z_slider.setMaximum(max(0, D - 1))
-        self._z_slider.setValue(0)
+        self._z_slider.setValue(self._z)
         self._z_slider.setEnabled(D > 1)
         self._z_slider.blockSignals(False)
-        self._z_label.setText(f'0 / {D - 1}' if D > 1 else '0 / 0 (2D)')
+        self._z_label.setText(f'{self._z} / {D - 1}' if D > 1 else '0 / 0 (2D)')
         self._latest = None
         self._latest_jacobian = None
         self._picked_yx = None
-        # A new DVF invalidates any prior run's history. Drop the worker
-        # reference so the slider can't scrub stale snapshots, and reset
-        # the widget back to its pristine state.
-        self._worker = None
-        self._reset_history_widgets()
-        self._live_check.setChecked(True)
-        self._refresh_display_from_volume()
+        # A freshly loaded field starts a new correction lineage.
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._update_undo_redo_enabled()
+
+        # Restore the toolbar selections a saved run carried (constraint
+        # first, since it repopulates the method combo).
+        if run.constraint:
+            self._select_combo_data(self._constraint_combo, run.constraint)
+        if run.method:
+            self._select_combo_data(self._method_combo, run.method)
+        if run.objective:
+            self._select_combo_data(self._objective_combo, run.objective)
+
         # Show the ROI rectangle now that we have geometry to drag on.
-        H, W = vol.shape[2:]
-        roi_w, roi_h = max(8, W // 4), max(8, H // 4)
-        self._section_roi.setPos((W - roi_w) // 2, (H - roi_h) // 2)
+        # Geometry is clamped to the field so it never overhangs (small
+        # fields like the 7×7 bowtie default used to spill past the grid).
+        H, W = self._volume.shape[2:]
+        roi_x, roi_y, roi_w, roi_h = _default_roi_geometry(H, W)
+        self._section_roi.setPos(roi_x, roi_y)
         self._section_roi.setSize([roi_w, roi_h])
         self._section_roi.setVisible(True)
         # Save is meaningful as soon as a DVF is loaded — even before
         # any solver run (you'd just get phi + minimal metadata).
         self._save_btn.setEnabled(True)
+        self._revert_btn.setEnabled(True)
+        self._run_all_btn.setEnabled(D > 1)
+
+        if run.snapshots:
+            # Re-loaded run: wire the snapshots into a read-only history so
+            # the slider can scrub them. The controller freezes Live and
+            # parks the slider on the final step; we render that step.
+            self._worker = ReplayHistory(run.snapshots, run.history_total)
+            self._history.load_finished_run(len(run.snapshots))
+            self._render_snapshot(run.snapshots[-1])
+        else:
+            # Fresh DVF: no prior run. Drop any worker reference so the
+            # slider can't scrub stale snapshots, and reset to pristine.
+            self._worker = None
+            self._history.reset()
+            self._history.set_live(True)
+            self._refresh_display_from_volume()
+
+    @staticmethod
+    def _select_combo_data(combo: QtWidgets.QComboBox, data) -> None:
+        """Set ``combo`` to the entry whose userData equals ``data``
+        (no-op if absent)."""
+        idx = combo.findData(data)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
 
     def _current_slice(self) -> np.ndarray:
         """Return the active ``(3, 1, H, W)`` slice for the solver.
@@ -896,9 +1286,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         volume itself and clear overlays."""
         if self._volume is None:
             return
+        self._invalidate_inspector_cache()
         phi_2hw = self._volume[1:, self._z]  # (2, H, W)
-        from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
         jac = jacobian_det2D(phi_2hw)[0]
         self._set_view(phi_2hw, jac)
         self._window_rect.setRect(0, 0, 0, 0)
@@ -906,6 +1295,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._target_marker.setData(x=[], y=[])
         self._stats_label.setText(self._format_stats(None))
         self._inspector_label.setText(self._format_inspector(None))
+        self._refresh_convergence()
 
     def _set_view(
         self, phi_2hw: np.ndarray, jacobian: np.ndarray, *, fast: bool = False
@@ -922,17 +1312,34 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         mode = self._view_mode
         if mode == VIEW_JDET:
             self._img.setImage(jacobian, autoLevels=False)
+            self._apply_levels(jacobian)
             self._img.setVisible(True)
             self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
             self._grid_curve.setVisible(False)
             self._fold_overlay.setVisible(False)
         elif mode == VIEW_2TRI:
-            self._img.setImage(_min_tri_from_phi(phi_2hw), autoLevels=False)
+            min_tri = _min_tri_from_phi(phi_2hw)
+            self._img.setImage(min_tri, autoLevels=False)
+            self._apply_levels(min_tri)
             self._img.setVisible(True)
             self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
+            self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
+        elif mode == VIEW_DIFF:
+            # Current minus originally-loaded per-pixel Jdet. Positive
+            # (red) = Jdet rose toward feasible; negative (blue) = fell.
+            diff = jacobian - self._input_jacobian()
+            self._img.setImage(diff, autoLevels=False)
+            self._apply_levels(diff)
+            self._img.setVisible(True)
+            self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
             self._grid_curve.setVisible(False)
             self._fold_overlay.setVisible(False)
         elif mode == VIEW_GRID:
+            self._cbar.setVisible(False)
             # Pure grid view: hide the Jdet heatmap entirely and draw
             # only the warped wireframe. Folded cells (min(T1,T2) <= 0)
             # are overlaid with a translucent magenta fill — unless
@@ -949,6 +1356,84 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             else:
                 self._fold_overlay.setPath(_folded_cells_path(phi_2hw))
                 self._fold_overlay.setVisible(True)
+
+        # Arrow overlay sits on top of whichever view is active.
+        self._update_quiver(phi_2hw)
+
+    def _update_quiver(self, phi_2hw: np.ndarray) -> None:
+        """Refresh the displacement-arrow overlay for ``phi_2hw`` (or hide
+        it when the Arrows toggle is off)."""
+        if not self._arrows_check.isChecked():
+            self._quiver_curve.setVisible(False)
+            return
+        stride = max(1, min(phi_2hw.shape[1:]) // 30)
+        xs, ys = _quiver_lines(phi_2hw, stride=stride)
+        self._quiver_curve.setData(xs, ys)
+        self._quiver_curve.setVisible(True)
+
+    def _on_arrows_toggled(self, _on: bool):
+        """Re-render the current frame so the overlay appears/clears now."""
+        if self._latest is not None and self._latest_jacobian is not None:
+            self._set_view(self._latest.phi, self._latest_jacobian)
+        else:
+            self._refresh_display_from_volume()
+
+    def _refresh_convergence(self) -> None:
+        """Sync the convergence chart with the current worker history.
+
+        Rebuilds the curve only when the history grows (cheap during long
+        SLSQP runs) but always re-positions the step cursor to the slider.
+        Clears the chart when there's no run to show.
+        """
+        worker = self._worker
+        if worker is None or worker.history_len() == 0:
+            self._conv_plot.clear_data()
+            self._conv_len = -1
+            return
+        n = worker.history_len()
+        total = worker.history_total
+        offset = total - n  # absolute step at buffer index 0
+        if n != self._conv_len:
+            steps = np.arange(offset, offset + n)
+            n_neg = np.fromiter((worker.history_get(i).n_neg for i in range(n)), dtype=float, count=n)
+            min_T = np.fromiter((worker.history_get(i).min_T for i in range(n)), dtype=float, count=n)
+            self._conv_plot.set_data(steps, n_neg, min_T)
+            self._conv_len = n
+        self._conv_plot.set_cursor(offset + self._history_slider.value())
+
+    def _input_jacobian(self) -> np.ndarray:
+        """Per-pixel Jdet of the originally-loaded field for the active
+        slice — the baseline for the ``Δ Jdet vs input`` view. Falls back
+        to the current volume if no pristine copy exists."""
+        base = self._original_volume if self._original_volume is not None else self._volume
+        return jacobian_det2D(base[1:, self._z])[0]
+
+    def _apply_levels(self, arr: np.ndarray) -> None:
+        """Set the heatmap (and its colorbar) levels for ``arr``.
+
+        Fixed ±1 when Auto-levels is off; otherwise a symmetric
+        autoscale to the array's extent so the diverging colormap stays
+        centred on zero (white) and large-magnitude fields don't clip.
+        Driving the colorbar's levels also updates the linked image.
+        """
+        if self._autolevel_check.isChecked():
+            finite = arr[np.isfinite(arr)]
+            m = float(np.max(np.abs(finite))) if finite.size else 1.0
+            if m <= 0:
+                m = 1.0
+            levels = (-m, m)
+        else:
+            levels = (-1.0, 1.0)
+        self._cbar.setLevels(levels)
+        self._img.setLevels(levels)
+
+    def _on_autolevel_toggled(self, _on: bool):
+        """Re-render the current frame so the new level policy takes
+        effect immediately."""
+        if self._latest is not None and self._latest_jacobian is not None:
+            self._set_view(self._latest.phi, self._latest_jacobian)
+        else:
+            self._refresh_display_from_volume()
 
     def _on_view_changed(self, idx: int):
         self._view_mode = self._view_combo.itemData(idx)
@@ -987,6 +1472,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z = int(value)
         D = self._volume.shape[1] if self._volume is not None else 1
         self._z_label.setText(f'{self._z} / {D - 1}')
+        # A run's history belongs to the slice it was solved on. Switching
+        # z invalidates it — drop the worker reference and reset the scrub
+        # widgets so the slider can't replay another slice's snapshots
+        # over this one.
+        self._worker = None
+        self._latest = None
+        self._latest_jacobian = None
+        self._history.reset()
+        self._history.set_live(True)
         self._refresh_display_from_volume()
 
     def _on_open_params(self):
@@ -1031,6 +1525,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 return
             self._section_bounds = (y0, y1, x0, x1)
             sub = deformation_i[:, :, y0:y1, x0:x1].copy()
+            # The ROI is solved in isolation (frozen edges) then spliced
+            # back, so new folds can appear at the seam where the patched
+            # region meets the untouched field — most likely for
+            # context-dependent methods. Flag it rather than let a
+            # surprise boundary fold look like a solver failure.
+            self.statusBar().showMessage(
+                'Run section: solving the ROI with frozen edges — check the '
+                'patch boundary for new seam folds after it completes.',
+                6_000,
+            )
             self._start_worker(sub)
         else:
             self._section_bounds = None
@@ -1041,11 +1545,24 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         constraint = self._constraint_combo.currentData()
         objective_id = self._objective_combo.currentData()
         method_id = _compose_method_id(algo, constraint)
+
+        # Baseline fold count of *this run's* input (full slice or ROI),
+        # counted with the SAME metric the run's trajectory uses (Jdet for
+        # the windowed-SLSQP path, else the constraint's own metric), so
+        # the before→after delta lines up with the live n_neg readout.
+        phi_in = np.stack([deformation_i[1, 0], deformation_i[2, 0]])
+        metric_kind = 'jdet' if method_id.startswith('slsqp_windowed') else constraint
+        self._input_n_neg, _ = _metric_counts(phi_in, metric_kind)
+        self._active_method_id = method_id
+        self._run_elapsed.restart()
         params = {
             'time_budget_s': float(self._budget_spin.value()),
             'max_iterations': int(self._max_iter_spin.value()),
             'objective_id': objective_id,
+            'method_name': self._slsqp_method_name,
         }
+        if self._max_per_index_iter is not None:
+            params['max_per_index_iter'] = int(self._max_per_index_iter)
         self._worker = SolverWorker(
             deformation_i=deformation_i,
             method_id=method_id,
@@ -1058,13 +1575,18 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stop_btn.setEnabled(True)
         self._run_full_btn.setEnabled(False)
         self._run_roi_btn.setEnabled(False)
+        self._run_all_btn.setEnabled(False)
+        self._undo_btn.setEnabled(False)
+        self._redo_btn.setEnabled(False)
+        # Freeze the z-slider during a run: switching slices mid-solve
+        # would orphan the in-flight worker against a different slice.
+        self._z_slider.setEnabled(False)
         self._fps_label.setText(f'starting {method_id}…')
         self._last_count = 0
         self._last_tick.restart()
         # Reset the history widgets for the new run. Re-engage Live so
         # the first snapshots from the new worker auto-track.
-        self._reset_history_widgets()
-        self._live_check.setChecked(True)
+        self._history.begin_run()
         self._worker.start()
 
     def _on_stop(self):
@@ -1072,6 +1594,59 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._worker.request_stop()
             self._stop_btn.setEnabled(False)
             self._stop_btn.setText('Stopping…')
+            # The stop flag is only checked when the solver next fires its
+            # step_callback (between SLSQP sub-windows / at the next
+            # wallbreaker stage boundary), so there can be a one-checkpoint
+            # delay — say so rather than leaving the user with a frozen
+            # "Stopping…" button.
+            self.statusBar().showMessage(
+                'Stop requested — will halt at the next solver checkpoint…', 0
+            )
+
+    def _on_run_all(self):
+        """Solve every z-slice of a 3D volume in sequence with the
+        current method. The chain is driven from ``_on_finished``: each
+        slice's result splices in, then the next slice starts."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Already running', 'Stop the current run first.'
+            )
+            return
+        D = self._volume.shape[1]
+        if D <= 1:
+            # Single slice — just run it normally.
+            self._on_run(use_roi=False)
+            return
+        # One undo entry for the whole batch: snapshot the pre-batch
+        # volume now and suppress the per-slice pushes in ``_on_finished``,
+        # so a single Ctrl+Z reverts the entire Run-all (not just its last
+        # slice).
+        self._push_undo_state()
+        self._run_all_remaining = list(range(D))
+        self._run_all_step()
+
+    def _run_all_step(self):
+        """Start the next queued slice in a Run-all batch, or finish the
+        batch if the queue is empty."""
+        if not self._run_all_remaining:
+            self._run_all_remaining = None
+            self._finalize_run_ui()
+            self.statusBar().showMessage('Run all z finished.', 10_000)
+            return
+        z = self._run_all_remaining.pop(0)
+        D = self._volume.shape[1]
+        self._z = z
+        self._z_label.setText(f'{z} / {D - 1}')
+        self._section_bounds = None
+        remaining = len(self._run_all_remaining)
+        self.statusBar().showMessage(
+            f'Run all z: solving slice {z} ({D - remaining}/{D})…', 0
+        )
+        # Solve from the pristine input for this slice.
+        self._start_worker(self._original_volume[:, z : z + 1].copy())
 
     def _on_finished(self, phi_out, info):
         # Ignore late signals from a worker we've already replaced /
@@ -1083,6 +1658,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Splice the result back into the volume so subsequent runs /
         # view toggles see the corrected state.
         if phi_out is not None and self._volume is not None:
+            # Snapshot the pre-splice volume for Undo — but only for a
+            # standalone run. A Run-all batch pushes one undo entry up
+            # front (see ``_on_run_all``) so the whole batch undoes as a
+            # unit rather than one slice at a time.
+            if self._run_all_remaining is None:
+                self._push_undo_state()
             phi_out = np.asarray(phi_out)
             sb = getattr(self, '_section_bounds', None)
             if sb is not None:
@@ -1095,20 +1676,78 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._refresh_display_from_volume()
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
-        self._run_full_btn.setEnabled(True)
-        self._run_roi_btn.setEnabled(True)
+
+        # Run-all chaining: a clean finish advances to the next slice; a
+        # stop/interrupt (info set) aborts the remaining batch.
+        if self._run_all_remaining is not None:
+            if info is not None:
+                self._run_all_remaining = None
+                self._finalize_run_ui()
+                self.statusBar().showMessage(f'Run all z stopped: {info}.', 10_000)
+            else:
+                self._run_all_step()
+            return
+
+        self._finalize_run_ui()
         msg = 'Run finished.' if info is None else f'Run stopped: {info}.'
         self.statusBar().showMessage(msg, 10_000)
-        self._fps_label.setText('idle')
 
     def _on_error(self, err: str):
         if self.sender() is not self._worker:
             return
+        self._run_all_remaining = None
         self._stop_btn.setEnabled(False)
-        self._run_full_btn.setEnabled(True)
-        self._run_roi_btn.setEnabled(True)
+        self._stop_btn.setText('Stop')
+        self._finalize_run_ui()
         QtWidgets.QMessageBox.critical(self, 'Solver error', err)
         self._fps_label.setText('errored')
+
+    def _finalize_run_ui(self) -> None:
+        """Restore the toolbar to its idle state after a run (or batch)
+        ends. Re-enables the run buttons + z-slider as appropriate."""
+        self._stop_btn.setEnabled(False)
+        self._stop_btn.setText('Stop')
+        self._run_full_btn.setEnabled(True)
+        self._run_roi_btn.setEnabled(True)
+        D = self._volume.shape[1] if self._volume is not None else 1
+        self._run_all_btn.setEnabled(D > 1)
+        self._z_slider.setEnabled(D > 1)
+        self._update_undo_redo_enabled()
+        self._fps_label.setText('idle')
+        # Clear the progress bar (unless a Run-all batch is still going —
+        # the next slice's first tick will repaint it).
+        if self._run_all_remaining is None:
+            self._active_method_id = None
+            self._progress.setRange(0, 100)
+            self._progress.setValue(0)
+            self._progress.setFormat('')
+
+    def _update_progress(self) -> None:
+        """Repaint the progress bar for the active run. Wallbreakers show
+        elapsed/budget, SLSQP shows outer-iter/max, the rest show a busy
+        indicator with elapsed time."""
+        mid = self._active_method_id
+        worker = self._worker
+        if mid is None or worker is None or not worker.isRunning():
+            return
+        elapsed = self._run_elapsed.elapsed() / 1000.0
+        if mid.startswith(('m10', 'm14')):
+            budget = float(self._budget_spin.value())
+            frac = min(1.0, elapsed / budget) if budget > 0 else 0.0
+            self._progress.setRange(0, 100)
+            self._progress.setValue(int(frac * 100))
+            self._progress.setFormat(f'{elapsed:.0f}s / {budget:.0f}s')
+        elif mid.startswith('slsqp'):
+            mx = int(self._max_iter_spin.value())
+            cur = self._latest.outer_iter if self._latest is not None else 0
+            frac = min(1.0, cur / mx) if mx > 0 else 0.0
+            self._progress.setRange(0, 100)
+            self._progress.setValue(int(frac * 100))
+            self._progress.setFormat(f'iter {cur} / {mx}  ·  {elapsed:.0f}s')
+        else:
+            # barrier / nmvf: no clean fraction — busy indicator + elapsed.
+            self._progress.setRange(0, 0)
+            self._progress.setFormat(f'{elapsed:.0f}s')
 
     # ----- render loop -------------------------------------------------------
 
@@ -1126,10 +1765,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         and dominates render time on large slices). The slider scrub
         path always uses ``fast=False`` for full fidelity.
         """
-        from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
         self._latest = snap
         self._latest_jacobian = jacobian_det2D(snap.phi)[0]
+        self._invalidate_inspector_cache()
         self._set_view(snap.phi, self._latest_jacobian, fast=fast)
         self._window_rect.setRect(
             snap.window_x0,
@@ -1151,6 +1789,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stats_label.setText(self._format_stats(snap))
         if self._picked_yx is not None:
             self._inspector_label.setText(self._format_inspector(self._picked_yx))
+        self._refresh_convergence()
 
     def _on_render_tick(self):
         if self._worker is None:
@@ -1158,158 +1797,40 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         snap = self._worker.take_latest()
         # Update the history slider's range to cover everything emitted
         # so far, and (if Live is on) advance to the latest frame.
-        hist_len = self._worker.history_len()
-        if hist_len > 0:
-            self._history_slider.blockSignals(True)
-            self._history_slider.setMaximum(hist_len - 1)
-            if self._live_check.isChecked():
-                self._history_programmatic = True
-                self._history_slider.setValue(hist_len - 1)
-                self._history_programmatic = False
-            self._history_slider.blockSignals(False)
-            self._sync_history_widgets()
+        self._history.on_tick()
         # Render the latest snapshot only when Live is on. In freeze mode
         # the slider handler controls what's shown.
-        if snap is not None and self._live_check.isChecked():
+        if snap is not None and self._history.is_live():
             # Big-field protection: skip the fold overlay rebuild during
             # live ticks once H·W exceeds the threshold. Scrubbing the
             # slider (post-run, or when paused) still gets the full
-            # overlay — see ``_on_history_slider`` which passes ``fast=False``.
+            # overlay — HistoryController renders with the default
+            # ``fast=False``.
             H, W = snap.phi.shape[1:]
-            fast = (H * W) > self._fast_render_pixel_threshold
+            fast = self._fast_render_pixel_threshold < (H * W)
             self._render_snapshot(snap, fast=fast)
+        else:
+            # Frozen view: still extend the convergence curve as the run
+            # progresses (cursor stays where the user parked it).
+            self._refresh_convergence()
 
-        # cb-rate once per second
-        if self._last_tick.elapsed() >= 1000 and self._worker is not None:
+        # Live progress bar / ETA for the active run.
+        self._update_progress()
+
+        # cb-rate once per second — only while a solve is actually
+        # running. A loaded run is backed by a non-running ReplayHistory
+        # (callback_count == 0); updating here would clobber "idle" with a
+        # misleading "0 callbacks · 0.0 cb/s" for a static viewed run.
+        if (
+            self._last_tick.elapsed() >= 1000
+            and self._worker is not None
+            and self._worker.isRunning()
+        ):
             dt_s = self._last_tick.restart() / 1000.0
             cb_count = self._worker.callback_count
             delta = cb_count - self._last_count
             self._last_count = cb_count
             self._fps_label.setText(f'{cb_count} callbacks · {delta / dt_s:.1f} cb/s')
-
-    def _on_history_grab(self):
-        """User started dragging the slider — drop out of live mode so
-        the next auto-advance doesn't fight the user's selection."""
-        self._live_check.setChecked(False)
-
-    def _on_history_slider(self, idx: int):
-        if self._worker is None:
-            return
-        snap = self._worker.history_get(int(idx))
-        if snap is None:
-            return
-        # A user-driven valueChanged means they're actively scrubbing —
-        # disengage Live so the next auto-tick doesn't snap them back to
-        # the end. Programmatic moves (the auto-track path in
-        # ``_on_render_tick``) set the flag to skip this.
-        if not self._history_programmatic and self._live_check.isChecked():
-            self._live_check.setChecked(False)
-        self._render_snapshot(snap)
-        self._sync_history_widgets()
-
-    def _on_history_prev(self):
-        """Step the slider back by one. Counts as a user action — drops
-        Live mode so auto-track doesn't immediately undo the step."""
-        if self._worker is None or self._worker.history_len() == 0:
-            return
-        self._live_check.setChecked(False)
-        new_val = max(0, self._history_slider.value() - 1)
-        self._history_slider.setValue(new_val)
-
-    def _on_history_next(self):
-        """Step the slider forward by one."""
-        if self._worker is None or self._worker.history_len() == 0:
-            return
-        n = self._worker.history_len()
-        self._live_check.setChecked(False)
-        new_val = min(n - 1, self._history_slider.value() + 1)
-        self._history_slider.setValue(new_val)
-
-    def _on_history_spin(self, abs_step: int):
-        """User typed a step into the spinbox. Convert the absolute
-        step index back to the slider's buffer index and let the slider
-        valueChanged path do the actual render/sync.
-
-        Skipped when the spinbox change came from
-        :meth:`_sync_history_widgets` (which sets ``_history_programmatic``
-        before updating) — without that guard the slider→spinbox sync
-        would re-fire the spinbox→slider sync indefinitely.
-        """
-        if self._history_programmatic:
-            return
-        if self._worker is None or self._worker.history_len() == 0:
-            return
-        n = self._worker.history_len()
-        total = self._worker.history_total
-        offset = total - n  # absolute step at buffer index 0
-        buf_idx = max(0, min(n - 1, int(abs_step) - offset))
-        if buf_idx != self._history_slider.value():
-            self._live_check.setChecked(False)
-            self._history_slider.setValue(buf_idx)
-
-    def _on_live_toggled(self, on: bool):
-        """Re-checking Live snaps the view back to the latest step."""
-        if on and self._worker is not None:
-            hist_len = self._worker.history_len()
-            if hist_len > 0:
-                self._history_programmatic = True
-                self._history_slider.setValue(hist_len - 1)
-                self._history_programmatic = False
-                snap = self._worker.history_get(hist_len - 1)
-                if snap is not None:
-                    self._render_snapshot(snap)
-                self._sync_history_widgets()
-
-    def _reset_history_widgets(self) -> None:
-        """Put the slider / buttons / spinbox / total label back into
-        their pristine, no-history state."""
-        self._history_slider.blockSignals(True)
-        self._history_slider.setMaximum(0)
-        self._history_slider.setValue(0)
-        self._history_slider.setEnabled(False)
-        self._history_slider.blockSignals(False)
-        self._history_spin.blockSignals(True)
-        self._history_spin.setRange(0, 0)
-        self._history_spin.setValue(0)
-        self._history_spin.setEnabled(False)
-        self._history_spin.blockSignals(False)
-        self._history_prev_btn.setEnabled(False)
-        self._history_next_btn.setEnabled(False)
-        self._history_total_label.setText('/ —')
-
-    def _sync_history_widgets(self) -> None:
-        """Make the slider/spinbox/buttons/label consistent with the
-        worker's current history. Called after any history-affecting
-        change (auto-track advance, user scrub, slider arrow, spinbox
-        edit). Programmatic moves are guarded against the spinbox
-        ↔ slider feedback loop via ``_history_programmatic``.
-        """
-        if self._worker is None or self._worker.history_len() == 0:
-            self._reset_history_widgets()
-            return
-        n = self._worker.history_len()
-        total = self._worker.history_total
-        idx = self._history_slider.value()
-        offset = total - n  # absolute step at buffer index 0
-        abs_step = idx + offset
-        abs_max = total - 1
-        # Slider already has its value/max set elsewhere; just enable it.
-        self._history_slider.setEnabled(True)
-        # Prev/next: only enabled when there's somewhere to step.
-        self._history_prev_btn.setEnabled(idx > 0)
-        self._history_next_btn.setEnabled(idx < n - 1)
-        # Spinbox: absolute range + value. Guard the back-edge of the
-        # sync loop via blockSignals + the programmatic flag.
-        self._history_programmatic = True
-        self._history_spin.blockSignals(True)
-        self._history_spin.setRange(offset, abs_max)
-        self._history_spin.setValue(abs_step)
-        self._history_spin.setEnabled(True)
-        self._history_spin.blockSignals(False)
-        self._history_programmatic = False
-        # Total label. The leading slash echoes "step <N> / <max>" so
-        # the spinbox + label read naturally side-by-side.
-        self._history_total_label.setText(f'/ {abs_max}')
 
     # ----- mouse pick --------------------------------------------------------
 
@@ -1321,6 +1842,44 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         y = round(mouse_point.y())
         self._picked_yx = (y, x)
         self._inspector_label.setText(self._format_inspector((y, x)))
+
+    def _on_mouse_moved(self, evt):
+        """Hover readout — track the cursor so the inspector updates
+        without a click. ``evt`` is the ``(scenePos,)`` tuple delivered
+        by the rate-limiting :class:`pg.SignalProxy`. Updating
+        ``_picked_yx`` (not a separate field) means the live-render path
+        keeps showing whatever the cursor last hovered."""
+        if self._volume is None:
+            return
+        scene_pos = evt[0]
+        if not self._plot.sceneBoundingRect().contains(scene_pos):
+            return
+        mouse_point = self._plot.plotItem.vb.mapSceneToView(scene_pos)
+        x = round(mouse_point.x())
+        y = round(mouse_point.y())
+        if self._picked_yx == (y, x):
+            return
+        self._picked_yx = (y, x)
+        self._inspector_label.setText(self._format_inspector((y, x)))
+
+    def _triangle_areas_cached(self, phi: np.ndarray):
+        """Return ``(T1, T2)`` for the currently-displayed ``phi``.
+
+        The cache is invalidated explicitly whenever the displayed field
+        changes (see ``_invalidate_inspector_cache`` calls in the render
+        / refresh paths), so repeated hovers over the same frame reuse
+        one computation instead of an O(H·W) triangle-area recompute per
+        mouse-move. (The volume-path ``phi`` is a fresh view object each
+        call, so identity-keying wouldn't hit — hence explicit
+        invalidation.)"""
+        if self._inspector_tri is None:
+            self._inspector_tri = _triangle_areas_2d(phi[0], phi[1])
+        return self._inspector_tri
+
+    def _invalidate_inspector_cache(self) -> None:
+        """Drop the cached inspector T1/T2 — call whenever the displayed
+        field changes."""
+        self._inspector_tri = None
 
     # ----- formatters --------------------------------------------------------
 
@@ -1336,33 +1895,51 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             # min Jdet is positive, even with sub-pixel 2-tri folds — the
             # bowtie default is exactly that case: 0 Jdet folds but 2
             # 2-tri folds).
-            from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
             phi_2hw = self._volume[1:, self._z]
             jac = jacobian_det2D(phi_2hw)[0]
             min_tri = _min_tri_from_phi(phi_2hw)
-            n_neg_jdet = int((jac < 0).sum())
-            n_neg_tri = int((min_tri < 0).sum())
+            # Fold counts (metric <= 0) share the worker's convention so
+            # the idle panel matches the running n_neg readout. The
+            # solver, however, targets ``>= threshold`` (0.01) — surface
+            # the stricter "still infeasible" counts too, so a field with
+            # 0 folds but min in (0, 0.01) doesn't read as "done".
+            n_neg_jdet, _ = _metric_counts(phi_2hw, 'jdet')
+            n_neg_tri, _ = _metric_counts(phi_2hw, '2tri')
+            infeas_jdet = _infeasible_count(phi_2hw, 'jdet')
+            infeas_tri = _infeasible_count(phi_2hw, '2tri')
+            interior = max(1, (H - 1) * (W - 1))
+            thr = FEASIBILITY_THRESHOLD
             # ``_min_tri_from_phi`` returns NaN at the boundary (no
             # cell-anchor exists past H-1, W-1). Use nanmin so the
             # idle readout shows the real interior minimum.
             return (
                 '<b>Stats</b><br>'
-                f'volume . . . {D}×{H}×{W}<br>'
-                f'view . . . . {self._view_mode}<br>'
-                f'min Jdet . . {jac.min():+.4f}<br>'
-                f'Jdet folds . {n_neg_jdet}<br>'
-                f'min T1/T2  . {np.nanmin(min_tri):+.4f}<br>'
-                f'2-tri folds  {n_neg_tri}<br>'
+                f'volume . . . . {D}×{H}×{W}<br>'
+                f'view . . . . . {self._view_mode}<br>'
+                f'max |disp| . . {self._max_abs_disp(phi_2hw):.3f}<br>'
+                f'min Jdet . . . {jac.min():+.4f}<br>'
+                f'Jdet folds . . {n_neg_jdet}<br>'
+                f'min T1/T2  . . {np.nanmin(min_tri):+.4f}<br>'
+                f'2-tri folds  . {n_neg_tri}  ({100 * n_neg_tri / interior:.1f}%)<br>'
+                f'infeasible(&lt;{thr:g}) Jdet {infeas_jdet} · 2-tri {infeas_tri}<br>'
                 '(idle — press <i>Run full</i> to start)'
             )
         H, W = snap.phi.shape[1:]
+        interior = max(1, (H - 1) * (W - 1))
+        delta = ''
+        if self._input_n_neg is not None:
+            delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
+        # Flag when the worst cell is positive but still inside the
+        # solver's feasibility margin — folds==0 yet not solver-feasible.
+        feas_flag = '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
         return (
             '<b>Stats</b><br>'
             f'outer iter . . {snap.outer_iter}<br>'
             f'per-pixel . . . {snap.per_index_iter}<br>'
-            f'n_neg . . . . . {snap.n_neg}<br>'
-            f'min_T . . . . . {snap.min_T:+.5f}<br>'
+            f'n_neg . . . . . {snap.n_neg}  ({100 * snap.n_neg / interior:.1f}%)<br>'
+            f'{delta}'
+            f'min_T . . . . . {snap.min_T:+.5f}{feas_flag}<br>'
+            f'max |disp| . . {self._max_abs_disp(snap.phi):.3f}<br>'
             f'window . . . . ({snap.window_y0}–{snap.window_y1}, '
             f'{snap.window_x0}–{snap.window_x1})  '
             f'{snap.window_y1 - snap.window_y0}×{snap.window_x1 - snap.window_x0}<br>'
@@ -1370,6 +1947,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'target pixel . (y={snap.neg_y}, x={snap.neg_x})<br>'
             f'grid . . . . . {H}×{W}'
         )
+
+    @staticmethod
+    def _max_abs_disp(phi_2hw: np.ndarray) -> float:
+        """Largest per-pixel displacement magnitude ``√(dy²+dx²)``."""
+        return float(np.sqrt(phi_2hw[0] ** 2 + phi_2hw[1] ** 2).max())
 
     def _format_inspector(self, yx: tuple[int, int] | None) -> str:
         if yx is None:
@@ -1384,13 +1966,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if self._latest_jacobian is not None:
                 jac = self._latest_jacobian
             else:
-                from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
                 jac = jacobian_det2D(phi)[0]
         elif self._volume is not None:
             phi = self._volume[1:, self._z]
-            from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-
             jac = jacobian_det2D(phi)[0]
         else:
             return '<b>Pixel inspector</b><br>(no DVF loaded)'
@@ -1401,9 +1979,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # they index the cell anchored at the (y, x) top-left.
         t1_str = t2_str = '—'
         if y < H - 1 and x < W - 1:
-            from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
-            T1, T2 = _triangle_areas_2d(phi[0], phi[1])
+            T1, T2 = self._triangle_areas_cached(phi)
             t1_str = f'{T1[y, x]:+.5f}'
             t2_str = f'{T2[y, x]:+.5f}'
         return (
@@ -1414,12 +1990,86 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'T2 . . . . {t2_str}'
         )
 
+    # ----- session persistence -----------------------------------------------
+
+    @staticmethod
+    def _settings() -> QtCore.QSettings:
+        return QtCore.QSettings('dvfopt', 'dvfopt_gui')
+
+    def _restore_settings(self) -> None:
+        """Restore window geometry + toolbar selections from the previous
+        session. Anything the demo passed via ``initial_params`` wins over
+        the saved value (it's a deliberate per-launch override)."""
+        s = self._settings()
+        geo = s.value('geometry')
+        if geo is not None:
+            self.restoreGeometry(geo)
+        self._last_dir = s.value('last_dir', self._last_dir, type=str)
+        # Constraint first — it repopulates the method combo.
+        constraint = s.value('constraint', '', type=str)
+        if constraint:
+            self._select_combo_data(self._constraint_combo, constraint)
+        method = s.value('method', '', type=str)
+        if method:
+            self._select_combo_data(self._method_combo, method)
+        objective = s.value('objective', '', type=str)
+        if objective:
+            self._select_combo_data(self._objective_combo, objective)
+        view = s.value('view_mode', '', type=str)
+        if view:
+            idx = self._view_combo.findData(view)
+            if idx >= 0:
+                self._view_combo.setCurrentIndex(idx)
+        self._autolevel_check.setChecked(s.value('auto_levels', False, type=bool))
+        tb = s.value('time_budget_s', 0.0, type=float)
+        if tb:
+            self._budget_spin.setValue(tb)
+        if 'max_iterations' not in self._initial_params:
+            mi = s.value('max_iter', 0, type=int)
+            if mi:
+                self._max_iter_spin.setValue(mi)
+        hms = s.value('history_max_size', 0, type=int)
+        if hms:
+            self._history_max_size = hms
+
+    def _save_settings(self) -> None:
+        """Persist window geometry + toolbar selections for next launch."""
+        s = self._settings()
+        s.setValue('geometry', self.saveGeometry())
+        s.setValue('last_dir', self._last_dir)
+        s.setValue('constraint', self._constraint_combo.currentData() or '')
+        s.setValue('method', self._method_combo.currentData() or '')
+        s.setValue('objective', self._objective_combo.currentData() or '')
+        s.setValue('view_mode', self._view_mode)
+        s.setValue('auto_levels', self._autolevel_check.isChecked())
+        s.setValue('time_budget_s', float(self._budget_spin.value()))
+        s.setValue('max_iter', int(self._max_iter_spin.value()))
+        s.setValue('history_max_size', int(self._history_max_size))
+
     # ----- lifecycle ---------------------------------------------------------
 
     def closeEvent(self, ev):
-        if self._worker is not None and self._worker.isRunning():
-            self._worker.request_stop()
-            self._worker.wait(2000)
+        self._save_settings()
+        # Cancel any in-flight run and wait for the worker to actually
+        # exit before tearing down — otherwise the QThread can outlive
+        # the window. ``request_stop`` is only honoured at the next
+        # solver checkpoint, so we wait in slices (pumping the event loop
+        # so a final snapshot signal can drain) up to a generous cap,
+        # then fall back to ``terminate`` as a last resort since the
+        # process is exiting anyway.
+        worker = self._worker
+        if worker is not None and getattr(worker, 'isRunning', lambda: False)():
+            worker.request_stop()
+            waited_ms = 0
+            cap_ms = 30_000
+            while worker.isRunning() and waited_ms < cap_ms:
+                QtWidgets.QApplication.processEvents()
+                worker.wait(100)
+                waited_ms += 100
+            if worker.isRunning():
+                # Stuck inside an uninterruptible solve — force it down.
+                worker.terminate()
+                worker.wait(2000)
         super().closeEvent(ev)
 
 
@@ -1438,15 +2088,15 @@ def launch(deformation_i=None, *, solver_kwargs=None) -> int:
         ``(3, D, H, W)``. When ``None`` (default), the window starts
         empty — use **Load DVF…** to pick a file.
     solver_kwargs : dict, optional
-        Ignored. The choice of solver + its parameters now lives in
-        the toolbar (Method dropdown + the ``time_budget_s`` /
-        ``max_iter`` spinboxes). Kept in the signature for back-
-        compat with v1 callers.
+        Seeds the windowed-SLSQP parameters that the toolbar / worker
+        honour: ``max_iterations`` and ``max_per_index_iter`` (the
+        ``max_iterations`` value pre-fills the ``max_iter`` spinbox) and
+        the scipy ``method_name``. The choice of *which* solver to run
+        still lives in the toolbar; these only seed its parameters.
 
     Returns Qt exit code."""
-    del solver_kwargs  # kept for back-compat; choice is in-GUI now
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
-    win = LiveSolverWindow(deformation_i)
+    win = LiveSolverWindow(deformation_i, initial_params=solver_kwargs or {})
     win.show()
     win.start()
     return app.exec_()

@@ -6,7 +6,7 @@ gets snapshotted into plain ``numpy.ndarray`` copies (the live
 ``jacobian_matrix`` / ``quality_matrix`` are mutated in-place by the
 solver — reading them un-copied from the GUI thread would race), then
 pushed onto a bounded ``queue.Queue``. The GUI's ``QTimer`` drains
-the queue at ~30 Hz; older snapshots are dropped if the GUI can't keep
+the queue at ~10 Hz; older snapshots are dropped if the GUI can't keep
 up. This bounds memory use and prevents render lag from slowing the
 solver.
 
@@ -39,6 +39,17 @@ from collections import deque
 
 import numpy as np
 from PyQt5 import QtCore
+
+from dvfopt._defaults import DEFAULT_PARAMS
+
+# Solver feasibility threshold. Every dvfopt constraint is ``C(phi) >=
+# threshold`` (see ``dvfopt/constraints.py``), so a cell is only
+# *feasible to the solver* once its Jdet / triangle area clears this
+# margin — not merely once it's non-negative. The GUI surfaces this so a
+# field reading "0 folds" (no inversions) but ``min < threshold`` is not
+# mistaken for "already solved". Sourced from the package default (0.01)
+# so the GUI tracks the solver if that default ever changes.
+FEASIBILITY_THRESHOLD = float(DEFAULT_PARAMS['threshold'])
 
 # Default cap on snapshots kept in the per-run history buffer. Each
 # ``StateSnapshot`` carries only ``phi`` (2*H*W floats) — the jacobian
@@ -162,6 +173,97 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
     )
 
 
+def _metric_field(phi_2hw, kind: str) -> np.ndarray:
+    """Return the per-cell metric field for ``phi_2hw`` under one metric.
+
+    ``kind='2tri'`` → per-cell ``min(T1, T2)`` (signed triangle area,
+    catches sub-pixel folds the central-difference stencil misses);
+    ``kind='jdet'`` → per-pixel central-difference Jacobian determinant.
+    """
+    if kind == '2tri':
+        from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
+        T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
+        return np.minimum(T1, T2)
+    from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+
+    return jacobian_det2D(phi_2hw)[0]
+
+
+def _metric_counts(phi_2hw, kind: str) -> tuple[int, float]:
+    """Return ``(n_neg, min_T)`` for ``phi_2hw`` under one metric.
+
+    ``n_neg`` counts *folded* cells — those whose metric is ``<= 0`` (an
+    inverted or degenerate-zero-area cell) — and ``min_T`` is the worst
+    (smallest) signed value. The ``<= 0`` convention is shared by **both**
+    metrics and matches the live windowed-SLSQP callback, which reports
+    ``(jac <= 0).sum()`` (see ``dvfopt/core/_internal/metrics.py``), so a
+    run's step-0 count lines up with its live tail instead of differing by
+    the number of exactly-zero cells. For the solver's stricter
+    feasibility margin (``< threshold``), see :func:`_infeasible_count`.
+
+    A run uses ONE metric for *every* snapshot it emits — init,
+    per-stage, and final — so its convergence trajectory is internally
+    consistent (no Jdet-counted step 0 spliced onto a 2-tri-counted
+    tail). See :meth:`SolverWorker._trajectory_metric_kind`.
+    """
+    field = _metric_field(phi_2hw, kind)
+    return int((field <= 0).sum()), float(field.min())
+
+
+def _infeasible_count(phi_2hw, kind: str, threshold: float = FEASIBILITY_THRESHOLD) -> int:
+    """Count cells the *solver* still considers infeasible: metric
+    ``< threshold`` (default 0.01), not merely ``<= 0``.
+
+    A field can have zero folds yet a nonzero infeasible count when its
+    minimum sits in ``(0, threshold)`` — positive, so not inverted, but
+    inside the solver's safety margin. Surfacing this keeps the GUI's
+    "is it done?" reading honest about what the solver is actually
+    chasing.
+    """
+    return int((_metric_field(phi_2hw, kind) < threshold).sum())
+
+
+class ReplayHistory:
+    """Read-only stand-in for :class:`SolverWorker` that holds a finished
+    run's snapshots loaded from disk.
+
+    The GUI's history-scrub widgets and render tick only need a handful
+    of read accessors (``history_len``/``history_get``/``history_total``/
+    ``take_latest``/``isRunning``/``callback_count``). A loaded ``.npz``
+    run has no live thread, so this exposes exactly that surface — letting
+    a saved run be scrubbed through the same code path as a live one.
+    """
+
+    def __init__(self, snapshots, history_total: int | None = None):
+        self._history = list(snapshots)
+        self._history_total = (
+            int(history_total) if history_total is not None else len(self._history)
+        )
+
+    def history_len(self) -> int:
+        return len(self._history)
+
+    def history_get(self, idx: int):
+        if 0 <= idx < len(self._history):
+            return self._history[idx]
+        return None
+
+    @property
+    def history_total(self) -> int:
+        return self._history_total
+
+    def take_latest(self):
+        return None
+
+    @property
+    def callback_count(self) -> int:
+        return 0
+
+    def isRunning(self) -> bool:  # mirror QThread.isRunning
+        return False
+
+
 class SolverWorker(QtCore.QThread):
     """Run the solver in a worker thread.
 
@@ -170,7 +272,7 @@ class SolverWorker(QtCore.QThread):
     a per-callback Qt signal because queued cross-thread signals
     accumulate in the GUI event loop, defeating the bounded-queue
     design. Solver pace is the bottleneck; the GUI drains the queue
-    on its own render timer at ~30 Hz.
+    on its own render timer at ~10 Hz.
     """
 
     finishedWithResult = QtCore.pyqtSignal(object, object)  # corrected_phi, info
@@ -311,24 +413,22 @@ class SolverWorker(QtCore.QThread):
         )
         self._record(snap)
 
-    def _emit_initial_snapshot(self) -> None:
-        """Snapshot the *input* phi as history[0] so the scrub slider
-        can always go back to the unsolved field. Called once at the
-        start of ``run()`` before any solver work. We still compute the
-        jacobian once here to populate ``n_neg`` / ``min_T`` on the
-        snapshot, but discard it after — the GUI will recompute it from
-        ``phi`` at render time."""
-        from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+    def _emit_initial_snapshot(self, metric_kind: str) -> None:
+        """Snapshot the *input* phi as history[0] so the scrub slider can
+        always go back to the unsolved field. Called once at the start of
+        ``run()`` before any solver work.
 
+        ``n_neg`` / ``min_T`` are computed under ``metric_kind`` (the same
+        metric every later snapshot of this run uses), so step 0 lines up
+        with the rest of the convergence trajectory rather than being a
+        Jdet count grafted onto a 2-tri tail."""
         phi_2hw = np.stack(
             [
                 self._deformation_i[1, 0].astype(np.float64),
                 self._deformation_i[2, 0].astype(np.float64),
             ]
         )
-        jac = jacobian_det2D(phi_2hw)[0]
-        n_neg = int((jac < 0).sum())
-        min_T = float(jac.min())
+        n_neg, min_T = _metric_counts(phi_2hw, metric_kind)
         snap = StateSnapshot(
             phi=phi_2hw,
             window_y0=0,
@@ -360,6 +460,10 @@ class SolverWorker(QtCore.QThread):
         }
         if 'max_iterations' in self._params:
             kwargs['max_iterations'] = int(self._params['max_iterations'])
+        if self._params.get('max_per_index_iter') is not None:
+            kwargs['max_per_index_iter'] = int(self._params['max_per_index_iter'])
+        if self._params.get('method_name'):
+            kwargs['method_name'] = str(self._params['method_name'])
         phi_out = iterative_serial(
             self._deformation_i.copy(),
             step_callback=self._callback,
@@ -384,7 +488,7 @@ class SolverWorker(QtCore.QThread):
             return NoneObjective()
         raise ValueError(f'unknown objective_id={oid!r}')
 
-    def _run_via_solver(self, strategy, constraint_kind: str):
+    def _run_via_solver(self, strategy, constraint_kind: str, *, metric_kind: str):
         """One-shot path through ``dvfopt.Solver``. Strategies that
         support a ``step_callback`` kwarg (currently:
         :class:`HarmonicALMRefineRepairStrategy` / M14) will fire it at
@@ -395,14 +499,16 @@ class SolverWorker(QtCore.QThread):
 
         ``constraint_kind`` is ``'2tri'`` or ``'jdet'`` — picks
         :class:`TriConstraint2DFullCoverage` vs :class:`JdetConstraint2D`.
-        The objective comes from ``self._params['objective_id']``.
+        ``metric_kind`` is the metric used to count folds in every
+        snapshot (init/stage/final) — normally equal to
+        ``constraint_kind``. The objective comes from
+        ``self._params['objective_id']``.
         """
         from dvfopt import (
             JdetConstraint2D,
             Solver,
             TriConstraint2DFullCoverage,
         )
-        from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
         # iterative_serial gets the (3, 1, H, W) layout; Solver takes
         # the (2, H, W) one. Strip the singleton dz row.
@@ -424,18 +530,16 @@ class SolverWorker(QtCore.QThread):
 
         # Per-stage callback adapter: convert {'phi', 'stage'} dicts from
         # the strategy into ``StateSnapshot`` records on the worker's
-        # history deque. ``n_neg`` / ``min_T`` are 2-tri stats here
-        # (which is what the wallbreakers optimise for) — that keeps the
-        # ``stats_label`` numbers meaningful at each stage.
+        # history deque. ``n_neg`` / ``min_T`` use ``metric_kind`` — the
+        # same metric as the init + final snapshots — so the convergence
+        # trajectory is internally consistent.
         outer = [0]
 
         def _stage_callback(state):
             if self._stop_requested:
                 raise KeyboardInterrupt('user requested stop')
             phi = np.asarray(state['phi'])
-            T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-            min_T = float(min(T1.min(), T2.min()))
-            n_neg = int((np.minimum(T1, T2) <= 0).sum())
+            n_neg, min_T = _metric_counts(phi, metric_kind)
             outer[0] += 1
             snap = StateSnapshot(
                 phi=phi.copy(),
@@ -463,9 +567,10 @@ class SolverWorker(QtCore.QThread):
         # ``_emit_synthetic_snapshot`` still fires once at the end so
         # there's an authoritative "final" entry — strategies that
         # didn't emit any per-stage snapshots fall back to just this.
-        self._emit_synthetic_snapshot(
-            result.corrected, n_neg=result.final_n_neg, min_T=result.final_min_T
-        )
+        # Recount under ``metric_kind`` (rather than the SolveResult's own
+        # final stats) so it matches the rest of this run's trajectory.
+        final_n_neg, final_min_T = _metric_counts(np.asarray(result.corrected), metric_kind)
+        self._emit_synthetic_snapshot(result.corrected, n_neg=final_n_neg, min_T=final_min_T)
         return result.corrected
 
     def _build_strategy(self):
@@ -497,6 +602,21 @@ class SolverWorker(QtCore.QThread):
             return NMVFStrategy()
         raise ValueError(f'unknown method_id={mid!r}')
 
+    def _trajectory_metric_kind(self) -> str:
+        """Pick the single metric used for this run's whole convergence
+        trajectory (init + every stage + final).
+
+        The windowed-SLSQP path reports Jdet stats straight from the
+        solver's own bookkeeping — regardless of its 2-tri *constraint*
+        flag — so its trajectory is Jdet-based. Every other path goes
+        through ``_run_via_solver`` and counts folds with the
+        constraint's own metric (``_2tri`` → 2-tri, ``_jdet`` → Jdet).
+        """
+        mid = self._method_id
+        if mid.startswith('slsqp_windowed'):
+            return 'jdet'
+        return '2tri' if mid.endswith('_2tri') else 'jdet'
+
     # -- main entrypoint ------------------------------------------------------
 
     def run(self):
@@ -504,8 +624,10 @@ class SolverWorker(QtCore.QThread):
             # Always seed history[0] with the input field. This makes the
             # scrub slider's leftmost position meaningful even for the
             # one-shot wallbreaker methods (which would otherwise only
-            # emit a single final-state snapshot).
-            self._emit_initial_snapshot()
+            # emit a single final-state snapshot). It uses the same metric
+            # as the rest of the run so the convergence curve is coherent.
+            metric_kind = self._trajectory_metric_kind()
+            self._emit_initial_snapshot(metric_kind)
             mid = self._method_id
             if mid == 'slsqp_windowed_jdet':
                 phi_out = self._run_windowed_slsqp(enforce_triangles=False)
@@ -518,7 +640,9 @@ class SolverWorker(QtCore.QThread):
                 algo, _, kind = mid.rpartition('_')
                 if kind not in ('2tri', 'jdet'):
                     raise ValueError(f'unknown method_id={mid!r}')
-                phi_out = self._run_via_solver(self._build_strategy(), kind)
+                phi_out = self._run_via_solver(
+                    self._build_strategy(), kind, metric_kind=metric_kind
+                )
             self.finishedWithResult.emit(phi_out, None)
         except KeyboardInterrupt:
             # Clean stop requested via request_stop().
