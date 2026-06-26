@@ -508,6 +508,64 @@ def test_settings_roundtrip(qapp, tmp_path, monkeypatch):
     assert w2._autolevel_check.isChecked()
 
 
+def test_demo_3d_loaders_and_initial_constraint(qapp):
+    # The demo's 3D fixture loads + the launch() initial_constraint path
+    # opens straight into 3D mode.
+    from dvfopt_gui.demo import _synthetic_3d_volume
+    from dvfopt_gui.worker import _metric_counts_3d
+
+    vol = _synthetic_3d_volume()
+    assert vol.shape == (3, 4, 16, 16)
+    assert _metric_counts_3d(vol, 'tet3d')[0] > 0  # genuinely folded
+
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')  # what launch() does
+    assert win._is_3d_run
+    assert win._constraint_combo.currentData() == 'tet3d'
+    assert not win._run_roi_btn.isEnabled()  # 3D gating applied
+
+
+def test_3d_end_to_end_run_through_window(qapp):
+    # Real integration: load folded volume -> 6-tet 3D -> M14Tet ->
+    # Run full -> the QThread solves the whole volume -> finished signal
+    # splices the corrected volume back -> 3D fold count drops.
+    from dvfopt_gui.demo import _synthetic_3d_volume
+    from dvfopt_gui.worker import _metric_counts_3d
+
+    vol = _synthetic_3d_volume()
+    n_before, _ = _metric_counts_3d(vol, 'tet3d')
+    assert n_before > 0
+
+    win = LiveSolverWindow(vol)
+    win.start()  # render timer drains worker snapshots
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    win._select_combo_data(win._method_combo, 'm14')
+    assert win._is_3d_run
+    win._budget_spin.setValue(30.0)
+
+    win._on_run(use_roi=False)
+    worker = win._worker
+    assert worker is not None and worker.isRunning()
+
+    waited = 0
+    while worker.isRunning() and waited < 90_000:
+        QtWidgets.QApplication.processEvents()
+        worker.wait(50)
+        waited += 50
+    assert not worker.isRunning(), 'M14Tet 3D run did not finish in time'
+    # Let the queued finishedWithResult slot (_on_finished) run.
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+
+    # The corrected (3, D, H, W) volume was spliced back; folds dropped.
+    assert win._volume.shape == vol.shape
+    n_after, _ = _metric_counts_3d(win._volume, 'tet3d')
+    assert n_after < n_before
+    # Per-run history carries full-volume 3D snapshots (ndim 4).
+    assert worker.history_len() >= 2
+    assert worker.history_get(0).phi.ndim == 4
+
+
 def test_initial_params_override_saved_max_iter(qapp, tmp_path, monkeypatch):
     ini = str(tmp_path / 's.ini')
     monkeypatch.setattr(

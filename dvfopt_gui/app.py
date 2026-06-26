@@ -384,8 +384,7 @@ class ParamsDialog(QtWidgets.QDialog):
         )
         history_form.addRow('History buffer size (snapshots):', self._hist_max_spin)
         info = QtWidgets.QLabel(
-            '<i>Applies to the next run. The current run keeps its '
-            'original buffer size.</i>'
+            '<i>Applies to the next run. The current run keeps its original buffer size.</i>'
         )
         info.setWordWrap(True)
         history_form.addRow(info)
@@ -733,9 +732,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # plot. Non-interactive — the GUI drives its levels (fixed ±1 or
         # per-frame autoscale) via ``_apply_levels``. Hidden in the
         # deformation-grid view (no heatmap to scale).
-        self._cbar = pg.ColorBarItem(
-            values=(-1.0, 1.0), colorMap=cmap, interactive=False, width=14
-        )
+        self._cbar = pg.ColorBarItem(values=(-1.0, 1.0), colorMap=cmap, interactive=False, width=14)
         self._cbar.setImageItem(self._img, insert_in=self._plot.getPlotItem())
 
         self._grid_curve = pg.PlotDataItem(pen=pg.mkPen(color=(0, 0, 0), width=2), connect='finite')
@@ -856,8 +853,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._history_spin.setRange(0, 0)
         self._history_spin.setEnabled(False)
         self._history_spin.setToolTip(
-            'Jump to a specific step by typing its index. '
-            'Mirrors the slider position.'
+            'Jump to a specific step by typing its index. Mirrors the slider position.'
         )
         history_bar.addWidget(self._history_spin)
         self._history_total_label = QtWidgets.QLabel('/ —')
@@ -1011,7 +1007,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'Jacobian-determinant / 2-triangle fold structure, or run a '
             'correction solver and scrub its per-step history.<br><br>'
             'Loading is view-only until you press Run — no solve happens '
-            'on open.'
+            'on open.',
         )
 
     # ----- public ------------------------------------------------------------
@@ -1089,9 +1085,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             payload = self._build_save_payload()
             np.savez_compressed(path, **payload)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(
-                self, 'Save failed', f'{type(exc).__name__}: {exc}'
-            )
+            QtWidgets.QMessageBox.critical(self, 'Save failed', f'{type(exc).__name__}: {exc}')
             return
         n_steps = int(payload.get('n_history_steps', np.array(0)))
         self.statusBar().showMessage(
@@ -1345,9 +1339,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._inspector_label.setText(self._format_inspector(None))
         self._refresh_convergence()
 
-    def _set_view(
-        self, phi_2hw: np.ndarray, jacobian: np.ndarray, *, fast: bool = False
-    ) -> None:
+    def _set_view(self, phi_2hw: np.ndarray, jacobian: np.ndarray, *, fast: bool = False) -> None:
         """Update the central plot to reflect the current view mode.
 
         ``fast=True`` skips the per-frame fold-overlay rebuild in
@@ -1493,8 +1485,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         offset = total - n  # absolute step at buffer index 0
         if n != self._conv_len:
             steps = np.arange(offset, offset + n)
-            n_neg = np.fromiter((worker.history_get(i).n_neg for i in range(n)), dtype=float, count=n)
-            min_T = np.fromiter((worker.history_get(i).min_T for i in range(n)), dtype=float, count=n)
+            n_neg = np.fromiter(
+                (worker.history_get(i).n_neg for i in range(n)), dtype=float, count=n
+            )
+            min_T = np.fromiter(
+                (worker.history_get(i).min_T for i in range(n)), dtype=float, count=n
+            )
             self._conv_plot.set_data(steps, n_neg, min_T)
             self._conv_len = n
         self._conv_plot.set_cursor(offset + self._history_slider.value())
@@ -1791,9 +1787,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z_label.setText(f'{z} / {D - 1}')
         self._section_bounds = None
         remaining = len(self._run_all_remaining)
-        self.statusBar().showMessage(
-            f'Run all z: solving slice {z} ({D - remaining}/{D})…', 0
-        )
+        self.statusBar().showMessage(f'Run all z: solving slice {z} ({D - remaining}/{D})…', 0)
         # Solve from the pristine input for this slice.
         self._start_worker(self._original_volume[:, z : z + 1].copy())
 
@@ -2051,7 +2045,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             H, W = self._volume.shape[2:]
             D = self._volume.shape[1]
             if self._is_3d_run:
-                kind = 'tet3d' if self._constraint_combo.currentData() == CONSTRAINT_TET3D else 'jdet3d'
+                kind = (
+                    'tet3d'
+                    if self._constraint_combo.currentData() == CONSTRAINT_TET3D
+                    else 'jdet3d'
+                )
                 n_neg, min_T = _metric_counts_3d(self._volume, kind)
                 infeas = _infeasible_count_3d(self._volume, kind)
                 thr = FEASIBILITY_THRESHOLD
@@ -2101,7 +2099,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             )
         if snap.phi.ndim == 4:  # 3D volume snapshot
             _, D, H, W = snap.phi.shape
-            feas_flag = '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
+            feas_flag = (
+                '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
+            )
             delta = ''
             if self._input_n_neg is not None:
                 delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
@@ -2120,7 +2120,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
         # Flag when the worst cell is positive but still inside the
         # solver's feasibility margin — folds==0 yet not solver-feasible.
-        feas_flag = '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
+        feas_flag = (
+            '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
+        )
         return (
             '<b>Stats</b><br>'
             f'outer iter . . {snap.outer_iter}<br>'
@@ -2282,7 +2284,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 # ---------------------------------------------------------------------------
 
 
-def launch(deformation_i=None, *, solver_kwargs=None) -> int:
+def launch(deformation_i=None, *, solver_kwargs=None, initial_constraint=None) -> int:
     """Open the live-viz window.
 
     Parameters
@@ -2297,10 +2299,19 @@ def launch(deformation_i=None, *, solver_kwargs=None) -> int:
         ``max_iterations`` value pre-fills the ``max_iter`` spinbox) and
         the scipy ``method_name``. The choice of *which* solver to run
         still lives in the toolbar; these only seed its parameters.
+    initial_constraint : str, optional
+        Pre-select a constraint tag in the toolbar after the DVF loads —
+        e.g. ``'tet3d'`` to open straight into true-3D mode for a
+        ``(3, D, H, W)`` volume (no-op if the tag is disabled for the
+        loaded field, e.g. a 3D tag on a 2D section).
 
     Returns Qt exit code."""
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     win = LiveSolverWindow(deformation_i, initial_params=solver_kwargs or {})
+    # Applied after construction so the DVF is already loaded and the 3D
+    # constraint entries have been enabled (they gate on D > 1).
+    if initial_constraint:
+        win._select_combo_data(win._constraint_combo, initial_constraint)
     win.show()
     win.start()
     return app.exec_()
