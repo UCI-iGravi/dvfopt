@@ -46,7 +46,9 @@ from dvfopt_gui.worker import (
     SolverWorker,
     StateSnapshot,
     _infeasible_count,
+    _infeasible_count_3d,
     _metric_counts,
+    _metric_counts_3d,
 )
 
 # Repo root used to anchor the default file-dialog directory. The GUI
@@ -1319,6 +1321,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if self._volume is None:
             return
         self._invalidate_inspector_cache()
+        if self._is_3d_run:
+            self._set_view_3d(self._volume, fast=False)
+            self._window_rect.setRect(0, 0, 0, 0)
+            self._opt_rect.setVisible(False)
+            self._target_marker.setData(x=[], y=[])
+            self._stats_label.setText(self._format_stats(None))
+            self._inspector_label.setText(self._format_inspector(None))
+            self._refresh_convergence()
+            return
         phi_2hw = self._volume[1:, self._z]  # (2, H, W)
         jac = jacobian_det2D(phi_2hw)[0]
         self._set_view(phi_2hw, jac)
@@ -1392,6 +1403,51 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Arrow overlay sits on top of whichever view is active.
         self._update_quiver(phi_2hw)
 
+    def _heatmap_slice_3d(self, phi3d: np.ndarray) -> np.ndarray:
+        """The per-slice 3D fold field for the current z (default 6-tet
+        min volume; Jdet3D when that constraint is selected). Padded to
+        (H, W) with NaN at the trailing row/col so it lines up with the
+        grid (the tet field is (D-1, H-1, W-1))."""
+        from dvfopt.jacobian.numpy_jdet import jacobian_det3D
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        z = min(self._z, phi3d.shape[1] - 1)
+        if self._constraint_combo.currentData() == CONSTRAINT_JDET3D:
+            return jacobian_det3D(phi3d)[z]
+        mv = six_tet_min_volume_3d(phi3d)  # (D-1, H-1, W-1)
+        H, W = phi3d.shape[2:]
+        out = np.full((H, W), np.nan)
+        zz = min(z, mv.shape[0] - 1)
+        out[: H - 1, : W - 1] = mv[zz]
+        return out
+
+    def _set_view_3d(self, phi3d: np.ndarray, *, fast: bool = False) -> None:
+        """3D heatmap: the fold-metric slice at the current z. The grid /
+        2-tri / Jdet views fall back to the (dy,dx) of the current slice."""
+        z = min(self._z, phi3d.shape[1] - 1)
+        slice_2hw = phi3d[1:, z]  # (2, H, W) [dy, dx]
+        mode = self._view_mode
+        if mode == VIEW_GRID:
+            self._img.setVisible(False)
+            self._cbar.setVisible(False)
+            stride = max(1, min(slice_2hw.shape[1:]) // 40)
+            xs, ys = _grid_lines(slice_2hw, stride=stride)
+            self._grid_curve.setData(xs, ys)
+            self._grid_curve.setVisible(True)
+            if not fast:
+                self._fold_overlay.setPath(_folded_cells_path(slice_2hw))
+                self._fold_overlay.setVisible(True)
+        else:
+            field = self._heatmap_slice_3d(phi3d)
+            self._img.setImage(field, autoLevels=False)
+            self._apply_levels(field)
+            self._img.setVisible(True)
+            self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
+            self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
+        self._update_quiver(slice_2hw)
+
     def _update_quiver(self, phi_2hw: np.ndarray) -> None:
         """Refresh the displacement-arrow overlay for ``phi_2hw`` (or hide
         it when the Arrows toggle is off)."""
@@ -1406,7 +1462,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     def _on_arrows_toggled(self, _on: bool):
         """Re-render the current frame so the overlay appears/clears now."""
         if self._latest is not None and self._latest_jacobian is not None:
-            self._set_view(self._latest.phi, self._latest_jacobian)
+            if self._latest.phi.ndim == 4:
+                self._set_view_3d(self._latest.phi)
+            else:
+                self._set_view(self._latest.phi, self._latest_jacobian)
         else:
             self._refresh_display_from_volume()
 
@@ -1463,14 +1522,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """Re-render the current frame so the new level policy takes
         effect immediately."""
         if self._latest is not None and self._latest_jacobian is not None:
-            self._set_view(self._latest.phi, self._latest_jacobian)
+            if self._latest.phi.ndim == 4:
+                self._set_view_3d(self._latest.phi)
+            else:
+                self._set_view(self._latest.phi, self._latest_jacobian)
         else:
             self._refresh_display_from_volume()
 
     def _on_view_changed(self, idx: int):
         self._view_mode = self._view_combo.itemData(idx)
         if self._latest is not None and self._latest_jacobian is not None:
-            self._set_view(self._latest.phi, self._latest_jacobian)
+            if self._latest.phi.ndim == 4:
+                self._set_view_3d(self._latest.phi)
+            else:
+                self._set_view(self._latest.phi, self._latest_jacobian)
         else:
             self._refresh_display_from_volume()
 
@@ -1525,6 +1590,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z = int(value)
         D = self._volume.shape[1] if self._volume is not None else 1
         self._z_label.setText(f'{self._z} / {D - 1}')
+        if self._is_3d_run:
+            # In 3D the run spans the whole volume; changing z only
+            # re-slices the view — keep the worker/history.
+            if self._latest is not None and self._latest.phi.ndim == 4:
+                self._render_snapshot(self._latest)
+            else:
+                self._refresh_display_from_volume()
+            return
         # A run's history belongs to the slice it was solved on. Switching
         # z invalidates it — drop the worker reference and reset the scrub
         # widgets so the slider can't replay another slice's snapshots
@@ -1831,6 +1904,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         path always uses ``fast=False`` for full fidelity.
         """
         self._latest = snap
+        if snap.phi.ndim == 4:  # 3D volume snapshot
+            self._latest_jacobian = self._heatmap_slice_3d(snap.phi)
+            self._invalidate_inspector_cache()
+            self._set_view_3d(snap.phi, fast=fast)
+            self._window_rect.setRect(0, 0, 0, 0)
+            self._opt_rect.setVisible(False)
+            self._target_marker.setData(x=[], y=[])
+            self._stats_label.setText(self._format_stats(snap))
+            self._refresh_convergence()
+            return
         self._latest_jacobian = jacobian_det2D(snap.phi)[0]
         self._invalidate_inspector_cache()
         self._set_view(snap.phi, self._latest_jacobian, fast=fast)
@@ -1871,7 +1954,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             # slider (post-run, or when paused) still gets the full
             # overlay — HistoryController renders with the default
             # ``fast=False``.
-            H, W = snap.phi.shape[1:]
+            H, W = snap.phi.shape[-2:]
             fast = self._fast_render_pixel_threshold < (H * W)
             self._render_snapshot(snap, fast=fast)
         else:
@@ -1954,6 +2037,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 return '<b>Stats</b><br>(no DVF loaded — click "Load DVF…")'
             H, W = self._volume.shape[2:]
             D = self._volume.shape[1]
+            if self._is_3d_run:
+                kind = 'tet3d' if self._constraint_combo.currentData() == CONSTRAINT_TET3D else 'jdet3d'
+                n_neg, min_T = _metric_counts_3d(self._volume, kind)
+                infeas = _infeasible_count_3d(self._volume, kind)
+                thr = FEASIBILITY_THRESHOLD
+                return (
+                    '<b>Stats (3D)</b><br>'
+                    f'volume . . . . {D}×{H}×{W}<br>'
+                    f'metric . . . . {kind}<br>'
+                    f'3D folds . . . {n_neg}<br>'
+                    f'min signed . . {min_T:+.5f}<br>'
+                    f'infeasible(&lt;{thr:g}) {infeas}<br>'
+                    '(idle — press <i>Run full</i> to start)'
+                )
             # Compute fold counts straight from the current slice so the
             # idle panel never looks like the field is feasible when it
             # isn't (the Jdet heatmap is uniformly red for fields whose
@@ -1989,6 +2086,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 f'infeasible(&lt;{thr:g}) Jdet {infeas_jdet} · 2-tri {infeas_tri}<br>'
                 '(idle — press <i>Run full</i> to start)'
             )
+        if snap.phi.ndim == 4:  # 3D volume snapshot
+            _, D, H, W = snap.phi.shape
+            feas_flag = '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
+            delta = ''
+            if self._input_n_neg is not None:
+                delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
+            return (
+                '<b>Stats (3D)</b><br>'
+                f'outer iter . . {snap.outer_iter}<br>'
+                f'volume . . . . {D}×{H}×{W}<br>'
+                f'n_neg . . . . . {snap.n_neg}<br>'
+                f'{delta}'
+                f'min_T . . . . . {snap.min_T:+.5f}{feas_flag}'
+            )
         H, W = snap.phi.shape[1:]
         interior = max(1, (H - 1) * (W - 1))
         delta = ''
@@ -2022,6 +2133,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if yx is None:
             return '<b>Pixel inspector</b><br>(click a pixel)'
         y, x = yx
+        if self._latest is not None and self._latest.phi.ndim == 4:
+            from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+            phi3d = self._latest.phi
+            z = min(self._z, phi3d.shape[1] - 1)
+            mv = six_tet_min_volume_3d(phi3d)
+            Dm, Hm, Wm = mv.shape
+            if not (0 <= y < Hm and 0 <= x < Wm):
+                return '<b>Pixel inspector</b><br>(out of bounds)'
+            zz = min(z, Dm - 1)
+            return (
+                '<b>Pixel inspector (3D)</b><br>'
+                f'(z={zz}, y={y}, x={x})<br>'
+                f'min 6-tet V . {mv[zz, y, x]:+.5f}'
+            )
         # Prefer the live snapshot's phi; fall back to the volume.
         if self._latest is not None:
             phi = self._latest.phi

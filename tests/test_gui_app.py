@@ -555,3 +555,38 @@ def test_run_all_in_3d_routes_to_full_volume_run(qapp, monkeypatch):
     # 3D Run-all must hand the worker the FULL (3,D,H,W) volume, not a (3,1,H,W) slice.
     assert captured['shape'] == (3, 4, 6, 6)
     assert win._run_all_remaining is None  # did not enter the per-slice batch
+
+
+# ---------------------------------------------------------------------------
+# 3D rendering, stats, inspector
+# ---------------------------------------------------------------------------
+
+
+def test_3d_render_and_stats(qapp):
+    from dvfopt_gui.worker import _volume_snapshot
+
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, :, 3:5, 3:5] = 1.4
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    snap = _volume_snapshot(vol, n_neg=5, min_T=-0.2, outer_iter=1)
+    win._render_snapshot(snap)  # must not raise on a 4-D phi
+    assert win._img.isVisible() or win._grid_curve.isVisible()
+    s = win._format_stats(snap)
+    assert 'min_T' in s
+    # Idle 3D stats mention the volume shape.
+    idle = win._format_stats(None)
+    assert '4×8×8' in idle
+
+
+def test_3d_zslider_reslices_without_dropping_worker(qapp):
+    from dvfopt_gui.worker import ReplayHistory, _volume_snapshot
+
+    vol = np.zeros((3, 4, 8, 8))
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    snap = _volume_snapshot(vol, n_neg=0, min_T=0.16, outer_iter=1)
+    win._worker = ReplayHistory([snap], 1)
+    win._latest = snap
+    win._z_slider.setValue(2)  # re-slice
+    assert win._worker is not None  # not reset in 3D mode
