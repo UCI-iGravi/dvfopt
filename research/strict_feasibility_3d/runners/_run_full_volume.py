@@ -17,8 +17,8 @@ GUARDED for Windows spawn: ``correct_dvf_3d(n_workers>1)`` spawns workers
 that re-import this module; the heavy work sits under ``main()`` /
 ``if __name__ == '__main__'`` so workers never re-run it.
 """
-import sys
 import json
+import sys
 import time
 from pathlib import Path
 

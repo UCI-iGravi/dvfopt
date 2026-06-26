@@ -26,12 +26,12 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
+
 from dvfopt.jacobian.tetrahedron_sign import (
-    _voxel_corner_positions,
     _tet_volume_from_vertices,
+    _voxel_corner_positions,
     six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

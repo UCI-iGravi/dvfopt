@@ -47,7 +47,7 @@ def main():
         t0 = time.time()
         try:
             out, rep = correct_dvf_3d(phi, threshold=0.01, verbose=1)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f'  ERROR: {type(exc).__name__}: {exc}', flush=True)
             results.append((name, n0, 'ERROR', None, None, None, time.time() - t0))
             continue
@@ -71,8 +71,8 @@ def main():
           f'{"n<.01":>8}{"floor":>8}{"wall(s)":>10}', flush=True)
     print('-' * 84, flush=True)
     for (name, n0, feas, n_out, n_below, floor, wall) in results:
-        print(f'{name:<22}{n0:>8}{str(feas):>10}{str(n_out):>8}'
-              f'{str(n_below):>8}{str(floor):>8}{wall:>10.1f}', flush=True)
+        print(f'{name:<22}{n0:>8}{feas!s:>10}{n_out!s:>8}'
+              f'{n_below!s:>8}{floor!s:>8}{wall:>10.1f}', flush=True)
 
 
 if __name__ == '__main__':

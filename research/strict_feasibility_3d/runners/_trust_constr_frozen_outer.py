@@ -27,17 +27,16 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from scipy.optimize import minimize, NonlinearConstraint, Bounds
-from scipy.ndimage import label as cc_label, binary_dilation
+from scipy.ndimage import binary_dilation
+from scipy.ndimage import label as cc_label
+from scipy.optimize import Bounds, NonlinearConstraint, minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    _TET_VERTICES,
     _TET_SIGN,
+    _TET_VERTICES,
     six_tet_volumes_3d,
 )
-
 from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

@@ -38,8 +38,8 @@ def _stats(out, inp, THR):
 
 
 def main():
-    from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
     from dvfopt.core.tri_primitives import tri_areas_flat
+    from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
     from research.strict_feasibility_2d.algorithms._gn_alm_proto import (
         augmented_lagrangian_2d_gn,
     )

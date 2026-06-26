@@ -6,17 +6,19 @@ configuration and saves side-by-side initial-vs-corrected Jacobian heatmaps.
 import os
 import sys
 import time
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import numpy as np
 
-from test_cases import SYNTHETIC_CASES, make_deformation
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 from dvfopt import jacobian_det2D
 from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.jacobian import shoelace_det2D, _monotonicity_diffs_2d
+from dvfopt.jacobian import _monotonicity_diffs_2d, shoelace_det2D
+from test_cases import SYNTHETIC_CASES, make_deformation
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "docs", "images")
 os.makedirs(OUT_DIR, exist_ok=True)

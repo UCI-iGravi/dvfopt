@@ -26,9 +26,9 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d,
-    _TET_VERTICES,
     _TET_SIGN,
+    _TET_VERTICES,
+    six_tet_volumes_3d,
 )
 
 # Reuse builders from _coupled_kring.
@@ -39,7 +39,6 @@ from research.strict_feasibility_3d.runners._coupled_kring import (
     make_objective,
     report,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -136,14 +135,14 @@ def main():
               f'iter={res_a.nit}  wall={wall_a:.1f}s', flush=True)
     if maybe_update(phi_a, 'A.1 k=2 SLSQP'): return
 
-    print(f'  Now M10Tet @ 0.012 recovery...', flush=True)
+    print('  Now M10Tet @ 0.012 recovery...', flush=True)
     t0 = time.time()
     phi_a_recovered = m10tet_recover(phi_a, 0.012)
     print(f'  M10Tet recovery wall={time.time()-t0:.1f}s', flush=True)
     if maybe_update(phi_a_recovered, 'A.2 k=2 + M10Tet@0.012'): return
 
     # Try recovery @ 0.010 too.
-    print(f'  M10Tet @ 0.010 recovery...', flush=True)
+    print('  M10Tet @ 0.010 recovery...', flush=True)
     t0 = time.time()
     phi_a_r2 = m10tet_recover(phi_a, 0.010)
     print(f'  M10Tet recovery wall={time.time()-t0:.1f}s', flush=True)
@@ -163,7 +162,7 @@ def main():
               f'#cubes={len(cubes_b)}  #DOF={3*len(free_b)}', flush=True)
     if maybe_update(phi_b, 'B.1 k=3 SLSQP'): return
 
-    print(f'  M10Tet @ 0.012 recovery on k=3 result...', flush=True)
+    print('  M10Tet @ 0.012 recovery on k=3 result...', flush=True)
     t0 = time.time()
     phi_b_r = m10tet_recover(phi_b, 0.012)
     print(f'  M10Tet recovery wall={time.time()-t0:.1f}s', flush=True)
@@ -203,7 +202,7 @@ def main():
         if maybe_update(phi_d, 'D.1 k=2 thr=1e-3'): return
 
         # Recover with M10Tet @ 0.012 to re-tighten.
-        print(f'  M10Tet @ 0.012 recovery to re-tighten...', flush=True)
+        print('  M10Tet @ 0.012 recovery to re-tighten...', flush=True)
         t0 = time.time()
         phi_d_r = m10tet_recover(phi_d, 0.012)
         print(f'  M10Tet recovery wall={time.time()-t0:.1f}s', flush=True)
@@ -227,7 +226,7 @@ def main():
               f'#DOF={3*len(free_e)}', flush=True)
     if maybe_update(phi_e, 'E.1 k=4 trust-constr'): return
 
-    print(f'  M10Tet @ 0.012 recovery on k=4 result...', flush=True)
+    print('  M10Tet @ 0.012 recovery on k=4 result...', flush=True)
     t0 = time.time()
     phi_e_r = m10tet_recover(phi_e, 0.012)
     print(f'  M10Tet recovery wall={time.time()-t0:.1f}s', flush=True)

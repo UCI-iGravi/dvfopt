@@ -32,13 +32,15 @@ sys.path.insert(0, str(_REPO))
 import numpy as np
 from scipy.optimize import minimize
 
+import research.strict_feasibility_3d.runners._coupled_kring as ck
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.runners._coupled_kring import (
-    build_coupled_problem, make_apply_x, make_constraint_fn,
-    make_objective, report,
+    build_coupled_problem,
+    make_apply_x,
+    make_constraint_fn,
+    make_objective,
+    report,
 )
-import research.strict_feasibility_3d.runners._coupled_kring as ck
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -180,7 +182,7 @@ def main():
         if n_neg_new <= n_neg_cur + 5:
             cur = new
         else:
-            print(f'    rejected (n_neg increased)', flush=True)
+            print('    rejected (n_neg increased)', flush=True)
     print(f'\n  total cluster-SLSQP wall={total_slsqp_wall:.1f}s', flush=True)
     n_after_slsqp, b_after_slsqp, _ = report(cur, '  after cluster SLSQP', phi_input)
 
@@ -203,7 +205,7 @@ def main():
           f'  total wall = {total_wall:.1f}s = {total_wall/60:.1f} min', flush=True)
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_C.npy', final)
-        print(f'  *** STRICT FEASIBLE via VARIANT C ***', flush=True)
+        print('  *** STRICT FEASIBLE via VARIANT C ***', flush=True)
 
 
 if __name__ == '__main__':

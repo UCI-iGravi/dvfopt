@@ -29,7 +29,7 @@ sys.path.insert(0, str(_REPO))
 
 import numpy as np
 
-from dvfopt.jacobian.tetrahedron_sign import _TET_VERTICES, _TET_SIGN
+from dvfopt.jacobian.tetrahedron_sign import _TET_SIGN, _TET_VERTICES
 
 
 def signed_vol_grad(A, B, C, D):

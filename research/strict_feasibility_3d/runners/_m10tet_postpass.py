@@ -32,7 +32,6 @@ from dvfopt import (
     Tet6Constraint3D,
 )
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-
 from research.strict_feasibility_2d.runners._compare import run_method as run_2d
 
 

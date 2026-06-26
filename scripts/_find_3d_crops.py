@@ -1,5 +1,6 @@
 """Find crops from the real 3D deformation that have negative Jdet."""
 import numpy as np
+
 from dvfopt import jacobian_det3D
 
 d = np.load('data/corrected_correspondences_count_touching/registered_output/deformation3d.npy')
@@ -12,11 +13,11 @@ for label, z0, z1 in [('slice350', 348, 353), ('slice200', 198, 203), ('slice090
     if len(neg_indices) == 0:
         print(f'{label}: no neg Jdet')
         continue
-    
+
     worst_idx = np.argmin(jdet)
     wz, wy, wx = np.unravel_index(worst_idx, jdet.shape)
     print(f'\n{label}: neg={len(neg_indices)}, worst=({wz},{wy},{wx}), min={jdet[wz,wy,wx]:.4f}')
-    
+
     # Try different crop sizes
     for pad in [5, 8, 10]:
         y0 = max(wy - pad, 0)

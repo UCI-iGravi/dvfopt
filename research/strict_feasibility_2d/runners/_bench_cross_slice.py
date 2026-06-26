@@ -17,11 +17,11 @@ Reports wall + per-slice feasibility for both.
 
 GUARDED for Windows spawn.
 """
+import os
 import sys
 import time
-import os
-from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
 import numpy as np
 

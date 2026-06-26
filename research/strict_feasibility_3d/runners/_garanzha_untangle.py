@@ -38,8 +38,8 @@ from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
     six_tet_volumes_3d,
-    tet_volumes_flat,
     tet_grad_T_v,
+    tet_volumes_flat,
 )
 
 OUTPUT = _HERE / 'output'

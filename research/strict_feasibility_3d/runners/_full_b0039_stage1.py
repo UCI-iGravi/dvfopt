@@ -21,10 +21,9 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
+
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-
 from research.strict_feasibility_2d.runners._compare import run_method as run_2d
-
 
 OUTPUT = _HERE / 'output'
 FULL_STAGE1_CACHE = OUTPUT / 'b0039_FULL_stage1.npy'

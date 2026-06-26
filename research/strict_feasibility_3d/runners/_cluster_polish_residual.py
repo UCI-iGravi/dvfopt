@@ -17,15 +17,14 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from scipy.ndimage import binary_dilation, label as cc_label
+from scipy.ndimage import binary_dilation
+from scipy.ndimage import label as cc_label
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-
 from research.strict_feasibility_3d.algorithms.cluster_lp_6tet import (
     _fold_clusters_3d,
     cluster_slp_iter_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 

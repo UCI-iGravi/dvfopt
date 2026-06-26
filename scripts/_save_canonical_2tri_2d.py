@@ -30,7 +30,7 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from test_cases import canonical_2tri_2d  # noqa: E402
+from test_cases import canonical_2tri_2d
 
 OUTDIR = _REPO / 'data' / 'dvfs' / 'canonical_2tri_2d'
 

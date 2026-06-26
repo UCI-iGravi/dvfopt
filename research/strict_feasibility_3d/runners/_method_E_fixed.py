@@ -14,14 +14,16 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-from scipy.optimize import minimize, NonlinearConstraint
+from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.runners._coupled_kring import (
-    build_coupled_problem, make_apply_x, make_constraint_fn,
-    make_objective, report,
+    build_coupled_problem,
+    make_apply_x,
+    make_constraint_fn,
+    make_objective,
+    report,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -84,7 +86,7 @@ def main():
     phi_e, res_e, wall_e, cubes_e, free_e = run_trust_constr(cur, k_ring=4, max_iter=300)
     n, b, _ = report(phi_e, 'E.1 k=4 trust-constr only', phi_input)
 
-    print(f'\n  M10Tet @ 0.012 recovery...', flush=True)
+    print('\n  M10Tet @ 0.012 recovery...', flush=True)
     t0 = time.time()
     phi_e_r = m10tet_recover(phi_e, 0.012)
     print(f'  recovery wall={time.time()-t0:.1f}s', flush=True)

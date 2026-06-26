@@ -22,14 +22,15 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy.ndimage import label as cc_label
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d, _TET_VERTICES, _TET_SIGN,
+    _TET_SIGN,
+    _TET_VERTICES,
+    six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 FIG = _HERE / 'figures'
@@ -223,7 +224,7 @@ def analyse_checkpoint(phi_path, phi_input, label):
               flush=True)
 
     # Aggregate stats.
-    print(f'\n  Aggregate cube properties:', flush=True)
+    print('\n  Aggregate cube properties:', flush=True)
     print(f'    crush_ratio   median={np.median([r["crush_ratio"] for r in rows]):.4f}  '
           f'min={min(r["crush_ratio"] for r in rows):.4f}  '
           f'max={max(r["crush_ratio"] for r in rows):.4f}',

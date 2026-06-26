@@ -29,11 +29,10 @@ sys.path.insert(0, str(_REPO))
 import numpy as np
 from scipy.ndimage import binary_dilation
 from scipy.sparse import csr_matrix, lil_matrix
-from scipy.sparse.linalg import spsolve, cg
+from scipy.sparse.linalg import cg, spsolve
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.runners._uncrush_v2 import _best_min_per_cell
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

@@ -28,13 +28,12 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d,
-    _TET_VERTICES,
     _TET_SIGN,
-    _voxel_corner_positions,
+    _TET_VERTICES,
     _tet_volume_from_vertices,
+    _voxel_corner_positions,
+    six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -130,7 +129,7 @@ def main():
         print(f'  *** Cell IS feasible under diagonal {_DIAGONALS[best_diag]} ***',
               flush=True)
     else:
-        print(f'  Cell INFEASIBLE under all 4 diagonals — combinatorial obstruction.',
+        print('  Cell INFEASIBLE under all 4 diagonals — combinatorial obstruction.',
               flush=True)
 
     # Print the 8 corner positions to understand geometry.
@@ -228,7 +227,7 @@ def main():
     V_out = six_tet_volumes_3d(out)
     n_neg = int((V_out <= 0).sum())
     n_below = int((V_out < THRESHOLD - 1e-5).sum())
-    print(f'\n=== After local solve, global check ===', flush=True)
+    print('\n=== After local solve, global check ===', flush=True)
     print(f'  n_neg={n_neg}  n<0.01={n_below}  min_T={float(V_out.min()):+.6f}',
           flush=True)
     if n_neg == 0 and n_below == 0:

@@ -1,9 +1,13 @@
-import sys, time
+import sys
+import time
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parents[2]))
 import numpy as np
+
 from dvfopt import correct_dvf_3d
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
 OUT = Path(__file__).parent / 'output'
 phi = np.load(OUT / 'b0039_FULL_stage3_z000_016.npy').astype(np.float64)
 print(f'dense band {phi.shape} n_neg_in={int((six_tet_min_volume_3d(phi)<=0).sum())}', flush=True)

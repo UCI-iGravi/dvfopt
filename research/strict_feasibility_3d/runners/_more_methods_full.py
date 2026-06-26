@@ -21,12 +21,13 @@ sys.path.insert(0, str(_REPO))
 
 import numpy as np
 
+import research.strict_feasibility_3d.runners._coupled_kring as ck
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.runners._more_methods import (
-    run_coupled, m10tet_recover, report,
+    m10tet_recover,
+    report,
+    run_coupled,
 )
-import research.strict_feasibility_3d.runners._coupled_kring as ck
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -56,7 +57,7 @@ def main():
     n, b, _ = report(phi_b, 'B.1 k=3 SLSQP only', phi_input)
     results.append(('B.1 k=3 SLSQP only', n, b, wall_b))
 
-    print(f'  M10Tet @ 0.012 recovery...', flush=True)
+    print('  M10Tet @ 0.012 recovery...', flush=True)
     t0 = time.time()
     phi_b_r = m10tet_recover(phi_b, 0.012)
     wall_b_r = time.time() - t0
@@ -88,7 +89,7 @@ def main():
             best_c_seed = seed
     print(f'\n  Best multi-restart SLSQP: seed={best_c_seed} n_neg={best_c_n_neg}',
           flush=True)
-    print(f'  Now M10Tet @ 0.012 recovery on best...', flush=True)
+    print('  Now M10Tet @ 0.012 recovery on best...', flush=True)
     t0 = time.time()
     phi_c_r = m10tet_recover(best_c_phi, 0.012)
     wall_c_r = time.time() - t0
@@ -115,7 +116,7 @@ def main():
                   f'fun={res_d.fun:.4f}  wall={wall_d:.1f}s', flush=True)
         n, b, _ = report(phi_d, 'D.1 k=2 thr=1e-3 SLSQP only', phi_input)
         results.append(('D.1 k=2 thr=1e-3 SLSQP only', n, b, wall_d))
-        print(f'  M10Tet @ 0.012 recovery...', flush=True)
+        print('  M10Tet @ 0.012 recovery...', flush=True)
         t0 = time.time()
         phi_d_r = m10tet_recover(phi_d, 0.012)
         wall_d_r = time.time() - t0
@@ -143,7 +144,7 @@ def main():
               f'cubes={len(cubes_e)}  DOF={3*len(free_e)}', flush=True)
     n, b, _ = report(phi_e, 'E.1 k=4 trust-constr only', phi_input)
     results.append(('E.1 k=4 trust-constr only', n, b, wall_e))
-    print(f'  M10Tet @ 0.012 recovery...', flush=True)
+    print('  M10Tet @ 0.012 recovery...', flush=True)
     t0 = time.time()
     phi_e_r = m10tet_recover(phi_e, 0.012)
     wall_e_r = time.time() - t0

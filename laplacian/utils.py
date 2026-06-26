@@ -12,9 +12,10 @@ instead of meshgrid, and scipy.sparse.diags where possible for
 significantly reduced memory usage and faster construction.
 """
 
+import gc
+
 import numpy as np
 import scipy
-import gc
 
 
 def laplacianA1D(n, boundaryIndices):
@@ -117,9 +118,9 @@ def laplacianA2D(shape, boundaryIndices):
     data = np.full(N, 4.0)
     # Subtract 1 for each missing neighbour at volume edges
     data[R == 0] -= 1       # no (r-1) neighbour
-    data[R == n0 - 1] -= 1  # no (r+1) neighbour
+    data[n0 - 1 == R] -= 1  # no (r+1) neighbour
     data[C == 0] -= 1       # no (c-1) neighbour
-    data[C == n1 - 1] -= 1  # no (c+1) neighbour
+    data[n1 - 1 == C] -= 1  # no (c+1) neighbour
     # Dirichlet BCs: diagonal = 1
     data[boundaryIndices] = 1.0
 
@@ -136,7 +137,7 @@ def laplacianA2D(shape, boundaryIndices):
     keep = ~is_boundary[c_up]; r_up = r_up[keep]; c_up = c_up[keep]
 
     # (r+1, c): valid when R < n0-1 and not boundary
-    mask = (R < n0 - 1) & ~is_boundary
+    mask = (n0 - 1 > R) & ~is_boundary
     r_dn = ids[mask]
     c_dn = r_dn + n1
     keep = ~is_boundary[c_dn]; r_dn = r_dn[keep]; c_dn = c_dn[keep]
@@ -148,7 +149,7 @@ def laplacianA2D(shape, boundaryIndices):
     keep = ~is_boundary[c_lt]; r_lt = r_lt[keep]; c_lt = c_lt[keep]
 
     # (r, c+1): valid when C < n1-1 and not boundary
-    mask = (C < n1 - 1) & ~is_boundary
+    mask = (n1 - 1 > C) & ~is_boundary
     r_rt = ids[mask]
     c_rt = r_rt + 1
     keep = ~is_boundary[c_rt]; r_rt = r_rt[keep]; c_rt = c_rt[keep]
@@ -235,11 +236,11 @@ def laplacianA3D(shape, boundaryIndices, spacing=None, dtype=None, log_fn=None):
     # Dirichlet points
     data = np.full(N, 2.0 * (w0 + w1 + w2), dtype=dtype)
     data[I0 == 0] -= w0
-    data[I0 == n0 - 1] -= w0
+    data[n0 - 1 == I0] -= w0
     data[I1 == 0] -= w1
-    data[I1 == n1 - 1] -= w1
+    data[n1 - 1 == I1] -= w1
     data[I2 == 0] -= w2
-    data[I2 == n2 - 1] -= w2
+    data[n2 - 1 == I2] -= w2
     data[boundaryIndices] = 1.0
 
     # Off-diagonal entries: connect to 6-connected neighbours.
@@ -255,7 +256,7 @@ def laplacianA3D(shape, boundaryIndices, spacing=None, dtype=None, log_fn=None):
     keep = ~is_boundary[c_0m]; r_0m = r_0m[keep]; c_0m = c_0m[keep]
 
     # (i+1, j, k)
-    mask = (I0 < n0 - 1) & ~is_boundary
+    mask = (n0 - 1 > I0) & ~is_boundary
     r_0p = ids[mask];  c_0p = r_0p + stride_0
     keep = ~is_boundary[c_0p]; r_0p = r_0p[keep]; c_0p = c_0p[keep]
 
@@ -265,7 +266,7 @@ def laplacianA3D(shape, boundaryIndices, spacing=None, dtype=None, log_fn=None):
     keep = ~is_boundary[c_1m]; r_1m = r_1m[keep]; c_1m = c_1m[keep]
 
     # (i, j+1, k)
-    mask = (I1 < n1 - 1) & ~is_boundary
+    mask = (n1 - 1 > I1) & ~is_boundary
     r_1p = ids[mask];  c_1p = r_1p + stride_1
     keep = ~is_boundary[c_1p]; r_1p = r_1p[keep]; c_1p = c_1p[keep]
 
@@ -275,7 +276,7 @@ def laplacianA3D(shape, boundaryIndices, spacing=None, dtype=None, log_fn=None):
     keep = ~is_boundary[c_2m]; r_2m = r_2m[keep]; c_2m = c_2m[keep]
 
     # (i, j, k+1)
-    mask = (I2 < n2 - 1) & ~is_boundary
+    mask = (n2 - 1 > I2) & ~is_boundary
     r_2p = ids[mask];  c_2p = r_2p + 1
     keep = ~is_boundary[c_2p]; r_2p = r_2p[keep]; c_2p = c_2p[keep]
 

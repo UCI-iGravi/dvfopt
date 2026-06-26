@@ -1,6 +1,8 @@
 """Extract real-data 3D crops and save for test notebook."""
 import os
+
 import numpy as np
+
 from dvfopt import jacobian_det3D
 
 d = np.load('data/corrected_correspondences_count_touching/registered_output/deformation3d.npy')
@@ -24,10 +26,10 @@ for name, cfg in crops.items():
     x0 = max(wx - pad, 0)
     x1 = min(wx + pad, sub.shape[3])
     crop = sub[:, :, y0:y1, x0:x1]
-    
+
     jdet = jacobian_det3D(crop)
     neg = int((jdet <= 0).sum())
-    
+
     path = os.path.join(out_dir, f'{name}.npy')
     np.save(path, crop)
     print(f'Saved {path}: shape={crop.shape}, neg={neg}, min={jdet.min():.4f}')

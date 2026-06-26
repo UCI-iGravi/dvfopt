@@ -32,11 +32,12 @@ sys.path.insert(0, str(_REPO))
 import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-from research.strict_feasibility_3d.runners._coupled_kring import report
 from research.strict_feasibility_3d.runners._cluster_pipeline import (
-    cluster_fold_cubes, run_slsqp_around, m10tet,
+    cluster_fold_cubes,
+    m10tet,
+    run_slsqp_around,
 )
-
+from research.strict_feasibility_3d.runners._coupled_kring import report
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -114,7 +115,7 @@ def main():
         print(f'\n=== Outer iter {outer + 1}/{MAX_OUTER_ITERS} ===', flush=True)
 
         # Stage 2.1: cluster SLSQP.
-        print(f'  -- cluster-SLSQP pass --', flush=True)
+        print('  -- cluster-SLSQP pass --', flush=True)
         cur, slsqp_wall, accepted = cluster_slsqp_pass(cur, phi_input)
         total_wall += slsqp_wall
         print(f'  cluster-SLSQP wall={slsqp_wall:.1f}s, accepted={accepted}',
@@ -126,7 +127,7 @@ def main():
             break
 
         # Stage 2.2: M10Tet recovery.
-        print(f'  -- M10Tet @ 0.012 recovery --', flush=True)
+        print('  -- M10Tet @ 0.012 recovery --', flush=True)
         t0 = time.time()
         cur = m10tet(cur, 0.012)
         rec_wall = time.time() - t0
@@ -140,7 +141,7 @@ def main():
                   flush=True)
             break
 
-    print(f'\n=== Iter pipeline FINAL ===', flush=True)
+    print('\n=== Iter pipeline FINAL ===', flush=True)
     n, b, mn = report(cur, '  FINAL', phi_input)
     print(f'  total wall = {total_wall:.1f}s ({total_wall/60:.1f} min = {total_wall/3600:.1f} hours)',
           flush=True)

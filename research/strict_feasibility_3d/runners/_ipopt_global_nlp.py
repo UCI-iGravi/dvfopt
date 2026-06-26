@@ -22,16 +22,15 @@ _HERE = Path(__file__).parent
 _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
+import cyipopt
 import numpy as np
 import scipy.sparse as sp
-import cyipopt
 
 from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
-    tet_volumes_flat,
     six_tet_volumes_3d,
+    tet_volumes_flat,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

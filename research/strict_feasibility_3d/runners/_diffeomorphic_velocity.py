@@ -38,7 +38,6 @@ import torch.nn.functional as F
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
-
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'

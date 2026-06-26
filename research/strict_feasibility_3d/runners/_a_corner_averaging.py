@@ -23,12 +23,12 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
+
 from dvfopt.jacobian.tetrahedron_sign import (
     _tet_volume_from_vertices,
     _voxel_corner_positions,
     six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -126,7 +126,7 @@ def corner_avg_fix(phi, target_threshold=THRESHOLD, max_passes=5, mode='unfixabl
         # Recompute stats.
         V = six_tet_volumes_3d(phi_out)
         n_neg = int((V <= 0).sum())
-        n_below = int((V < target_threshold - 1e-5).sum())
+        n_below = int((target_threshold - 1e-5 > V).sum())
         L1 = float(np.abs(phi_out - phi_orig).sum())
         best_min_after = _best_min_per_cell(phi_out)
         n_unfixable_after = int((best_min_after <= 0).sum())

@@ -30,10 +30,11 @@ def main():
     prof.enable()
     phi_out, info = cluster_slp_iter(phi_in, threshold=0.01, n_workers=1)
     prof.disable()
-    from research.strict_feasibility_2d.runners._compare import run_method  # noqa: F401
+    import numpy as np
+
     # Build a minimal rec dict for the print line below
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-    import numpy as np
+    from research.strict_feasibility_2d.runners._compare import run_method
     T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
     Tmin = np.minimum(T1, T2)
     rec = {

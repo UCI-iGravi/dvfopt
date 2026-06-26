@@ -27,13 +27,12 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    _TET_VERTICES,
     _TET_SIGN,
-    six_tet_volumes_3d,
-    _voxel_corner_positions,
+    _TET_VERTICES,
     _tet_volume_from_vertices,
+    _voxel_corner_positions,
+    six_tet_volumes_3d,
 )
-
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

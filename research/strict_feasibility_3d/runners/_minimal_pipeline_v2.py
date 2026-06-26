@@ -26,16 +26,20 @@ sys.path.insert(0, str(_REPO))
 
 import numpy as np
 
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-from research.strict_feasibility_3d.runners._coupled_kring import (
-    build_coupled_problem, make_apply_x, make_constraint_fn,
-    make_objective, report,
-)
 import research.strict_feasibility_3d.runners._coupled_kring as ck
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 from research.strict_feasibility_3d.runners._cluster_pipeline import (
-    cluster_fold_cubes, run_slsqp_around, m10tet,
+    cluster_fold_cubes,
+    m10tet,
+    run_slsqp_around,
 )
-
+from research.strict_feasibility_3d.runners._coupled_kring import (
+    build_coupled_problem,
+    make_apply_x,
+    make_constraint_fn,
+    make_objective,
+    report,
+)
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -51,7 +55,7 @@ def main():
     min_per_cube = V.min(axis=0)
     fold_mask = (min_per_cube <= 0)
     fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
-    print(f'\n=== Cluster raw-input fold cubes (radius=3) ===', flush=True)
+    print('\n=== Cluster raw-input fold cubes (radius=3) ===', flush=True)
     print(f'  # fold cubes: {len(fold_cells)}', flush=True)
     _, centroids, members, radii = cluster_fold_cubes(fold_cells, radius=3)
     n_clusters = len(centroids)
@@ -140,7 +144,7 @@ def main():
           flush=True)
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_Dprime.npy', final)
-        print(f'  *** STRICT FEASIBLE via VARIANT D\' ***', flush=True)
+        print('  *** STRICT FEASIBLE via VARIANT D\' ***', flush=True)
 
 
 if __name__ == '__main__':

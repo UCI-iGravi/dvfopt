@@ -17,10 +17,10 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-from scipy.ndimage import binary_dilation, find_objects, label as cc_label
+from scipy.ndimage import binary_dilation, find_objects
+from scipy.ndimage import label as cc_label
 
 from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-
 from research.strict_feasibility_3d.algorithms.lp_direct_6tet import slp_iter
 
 BBOX_PAD = 3  # voxel-units of padding around each cluster's bbox (3D)
@@ -273,7 +273,7 @@ def cluster_slp_iter_3d(
 
         V = six_tet_volumes_3d(phi_out)
         post_n_neg = int((V <= 0).sum())
-        post_n_below_threshold = int((V < threshold - 1e-5).sum())
+        post_n_below_threshold = int((threshold - 1e-5 > V).sum())
         info['rounds'].append({
             'outer': outer_it,
             'n_clusters': len(clusters),

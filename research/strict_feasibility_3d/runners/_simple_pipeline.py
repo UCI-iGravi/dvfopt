@@ -26,15 +26,17 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-from research.strict_feasibility_3d.runners._coupled_kring import (
-    build_coupled_problem, make_apply_x, make_constraint_fn,
-    make_objective, report,
-)
-import research.strict_feasibility_3d.runners._coupled_kring as ck
 from scipy.optimize import minimize
 
+import research.strict_feasibility_3d.runners._coupled_kring as ck
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from research.strict_feasibility_3d.runners._coupled_kring import (
+    build_coupled_problem,
+    make_apply_x,
+    make_constraint_fn,
+    make_objective,
+    report,
+)
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01
@@ -181,7 +183,7 @@ def main():
     print(f'  per-fold SLSQP total wall={wall_a2:.1f}s', flush=True)
     n_a, b_a, _ = report(phi_a2, '  after SLSQP loop', phi_input)
     if n_a > 0:
-        print(f'  M10Tet @ 0.012 recovery on residual...', flush=True)
+        print('  M10Tet @ 0.012 recovery on residual...', flush=True)
         t_rec = time.time()
         phi_a3 = m10tet(phi_a2, 0.012)
         wall_a_rec = time.time() - t_rec
@@ -190,7 +192,7 @@ def main():
     else:
         # Even if n_neg=0, run recovery to push n<0.01=0.
         if b_a > 0:
-            print(f'  M10Tet @ 0.012 recovery to tighten...', flush=True)
+            print('  M10Tet @ 0.012 recovery to tighten...', flush=True)
             t_rec = time.time()
             phi_a3 = m10tet(phi_a2, 0.012)
             wall_a_rec = time.time() - t_rec
@@ -204,7 +206,7 @@ def main():
           flush=True)
     if n_a == 0 and b_a == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_A.npy', phi_a3)
-        print(f'  *** STRICT FEASIBLE via VARIANT A ***', flush=True)
+        print('  *** STRICT FEASIBLE via VARIANT A ***', flush=True)
 
     # ============================================================
     # Variant B: M10Tet -> per-fold k=2 SLSQP -> M10Tet recovery.
@@ -224,7 +226,7 @@ def main():
     print(f'  per-fold SLSQP total wall={wall_b2:.1f}s', flush=True)
     n_b, b_b, _ = report(phi_b2, '  after SLSQP loop', phi_input)
     if n_b > 0:
-        print(f'  M10Tet @ 0.012 recovery on residual...', flush=True)
+        print('  M10Tet @ 0.012 recovery on residual...', flush=True)
         t_rec = time.time()
         phi_b3 = m10tet(phi_b2, 0.012)
         wall_b_rec = time.time() - t_rec
@@ -232,7 +234,7 @@ def main():
         n_b, b_b, _ = report(phi_b3, '  after M10Tet recovery', phi_input)
     else:
         if b_b > 0:
-            print(f'  M10Tet @ 0.012 recovery to tighten...', flush=True)
+            print('  M10Tet @ 0.012 recovery to tighten...', flush=True)
             t_rec = time.time()
             phi_b3 = m10tet(phi_b2, 0.012)
             wall_b_rec = time.time() - t_rec
@@ -246,7 +248,7 @@ def main():
           flush=True)
     if n_b == 0 and b_b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_B.npy', phi_b3)
-        print(f'  *** STRICT FEASIBLE via VARIANT B ***', flush=True)
+        print('  *** STRICT FEASIBLE via VARIANT B ***', flush=True)
 
     # ============================================================
     # Comparison summary.

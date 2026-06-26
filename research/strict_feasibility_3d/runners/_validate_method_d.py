@@ -21,15 +21,17 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 
 import numpy as np
-
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
-from research.strict_feasibility_3d.runners._coupled_kring import (
-    build_coupled_problem, make_apply_x, make_constraint_fn,
-    make_objective, report,
-)
-import research.strict_feasibility_3d.runners._coupled_kring as ck
 from scipy.optimize import minimize
 
+import research.strict_feasibility_3d.runners._coupled_kring as ck
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from research.strict_feasibility_3d.runners._coupled_kring import (
+    build_coupled_problem,
+    make_apply_x,
+    make_constraint_fn,
+    make_objective,
+    report,
+)
 
 OUTPUT = _HERE / 'output'
 THRESHOLD = 0.01

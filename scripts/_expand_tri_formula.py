@@ -1,7 +1,7 @@
 """Expand the triangulated-shoelace markdown with explicit formulas + prose.
 
 Kept KaTeX-safe: no `\boxed{\begin{aligned}...}` (KaTeX refuses that combo),
-no `{+}` spacing tricks, no `\Bigl`/`\Bigr` pairs — plain `aligned` blocks only.
+no `{+}` spacing tricks, no `\\Bigl`/`\\Bigr` pairs — plain `aligned` blocks only.
 """
 
 import json

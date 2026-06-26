@@ -128,7 +128,7 @@ def code_cell(text: str) -> dict:
 
 
 def main() -> None:
-    with io.open(NB, encoding="utf-8") as f:
+    with open(NB, encoding="utf-8") as f:
         nb = json.load(f)
 
     # Idempotent removal of previous multi-mode insertion.
@@ -183,7 +183,7 @@ def main() -> None:
     nb["cells"][insert_at:insert_at] = new_cells
     print(f"inserted {len(new_cells)} cells @ {insert_at} (after anchor @ {anchor_idx})")
 
-    with io.open(NB, "w", encoding="utf-8") as f:
+    with open(NB, "w", encoding="utf-8") as f:
         json.dump(nb, f, ensure_ascii=False, indent=1)
         f.write("\n")
 

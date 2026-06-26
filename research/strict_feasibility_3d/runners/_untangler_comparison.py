@@ -28,8 +28,8 @@ sys.path.insert(0, str(_REPO))
 import numpy as np
 
 from dvfopt.jacobian.tetrahedron_sign import (
-    six_tet_volumes_3d,
     n_neg_best_diagonal,
+    six_tet_volumes_3d,
 )
 
 OUTPUT = _HERE / 'output'
@@ -94,7 +94,10 @@ def main():
     # ---- 3. M10Tet (our barrier/ALM) ----
     print('\n=== M10Tet (HarmonicALMBarrier3D) @ 0.012 ===', flush=True)
     from dvfopt import (
-        HarmonicALMBarrier3DStrategy, L1Objective, Solver, Tet6Constraint3D,
+        HarmonicALMBarrier3DStrategy,
+        L1Objective,
+        Solver,
+        Tet6Constraint3D,
     )
     t0 = time.time()
     out_m10 = Solver(

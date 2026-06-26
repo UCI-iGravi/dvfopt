@@ -179,7 +179,7 @@ def focused_slp(
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
         V = six_tet_volumes_3d(phi_cur)
         n_neg = int((V <= 0).sum())
-        n_below = int((V < threshold - safety_tol).sum())
+        n_below = int((threshold - safety_tol > V).sum())
         if verbose:
             print(
                 f'[focused iter {it}] n_neg={n_neg}  n<thresh={n_below}  '

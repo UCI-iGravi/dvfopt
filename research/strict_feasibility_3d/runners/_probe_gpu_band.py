@@ -21,7 +21,10 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 def main():
     from dvfopt import (
-        Solver, Tet6Constraint3D, L1Objective, BarrierTet3DTorchStrategy,
+        BarrierTet3DTorchStrategy,
+        L1Objective,
+        Solver,
+        Tet6Constraint3D,
     )
     from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 

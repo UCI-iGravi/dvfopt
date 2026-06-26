@@ -33,7 +33,8 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 def main():
     from dvfopt import correct_dvf_3d
     from dvfopt.core.wallbreakers._multiscale_3d import (
-        _downsample_2x, _upsample_2x,
+        _downsample_2x,
+        _upsample_2x,
     )
     from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 

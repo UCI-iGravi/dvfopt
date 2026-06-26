@@ -15,9 +15,9 @@ sys.path.insert(0, str(_REPO))
 
 import numpy as np
 
-from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
-from dvfopt.core.wallbreakers._coupled_kring_3d import active_band_alm_recovery_3d
 from dvfopt import HarmonicALMBarrier3DStrategy, L1Objective, Solver, Tet6Constraint3D
+from dvfopt.core.wallbreakers._coupled_kring_3d import active_band_alm_recovery_3d
+from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 OUT = _HERE / 'output'
 

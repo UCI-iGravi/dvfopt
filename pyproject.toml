@@ -58,6 +58,7 @@ extend-exclude = [
     "archive/**",                    # historical, do not lint
     ".venv/**",
     "**/*.ipynb",                    # notebook cell scoping confuses static analysis
+    "notebooks/**",                  # notebook-exported .py have the same cell-scoping issues (F821, E402)
 ]
 
 [tool.ruff.lint]
@@ -94,7 +95,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["F401", "F811"]      # test fixtures often look unused
 "**/conftest.py" = ["F401"]
-"scripts/**" = ["E402", "F401"]    # probes are scratch code
+"scripts/**" = ["E402", "F401", "SIM115", "RUF005", "F841"]  # probes are scratch code
 "notebooks/experiments/_run_*.py" = ["E402"]
 # Legacy benchmark scratch scripts — sys.path mutation before imports
 # is the intended pattern; the runtime path math lives there.
@@ -106,6 +107,15 @@ ignore = [
 # the init module only so the rest of the package gets normal
 # unused-import detection.
 "dvfopt_gui/__init__.py" = ["F401"]
+# Research scripts are scratch/exploratory code (same rationale as
+# ``scripts/**`` above): sys.path setup before imports (E402), and
+# unused imports/vars/loop-vars (F401/F841/B007) are expected noise.
+"research/**" = ["E402", "F401", "F841", "B007"]
+# laplacian package: ``__init__`` re-exports the public API; F821 in
+# ``correspondence.py`` is a false positive on closure free-variables
+# (``A``/``M`` are bound in the enclosing ``sliceToSlice3DLaplacian``).
+"laplacian/__init__.py" = ["F401"]
+"laplacian/correspondence.py" = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dvfopt", "dvfopt_gui", "laplacian", "test_cases"]
