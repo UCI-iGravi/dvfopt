@@ -18,6 +18,7 @@ of max_k:
 Or just: minimize sum_k max(0, threshold + margin - V_k)^2 — pure
 penalty, no L1 anchor.
 """
+
 from __future__ import annotations
 
 import sys
@@ -51,19 +52,22 @@ def _cube_six_tet_signed(corner_pos):
         AB = B - A
         AC = C - A
         AD = Dv - A
-        det = (AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
-               - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
-               + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0]))
+        det = (
+            AB[0] * (AC[1] * AD[2] - AC[2] * AD[1])
+            - AB[1] * (AC[0] * AD[2] - AC[2] * AD[0])
+            + AB[2] * (AC[0] * AD[1] - AC[1] * AD[0])
+        )
         out[k] = float(_TET_SIGN[k]) * det / 6.0
     return out
 
 
-def solve_cluster_feasibility(phi, cluster_cells, threshold=THRESHOLD,
-                              trust_radius=5.0, max_iter=300, verbose=False):
+def solve_cluster_feasibility(
+    phi, cluster_cells, threshold=THRESHOLD, trust_radius=5.0, max_iter=300, verbose=False
+):
     """Solve for feasibility via penalty minimization with bounded trust."""
     corner_set = set()
     cube_corner_ids = []
-    for (cz, cy, cx) in cluster_cells:
+    for cz, cy, cx in cluster_cells:
         ids_for_cube = []
         for i in range(8):
             iz = (i >> 2) & 1
@@ -85,10 +89,9 @@ def solve_cluster_feasibility(phi, cluster_cells, threshold=THRESHOLD,
         x_in[i * 3 + 2] = phi[2, cz, cy, cx]
         ref_pos[i] = (cz, cy, cx)
 
-    cube_var_idx = np.stack([
-        np.array([corner_index[c] for c in ids], dtype=np.int64)
-        for ids in cube_corner_ids
-    ])
+    cube_var_idx = np.stack(
+        [np.array([corner_index[c] for c in ids], dtype=np.int64) for ids in cube_corner_ids]
+    )
 
     n_cubes = len(cluster_cells)
 
@@ -98,7 +101,7 @@ def solve_cluster_feasibility(phi, cluster_cells, threshold=THRESHOLD,
         for cube_i, var_idx in enumerate(cube_var_idx):
             pos = ref_pos[var_idx] + disp[var_idx]
             V = _cube_six_tet_signed(pos)
-            out[6 * cube_i:6 * (cube_i + 1)] = V
+            out[6 * cube_i : 6 * (cube_i + 1)] = V
         return out
 
     # Pure penalty objective — strongly penalize infeasibility, tiny L1 anchor.
@@ -115,7 +118,8 @@ def solve_cluster_feasibility(phi, cluster_cells, threshold=THRESHOLD,
 
     t0 = time.time()
     res = minimize(
-        objective, x_in,
+        objective,
+        x_in,
         method='trust-constr',
         bounds=bounds,
         options={'maxiter': max_iter, 'verbose': 0, 'gtol': 1e-8, 'xtol': 1e-12},
@@ -161,7 +165,7 @@ def main():
         flush=True,
     )
 
-    unfix_mask = (best_min0 <= 0)
+    unfix_mask = best_min0 <= 0
     nz, ny, nx = np.where(unfix_mask)
     grid = np.zeros(unfix_mask.shape, dtype=bool)
     grid[nz, ny, nx] = True
@@ -182,9 +186,10 @@ def main():
     n_total_cubes = 0
     total_L1 = 0.0
     for i, cells in enumerate(clusters):
-        print(f'\n--- Cluster {i+1}/{len(clusters)}: {len(cells)} cubes ---', flush=True)
-        phi_new, info = solve_cluster_feasibility(phi_new, cells, threshold=THRESHOLD,
-                                                   trust_radius=5.0, verbose=True)
+        print(f'\n--- Cluster {i + 1}/{len(clusters)}: {len(cells)} cubes ---', flush=True)
+        phi_new, info = solve_cluster_feasibility(
+            phi_new, cells, threshold=THRESHOLD, trust_radius=5.0, verbose=True
+        )
         n_total_cubes_fixed += info['n_cubes_feasible']
         n_total_cubes += info['n_cubes']
         total_L1 += info['L1_added']

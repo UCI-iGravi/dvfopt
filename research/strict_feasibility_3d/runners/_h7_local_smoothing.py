@@ -13,6 +13,7 @@ For each fold cell:
 Reports the case-A / case-B split. If many cells are case B,
 local smoothing pass should resolve them.
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,7 +35,7 @@ THRESHOLD = 0.01
 def main():
     phi = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     V = six_tet_volumes_3d(phi)
-    fold_mask = (V.min(axis=0) <= 0)
+    fold_mask = V.min(axis=0) <= 0
     n_folds = int(fold_mask.sum())
     print(f'Input: {n_folds} fold cells', flush=True)
 
@@ -44,12 +45,11 @@ def main():
         phi_smoothed[c] = uniform_filter(phi[c], size=3, mode='nearest')
 
     V_sm = six_tet_volumes_3d(phi_smoothed)
-    fold_mask_sm = (V_sm.min(axis=0) <= 0)
+    fold_mask_sm = V_sm.min(axis=0) <= 0
     n_folds_sm = int(fold_mask_sm.sum())
     L1_sm = float(np.abs(phi_smoothed - phi).sum())
     print(
-        f'After 3x3x3 smoothing: {n_folds_sm} fold cells  '
-        f'(L1_from_input={L1_sm:.1f})',
+        f'After 3x3x3 smoothing: {n_folds_sm} fold cells  (L1_from_input={L1_sm:.1f})',
         flush=True,
     )
 
@@ -61,8 +61,7 @@ def main():
     n_folds_sm5 = int((V_sm5.min(axis=0) <= 0).sum())
     L1_sm5 = float(np.abs(phi_smoothed5 - phi).sum())
     print(
-        f'After 5x5x5 smoothing: {n_folds_sm5} fold cells  '
-        f'(L1_from_input={L1_sm5:.1f})',
+        f'After 5x5x5 smoothing: {n_folds_sm5} fold cells  (L1_from_input={L1_sm5:.1f})',
         flush=True,
     )
 
@@ -74,8 +73,7 @@ def main():
     n_folds_sm7 = int((V_sm7.min(axis=0) <= 0).sum())
     L1_sm7 = float(np.abs(phi_smoothed7 - phi).sum())
     print(
-        f'After 7x7x7 smoothing: {n_folds_sm7} fold cells  '
-        f'(L1_from_input={L1_sm7:.1f})',
+        f'After 7x7x7 smoothing: {n_folds_sm7} fold cells  (L1_from_input={L1_sm7:.1f})',
         flush=True,
     )
 
@@ -87,16 +85,33 @@ def main():
     for k in range(len(fold_z)):
         z, y, x = int(fold_z[k]), int(fold_y[k]), int(fold_x[k])
         # Average 8 corners of this fold cube.
-        for cz, cy, cx in [(z, y, x), (z, y, x+1), (z, y+1, x), (z, y+1, x+1),
-                           (z+1, y, x), (z+1, y, x+1), (z+1, y+1, x), (z+1, y+1, x+1)]:
+        for cz, cy, cx in [
+            (z, y, x),
+            (z, y, x + 1),
+            (z, y + 1, x),
+            (z, y + 1, x + 1),
+            (z + 1, y, x),
+            (z + 1, y, x + 1),
+            (z + 1, y + 1, x),
+            (z + 1, y + 1, x + 1),
+        ]:
             # Skip if out of bounds.
-            if (cz < 0 or cy < 0 or cx < 0
-                or cz >= phi.shape[1] or cy >= phi.shape[2] or cx >= phi.shape[3]):
+            if (
+                cz < 0
+                or cy < 0
+                or cx < 0
+                or cz >= phi.shape[1]
+                or cy >= phi.shape[2]
+                or cx >= phi.shape[3]
+            ):
                 continue
             for c in range(3):
-                z0 = max(0, cz - 2); z1 = min(phi.shape[1], cz + 3)
-                y0 = max(0, cy - 2); y1 = min(phi.shape[2], cy + 3)
-                x0 = max(0, cx - 2); x1 = min(phi.shape[3], cx + 3)
+                z0 = max(0, cz - 2)
+                z1 = min(phi.shape[1], cz + 3)
+                y0 = max(0, cy - 2)
+                y1 = min(phi.shape[2], cy + 3)
+                x0 = max(0, cx - 2)
+                x1 = min(phi.shape[3], cx + 3)
                 phi_selective[c, cz, cy, cx] = float(phi[c, z0:z1, y0:y1, x0:x1].mean())
     V_sel = six_tet_volumes_3d(phi_selective)
     n_folds_sel = int((V_sel.min(axis=0) <= 0).sum())

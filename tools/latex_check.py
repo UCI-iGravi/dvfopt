@@ -18,6 +18,7 @@ Usage:
   python tools/latex_check.py writing/tvcg/tvcg_manuscript.tex
   # follows one level of \\input{} (e.g. dvfopt) and reads sibling .bib files
 """
+
 import os
 import re
 import sys
@@ -98,7 +99,9 @@ def check(root_path: str) -> int:
                         errors.append(f'{fname}:{i}: \\end{{{env}}} with no open environment')
                     elif env_stack[-1][0] != env:
                         oe, of, ol = env_stack[-1]
-                        errors.append(f'{fname}:{i}: \\end{{{env}}} but innermost open is \\begin{{{oe}}} ({of}:{ol})')
+                        errors.append(
+                            f'{fname}:{i}: \\end{{{env}}} but innermost open is \\begin{{{oe}}} ({of}:{ol})'
+                        )
                         env_stack.pop()
                     else:
                         env_stack.pop()
@@ -123,8 +126,10 @@ def check(root_path: str) -> int:
         if k not in set(refs):
             warnings.append(f'unused label: {k}')
 
-    print(f'[latex_check] files={len(chunks)} labels={len(labels)} '
-          f'refs={len(set(refs))} cites={len(set(cites))} bibkeys={len(known)}')
+    print(
+        f'[latex_check] files={len(chunks)} labels={len(labels)} '
+        f'refs={len(set(refs))} cites={len(set(cites))} bibkeys={len(known)}'
+    )
     for w in warnings:
         print(f'  WARN  {w}')
     for e in errors:

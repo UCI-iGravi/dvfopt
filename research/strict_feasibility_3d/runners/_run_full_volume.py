@@ -17,6 +17,7 @@ GUARDED for Windows spawn: ``correct_dvf_3d(n_workers>1)`` spawns workers
 that re-import this module; the heavy work sits under ``main()`` /
 ``if __name__ == '__main__'`` so workers never re-run it.
 """
+
 import json
 import sys
 import time
@@ -67,13 +68,16 @@ def main():
         start = 0
 
     n0 = int((six_tet_min_volume_3d(cur) <= 0).sum())
-    print(f'full volume {cur.shape} n_neg={n0} n_bands={n_bands} '
-          f'band_size={band_size} overlap={overlap}', flush=True)
+    print(
+        f'full volume {cur.shape} n_neg={n0} n_bands={n_bands} '
+        f'band_size={band_size} overlap={overlap}',
+        flush=True,
+    )
 
     t_run = time.time()
     for bi in range(start, n_bands):
         cz0, cz1, si, ei = bands[bi]
-        crop = cur[:, cz0:cz1 + 1, :, :].copy()
+        crop = cur[:, cz0 : cz1 + 1, :, :].copy()
         cmv = six_tet_min_volume_3d(crop)
         cn0 = int((cmv <= 0).sum())
         cnb = int((cmv < THR - 1e-5).sum())  # strict bar: min_T < 0.01
@@ -90,22 +94,27 @@ def main():
             # stall here is repaired by the final global thorough=True pass
             # below, which runs multiscale once over the whole residual.
             out, rep = correct_dvf_3d(
-                crop, threshold=THR, n_workers=n_workers,
-                thorough=False, verbose=0,
+                crop,
+                threshold=THR,
+                n_workers=n_workers,
+                thorough=False,
+                verbose=0,
             )
             feas, nno = bool(rep.feasible), int(rep.n_neg_out)
         # Commit interior corner planes [si, ei) ([si, ei] at volume top).
         w_lo = si
         w_hi = ei + 1 if ei == Dc else ei
-        cur[:, w_lo:w_hi, :, :] = out[:, w_lo - cz0:w_hi - cz0, :, :]
+        cur[:, w_lo:w_hi, :, :] = out[:, w_lo - cz0 : w_hi - cz0, :, :]
         # Checkpoint.
         np.save(CKPT, cur)
         PROG.write_text(json.dumps({'next_band': bi + 1, 'n_bands': n_bands}))
         gtot = int((six_tet_min_volume_3d(cur) <= 0).sum())
-        print(f'[band {bi + 1}/{n_bands}] z[{cz0}:{cz1}] crop {cn0}->{nno} '
-              f'feasible={feas} global_n_neg={gtot} '
-              f'({time.time() - t0:.0f}s, elapsed {(time.time()-t_run)/3600:.2f}h)',
-              flush=True)
+        print(
+            f'[band {bi + 1}/{n_bands}] z[{cz0}:{cz1}] crop {cn0}->{nno} '
+            f'feasible={feas} global_n_neg={gtot} '
+            f'({time.time() - t0:.0f}s, elapsed {(time.time() - t_run) / 3600:.2f}h)',
+            flush=True,
+        )
 
     # Final seam-residual cleanup with the full orchestrator. Gate on the
     # STRICT bar (n_below = min_T < THR), not just negatives, so positive-but-
@@ -117,17 +126,23 @@ def main():
     if n_below > 0:
         print('final full-volume cleanup on residual/seams...', flush=True)
         cur, rep = correct_dvf_3d(
-            cur, threshold=THR, n_workers=n_workers, thorough=True, verbose=1,
+            cur,
+            threshold=THR,
+            n_workers=n_workers,
+            thorough=True,
+            verbose=1,
         )
         np.save(CKPT, cur)
-        print(f'  cleanup: feasible={rep.feasible} n_neg_out={rep.n_neg_out}',
-              flush=True)
+        print(f'  cleanup: feasible={rep.feasible} n_neg_out={rep.n_neg_out}', flush=True)
 
     mv = six_tet_min_volume_3d(cur)
     n_neg = int((mv <= 0).sum())
     n_below = int((mv < THR - 1e-5).sum())
-    print(f'FINAL n_neg={n_neg} n<0.01={n_below} min_T={float(mv.min()):+.6f} '
-          f'total_wall={(time.time()-t_run)/3600:.2f}h', flush=True)
+    print(
+        f'FINAL n_neg={n_neg} n<0.01={n_below} min_T={float(mv.min()):+.6f} '
+        f'total_wall={(time.time() - t_run) / 3600:.2f}h',
+        flush=True,
+    )
     # Gate the canonical save on STRICT feasibility — never silently deliver a
     # folded or sub-threshold field as "the corrected volume".
     if n_neg == 0 and n_below == 0:
@@ -136,8 +151,11 @@ def main():
     else:
         partial = OUT / 'b0039_FULL_corrected_PARTIAL.npy'
         np.save(partial, cur)
-        print(f'NOT strict-feasible (n_neg={n_neg}, n<0.01={n_below}) — wrote '
-              f'{partial}; NOT overwriting {FINAL.name}', flush=True)
+        print(
+            f'NOT strict-feasible (n_neg={n_neg}, n<0.01={n_below}) — wrote '
+            f'{partial}; NOT overwriting {FINAL.name}',
+            flush=True,
+        )
         sys.exit(1)
 
 

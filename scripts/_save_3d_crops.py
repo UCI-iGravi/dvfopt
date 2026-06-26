@@ -1,4 +1,5 @@
 """Extract real-data 3D crops and save for test notebook."""
+
 import os
 
 import numpy as np
@@ -13,7 +14,7 @@ os.makedirs(out_dir, exist_ok=True)
 crops = {
     'slice350_5x10x10': {'z': (348, 353), 'worst_yx': (181, 207), 'pad': 5},
     'slice200_5x10x10': {'z': (198, 203), 'worst_yx': (106, 180), 'pad': 5},
-    'slice090_5x10x10': {'z': (88, 93),   'worst_yx': (181, 273), 'pad': 5},
+    'slice090_5x10x10': {'z': (88, 93), 'worst_yx': (181, 273), 'pad': 5},
 }
 
 for name, cfg in crops.items():

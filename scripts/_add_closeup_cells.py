@@ -1,4 +1,5 @@
 """Insert close-up + signed-area + neighborhood cells into 08_global-invertibility-gap.ipynb."""
+
 import json
 
 path = "notebooks/two-triangle-check/08_global-invertibility-gap.ipynb"
@@ -6,11 +7,23 @@ nb = json.load(open(path, encoding="utf-8"))
 
 
 def md(text, cid):
-    return {"cell_type": "markdown", "id": cid, "metadata": {}, "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "markdown",
+        "id": cid,
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
 
 
 def code(text, cid):
-    return {"cell_type": "code", "id": cid, "metadata": {}, "execution_count": None, "outputs": [], "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "code",
+        "id": cid,
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": text.splitlines(keepends=True),
+    }
 
 
 # Insert after 'zoom-code' (or, if the prior run already inserted, after the last of that group).
@@ -27,7 +40,11 @@ for idx, c in enumerate(nb["cells"]):
         insert_after = idx
 
 # Remove any previous closeup/signed-area cells so we don't stack duplicates on repeated runs.
-nb["cells"] = [c for c in nb["cells"] if c.get("id") not in {"closeup-md", "closeup-code", "signed-area-md", "signed-area-code"}]
+nb["cells"] = [
+    c
+    for c in nb["cells"]
+    if c.get("id") not in {"closeup-md", "closeup-code", "signed-area-md", "signed-area-code"}
+]
 
 # Recompute insert point (after the final remaining anchor, typically zoom-code).
 for idx, c in enumerate(nb["cells"]):
@@ -187,8 +204,9 @@ closeup_code = code(
     "plt.suptitle(f'{CASE_KEY} post-SLSQP: close-up of intersecting pairs + radius-2 neighborhood' + chr(10) +\n"
     "              'gray = locally valid, dark-blue = locally folded (should see no dark-blue rings)',\n"
     "              fontsize=10)\n"
-    "plt.show()"
-, "closeup-code")
+    "plt.show()",
+    "closeup-code",
+)
 
 sat_md = md(
     "### Signed-area table across all intersecting pairs + neighborhood check\n"
@@ -250,10 +268,15 @@ sat_code = code(
     "print(f'  min triangle signed area across all 4*{len(qi_out)} = {4*len(qi_out)} triangles in flagged pairs: {min_tri_across:+.4f}')\n"
     "print(f'  -> all >= threshold ({threshold}): {min_tri_across >= threshold}')\n"
     "print(f'  total neighborhood folded cells (summed across all pairs): {total_nbhd_bad}')\n"
-    "print(f'  total overlap area across {len(qi_out)} pairs: {total_overlap:.3f}')"
-, "signed-area-code")
+    "print(f'  total overlap area across {len(qi_out)} pairs: {total_overlap:.3f}')",
+    "signed-area-code",
+)
 
-nb["cells"] = nb["cells"][: insert_after + 1] + [closeup_md, closeup_code, sat_md, sat_code] + nb["cells"][insert_after + 1 :]
+nb["cells"] = (
+    nb["cells"][: insert_after + 1]
+    + [closeup_md, closeup_code, sat_md, sat_code]
+    + nb["cells"][insert_after + 1 :]
+)
 
 # Compile check
 for c in (closeup_code, sat_code):

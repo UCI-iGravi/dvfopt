@@ -259,12 +259,12 @@ Pick the constraint by what you need:
 
 
 REPLACE = {
-    "f9637b1b":           ("markdown", NEW_TOC),
-    "11fe0c39":           ("markdown", NEW_MANUAL_PROOF_MD),
-    "3eb6023f":           ("code",     NEW_MANUAL_PROOF_CODE),
-    "79f62291":           ("code",     NEW_REQUANTIFY),
-    "tri-requantify-code": ("code",    NEW_TRI_REQ),
-    "summary-md":         ("markdown", NEW_SUMMARY),
+    "f9637b1b": ("markdown", NEW_TOC),
+    "11fe0c39": ("markdown", NEW_MANUAL_PROOF_MD),
+    "3eb6023f": ("code", NEW_MANUAL_PROOF_CODE),
+    "79f62291": ("code", NEW_REQUANTIFY),
+    "tri-requantify-code": ("code", NEW_TRI_REQ),
+    "summary-md": ("markdown", NEW_SUMMARY),
 }
 
 REMOVE_IDS = {"2c268783", "6b8af035"}

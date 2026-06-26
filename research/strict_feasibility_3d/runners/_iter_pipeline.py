@@ -19,6 +19,7 @@ Estimated wall: 30 min (Stage 1) + N * (1 min + 30 min)
               = 30 + 31N min.
 For N=3 iters: ~2 hours total.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,7 +51,7 @@ def cluster_slsqp_pass(phi, phi_input):
     (only accept moves that decrease n_neg or keep it the same)."""
     V = six_tet_volumes_3d(phi)
     min_per_cube = V.min(axis=0)
-    fold_mask = (min_per_cube <= 0)
+    fold_mask = min_per_cube <= 0
     fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
     if not fold_cells:
         return phi, 0.0, 0
@@ -72,8 +73,7 @@ def cluster_slsqp_pass(phi, phi_input):
         cz, cy, cx = c
         k_ring = max(2, min(K_RING_MAX, r + 2))
         try:
-            new, res, wall, n_cubes, n_dof = run_slsqp_around(
-                cur, cz, cy, cx, k_ring)
+            new, res, wall, n_cubes, n_dof = run_slsqp_around(cur, cz, cy, cx, k_ring)
         except Exception as e:
             print(f'    cluster {i}: error {e}', flush=True)
             continue
@@ -89,8 +89,11 @@ def cluster_slsqp_pass(phi, phi_input):
         if delta <= 0:
             cur = new
             accepted += 1
-            print(f'    cluster {i}/{len(refined)}: n_neg {n_before}->{n_new} '
-                  f'wall={wall:.1f}s [ACCEPT]', flush=True)
+            print(
+                f'    cluster {i}/{len(refined)}: n_neg {n_before}->{n_new} '
+                f'wall={wall:.1f}s [ACCEPT]',
+                flush=True,
+            )
     return cur, total_wall, accepted
 
 
@@ -103,7 +106,7 @@ def main():
     t0 = time.time()
     cur = m10tet(phi_input, 0.015)
     wall1 = time.time() - t0
-    print(f'  wall={wall1:.1f}s ({wall1/60:.1f} min)', flush=True)
+    print(f'  wall={wall1:.1f}s ({wall1 / 60:.1f} min)', flush=True)
     n, b, mn = report(cur, '  after M10Tet @ 0.015', phi_input)
     if n == 0 and b == 0:
         print('  Already strict feasible.', flush=True)
@@ -118,12 +121,10 @@ def main():
         print('  -- cluster-SLSQP pass --', flush=True)
         cur, slsqp_wall, accepted = cluster_slsqp_pass(cur, phi_input)
         total_wall += slsqp_wall
-        print(f'  cluster-SLSQP wall={slsqp_wall:.1f}s, accepted={accepted}',
-              flush=True)
-        n, b, _ = report(cur, f'  after iter {outer+1} SLSQP', phi_input)
+        print(f'  cluster-SLSQP wall={slsqp_wall:.1f}s, accepted={accepted}', flush=True)
+        n, b, _ = report(cur, f'  after iter {outer + 1} SLSQP', phi_input)
         if n == 0 and b == 0:
-            print(f'  *** STRICT FEASIBLE after iter {outer+1} SLSQP ***',
-                  flush=True)
+            print(f'  *** STRICT FEASIBLE after iter {outer + 1} SLSQP ***', flush=True)
             break
 
         # Stage 2.2: M10Tet recovery.
@@ -132,19 +133,18 @@ def main():
         cur = m10tet(cur, 0.012)
         rec_wall = time.time() - t0
         total_wall += rec_wall
-        print(f'  recovery wall={rec_wall:.1f}s ({rec_wall/60:.1f} min)',
-              flush=True)
-        n, b, _ = report(cur, f'  after iter {outer+1} M10Tet recovery',
-                          phi_input)
+        print(f'  recovery wall={rec_wall:.1f}s ({rec_wall / 60:.1f} min)', flush=True)
+        n, b, _ = report(cur, f'  after iter {outer + 1} M10Tet recovery', phi_input)
         if n == 0 and b == 0:
-            print(f'  *** STRICT FEASIBLE after iter {outer+1} M10Tet ***',
-                  flush=True)
+            print(f'  *** STRICT FEASIBLE after iter {outer + 1} M10Tet ***', flush=True)
             break
 
     print('\n=== Iter pipeline FINAL ===', flush=True)
     n, b, mn = report(cur, '  FINAL', phi_input)
-    print(f'  total wall = {total_wall:.1f}s ({total_wall/60:.1f} min = {total_wall/3600:.1f} hours)',
-          flush=True)
+    print(
+        f'  total wall = {total_wall:.1f}s ({total_wall / 60:.1f} min = {total_wall / 3600:.1f} hours)',
+        flush=True,
+    )
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_iter.npy', cur)
         print('  *** STRICT FEASIBLE via ITER PIPELINE ***', flush=True)

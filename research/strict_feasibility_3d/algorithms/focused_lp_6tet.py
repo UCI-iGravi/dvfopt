@@ -20,6 +20,7 @@ the "any-active-tet" set are frozen at their current values.
 For 24 below-threshold cells with ~150 active phi vars, the LP has
 ~300 rows and ~300 decision vars — solves in milliseconds.
 """
+
 from __future__ import annotations
 
 import time
@@ -123,13 +124,15 @@ def focused_lp_step(
     A5 = sp.hstack([-sp.eye(n), sp.csr_matrix((n, n))])
 
     A_ub = sp.vstack([A1, A2, A3, A4, A5]).tocsr()
-    b_ub = np.concatenate([
-        phi_in_small,
-        -phi_in_small,
-        rhs_tri,
-        phi_cur_small + trust_radius,
-        -phi_cur_small + trust_radius,
-    ])
+    b_ub = np.concatenate(
+        [
+            phi_in_small,
+            -phi_in_small,
+            rhs_tri,
+            phi_cur_small + trust_radius,
+            -phi_cur_small + trust_radius,
+        ]
+    )
     bounds = [(None, None)] * n + [(0.0, None)] * n
     res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
 
@@ -177,6 +180,7 @@ def focused_slp(
     history = []
     for it in range(max_iter):
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
         V = six_tet_volumes_3d(phi_cur)
         n_neg = int((V <= 0).sum())
         n_below = int((threshold - safety_tol > V).sum())
@@ -186,12 +190,20 @@ def focused_slp(
                 f'min_T={float(V.min()):+.6f}  trust={trust:.4f}',
                 flush=True,
             )
-        history.append({'iter': it, 'n_neg': n_neg, 'n_below': n_below,
-                        'min_T': float(V.min()), 'trust': trust})
+        history.append(
+            {
+                'iter': it,
+                'n_neg': n_neg,
+                'n_below': n_below,
+                'min_T': float(V.min()),
+                'trust': trust,
+            }
+        )
         if n_neg == 0 and n_below == 0:
             break
         phi_new, info = focused_lp_step(
-            phi_in_3dhw, phi_cur,
+            phi_in_3dhw,
+            phi_cur,
             threshold=threshold,
             active_buffer=active_buffer,
             trust_radius=trust,

@@ -19,6 +19,7 @@ disparity across the 6 tets of each cube (var(T_1..T_6)). Thin
 cubes have high tet-volume variance because some tets get
 squashed while others don't.
 """
+
 from __future__ import annotations
 
 import sys
@@ -51,7 +52,8 @@ def main():
     # threshold). Inflate by 2-voxel buffer to capture neighbors
     # used in sigma_3 of edge cubes.
     from scipy.ndimage import binary_dilation
-    fold_mask = (V0.min(axis=0) < THRESHOLD)
+
+    fold_mask = V0.min(axis=0) < THRESHOLD
     inflated = binary_dilation(fold_mask, iterations=2)
     n_fold = int(inflated.sum())
     print(f'Fold zone (inflated 2): {n_fold} cells', flush=True)
@@ -73,8 +75,7 @@ def main():
     # the strategy with threshold=0.020 and then re-checking at
     # 0.015. This is a poor-man's anisotropy: globally tightening
     # the threshold pulls thin cubes toward chunkier geometry.
-    print('\n=== Pass 1: M10Tet @ 0.020 (over-tighten globally) ===',
-          flush=True)
+    print('\n=== Pass 1: M10Tet @ 0.020 (over-tighten globally) ===', flush=True)
     t0 = time.time()
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
@@ -119,8 +120,7 @@ def main():
     # schedule. The hope: globally over-tightening pushes the
     # interior of the fold zone toward more isotropic geometry,
     # then relaxing at 0.015 lets the L1 cost settle.
-    print('\n=== Pass 3: M10Tet @ 0.025 -> 0.015 (alternating) ===',
-          flush=True)
+    print('\n=== Pass 3: M10Tet @ 0.025 -> 0.015 (alternating) ===', flush=True)
     t2 = time.time()
     cur = out2
     for cycle in range(3):
@@ -133,7 +133,7 @@ def main():
         cur = solver_t.fit(cur).corrected
         Vt = six_tet_volumes_3d(cur)
         print(
-            f'  cycle {cycle+1}/3 @ 0.025: n_neg={int((Vt <= 0).sum())}  '
+            f'  cycle {cycle + 1}/3 @ 0.025: n_neg={int((Vt <= 0).sum())}  '
             f'n<0.01={int((Vt < THRESHOLD - 1e-5).sum())}  '
             f'min_T={float(Vt.min()):+.6f}',
             flush=True,
@@ -147,7 +147,7 @@ def main():
         cur = solver_r.fit(cur).corrected
         Vr = six_tet_volumes_3d(cur)
         print(
-            f'  cycle {cycle+1}/3 @ 0.015: n_neg={int((Vr <= 0).sum())}  '
+            f'  cycle {cycle + 1}/3 @ 0.015: n_neg={int((Vr <= 0).sum())}  '
             f'n<0.01={int((Vr < THRESHOLD - 1e-5).sum())}  '
             f'min_T={float(Vr.min()):+.6f}',
             flush=True,

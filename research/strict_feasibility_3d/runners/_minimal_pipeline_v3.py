@@ -12,6 +12,7 @@ This variant:
   4. SLSQP @ thr=1e-3 per (sub-)cluster.
   5. M10Tet @ 0.012 recovery.
 """
+
 from __future__ import annotations
 
 import sys
@@ -45,12 +46,11 @@ def main():
 
     V = six_tet_volumes_3d(phi_input)
     min_per_cube = V.min(axis=0)
-    fold_mask = (min_per_cube <= 0)
+    fold_mask = min_per_cube <= 0
     fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
     print(f'\n=== Cluster (radius={INIT_CLUSTER_RADIUS}) ===', flush=True)
     print(f'  # fold cubes: {len(fold_cells)}', flush=True)
-    _, centroids, members, radii = cluster_fold_cubes(
-        fold_cells, radius=INIT_CLUSTER_RADIUS)
+    _, centroids, members, radii = cluster_fold_cubes(fold_cells, radius=INIT_CLUSTER_RADIUS)
     print(f'  # clusters: {len(centroids)}', flush=True)
 
     # Refine: split big clusters at sub_cluster_radius.
@@ -59,8 +59,7 @@ def main():
         if r <= K_RING_MAX - 1:
             refined.append((c, mem, r))
             continue
-        _, sub_cents, sub_mems, sub_rs = cluster_fold_cubes(
-            mem, radius=SUB_CLUSTER_RADIUS)
+        _, sub_cents, sub_mems, sub_rs = cluster_fold_cubes(mem, radius=SUB_CLUSTER_RADIUS)
         for sc, sm, sr in zip(sub_cents, sub_mems, sub_rs):
             refined.append((sc, sm, sr))
     print(f'  total refined: {len(refined)} (sub-)clusters', flush=True)
@@ -82,24 +81,27 @@ def main():
         V_before = six_tet_volumes_3d(cur)
         n_before = int((V_before <= 0).sum())
         if res is None or not res.success:
-            print(f'  cluster {i} ({c}, size={len(mem)}, r={r}, k={k_ring}, '
-                  f'cubes={n_cubes}, DOF={n_dof}): NOT CONVERGED wall={wall:.1f}s',
-                  flush=True)
+            print(
+                f'  cluster {i} ({c}, size={len(mem)}, r={r}, k={k_ring}, '
+                f'cubes={n_cubes}, DOF={n_dof}): NOT CONVERGED wall={wall:.1f}s',
+                flush=True,
+            )
             continue
         V_new = six_tet_volumes_3d(new)
         n_new = int((V_new <= 0).sum())
         delta = n_new - n_before
         marker = 'ACCEPT' if delta <= 0 else 'REJECT'
-        print(f'  cluster {i} ({c}, size={len(mem)}, r={r}, k={k_ring}, '
-              f'cubes={n_cubes}, DOF={n_dof}): n_neg {n_before}->{n_new} '
-              f'(delta={delta:+d}) wall={wall:.1f}s [{marker}]',
-              flush=True)
+        print(
+            f'  cluster {i} ({c}, size={len(mem)}, r={r}, k={k_ring}, '
+            f'cubes={n_cubes}, DOF={n_dof}): n_neg {n_before}->{n_new} '
+            f'(delta={delta:+d}) wall={wall:.1f}s [{marker}]',
+            flush=True,
+        )
         if delta <= 0:
             cur = new
             accepted += 1
     print(f'\n  Accepted: {accepted}/{len(refined)}', flush=True)
-    print(f'  total cluster-SLSQP wall = {total_wall:.1f}s ({total_wall/60:.1f} min)',
-          flush=True)
+    print(f'  total cluster-SLSQP wall = {total_wall:.1f}s ({total_wall / 60:.1f} min)', flush=True)
     n_after, b_after, _ = report(cur, '  after cluster SLSQPs', phi_input)
 
     # Step 3: M10Tet recovery.
@@ -107,14 +109,16 @@ def main():
     t_rec = time.time()
     final = m10tet(cur, 0.012)
     wall_rec = time.time() - t_rec
-    print(f'  recovery wall={wall_rec:.1f}s ({wall_rec/60:.1f} min)', flush=True)
+    print(f'  recovery wall={wall_rec:.1f}s ({wall_rec / 60:.1f} min)', flush=True)
     n, b, mn = report(final, '  FINAL', phi_input)
 
     total_pipeline = total_wall + wall_rec
-    print(f'\n=== VARIANT D\'\' FINAL ===\n'
-          f'  n_neg={n}, n<0.01={b}\n'
-          f'  total wall = {total_pipeline:.1f}s ({total_pipeline/60:.1f} min)',
-          flush=True)
+    print(
+        f'\n=== VARIANT D\'\' FINAL ===\n'
+        f'  n_neg={n}, n<0.01={b}\n'
+        f'  total wall = {total_pipeline:.1f}s ({total_pipeline / 60:.1f} min)',
+        flush=True,
+    )
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_Dpp.npy', final)
         print('  *** STRICT FEASIBLE via VARIANT D\'\' ***', flush=True)

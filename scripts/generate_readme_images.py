@@ -3,6 +3,7 @@
 Creates docs/images/ with one .png per synthetic/random DVF test case.
 Each image shows Jacobian determinant heatmap + quiver plot.
 """
+
 import os
 import sys
 
@@ -28,32 +29,29 @@ os.makedirs(OUT_DIR, exist_ok=True)
 CMAP = "RdBu_r"
 
 
-def save_deformation_preview(deformation, title, filename,
-                              msample=None, fsample=None):
+def save_deformation_preview(deformation, title, filename, msample=None, fsample=None):
     """Save a 1x2 Jdet-heatmap + quiver plot as PNG."""
     fig, axs = plt.subplots(1, 2, figsize=(14, 5))
 
     phi_2hw = deformation[[1, 2], 0, :, :]  # (2, H, W) — [dy, dx]
     J = np.squeeze(jacobian_det2D(phi_2hw))
     neg = int(np.sum(J <= 0))
-    norm = mcolors.TwoSlopeNorm(
-        vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3)
-    )
+    norm = mcolors.TwoSlopeNorm(vmin=min(J.min(), -3), vcenter=0, vmax=max(J.max(), 3))
 
     # Left: Jacobian heatmap with correspondence arrows
     im = axs[0].imshow(J, cmap=CMAP, norm=norm)
     if msample is not None and fsample is not None:
         for i in range(len(msample)):
             axs[0].annotate(
-                "", xy=(fsample[i][2], fsample[i][1]),
+                "",
+                xy=(fsample[i][2], fsample[i][1]),
                 xytext=(msample[i][2], msample[i][1]),
-                arrowprops=dict(facecolor="black", shrink=0.045,
-                                headwidth=8, headlength=10, width=3),
+                arrowprops=dict(
+                    facecolor="black", shrink=0.045, headwidth=8, headlength=10, width=3
+                ),
             )
-        axs[0].scatter(msample[:, 2], msample[:, 1], c="g",
-                        zorder=5, label="Moving")
-        axs[0].scatter(fsample[:, 2], fsample[:, 1], c="violet",
-                        zorder=5, label="Fixed")
+        axs[0].scatter(msample[:, 2], msample[:, 1], c="g", zorder=5, label="Moving")
+        axs[0].scatter(fsample[:, 2], fsample[:, 1], c="violet", zorder=5, label="Fixed")
         axs[0].legend(fontsize=8)
     axs[0].set_title(f"Jacobian determinant ({neg} negative)")
 
@@ -82,8 +80,11 @@ def main():
         print(f"  Generating {key} ...")
         deformation, ms, fs = make_deformation(key)
         save_deformation_preview(
-            deformation, case["title"], f"synthetic_{key}.png",
-            msample=ms, fsample=fs,
+            deformation,
+            case["title"],
+            f"synthetic_{key}.png",
+            msample=ms,
+            fsample=fs,
         )
 
     print("\n=== Random DVF test cases ===")
@@ -91,7 +92,9 @@ def main():
         print(f"  Generating {key} ...")
         deformation = make_random_dvf(key)
         save_deformation_preview(
-            deformation, case["title"], f"random_{key}.png",
+            deformation,
+            case["title"],
+            f"random_{key}.png",
         )
 
     print(f"\nDone — {len(SYNTHETIC_CASES) + len(RANDOM_DVF_CASES)} images in {OUT_DIR}")

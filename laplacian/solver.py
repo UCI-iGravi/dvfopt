@@ -21,9 +21,16 @@ from .utils import laplacianA3D, propagate_dirichlet_rhs
 
 
 def solveLaplacianFromCorrespondences(
-    vol_shape, source_pts, target_pts, axes=(1, 2),
-    rtol=1e-2, maxiter=500, spacing=None, log_fn=None,
-    axis_labels=None, solver_method='cg',
+    vol_shape,
+    source_pts,
+    target_pts,
+    axes=(1, 2),
+    rtol=1e-2,
+    maxiter=500,
+    spacing=None,
+    log_fn=None,
+    axis_labels=None,
+    solver_method='cg',
 ):
     """Solve the 3D Laplacian interpolation given pre-computed correspondences.
 
@@ -72,6 +79,7 @@ def solveLaplacianFromCorrespondences(
     from scipy.sparse import diags as sparse_diags
     from scipy.sparse.linalg import cg as sp_cg
     from scipy.sparse.linalg import lgmres as sp_lgmres
+
     _use_cg = solver_method.lower() != 'lgmres'
     _solver_label = 'CG+Jacobi' if _use_cg else 'LGMRES'
 
@@ -82,9 +90,7 @@ def solveLaplacianFromCorrespondences(
     tgt_int[:, 0] = np.clip(tgt_int[:, 0], 0, n0 - 1)
     tgt_int[:, 1] = np.clip(tgt_int[:, 1], 0, n1 - 1)
     tgt_int[:, 2] = np.clip(tgt_int[:, 2], 0, n2 - 1)
-    flat_indices = (tgt_int[:, 0] * n1 * n2 +
-                    tgt_int[:, 1] * n2 +
-                    tgt_int[:, 2]).astype(int)
+    flat_indices = (tgt_int[:, 0] * n1 * n2 + tgt_int[:, 1] * n2 + tgt_int[:, 2]).astype(int)
 
     # Displacement = source − target
     disp = source_pts - target_pts
@@ -92,14 +98,15 @@ def solveLaplacianFromCorrespondences(
     # Detect colliding correspondences: two source points rounded to the same
     # target voxel. Plain `rhs[flat_indices] = disp[:, ax]` keeps only the
     # last write, silently discarding the others. Warn so callers know.
-    unique_idx, inverse, counts = np.unique(flat_indices, return_inverse=True,
-                                            return_counts=True)
+    unique_idx, inverse, counts = np.unique(flat_indices, return_inverse=True, return_counts=True)
     if counts.max() > 1:
         n_collisions = int((counts > 1).sum())
         n_lost = int(len(flat_indices) - len(unique_idx))
-        log(f"[warn] {n_collisions} target voxels received multiple "
+        log(
+            f"[warn] {n_collisions} target voxels received multiple "
             f"correspondences; {n_lost} duplicate displacements were dropped "
-            f"(last-write-wins on fancy-index assignment).")
+            f"(last-write-wins on fancy-index assignment)."
+        )
 
     # Build RHS for each solved axis
     rhs_arrays = []
@@ -123,22 +130,27 @@ def solveLaplacianFromCorrespondences(
         diag_vals = A.diagonal()
         diag_vals[diag_vals == 0] = 1.0
         M_pre = sparse_diags(1.0 / diag_vals, format='csr')
-        del diag_vals; gc.collect()
+        del diag_vals
+        gc.collect()
 
     # SciPy < 1.12 uses 'tol'; >= 1.12 uses 'rtol' (and deprecates 'tol').
     # Check each solver's signature independently.
     _cg_tol_kw = 'rtol' if 'rtol' in inspect.signature(sp_cg).parameters else 'tol'
     _lgmres_tol_kw = 'rtol' if 'rtol' in inspect.signature(sp_lgmres).parameters else 'tol'
 
-    log(f"Solving Laplacian ({_solver_label}, {A.shape[0]/1e6:.1f}M DOFs, rtol={rtol}, maxiter={maxiter})...")
+    log(
+        f"Solving Laplacian ({_solver_label}, {A.shape[0] / 1e6:.1f}M DOFs, rtol={rtol}, maxiter={maxiter})..."
+    )
 
     solutions = {}
     for rhs, label in zip(rhs_arrays, axis_labels):
         iters = [0]
+
         def _cb(xk, _iters=iters, _label=label):
             _iters[0] += 1
             if _iters[0] % 50 == 0:
                 log(f"  {_label}: iteration {_iters[0]}/{maxiter}")
+
         if _use_cg:
             x, info = sp_cg(A, rhs, **{_cg_tol_kw: rtol}, maxiter=maxiter, M=M_pre, callback=_cb)
         else:
@@ -146,13 +158,16 @@ def solveLaplacianFromCorrespondences(
         if info == 0:
             log(f"  {label} converged in {iters[0]} iterations")
         elif info > 0:
-            log(f"[warn]  {label} did NOT converge — hit maxiter={maxiter} "
-                f"after {iters[0]} iters (info={info}); result may be inaccurate")
+            log(
+                f"[warn]  {label} did NOT converge — hit maxiter={maxiter} "
+                f"after {iters[0]} iters (info={info}); result may be inaccurate"
+            )
         else:
             log(f"[warn]  {label} solver returned illegal input (info={info})")
         solutions[label] = x
 
-    del A, M_pre; gc.collect()
+    del A, M_pre
+    gc.collect()
 
     deformation_field = np.zeros((nd, n0, n1, n2))
     for ax, label in zip(axes, axis_labels):

@@ -16,6 +16,7 @@ This script tries multiple perturbation strategies:
 
 Each cycle is logged; if any reaches n_neg=0, we save and stop.
 """
+
 from __future__ import annotations
 
 import sys
@@ -40,8 +41,7 @@ def report(phi, label, phi_input=None):
     n_below = int((V < THRESHOLD - 1e-5).sum())
     mn = float(V.min())
     L1 = '' if phi_input is None else f'  L1={float(np.abs(phi - phi_input).sum()):.1f}'
-    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}',
-          flush=True)
+    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}', flush=True)
     return n_neg, n_below, mn
 
 
@@ -53,6 +53,7 @@ def m10tet(phi, thr):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -70,6 +71,7 @@ def m14tet(phi, thr):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -82,9 +84,10 @@ def m14tet(phi, thr):
 def perturb_near_folds(phi, sigma=0.05, ring=3):
     """Add small Gaussian perturbation to corners near current fold zones."""
     V = six_tet_volumes_3d(phi)
-    fold_cells = (V.min(axis=0) < THRESHOLD)
+    fold_cells = V.min(axis=0) < THRESHOLD
     # Inflate to corners.
     from scipy.ndimage import binary_dilation
+
     inflated = binary_dilation(fold_cells, iterations=ring)
     # Apply perturbation to the corner field within inflated zone.
     out = phi.copy()
@@ -123,21 +126,20 @@ def main():
     for it in range(3):
         t0 = time.time()
         new = m10tet(cur, 0.012)
-        n_neg, n_below, _ = report(new, f'  iter {it+1}/3', phi_input)
-        print(f'    wall={time.time()-t0:.1f}s', flush=True)
+        n_neg, n_below, _ = report(new, f'  iter {it + 1}/3', phi_input)
+        print(f'    wall={time.time() - t0:.1f}s', flush=True)
         if n_neg < best_n_neg:
-            best_n_neg = n_neg; best_state = new.copy()
+            best_n_neg = n_neg
+            best_state = new.copy()
             print(f'    *** new best: n_neg={n_neg} ***', flush=True)
         cur = new
         if n_neg == 0 and n_below == 0:
-            print(f'\n*** STRICT 100% feas at cycle 1 iter {it+1} ***',
-                  flush=True)
+            print(f'\n*** STRICT 100% feas at cycle 1 iter {it + 1} ***', flush=True)
             np.save(OUTPUT / 'b0039_z0_15_strict_via_chain.npy', new)
             return
 
     # Cycle 2: small-perturb then M10Tet @ 0.012.
-    print('\n=== Cycle 2: small Gaussian perturbation + M10Tet @ 0.012 ===',
-          flush=True)
+    print('\n=== Cycle 2: small Gaussian perturbation + M10Tet @ 0.012 ===', flush=True)
     for sigma in (0.02, 0.05, 0.10):
         cur_pre = best_state.copy()
         pert = perturb_near_folds(cur_pre, sigma=sigma, ring=3)
@@ -145,29 +147,29 @@ def main():
         t0 = time.time()
         rec = m10tet(pert, 0.012)
         n_neg, n_below, _ = report(rec, f'  recovered sigma={sigma}', phi_input)
-        print(f'    wall={time.time()-t0:.1f}s', flush=True)
+        print(f'    wall={time.time() - t0:.1f}s', flush=True)
         if n_neg < best_n_neg:
-            best_n_neg = n_neg; best_state = rec.copy()
+            best_n_neg = n_neg
+            best_state = rec.copy()
             print(f'    *** new best: n_neg={n_neg} ***', flush=True)
         if n_neg == 0 and n_below == 0:
-            print(f'\n*** STRICT 100% feas at cycle 2 sigma={sigma} ***',
-                  flush=True)
+            print(f'\n*** STRICT 100% feas at cycle 2 sigma={sigma} ***', flush=True)
             np.save(OUTPUT / 'b0039_z0_15_strict_via_chain.npy', rec)
             return
 
     # Cycle 3: M14Tet break + M10Tet @ 0.012 recover.
-    print('\n=== Cycle 3: M14Tet break + M10Tet @ 0.012 recover ===',
-          flush=True)
+    print('\n=== Cycle 3: M14Tet break + M10Tet @ 0.012 recover ===', flush=True)
     t0 = time.time()
     broken = m14tet(best_state.copy(), 0.015)
     n_b, _, _ = report(broken, '  m14-broken', phi_input)
-    print(f'    m14 wall={time.time()-t0:.1f}s', flush=True)
+    print(f'    m14 wall={time.time() - t0:.1f}s', flush=True)
     t1 = time.time()
     rec3 = m10tet(broken, 0.012)
     n_neg, n_below, _ = report(rec3, '  recovered', phi_input)
-    print(f'    recover wall={time.time()-t1:.1f}s', flush=True)
+    print(f'    recover wall={time.time() - t1:.1f}s', flush=True)
     if n_neg < best_n_neg:
-        best_n_neg = n_neg; best_state = rec3.copy()
+        best_n_neg = n_neg
+        best_state = rec3.copy()
         print(f'    *** new best: n_neg={n_neg} ***', flush=True)
     if n_neg == 0 and n_below == 0:
         print('\n*** STRICT 100% feas at cycle 3 ***', flush=True)
@@ -179,21 +181,21 @@ def main():
     t0 = time.time()
     over = m10tet(best_state.copy(), 0.018)
     n_o, _, _ = report(over, '  over-tightened', phi_input)
-    print(f'    wall={time.time()-t0:.1f}s', flush=True)
+    print(f'    wall={time.time() - t0:.1f}s', flush=True)
     t1 = time.time()
     rec4 = m10tet(over, 0.012)
     n_neg, n_below, _ = report(rec4, '  recovered', phi_input)
-    print(f'    recover wall={time.time()-t1:.1f}s', flush=True)
+    print(f'    recover wall={time.time() - t1:.1f}s', flush=True)
     if n_neg < best_n_neg:
-        best_n_neg = n_neg; best_state = rec4.copy()
+        best_n_neg = n_neg
+        best_state = rec4.copy()
         print(f'    *** new best: n_neg={n_neg} ***', flush=True)
     if n_neg == 0 and n_below == 0:
         print('\n*** STRICT 100% feas at cycle 4 ***', flush=True)
         np.save(OUTPUT / 'b0039_z0_15_strict_via_chain.npy', rec4)
         return
 
-    print(f'\n=== Final ===\n  best across all cycles: n_neg={best_n_neg}',
-          flush=True)
+    print(f'\n=== Final ===\n  best across all cycles: n_neg={best_n_neg}', flush=True)
     np.save(OUTPUT / 'b0039_z0_15_chain_best.npy', best_state)
     print('  saved best state to b0039_z0_15_chain_best.npy', flush=True)
 

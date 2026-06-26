@@ -6,6 +6,7 @@ Writes:
 
 Cluster_pipeline rows record an ``error`` field (adapter not implemented).
 """
+
 from __future__ import annotations
 
 import csv
@@ -26,11 +27,19 @@ OUTDIR = _HERE / 'output'
 CORR_DIR = OUTDIR / 'corrected'
 
 CSV_FIELDS = [
-    'case_id', 'method', 'shape',
-    'init_n_neg_2tri', 'init_min_T',
-    'final_n_neg_2tri', 'final_min_T',
-    'feasible', 'L1_dev', 'L2_dev', 'Linf_dev',
-    'wall_s', 'error',
+    'case_id',
+    'method',
+    'shape',
+    'init_n_neg_2tri',
+    'init_min_T',
+    'final_n_neg_2tri',
+    'final_min_T',
+    'feasible',
+    'L1_dev',
+    'L2_dev',
+    'Linf_dev',
+    'wall_s',
+    'error',
 ]
 
 

@@ -3,6 +3,7 @@
 For a representative test case, runs iterative SLSQP with each constraint
 configuration and saves side-by-side initial-vs-corrected Jacobian heatmaps.
 """
+
 import os
 import sys
 import time
@@ -43,10 +44,15 @@ def _add_neg_contour(ax, data, color="limegreen", lw=1.5):
         ax.contour(mask, levels=[0.5], colors=[color], linewidths=[lw])
 
 
-def save_constraint_comparison(deformation, phi_corrected, title, filename,
-                                extra_metric_initial=None,
-                                extra_metric_corrected=None,
-                                extra_label=None):
+def save_constraint_comparison(
+    deformation,
+    phi_corrected,
+    title,
+    filename,
+    extra_metric_initial=None,
+    extra_metric_corrected=None,
+    extra_label=None,
+):
     """Save a 2x2 figure: initial vs corrected Jacobian + optional extra metric."""
     phi_init_2hw = deformation[[1, 2], 0, :, :]
     J_init = np.squeeze(jacobian_det2D(phi_init_2hw))
@@ -114,9 +120,9 @@ def compute_monotonicity_map(phi_2hw):
     H, W = dy.shape
     result = np.full((H, W), np.inf)
     result[:, :-1] = np.minimum(result[:, :-1], h_mono)
-    result[:, 1:]  = np.minimum(result[:, 1:],  h_mono)
+    result[:, 1:] = np.minimum(result[:, 1:], h_mono)
     result[:-1, :] = np.minimum(result[:-1, :], v_mono)
-    result[1:, :]  = np.minimum(result[1:, :],  v_mono)
+    result[1:, :] = np.minimum(result[1:, :], v_mono)
     return result
 
 
@@ -130,12 +136,16 @@ def main():
     print("1/4  Jacobian-only constraint ...")
     t0 = time.time()
     phi_jac = iterative_serial(
-        deformation, verbose=0, enforce_shoelace=False, enforce_injectivity=False,
+        deformation,
+        verbose=0,
+        enforce_shoelace=False,
+        enforce_injectivity=False,
     )
     t_jac = time.time() - t0
     print(f"     Done in {t_jac:.1f}s")
     save_constraint_comparison(
-        deformation, phi_jac,
+        deformation,
+        phi_jac,
         f"Jacobian-only constraint  ({t_jac:.1f}s)",
         "constraint_jacobian_only.png",
     )
@@ -144,12 +154,16 @@ def main():
     print("2/4  Jacobian + Shoelace ...")
     t0 = time.time()
     phi_shoe = iterative_serial(
-        deformation, verbose=0, enforce_shoelace=True, enforce_injectivity=False,
+        deformation,
+        verbose=0,
+        enforce_shoelace=True,
+        enforce_injectivity=False,
     )
     t_shoe = time.time() - t0
     print(f"     Done in {t_shoe:.1f}s")
     save_constraint_comparison(
-        deformation, phi_shoe,
+        deformation,
+        phi_shoe,
         f"Jacobian + Shoelace constraint  ({t_shoe:.1f}s)",
         "constraint_jacobian_shoelace.png",
         extra_metric_initial=compute_shoelace_map(phi_init_2hw),
@@ -161,12 +175,16 @@ def main():
     print("3/4  Jacobian + Injectivity ...")
     t0 = time.time()
     phi_inject = iterative_serial(
-        deformation, verbose=0, enforce_shoelace=False, enforce_injectivity=True,
+        deformation,
+        verbose=0,
+        enforce_shoelace=False,
+        enforce_injectivity=True,
     )
     t_inject = time.time() - t0
     print(f"     Done in {t_inject:.1f}s")
     save_constraint_comparison(
-        deformation, phi_inject,
+        deformation,
+        phi_inject,
         f"Jacobian + Injectivity constraint  ({t_inject:.1f}s)",
         "constraint_jacobian_injectivity.png",
         extra_metric_initial=compute_monotonicity_map(phi_init_2hw),
@@ -178,13 +196,17 @@ def main():
     print("4/4  All constraints ...")
     t0 = time.time()
     phi_all = iterative_serial(
-        deformation, verbose=0, enforce_shoelace=True, enforce_injectivity=True,
+        deformation,
+        verbose=0,
+        enforce_shoelace=True,
+        enforce_injectivity=True,
     )
     t_all = time.time() - t0
     print(f"     Done in {t_all:.1f}s")
     # Show both extra metrics for the full-constraint case
     save_constraint_comparison(
-        deformation, phi_all,
+        deformation,
+        phi_all,
         f"All constraints (Jdet + Shoelace + Injectivity)  ({t_all:.1f}s)",
         "constraint_all.png",
         extra_metric_initial=compute_shoelace_map(phi_init_2hw),

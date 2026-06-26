@@ -2,6 +2,7 @@
 fold case, report per-method (feasibility, L1, wall) — the 3D analog
 of the 2D ``run_method`` dispatcher.
 """
+
 from __future__ import annotations
 
 import sys
@@ -63,10 +64,12 @@ def run_method(name: str, phi_in_3dhw: np.ndarray) -> dict:
     try:
         if name == 'm10':
             from dvfopt import HarmonicALMBarrier3DStrategy
+
             phi_out = _solve_via_3d_strategy(HarmonicALMBarrier3DStrategy, phi_in_3dhw)
             extra = {}
         elif name == 'm14':
             from dvfopt import HarmonicALMRefineRepair3DStrategy
+
             phi_out = _solve_via_3d_strategy(HarmonicALMRefineRepair3DStrategy, phi_in_3dhw)
             extra = {}
         elif name == 'lp_oneshot':
@@ -82,6 +85,7 @@ def run_method(name: str, phi_in_3dhw: np.ndarray) -> dict:
         error = None
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         phi_out = phi_in_3dhw.copy()
         extra = {}
@@ -117,7 +121,7 @@ def _print_row(rec):
 
 def main():
     cases = [
-        ('bowtie_3d_cube_8',  bowtie_3d_cube(size=8)),
+        ('bowtie_3d_cube_8', bowtie_3d_cube(size=8)),
         ('bowtie_3d_cube_12', bowtie_3d_cube(size=12)),
         ('dense_random_3d_10', dense_random_3d(size=10)),
     ]

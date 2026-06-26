@@ -8,6 +8,7 @@
 Each stage's output is cached to .npz so reruns of later stages are
 cheap.
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,10 +38,7 @@ def _stats_line(phi, label):
     n_neg = int((V <= 0).sum())
     n_below = int((V < THRESHOLD - 1e-5).sum())
     min_T = float(V.min())
-    return (
-        f'{label}  n_neg={n_neg:>6d}  n<thresh={n_below:>6d}  '
-        f'min_T={min_T:+.6f}'
-    )
+    return f'{label}  n_neg={n_neg:>6d}  n<thresh={n_below:>6d}  min_T={min_T:+.6f}'
 
 
 def _stage1(arr, z_range):
@@ -57,8 +55,8 @@ def _stage1(arr, z_range):
         stack[1, i] = rec['phi_out'][0]
         stack[2, i] = rec['phi_out'][1]
         print(
-            f'  z={z}: feas={rec["feasible"]}  '
-            f'wall={rec["wall_s"]:.1f}s', flush=True,
+            f'  z={z}: feas={rec["feasible"]}  wall={rec["wall_s"]:.1f}s',
+            flush=True,
         )
     np.save(STAGE1_CACHE, stack)
     print(f'[stage 1] cached to {STAGE1_CACHE}', flush=True)
@@ -76,6 +74,7 @@ def _stage2(stack):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=stack.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -91,15 +90,21 @@ def _stage2(stack):
 def _stage3(phi_in):
     """Below-threshold cluster polish via cluster_slp_3d."""
     phi_out, info = cluster_slp_iter_3d(
-        phi_in, threshold=THRESHOLD, inner_seed='m10',
-        max_outer_iters=4, polish_below_threshold=True, verbose=1,
+        phi_in,
+        threshold=THRESHOLD,
+        inner_seed='m10',
+        max_outer_iters=4,
+        polish_below_threshold=True,
+        verbose=1,
     )
     return phi_out, info
 
 
 def main():
     print('Loading B0039...', flush=True)
-    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(np.float64)
+    arr = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr'].astype(
+        np.float64
+    )
     z_range = list(range(10, 15))
     t_start = time.time()
 
@@ -125,7 +130,7 @@ def main():
     V_final = six_tet_volumes_3d(phi_s3)
     n_neg = int((V_final <= 0).sum())
     n_below = int((V_final < THRESHOLD - 1e-5).sum())
-    L1 = float(np.abs(phi_s3[1:3] - arr[1:3, z_range[0]:z_range[-1] + 1]).sum())
+    L1 = float(np.abs(phi_s3[1:3] - arr[1:3, z_range[0] : z_range[-1] + 1]).sum())
     print(
         f'\n=== Final ===\n'
         f'  shape:             {phi_s3.shape}\n'

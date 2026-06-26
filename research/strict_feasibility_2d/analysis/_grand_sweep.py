@@ -12,6 +12,7 @@ fixed baseline:
 
 Reports wall_s, L1_dev, final min_T, feasibility for each.
 """
+
 from __future__ import annotations
 
 import sys

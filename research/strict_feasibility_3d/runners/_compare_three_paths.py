@@ -21,6 +21,7 @@ and applies each of:
 Reports per-method: feasibility (under method-specific feasibility
 definition), L1 cost vs the 173-fold input, wall.
 """
+
 from __future__ import annotations
 
 import sys
@@ -52,8 +53,7 @@ def report(phi, label):
     n_neg = int((V <= 0).sum())
     n_below = int((V < THRESHOLD - 1e-5).sum())
     print(
-        f'{label:<24s}  n_neg={n_neg:>5d}  n<0.01={n_below:>5d}  '
-        f'min_T={float(V.min()):+.6f}',
+        f'{label:<24s}  n_neg={n_neg:>5d}  n<0.01={n_below:>5d}  min_T={float(V.min()):+.6f}',
         flush=True,
     )
     return V
@@ -62,6 +62,7 @@ def report(phi, label):
 # ============================================================
 # Option 3: local threshold relaxation (trivial)
 # ============================================================
+
 
 def option3_threshold_relaxation(phi):
     """Compute how many cells need below-strict relaxation, and at
@@ -76,8 +77,7 @@ def option3_threshold_relaxation(phi):
     for tau in [0.01, 0.005, 0.001, 0.0, -0.001, -0.005, -0.013, -0.014]:
         n_fail = int((tau > V).sum())
         print(
-            f'  threshold = {tau:+.4f}:  {n_fail:>5d} tets below '
-            f'({n_fail / V.size * 100:.6f}%)',
+            f'  threshold = {tau:+.4f}:  {n_fail:>5d} tets below ({n_fail / V.size * 100:.6f}%)',
             flush=True,
         )
     # The cells that need relaxation = those still below strict 0.01.
@@ -212,6 +212,7 @@ def option2_diagonal_flip(phi):
 # Option 1: non-linear interior-point (SLSQP focused)
 # ============================================================
 
+
 def option1_slsqp(phi):
     """Run scipy SLSQP on a focused crop around the fold cells.
 
@@ -220,9 +221,10 @@ def option1_slsqp(phi):
     we crop to the tightest bbox around fold cells and freeze the rest.
     """
     from scipy.optimize import minimize
+
     print('\n=== Option 1: Non-linear SLSQP (focused crop) ===', flush=True)
     V = six_tet_volumes_3d(phi)
-    fold_mask = (V.min(axis=0) <= 0)
+    fold_mask = V.min(axis=0) <= 0
     if not fold_mask.any():
         print('  no fold cells — nothing to do', flush=True)
         return
@@ -239,12 +241,15 @@ def option1_slsqp(phi):
     x0 = max(0, x_min - pad)
     x1 = min(V.shape[3], x_max + 1 + pad)
     # Corner-grid indices.
-    crop = phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1]
+    crop = phi[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
     print(f'  bbox cells:  z[{z_min},{z_max}], y[{y_min},{y_max}], x[{x_min},{x_max}]', flush=True)
     print(f'  crop corner shape: {crop.shape}', flush=True)
     n_phi = crop.size
     if n_phi > 200_000:
-        print(f'  crop too large for SLSQP ({n_phi} vars) — would not converge in reasonable time', flush=True)
+        print(
+            f'  crop too large for SLSQP ({n_phi} vars) — would not converge in reasonable time',
+            flush=True,
+        )
         print('  SKIPPING. SLSQP only viable when fold bbox is tight (<= ~100k vars).', flush=True)
         return
     # If the crop is reasonable size, attempt SLSQP. For dense B0039

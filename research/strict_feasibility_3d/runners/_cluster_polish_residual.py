@@ -6,6 +6,7 @@ small isolated specks rather than the 16-slice fold columns that
 the earlier 16^3 dense-cluster test hit, so cluster decomposition
 should actually decompose this time.
 """
+
 from __future__ import annotations
 
 import sys
@@ -32,8 +33,8 @@ OUTPUT = _HERE / 'output'
 def _stats(phi, label):
     V = six_tet_volumes_3d(phi)
     return (
-        f'{label}  n_neg={int((V<=0).sum()):>6d}  '
-        f'n<0.01={int((V<0.01-1e-5).sum()):>6d}  '
+        f'{label}  n_neg={int((V <= 0).sum()):>6d}  '
+        f'n<0.01={int((V < 0.01 - 1e-5).sum()):>6d}  '
         f'min_T={float(V.min()):+.6f}'
     )
 
@@ -46,7 +47,7 @@ def main():
 
     # Inspect cluster structure first.
     V = six_tet_volumes_3d(phi)
-    fold_mask = (V.min(axis=0) <= 0)
+    fold_mask = V.min(axis=0) <= 0
     print(f'\n  fold mask shape: {fold_mask.shape}  fold cells: {int(fold_mask.sum())}', flush=True)
     for md in [0, 1, 2]:
         merged = binary_dilation(fold_mask, iterations=md) if md > 0 else fold_mask

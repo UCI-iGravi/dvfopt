@@ -27,6 +27,7 @@ This is a faithful-spirit, tractable port for COMPARISON, not a
 verbatim reimplementation of the paper's rest-shape-normalized form.
 Gradient is analytic and FD-verified.
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,8 +59,8 @@ def _phi_to_flat(phi):
 def _flat_to_phi(flat, D, H, W):
     n = D * H * W
     dx = flat[:n].reshape(D, H, W)
-    dy = flat[n:2 * n].reshape(D, H, W)
-    dz = flat[2 * n:].reshape(D, H, W)
+    dy = flat[n : 2 * n].reshape(D, H, W)
+    dz = flat[2 * n :].reshape(D, H, W)
     return np.stack([dz, dy, dx])
 
 
@@ -95,8 +96,10 @@ def _verify_gradient():
     fd = np.zeros_like(g)
     h = 1e-6
     for i in range(len(flat)):
-        fp = flat.copy(); fp[i] += h
-        fm = flat.copy(); fm[i] -= h
+        fp = flat.copy()
+        fp[i] += h
+        fm = flat.copy()
+        fm[i] -= h
         Ep, _ = energy_and_grad(fp, flat0, D, H, W, eps, lam, target)
         Em, _ = energy_and_grad(fm, flat0, D, H, W, eps, lam, target)
         fd[i] = (Ep - Em) / (2 * h)
@@ -105,31 +108,46 @@ def _verify_gradient():
     return err
 
 
-def run_tlc(phi, *, eps_schedule=(1.0, 0.3, 0.1, 0.03, 0.01, 0.003),
-            lam=1e-3, target=0.0, maxiter=200, verbose=1):
+def run_tlc(
+    phi,
+    *,
+    eps_schedule=(1.0, 0.3, 0.1, 0.03, 0.01, 0.003),
+    lam=1e-3,
+    target=0.0,
+    maxiter=200,
+    verbose=1,
+):
     D, H, W = phi.shape[1:]
     flat0 = _phi_to_flat(phi)
     flat = flat0.copy()
     V0 = six_tet_volumes_3d(phi)
     if verbose:
-        print(f'Start: n_neg={int((V0<=0).sum())} '
-              f'n<0.01={int((V0<THRESHOLD-1e-5).sum())} min_T={V0.min():+.6f}',
-              flush=True)
+        print(
+            f'Start: n_neg={int((V0 <= 0).sum())} '
+            f'n<0.01={int((V0 < THRESHOLD - 1e-5).sum())} min_T={V0.min():+.6f}',
+            flush=True,
+        )
     t0 = time.time()
     for eps in eps_schedule:
         res = minimize(
-            energy_and_grad, flat, args=(flat0, D, H, W, eps, lam, target),
-            jac=True, method='L-BFGS-B',
+            energy_and_grad,
+            flat,
+            args=(flat0, D, H, W, eps, lam, target),
+            jac=True,
+            method='L-BFGS-B',
             options={'maxiter': maxiter, 'ftol': 1e-12, 'gtol': 1e-8},
         )
         flat = res.x
         phi_cur = _flat_to_phi(flat, D, H, W)
         V = six_tet_volumes_3d(phi_cur)
         if verbose:
-            print(f'  eps={eps:.3f}: n_neg={int((V<=0).sum())} '
-                  f'n<0.01={int((V<THRESHOLD-1e-5).sum())} min_T={V.min():+.6f} '
-                  f'L1={float(np.abs(phi_cur-phi).sum()):.1f} '
-                  f'iters={res.nit} wall={time.time()-t0:.1f}s', flush=True)
+            print(
+                f'  eps={eps:.3f}: n_neg={int((V <= 0).sum())} '
+                f'n<0.01={int((V < THRESHOLD - 1e-5).sum())} min_T={V.min():+.6f} '
+                f'L1={float(np.abs(phi_cur - phi).sum()):.1f} '
+                f'iters={res.nit} wall={time.time() - t0:.1f}s',
+                flush=True,
+            )
     return _flat_to_phi(flat, D, H, W)
 
 
@@ -143,20 +161,30 @@ def main():
     t0 = time.time()
     out = run_tlc(phi, lam=1e-3, target=THRESHOLD)
     V = six_tet_volumes_3d(out)
-    print(f'  FINAL: n_neg={int((V<=0).sum())} n<0.01={int((V<THRESHOLD-1e-5).sum())} '
-          f'min_T={V.min():+.6f} L1={float(np.abs(out-phi).sum()):.1f} '
-          f'wall={time.time()-t0:.1f}s', flush=True)
+    print(
+        f'  FINAL: n_neg={int((V <= 0).sum())} n<0.01={int((V < THRESHOLD - 1e-5).sum())} '
+        f'min_T={V.min():+.6f} L1={float(np.abs(out - phi).sum()):.1f} '
+        f'wall={time.time() - t0:.1f}s',
+        flush=True,
+    )
     np.save(OUTPUT / 'b0039_z0_15_tlc_from_chainbest.npy', out)
 
     print('\n=== TLC on RAW dense band (z0-15, 173 folds) ===', flush=True)
     phi_raw = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy').astype(np.float64)
     t0 = time.time()
-    out_raw = run_tlc(phi_raw, lam=1e-4, target=THRESHOLD,
-                      eps_schedule=(2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01))
+    out_raw = run_tlc(
+        phi_raw,
+        lam=1e-4,
+        target=THRESHOLD,
+        eps_schedule=(2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01),
+    )
     V = six_tet_volumes_3d(out_raw)
-    print(f'  FINAL: n_neg={int((V<=0).sum())} n<0.01={int((V<THRESHOLD-1e-5).sum())} '
-          f'min_T={V.min():+.6f} L1={float(np.abs(out_raw-phi_raw).sum()):.1f} '
-          f'wall={time.time()-t0:.1f}s', flush=True)
+    print(
+        f'  FINAL: n_neg={int((V <= 0).sum())} n<0.01={int((V < THRESHOLD - 1e-5).sum())} '
+        f'min_T={V.min():+.6f} L1={float(np.abs(out_raw - phi_raw).sum()):.1f} '
+        f'wall={time.time() - t0:.1f}s',
+        flush=True,
+    )
     np.save(OUTPUT / 'b0039_z0_15_tlc_from_raw.npy', out_raw)
 
 

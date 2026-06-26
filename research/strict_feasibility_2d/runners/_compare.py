@@ -3,6 +3,7 @@
 ``run_method(name, phi_2hw) -> dict`` runs ``name`` on ``phi_2hw`` and
 returns a dict with all metrics specified in the design spec.
 """
+
 from __future__ import annotations
 
 import time
@@ -73,18 +74,22 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
     """Return ``(phi_out, extra_info_dict)``."""
     if name == 'harmonic_only':
         from dvfopt.core.wallbreakers import harmonic_extension_2d
+
         phi_out = harmonic_extension_2d(phi_2hw, threshold=THRESHOLD)
         return phi_out, {}
     if name == 'm10':
         from dvfopt import HarmonicALMBarrierStrategy
+
         phi_out = _solve_via_strategy(HarmonicALMBarrierStrategy, phi_2hw)
         return phi_out, {}
     if name == 'm14':
         from dvfopt import HarmonicALMRefineRepairStrategy
+
         phi_out = _solve_via_strategy(HarmonicALMRefineRepairStrategy, phi_2hw)
         return phi_out, {}
     if name == 'm14_schwarz':
         from dvfopt import SchwarzHarmonicALMRefineRepairStrategy
+
         phi_out = _solve_via_strategy(SchwarzHarmonicALMRefineRepairStrategy, phi_2hw)
         return phi_out, {}
     if name == 'cluster_pipeline':
@@ -116,9 +121,8 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
         from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
             cluster_slp_iter,
         )
-        phi_out, info = cluster_slp_iter(
-            phi_2hw, threshold=THRESHOLD, inner_seed='m14'
-        )
+
+        phi_out, info = cluster_slp_iter(phi_2hw, threshold=THRESHOLD, inner_seed='m14')
         return phi_out, info
     if name == 'auto_slp':
         # Adaptive: route by pixel count to the empirical winner.
@@ -138,13 +142,17 @@ def _dispatch(name: str, phi_2hw: np.ndarray):
             from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
                 cluster_slp_iter,
             )
+
             # n_workers=16 is the universal-win lever (small but consistent
             # ~5-10% over n=8 on every slice). The tempting md=4 +
             # inner_max_iter=5 combo tuned to z=300 (~1.34x) backfires on
             # sparser slices (z=450/500: +46% wall, +65% L1) — kept at
             # defaults to preserve the universal-strict-feasibility goal.
             phi_out, info = cluster_slp_iter(
-                phi_2hw, threshold=THRESHOLD, max_outer_iters=6, n_workers=16,
+                phi_2hw,
+                threshold=THRESHOLD,
+                max_outer_iters=6,
+                n_workers=16,
                 scheduler='continuous',
             )
             info = {**info, 'auto_dispatch': 'cluster_slp', 'pixels': pixels}

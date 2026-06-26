@@ -9,6 +9,7 @@ that smaller pads leave intact.
 Test progression: ring_pad in {2 (default), 5, 10}, with
 threshold=0.015 (matches our overshoot target).
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,7 +32,7 @@ def main():
     phi_in = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     V = six_tet_volumes_3d(phi_in)
     print(
-        f'Input: n_neg={int((V<=0).sum())}  n<0.01={int((V<TRUE_THRESHOLD-1e-5).sum())}  '
+        f'Input: n_neg={int((V <= 0).sum())}  n<0.01={int((V < TRUE_THRESHOLD - 1e-5).sum())}  '
         f'min_T={float(V.min()):+.6f}',
         flush=True,
     )

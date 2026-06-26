@@ -5,6 +5,7 @@ dense — `lp_oneshot` hung in HiGHS for hours. This script uses a
 16x16x16 region with ~11% folded tets, which is closer to what
 cluster_slp would see per-cluster in a real production pipeline.
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,7 +26,7 @@ def main():
     init = _stats(sub)
     print(
         f'B0039 16x16x16 moderate-density subvolume:  shape={sub.shape}  '
-        f'init n_neg={init["n_neg"]} ({init["n_neg"]/init.get("total", 1)*100 if False else 100*init["n_neg"]/(6*16**3):.2f}%)  '
+        f'init n_neg={init["n_neg"]} ({init["n_neg"] / init.get("total", 1) * 100 if False else 100 * init["n_neg"] / (6 * 16**3):.2f}%)  '
         f'min_T={init["min_T"]:+.4f}',
         flush=True,
     )

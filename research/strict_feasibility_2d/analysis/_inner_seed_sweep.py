@@ -7,6 +7,7 @@ polishes L1 anyway, the L2-refine inside m14_fast is redundant.
 Hypothesis: cheaper inner seeds (m10, even just harmonic) give the
 same final feasibility and L1 in less time.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,8 +37,9 @@ def _stats(phi_2hw):
 
 
 def main():
-    print(f'{"slice":<8s}  {"seed":<11s}  {"wall (s)":>9s}  {"L1":>11s}  '
-          f'{"n_neg":>5s}  {"min_T":>9s}')
+    print(
+        f'{"slice":<8s}  {"seed":<11s}  {"wall (s)":>9s}  {"L1":>11s}  {"n_neg":>5s}  {"min_T":>9s}'
+    )
     print('-' * 70)
     for z in SLICES:
         case_id, phi_in, meta = load_b0039_slice(z)
@@ -51,8 +53,7 @@ def main():
             wall = time.time() - t0
             n_neg, mt = _stats(phi_out)
             L1 = float(np.abs(phi_out - phi_in).sum())
-            print(f'z={z:<6d}  {seed:<11s}  {wall:>9.1f}  {L1:>11.1f}  '
-                  f'{n_neg:>5d}  {mt:>+9.4f}')
+            print(f'z={z:<6d}  {seed:<11s}  {wall:>9.1f}  {L1:>11.1f}  {n_neg:>5d}  {mt:>+9.4f}')
 
 
 if __name__ == '__main__':

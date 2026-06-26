@@ -4,6 +4,7 @@ Loads the precomputed 24x24x24 subvolume (centered on the densest fold
 cluster in B0039 at z=12, y=191, x=189; 80% of tets initially folded)
 and runs each method, reporting (feasibility, L1, wall).
 """
+
 from __future__ import annotations
 
 import sys

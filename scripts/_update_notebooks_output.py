@@ -6,6 +6,7 @@ For each notebook:
 3. Replace plt.show() with show_and_save(OUTPUT_DIR)
 4. Add a final cell that saves CSV + JSON summary (if 'results' dict exists)
 """
+
 import json
 import re
 from pathlib import Path
@@ -204,9 +205,17 @@ def process_notebook(nb_path, method, name):
     first_code_idx = None
     for i, cell in enumerate(cells):
         if cell["cell_type"] == "code":
-            src = cell["source"] if isinstance(cell["source"], list) else cell["source"].splitlines(keepends=True)
+            src = (
+                cell["source"]
+                if isinstance(cell["source"], list)
+                else cell["source"].splitlines(keepends=True)
+            )
             joined = "".join(src)
-            if "from dvfopt" in joined or "from benchmark_utils" in joined or "import dvfopt" in joined:
+            if (
+                "from dvfopt" in joined
+                or "from benchmark_utils" in joined
+                or "import dvfopt" in joined
+            ):
                 cell["source"] = add_benchmark_utils_import(src, OUTPUT_IMPORTS)
                 first_code_idx = i
                 break
@@ -229,7 +238,11 @@ def process_notebook(nb_path, method, name):
     # 3. Replace plt.show() in all code cells
     for cell in cells:
         if cell["cell_type"] == "code":
-            src = cell["source"] if isinstance(cell["source"], list) else cell["source"].splitlines(keepends=True)
+            src = (
+                cell["source"]
+                if isinstance(cell["source"], list)
+                else cell["source"].splitlines(keepends=True)
+            )
             cell["source"] = replace_plt_show(src)
 
     # 4. Add final save cell if not present

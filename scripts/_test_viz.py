@@ -1,4 +1,5 @@
 """Minimal reproduction of the viz cell error."""
+
 import os
 import sys
 
@@ -28,10 +29,15 @@ def measure(phi):
     fd = _forward_jdet_2d(phi[0], phi[1])
     tri = triangle_sign_areas2D(phi)
     return dict(
-        jd=jd, fd=fd, tri=tri,
-        n_cd=int((jd <= 0).sum()), n_fd=int((fd <= 0).sum()),
+        jd=jd,
+        fd=fd,
+        tri=tri,
+        n_cd=int((jd <= 0).sum()),
+        n_fd=int((fd <= 0).sum()),
         n_tr=int((tri <= 0).sum()),
-        min_cd=float(jd.min()), min_fd=float(fd.min()), min_tr=float(tri.min()),
+        min_cd=float(jd.min()),
+        min_fd=float(fd.min()),
+        min_tr=float(tri.min()),
     )
 
 
@@ -57,9 +63,9 @@ res_both = R(True)
 qi_init = qi_fd = qi_an = qi_both = []
 
 variants = [
-    ("initial",                     phi_init, m0,     len(qi_init), None),
-    ("(A) finite-diff Jac",         phi_fd,   m_fd,   len(qi_fd),   res_fd),
-    ("(B) analytical Jac",          phi_an,   m_an,   len(qi_an),   res_an),
+    ("initial", phi_init, m0, len(qi_init), None),
+    ("(A) finite-diff Jac", phi_fd, m_fd, len(qi_fd), res_fd),
+    ("(B) analytical Jac", phi_an, m_an, len(qi_an), res_an),
     ("(C) analytical + warm-start", phi_both, m_both, len(qi_both), res_both),
 ]
 

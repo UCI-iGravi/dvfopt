@@ -16,6 +16,7 @@ continuous Jacobian det(J) at each sample. Two outcomes:
 If most of the 94 cells are case 1, we have a clear path to
 strict feasibility via local upsampling.
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,8 +42,7 @@ _DIAGONALS = [(0, 7), (1, 6), (2, 5), (3, 4)]
 
 
 def _six_tets_for_diagonal(start, end):
-    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8)
-                 if (v ^ w) in (1, 2, 4)]
+    all_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in all_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -60,11 +60,13 @@ def _best_min_per_cell(phi):
         tets = _six_tets_for_diagonal(s, e)
         V_d = np.empty((6, *V_default.shape[1:]))
         for k, (i0, i1, i2, i3) in enumerate(tets):
-            v_id = float(_tet_volume_from_vertices(pos_id[i0], pos_id[i1],
-                                                    pos_id[i2], pos_id[i3])[0, 0, 0])
+            v_id = float(
+                _tet_volume_from_vertices(pos_id[i0], pos_id[i1], pos_id[i2], pos_id[i3])[0, 0, 0]
+            )
             sgn = +1.0 if v_id > 0 else -1.0
-            V_d[k] = sgn * _tet_volume_from_vertices(pos_all[i0], pos_all[i1],
-                                                      pos_all[i2], pos_all[i3])
+            V_d[k] = sgn * _tet_volume_from_vertices(
+                pos_all[i0], pos_all[i1], pos_all[i2], pos_all[i3]
+            )
         min_per_diag[di] = V_d.min(axis=0)
     return min_per_diag.max(axis=0)
 
@@ -108,9 +110,9 @@ def _trilinear_jacobian_det(disp_corners, ref_corners, samples_per_dim=5):
             wz = ui if iz else (1 - ui)
             wy = vi if iy else (1 - vi)
             wx = wi if ix else (1 - wi)
-            d_wz = (1 if iz else -1)
-            d_wy = (1 if iy else -1)
-            d_wx = (1 if ix else -1)
+            d_wz = 1 if iz else -1
+            d_wy = 1 if iy else -1
+            d_wx = 1 if ix else -1
             # Note: u corresponds to z direction.
             dP_du += d_wz * wy * wx * pos_corners[i]
             dP_dv += wz * d_wy * wx * pos_corners[i]
@@ -124,7 +126,7 @@ def _trilinear_jacobian_det(disp_corners, ref_corners, samples_per_dim=5):
 def main():
     phi = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     print(f'Loaded; {len(nz)} unfixable cells found.', flush=True)
 
@@ -158,9 +160,9 @@ def main():
     arr = np.array(min_det_per_cell)
     print(
         f'\nResults across all {len(nz)} unfixable cells:\n'
-        f'  continuously fold-free everywhere (det(J) > 0 always):   {n_continuously_feasible} ({n_continuously_feasible/len(nz)*100:.1f}%)\n'
-        f'  near-singular (0 < det(J) < threshold somewhere):         {n_near_singular} ({n_near_singular/len(nz)*100:.1f}%)\n'
-        f'  continuously folded (det(J) < 0 somewhere):               {n_continuously_folded} ({n_continuously_folded/len(nz)*100:.1f}%)\n',
+        f'  continuously fold-free everywhere (det(J) > 0 always):   {n_continuously_feasible} ({n_continuously_feasible / len(nz) * 100:.1f}%)\n'
+        f'  near-singular (0 < det(J) < threshold somewhere):         {n_near_singular} ({n_near_singular / len(nz) * 100:.1f}%)\n'
+        f'  continuously folded (det(J) < 0 somewhere):               {n_continuously_folded} ({n_continuously_folded / len(nz) * 100:.1f}%)\n',
         flush=True,
     )
     print(
@@ -171,7 +173,14 @@ def main():
 
     # Histogram bins.
     print('\n  Distribution:', flush=True)
-    for lo, hi in [(-np.inf, -0.1), (-0.1, -0.01), (-0.01, 0), (0, 0.01), (0.01, 0.1), (0.1, np.inf)]:
+    for lo, hi in [
+        (-np.inf, -0.1),
+        (-0.1, -0.01),
+        (-0.01, 0),
+        (0, 0.01),
+        (0.01, 0.1),
+        (0.1, np.inf),
+    ]:
         n = int(((arr > lo) & (arr <= hi)).sum())
         print(f'    {lo:+.3f} < min(det(J)) <= {hi:+.3f}:  {n}', flush=True)
 

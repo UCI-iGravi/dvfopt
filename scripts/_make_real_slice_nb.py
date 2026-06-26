@@ -1,4 +1,5 @@
 """Build 06_real-slice.ipynb."""
+
 import json
 
 path = "notebooks/two-triangle-check/06_real-slice.ipynb"
@@ -37,8 +38,7 @@ cells.append(
         "- **slice 90** (`02a`) - initial CD Jdet has `neg=0` (central-diff is completely blind), yet 2-triangle flags 35 folded cells. Real-data instance of the bowtie/shoelace-artifact failure mode.\n"
         "- **slice 350** (`02c`) - same pattern, `neg_CD=0` vs `neg_TR=12`.\n"
         "\n"
-        "This is the most direct evidence that switching from central-difference to a geometric fold check matters on real registration output, not just synthetic constructions."
-    ,
+        "This is the most direct evidence that switching from central-difference to a geometric fold check matters on real registration output, not just synthetic constructions.",
         "intro",
     )
 )

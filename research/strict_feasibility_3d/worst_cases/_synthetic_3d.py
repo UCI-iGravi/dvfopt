@@ -5,6 +5,7 @@ _build_adversarial.py``. These cases are deliberately small so the LP
 problem is tractable (full LP at 20x20x20 has ~24k decision vars,
 which HiGHS solves in seconds).
 """
+
 from __future__ import annotations
 
 import numpy as np

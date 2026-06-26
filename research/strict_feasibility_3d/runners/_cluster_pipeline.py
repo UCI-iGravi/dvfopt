@@ -19,6 +19,7 @@ Pipeline:
 
 Total estimated wall: ~30 min (M10Tet) + ~1 min (cluster SLSQP) + ~30 min (recovery) = ~1 hour.
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,7 +56,7 @@ def cluster_fold_cubes(fold_cells, radius=3):
     pts = np.array(fold_cells, dtype=int)
     adj = np.zeros((n, n), dtype=bool)
     for i in range(n):
-        for j in range(i+1, n):
+        for j in range(i + 1, n):
             d = np.abs(pts[i] - pts[j]).max()
             if d <= radius:
                 adj[i, j] = True
@@ -64,13 +65,18 @@ def cluster_fold_cubes(fold_cells, radius=3):
     labels = [-1] * n
     cl = 0
     for i in range(n):
-        if visited[i]: continue
-        q = [i]; visited[i] = True; labels[i] = cl
+        if visited[i]:
+            continue
+        q = [i]
+        visited[i] = True
+        labels[i] = cl
         while q:
             v = q.pop()
             for j in range(n):
                 if adj[v, j] and not visited[j]:
-                    visited[j] = True; labels[j] = cl; q.append(j)
+                    visited[j] = True
+                    labels[j] = cl
+                    q.append(j)
         cl += 1
     cluster_members = [[] for _ in range(cl)]
     for i, lbl in enumerate(labels):
@@ -87,8 +93,7 @@ def cluster_fold_cubes(fold_cells, radius=3):
 
 
 def run_slsqp_around(phi, cz, cy, cx, k_ring):
-    cubes, free_corners, x0 = build_coupled_problem(
-        phi, cz, cy, cx, k_ring)
+    cubes, free_corners, x0 = build_coupled_problem(phi, cz, cy, cx, k_ring)
     apply_x, corner_idx_map = make_apply_x(cubes, free_corners, phi)
     ck.FEASIBILITY_THR = SLSQP_THR
     constraint_fn, _ = make_constraint_fn(cubes, corner_idx_map)
@@ -96,8 +101,11 @@ def run_slsqp_around(phi, cz, cy, cx, k_ring):
     cons = [{'type': 'ineq', 'fun': constraint_fn}]
     t0 = time.time()
     res = minimize(
-        obj, x0, jac=obj_grad,
-        constraints=cons, method='SLSQP',
+        obj,
+        x0,
+        jac=obj_grad,
+        constraints=cons,
+        method='SLSQP',
         options={'maxiter': 300, 'ftol': 1e-9, 'disp': False},
     )
     wall = time.time() - t0
@@ -111,6 +119,7 @@ def m10tet(phi, thr=0.015):
         Solver,
         Tet6Constraint3D,
     )
+
     solver = Solver(
         constraint=Tet6Constraint3D(shape=phi.shape[1:]),
         objective=L1Objective(eps=1e-4),
@@ -136,16 +145,14 @@ def main():
     print('\n=== Step 2: Identify fold clusters ===', flush=True)
     V = six_tet_volumes_3d(phi_after_m10)
     min_per_cube = V.min(axis=0)
-    fold_mask = (min_per_cube <= 0)
-    fold_cells = [tuple(int(c) for c in p)
-                  for p in zip(*np.where(fold_mask))]
+    fold_mask = min_per_cube <= 0
+    fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
     print(f'  # fold cubes: {len(fold_cells)}', flush=True)
     _, centroids, members, radii = cluster_fold_cubes(fold_cells, radius=3)
     n_clusters = len(centroids)
     print(f'  # clusters (radius=3): {n_clusters}', flush=True)
     for i, (c, mem, r) in enumerate(zip(centroids, members, radii)):
-        print(f'    cluster {i}: centroid={c}, size={len(mem)}, radius={r}',
-              flush=True)
+        print(f'    cluster {i}: centroid={c}, size={len(mem)}, radius={r}', flush=True)
 
     # === Step 3: Per-cluster SLSQP. ===
     print('\n=== Step 3: Per-cluster coupled SLSQP @ thr=1e-3 ===', flush=True)
@@ -157,27 +164,32 @@ def main():
         cz, cy, cx = c
         # Check boundary safety.
         D, H, W = cur.shape[1:]
-        if not (k_ring <= cz < D - 1 - k_ring
-                and k_ring <= cy < H - 1 - k_ring
-                and k_ring <= cx < W - 1 - k_ring):
+        if not (
+            k_ring <= cz < D - 1 - k_ring
+            and k_ring <= cy < H - 1 - k_ring
+            and k_ring <= cx < W - 1 - k_ring
+        ):
             # Clip to safe k_ring.
             safe_k = min(cz, cy, cx, D - 1 - cz - 1, H - 1 - cy - 1, W - 1 - cx - 1)
             k_ring = max(1, min(k_ring, safe_k))
-            print(f'  cluster {i}: k_ring clipped to {k_ring} for boundary safety',
-                  flush=True)
+            print(f'  cluster {i}: k_ring clipped to {k_ring} for boundary safety', flush=True)
         new, res, wall, n_cubes, n_dof = run_slsqp_around(cur, cz, cy, cx, k_ring)
         total_slsqp_wall += wall
         if res is None or not res.success:
-            print(f'  cluster {i}: SLSQP did not converge (success={res.success if res else None})',
-                  flush=True)
+            print(
+                f'  cluster {i}: SLSQP did not converge (success={res.success if res else None})',
+                flush=True,
+            )
             continue
         V_new = six_tet_volumes_3d(new)
         n_neg_new = int((V_new <= 0).sum())
         V_cur = six_tet_volumes_3d(cur)
         n_neg_cur = int((V_cur <= 0).sum())
-        print(f'  cluster {i}: k={k_ring} cubes={n_cubes} DOF={n_dof} '
-              f'wall={wall:.1f}s  n_neg={n_neg_cur}->{n_neg_new}',
-              flush=True)
+        print(
+            f'  cluster {i}: k={k_ring} cubes={n_cubes} DOF={n_dof} '
+            f'wall={wall:.1f}s  n_neg={n_neg_cur}->{n_neg_new}',
+            flush=True,
+        )
         # Accept if global n_neg didn't increase substantially.
         if n_neg_new <= n_neg_cur + 5:
             cur = new
@@ -200,9 +212,12 @@ def main():
         n, b = n_after_slsqp, b_after_slsqp
 
     total_wall = wall1 + total_slsqp_wall + wall_rec
-    print(f'\n=== VARIANT C FINAL ===\n'
-          f'  n_neg={n}, n<0.01={b}\n'
-          f'  total wall = {total_wall:.1f}s = {total_wall/60:.1f} min', flush=True)
+    print(
+        f'\n=== VARIANT C FINAL ===\n'
+        f'  n_neg={n}, n<0.01={b}\n'
+        f'  total wall = {total_wall:.1f}s = {total_wall / 60:.1f} min',
+        flush=True,
+    )
     if n == 0 and b == 0:
         np.save(OUTPUT / 'b0039_z0_15_strict_via_simple_C.npy', final)
         print('  *** STRICT FEASIBLE via VARIANT C ***', flush=True)

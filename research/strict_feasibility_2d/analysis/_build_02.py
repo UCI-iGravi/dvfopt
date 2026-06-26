@@ -1,4 +1,5 @@
 """Generator for ``02_lp_certifies_optimum.ipynb``."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,7 +9,9 @@ import nbformat as nbf
 HERE = Path(__file__).parent
 
 CELLS = [
-    ('md', """\
+    (
+        'md',
+        """\
 # 02 — LP optimum vs every baseline
 
 Quantifies how much L1 each existing method leaves on the table per
@@ -17,8 +20,11 @@ case, using SLP iter as the reference. Answers:
 1. Is the LP/SLP route Pareto-best (strict feasibility AND smallest L1)?
 2. Where do existing methods fall short, and by how much?
 3. Does iteration matter? (`slp_iter` vs `lp_oneshot` L1 gap.)
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 from pathlib import Path
 import pandas as pd
 
@@ -34,8 +40,11 @@ df_synth = pd.read_csv(OUTDIR / 'comparison_synthetic.csv')
 df_b0039 = pd.read_csv(OUTDIR / 'comparison_b0039.csv') if (OUTDIR / 'comparison_b0039.csv').exists() else pd.DataFrame()
 df = pd.concat([df_synth, df_b0039], ignore_index=True)
 df.head(2)
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 # Gap table: percent L1 excess vs slp_iter on the same case (feasible-only).
 df_feas = df[df['feasible']].copy()
 
@@ -51,16 +60,22 @@ gap = joined.pivot_table(
     values='L1_gap_pct', aggfunc='first',
 ).round(1)
 gap
-"""),
-    ('md', """\
+""",
+    ),
+    (
+        'md',
+        """\
 **Reading:** entries are `100 * (L1_method - L1_slp) / L1_slp` —
 percentage L1 excess vs SLP per case. Positive = method leaves L1
 on the table. 0 = matches SLP. Negative = method beats SLP (only
 expected for the bowtie/tiny-margin family where LP is provably
 optimal under the linearisation; elsewhere indicates a bug or that
 SLP didn't converge).
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -84,8 +99,11 @@ if cases and methods:
     plt.show()
 else:
     print('No feasible cross-method rows to plot.')
-"""),
-    ('code', """\
+""",
+    ),
+    (
+        'code',
+        """\
 # Convergence check: slp_iter.L1_dev vs lp_oneshot.L1_dev per case.
 ones = df_feas[df_feas['method'] == 'lp_oneshot'][['case_id', 'L1_dev']].rename(
     columns={'L1_dev': 'L1_oneshot'}
@@ -96,8 +114,11 @@ slps = df_feas[df_feas['method'] == 'slp_iter'][['case_id', 'L1_dev']].rename(
 osvs = ones.merge(slps, on='case_id')
 osvs['slp_minus_oneshot'] = osvs['L1_slp'] - osvs['L1_oneshot']
 osvs.sort_values('slp_minus_oneshot')
-"""),
-    ('md', """\
+""",
+    ),
+    (
+        'md',
+        """\
 ## Conclusions
 
 * If `slp_iter` has `feasible=True` on every case AND the gap-table
@@ -110,7 +131,8 @@ osvs.sort_values('slp_minus_oneshot')
 * If `lp_oneshot` / `slp_iter` runs do not complete on the full
   B0039 slice within a wall budget: trigger spec fallback row 5
   (cluster_lp) for scale.
-"""),
+""",
+    ),
 ]
 
 

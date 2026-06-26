@@ -18,6 +18,7 @@ This script:
 
 Goal: drive n_neg to 0 from the 6-fold multi-scale baseline.
 """
+
 from __future__ import annotations
 
 import sys
@@ -40,7 +41,7 @@ THRESHOLD = 0.01
 def downsample_2x(phi):
     _, D, H, W = phi.shape
     Dh, Hh, Wh = D // 2, H // 2, W // 2
-    phi_t = phi[:, :2*Dh, :2*Hh, :2*Wh]
+    phi_t = phi[:, : 2 * Dh, : 2 * Hh, : 2 * Wh]
     coarse = phi_t.reshape(3, Dh, 2, Hh, 2, Wh, 2).mean(axis=(2, 4, 6))
     return coarse * 0.5
 
@@ -52,7 +53,11 @@ def upsample_2x(coarse, target_shape):
         if out[c].shape != target_shape:
             out_c = out[c]
             out_full = np.zeros(target_shape, dtype=out_c.dtype)
-            mz, my, mx = min(out_c.shape[0], target_shape[0]), min(out_c.shape[1], target_shape[1]), min(out_c.shape[2], target_shape[2])
+            mz, my, mx = (
+                min(out_c.shape[0], target_shape[0]),
+                min(out_c.shape[1], target_shape[1]),
+                min(out_c.shape[2], target_shape[2]),
+            )
             out_full[:mz, :my, :mx] = out_c[:mz, :my, :mx]
             out[c] = out_full
     return out * 2.0
@@ -64,8 +69,7 @@ def report(phi, label, phi_input=None):
     n_below = int((V < THRESHOLD - 1e-5).sum())
     mn = float(V.min())
     L1 = '' if phi_input is None else f'  L1_from_input={float(np.abs(phi - phi_input).sum()):.1f}'
-    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}',
-          flush=True)
+    print(f'{label}: n_neg={n_neg}  n<0.01={n_below}  min_T={mn:+.6f}{L1}', flush=True)
     return n_neg, n_below, mn
 
 
@@ -83,8 +87,7 @@ def main():
     )
 
     # === STAGE 1: multi-scale (same as v1). ===
-    print('\n=== STAGE 1: multi-scale pyramid (coarse + upsample + fine polish) ===',
-          flush=True)
+    print('\n=== STAGE 1: multi-scale pyramid (coarse + upsample + fine polish) ===', flush=True)
     coarse = downsample_2x(phi_input)
     report(coarse, '  coarse')
     t0 = time.time()
@@ -95,7 +98,7 @@ def main():
         threshold=0.015,
     )
     coarse_polished = solver.fit(coarse).corrected
-    print(f'  coarse polish wall={time.time()-t0:.1f}s', flush=True)
+    print(f'  coarse polish wall={time.time() - t0:.1f}s', flush=True)
     report(coarse_polished, '  coarse polished')
 
     upsampled = upsample_2x(coarse_polished, phi_input.shape[1:])
@@ -109,7 +112,7 @@ def main():
         threshold=0.015,
     )
     ms_v1 = solver.fit(upsampled).corrected
-    print(f'  fine polish wall={time.time()-t1:.1f}s', flush=True)
+    print(f'  fine polish wall={time.time() - t1:.1f}s', flush=True)
     n_neg, n_below, mn = report(ms_v1, 'MS_V1 result', phi_input)
     np.save(OUTPUT / 'b0039_z0_15_ms_v1.npy', ms_v1)
     if n_neg == 0 and n_below == 0:
@@ -127,7 +130,7 @@ def main():
         threshold=0.015,
     )
     after_m14 = solver.fit(ms_v1).corrected
-    print(f'  m14 wall={time.time()-t2:.1f}s', flush=True)
+    print(f'  m14 wall={time.time() - t2:.1f}s', flush=True)
     n_neg, n_below, mn = report(after_m14, 'after M14Tet', phi_input)
     np.save(OUTPUT / 'b0039_z0_15_ms_v2_m14.npy', after_m14)
     if n_neg == 0 and n_below == 0:
@@ -145,7 +148,7 @@ def main():
         threshold=0.015,
     )
     after_schwarz = solver.fit(after_m14).corrected
-    print(f'  schwarz wall={time.time()-t3:.1f}s', flush=True)
+    print(f'  schwarz wall={time.time() - t3:.1f}s', flush=True)
     n_neg, n_below, mn = report(after_schwarz, 'after M14Schwarz3D', phi_input)
     np.save(OUTPUT / 'b0039_z0_15_ms_v2_schwarz.npy', after_schwarz)
     if n_neg == 0 and n_below == 0:
@@ -163,7 +166,7 @@ def main():
         threshold=0.012,
     )
     after_tight = solver.fit(after_schwarz).corrected
-    print(f'  tighten wall={time.time()-t4:.1f}s', flush=True)
+    print(f'  tighten wall={time.time() - t4:.1f}s', flush=True)
     n_neg, n_below, mn = report(after_tight, 'after M10Tet @ 0.012', phi_input)
     np.save(OUTPUT / 'b0039_z0_15_ms_v2_tight.npy', after_tight)
     if n_neg == 0 and n_below == 0:
@@ -171,8 +174,11 @@ def main():
         np.save(OUTPUT / 'b0039_z0_15_strict_via_ms_v2.npy', after_tight)
         return
 
-    print(f'\n=== Final ===\n  best residual after 4 stages: n_neg={n_neg}, '
-          f'n<0.01={n_below}, min_T={mn:+.6f}', flush=True)
+    print(
+        f'\n=== Final ===\n  best residual after 4 stages: n_neg={n_neg}, '
+        f'n<0.01={n_below}, min_T={mn:+.6f}',
+        flush=True,
+    )
     print('  STRICT 100% feas: False', flush=True)
 
 

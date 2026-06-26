@@ -7,6 +7,7 @@ where schedule tuning or a better solver helps), or Python overhead?
 
 Guarded for Windows spawn (the 2D auto_slp path may spawn a worker pool).
 """
+
 import cProfile
 import io
 import pstats
@@ -50,8 +51,7 @@ def main():
     if n0 > 0 and '2donly' not in sys.argv:
         _profile(
             '3D correct_dvf_3d (single-process, n_workers=1)',
-            lambda: correct_dvf_3d(crop, threshold=0.01, n_workers=1,
-                                   thorough=False, verbose=0),
+            lambda: correct_dvf_3d(crop, threshold=0.01, n_workers=1, thorough=False, verbose=0),
         )
 
     # ---- 2D: the cluster-SLP path with n_workers=1 so the per-cluster LP
@@ -60,13 +60,13 @@ def main():
     from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
         cluster_slp_iter,
     )
+
     raw = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr']
     sl = raw[1:3, 300].astype(np.float64)  # [dy, dx] of z=300
     print(f'\n2D cluster_slp_iter n_workers=1 (z=300) {sl.shape}', flush=True)
     _profile(
         '2D cluster_slp_iter (z=300, n_workers=1, in-process)',
-        lambda: cluster_slp_iter(sl, threshold=0.01, max_outer_iters=6,
-                                 n_workers=1),
+        lambda: cluster_slp_iter(sl, threshold=0.01, max_outer_iters=6, n_workers=1),
     )
 
 

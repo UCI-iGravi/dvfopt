@@ -47,9 +47,12 @@ def make_random_dvf(case_key):
     return dvf
 
 
-def load_slice(slice_idx, scale_factor=1.0,
-               mpoints_path="data/corrected_correspondences_count_touching/mpoints.npy",
-               fpoints_path="data/corrected_correspondences_count_touching/fpoints.npy"):
+def load_slice(
+    slice_idx,
+    scale_factor=1.0,
+    mpoints_path="data/corrected_correspondences_count_touching/mpoints.npy",
+    fpoints_path="data/corrected_correspondences_count_touching/fpoints.npy",
+):
     """Load a real-data slice and compute its deformation field.
 
     Parameters

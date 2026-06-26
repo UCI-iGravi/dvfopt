@@ -1,4 +1,5 @@
 """Split triangle-sign-demos.ipynb into demos (Parts 1-3) + solver-engineering (Parts 4-5)."""
+
 import json
 import os
 
@@ -8,30 +9,42 @@ dst_path = 'notebooks/two-triangle-check/triangle-sign-solver-engineering.ipynb'
 nb = json.load(open(src_path, encoding='utf-8'))
 
 part4_5_ids = {
-    '0dab09b8',       # Part 4 markdown
-    '40e209be',       # Part 4 code (SLSQP exit status)
-    'd0d7f2fb',       # Part 4 code (heatmap + warped grid)
-    'd80ada1c',       # Part 4 code (maxiter/ftol retry)
-    '1eb0d3a2',       # Part 4 code (warm-start)
-    'ffea9260',       # Part 5 markdown (derivation)
-    '99586d1d',       # Part 5 code (implementation)
-    'd737a896',       # Part 5 markdown (validation)
-    '9766d2fc',       # Part 5 code (validation)
-    '873815db',       # Part 5 markdown (head-to-head)
-    '1238931a',       # Part 5 code (head-to-head)
-    'anal-warm-md',   # combined-fix markdown
-    'anal-warm-code', # combined-fix code
+    '0dab09b8',  # Part 4 markdown
+    '40e209be',  # Part 4 code (SLSQP exit status)
+    'd0d7f2fb',  # Part 4 code (heatmap + warped grid)
+    'd80ada1c',  # Part 4 code (maxiter/ftol retry)
+    '1eb0d3a2',  # Part 4 code (warm-start)
+    'ffea9260',  # Part 5 markdown (derivation)
+    '99586d1d',  # Part 5 code (implementation)
+    'd737a896',  # Part 5 markdown (validation)
+    '9766d2fc',  # Part 5 code (validation)
+    '873815db',  # Part 5 markdown (head-to-head)
+    '1238931a',  # Part 5 code (head-to-head)
+    'anal-warm-md',  # combined-fix markdown
+    'anal-warm-code',  # combined-fix code
 }
 
 part4_5_cells = [c for c in nb['cells'] if c.get('id') in part4_5_ids]
 
 
 def md(text, cid):
-    return {"cell_type": "markdown", "id": cid, "metadata": {}, "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "markdown",
+        "id": cid,
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
 
 
 def code(text, cid):
-    return {"cell_type": "code", "id": cid, "metadata": {}, "execution_count": None, "outputs": [], "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "code",
+        "id": cid,
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": text.splitlines(keepends=True),
+    }
 
 
 intro = md(
@@ -220,7 +233,9 @@ se_summary_src = (
 )
 se_summary_cell = md(se_summary_src, "se-summary")
 
-new_cells = [intro, imports, helpers, setup_md_cell, setup_code_cell] + part4_5_cells + [se_summary_cell]
+new_cells = (
+    [intro, imports, helpers, setup_md_cell, setup_code_cell] + part4_5_cells + [se_summary_cell]
+)
 
 new_nb = {
     "cells": new_cells,

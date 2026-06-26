@@ -9,6 +9,7 @@ Writes:
 
 Cluster_pipeline rows record an ``error`` field (adapter not implemented).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,11 +37,17 @@ DEFAULT_SLICES = (12, 100, 200, 300, 400)
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        '--slices', type=int, nargs='+', default=list(DEFAULT_SLICES),
+        '--slices',
+        type=int,
+        nargs='+',
+        default=list(DEFAULT_SLICES),
         help='Z-slice indices to run.',
     )
     p.add_argument(
-        '--methods', type=str, nargs='+', default=list(METHOD_NAMES),
+        '--methods',
+        type=str,
+        nargs='+',
+        default=list(METHOD_NAMES),
         help='Subset of methods to run (default: all).',
     )
     return p.parse_args()

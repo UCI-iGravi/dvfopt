@@ -17,6 +17,7 @@ Same PHR outer loop (mu/rho updates, Birgin-Martinez) as
 ``augmented_lagrangian_2d`` so it is a drop-in comparison: only the inner
 optimiser changes (L-BFGS-B -> sparse GN). DY_FIRST pack throughout.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -98,17 +99,22 @@ def augmented_lagrangian_2d_gn(
             rho = min(rho_max, rho * rho_growth)
         last_viol = viol
         if verbose:
-            print(f'  GN-ALM out={outer:3d} inner_tot={total_inner:4d} '
-                  f'min_T={float(T.min()):+.5f} viol={viol:.2e} rho={rho:.1e}',
-                  flush=True)
+            print(
+                f'  GN-ALM out={outer:3d} inner_tot={total_inner:4d} '
+                f'min_T={float(T.min()):+.5f} viol={viol:.2e} rho={rho:.1e}',
+                flush=True,
+            )
         if float(T.min()) >= target:
             break
 
-    dy = phi[:H * W].reshape(H, W)
-    dx = phi[H * W:].reshape(H, W)
+    dy = phi[: H * W].reshape(H, W)
+    dx = phi[H * W :].reshape(H, W)
     out = np.stack([dy, dx])
-    return out, {'total_inner': total_inner, 'outer_used': outer + 1,
-                 'min_T': float(tri_areas_flat(phi, H, W).min())}
+    return out, {
+        'total_inner': total_inner,
+        'outer_used': outer + 1,
+        'min_T': float(tri_areas_flat(phi, H, W).min()),
+    }
 
 
 __all__ = ['augmented_lagrangian_2d_gn']

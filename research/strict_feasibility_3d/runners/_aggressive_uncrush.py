@@ -6,6 +6,7 @@ Different from v1/v2: instead of relying on M10Tet to polish after,
 this directly checks det(J) at sampled internal points and reports
 how many cells are GENUINELY uncrushed (det(J) > 0 everywhere).
 """
+
 from __future__ import annotations
 
 import sys
@@ -57,7 +58,7 @@ def _check_cell_continuous(phi, z, y, x, samples=5):
 def main():
     phi = np.load(OUTPUT / 'b0039_FULL_stage3_z000_016.npy')
     best_min = _best_min_per_cell(phi)
-    unfix_mask = (best_min <= 0)
+    unfix_mask = best_min <= 0
     nz, ny, nx = np.where(unfix_mask)
     cells = list(zip(nz.tolist(), ny.tolist(), nx.tolist()))
     print(f'{len(cells)} unfixable cells', flush=True)
@@ -95,7 +96,7 @@ def main():
         # Check continuous det(J) at originally-unfixable cells.
         n_continuously_fixed = 0
         cells_still_negdet = []
-        for (cz, cy, cx) in zip(nz, ny, nx):
+        for cz, cy, cx in zip(nz, ny, nx):
             mn = _check_cell_continuous(phi_new, int(cz), int(cy), int(cx))
             if mn > 0:
                 n_continuously_fixed += 1
@@ -113,9 +114,15 @@ def main():
         )
         if cells_still_negdet:
             min_mns = sorted([c[3] for c in cells_still_negdet])
-            print(f'  remaining-bad-det stats: worst={min_mns[0]:.4f}  median={min_mns[len(min_mns)//2]:.4f}', flush=True)
+            print(
+                f'  remaining-bad-det stats: worst={min_mns[0]:.4f}  median={min_mns[len(min_mns) // 2]:.4f}',
+                flush=True,
+            )
         else:
-            print('  *** ALL originally-unfixable cells now have positive continuous Jacobian ***', flush=True)
+            print(
+                '  *** ALL originally-unfixable cells now have positive continuous Jacobian ***',
+                flush=True,
+            )
 
 
 if __name__ == '__main__':

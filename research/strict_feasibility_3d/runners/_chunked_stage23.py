@@ -9,6 +9,7 @@ threshold=0.015 (Stage 3 overshoot). Reports the chunk's residual
 The point is to demonstrate Stage 2+3 work on a representative
 z-band so we can estimate the full-volume runtime budget.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,8 +32,8 @@ FULL_STAGE1_CACHE = OUTPUT / 'b0039_FULL_stage1.npy'
 def _stats(phi, label):
     V = six_tet_volumes_3d(phi)
     return (
-        f'{label}  n_neg={int((V<=0).sum()):>7d}  '
-        f'n<0.01={int((V<0.01-1e-5).sum()):>7d}  '
+        f'{label}  n_neg={int((V <= 0).sum()):>7d}  '
+        f'n<0.01={int((V < 0.01 - 1e-5).sum()):>7d}  '
         f'min_T={float(V.min()):+.6f}'
     )
 
@@ -47,7 +48,7 @@ def main():
     full = np.load(FULL_STAGE1_CACHE)
     print(f'  full shape: {full.shape}', flush=True)
 
-    chunk = np.ascontiguousarray(full[:, args.z0:args.z1])
+    chunk = np.ascontiguousarray(full[:, args.z0 : args.z1])
     print(f'\nChunk z={args.z0}..{args.z1 - 1}  shape={chunk.shape}', flush=True)
     print(_stats(chunk, '  Stage 1 chunk:  '), flush=True)
 
