@@ -401,7 +401,7 @@ def test_parse_loaded_npz_phi_only(tmp_path):
 
 
 def test_build_strategy_adds_2d_fullgrid_and_schwarz():
-    from dvfopt import SLSQPFullGridStrategy, SchwarzStrategy
+    from dvfopt import SchwarzStrategy, SLSQPFullGridStrategy
 
     w1 = SolverWorker(deformation_i=np.zeros((3, 1, 6, 6)), method_id='slsqp_fullgrid_2tri')
     assert isinstance(w1._build_strategy(), SLSQPFullGridStrategy)
@@ -416,14 +416,14 @@ def test_build_strategy_adds_2d_fullgrid_and_schwarz():
 
 def _folded_volume_3d(D=4, H=8, W=8):
     # A z-direction shear large enough to invert tets.
-    zz, yy, xx = np.meshgrid(np.arange(D), np.arange(H), np.arange(W), indexing='ij')
+    _, _, xx = np.meshgrid(np.arange(D), np.arange(H), np.arange(W), indexing='ij')
     phi = np.zeros((3, D, H, W))
     phi[2] = -1.8 * xx  # dx ramp -> strong compression, inverts cells
     return phi
 
 
 def test_metric_counts_3d_tet_and_jdet():
-    from dvfopt_gui.worker import _metric_counts_3d, _infeasible_count_3d
+    from dvfopt_gui.worker import _infeasible_count_3d, _metric_counts_3d
 
     phi = _folded_volume_3d()
     n_tet, min_tet = _metric_counts_3d(phi, 'tet3d')
@@ -433,5 +433,6 @@ def test_metric_counts_3d_tet_and_jdet():
     # Identity volume: no folds, nothing infeasible.
     ident = np.zeros((3, 4, 8, 8))
     assert _metric_counts_3d(ident, 'tet3d') == (0, pytest.approx(1 / 6))
+    assert _metric_counts_3d(ident, 'jdet3d') == (0, pytest.approx(1.0))
     assert _infeasible_count_3d(ident, 'tet3d') == 0
     assert _infeasible_count_3d(ident, 'jdet3d') == 0
