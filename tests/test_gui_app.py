@@ -608,6 +608,14 @@ def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
     )
 
 
+def test_3d_menu_has_experimental_strategies(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'active_band' in algos
+    assert 'coupled_kring' in algos
+
+
 def test_run_all_stays_disabled_in_3d_after_run_finishes(qapp):
     win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
     win._select_combo_data(win._constraint_combo, 'tet3d')

@@ -496,6 +496,19 @@ def test_worker_3d_trajectory_metric_and_strategy():
     )
 
 
+def test_worker_3d_experimental_strategies():
+    # The research 3D strategies are dispatchable + route to the 6-tet metric.
+    from dvfopt import ActiveBandALM3DStrategy, CoupledKRing3DStrategy
+
+    vol = np.zeros((3, 4, 8, 8))
+    wa = SolverWorker(deformation_i=vol, method_id='active_band_tet3d')
+    assert isinstance(wa._build_strategy(), ActiveBandALM3DStrategy)
+    assert wa._trajectory_metric_kind() == 'tet3d'
+    wc = SolverWorker(deformation_i=vol, method_id='coupled_kring_tet3d')
+    assert isinstance(wc._build_strategy(), CoupledKRing3DStrategy)
+    assert wc._trajectory_metric_kind() == 'tet3d'
+
+
 def test_worker_3d_solve_reaches_feasibility():
     # Small folded volume; M14Tet should clear folds end-to-end.
     _, yy, xx = np.meshgrid(np.arange(4), np.arange(10), np.arange(10), indexing='ij')
