@@ -535,3 +535,23 @@ def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
     assert not win._run_all_btn.isEnabled()
     algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
     assert 'm14' in algos and 'm14_schwarz' in algos and 'm10' in algos and 'slsqp_fullgrid' in algos
+
+
+def test_run_all_stays_disabled_in_3d_after_run_finishes(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert not win._run_all_btn.isEnabled()  # gated on entering 3D mode
+    win._finalize_run_ui()  # simulate a run completing
+    assert not win._run_all_btn.isEnabled()  # must stay disabled in 3D mode
+    assert not win._run_roi_btn.isEnabled()
+
+
+def test_run_all_in_3d_routes_to_full_volume_run(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    captured = {}
+    monkeypatch.setattr(win, '_start_worker', lambda def_i, *a, **k: captured.setdefault('shape', def_i.shape))
+    win._on_run_all()
+    # 3D Run-all must hand the worker the FULL (3,D,H,W) volume, not a (3,1,H,W) slice.
+    assert captured['shape'] == (3, 4, 6, 6)
+    assert win._run_all_remaining is None  # did not enter the per-slice batch

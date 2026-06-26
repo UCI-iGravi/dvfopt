@@ -1673,6 +1673,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self, 'Already running', 'Stop the current run first.'
             )
             return
+        if self._is_3d_run:
+            # 3D solves the whole volume in one run; "Run all z" maps to a
+            # single full-volume run.
+            self._on_run(use_roi=False)
+            return
         D = self._volume.shape[1]
         if D <= 1:
             # Single slice — just run it normally.
@@ -1769,10 +1774,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
         self._run_full_btn.setEnabled(True)
-        self._run_roi_btn.setEnabled(True)
         D = self._volume.shape[1] if self._volume is not None else 1
-        self._run_all_btn.setEnabled(D > 1)
         self._z_slider.setEnabled(D > 1)
+        self._apply_mode_gating()
         self._update_undo_redo_enabled()
         self._fps_label.setText('idle')
         # Clear the progress bar (unless a Run-all batch is still going —
