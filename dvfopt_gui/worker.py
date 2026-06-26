@@ -67,6 +67,12 @@ DEFAULT_HISTORY_MAX = 500
 # Back-compat alias for callers that referenced the old constant name.
 HISTORY_MAX = DEFAULT_HISTORY_MAX
 
+# 3D runs emit few (phase-level) snapshots, but each is a full
+# (3, D, H, W) volume. Cap the deque small and guard total bytes: past
+# the budget we keep only the input + final snapshots.
+DEFAULT_HISTORY_MAX_3D = 8
+MAX_3D_HISTORY_BYTES = 2 * 1024 ** 3  # ~2 GB
+
 
 class StateSnapshot:
     """Plain-numpy snapshot of one solver step, decoupled from solver memory.
@@ -170,6 +176,19 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
         outer_iter=int(state['outer_iter'] or 0),
         n_neg=int(state['n_neg']),
         min_T=float(state['min_T']),
+    )
+
+
+def _volume_snapshot(phi3d, *, n_neg: int, min_T: float, outer_iter: int) -> StateSnapshot:
+    """Build a 3D StateSnapshot: phi is the full (3, D, H, W) volume;
+    window/opt rects collapse to zero (no active-window overlay in 3D)."""
+    return StateSnapshot(
+        phi=np.asarray(phi3d, dtype=np.float64).copy(),
+        window_y0=0, window_y1=0, window_x0=0, window_x1=0,
+        opt_y0=0, opt_y1=0, opt_x0=0, opt_x1=0,
+        is_padded=False, neg_y=0, neg_x=0,
+        per_index_iter=0, outer_iter=int(outer_iter),
+        n_neg=int(n_neg), min_T=float(min_T),
     )
 
 
@@ -603,6 +622,63 @@ class SolverWorker(QtCore.QThread):
         self._emit_synthetic_snapshot(result.corrected, n_neg=final_n_neg, min_T=final_min_T)
         return result.corrected
 
+    def _run_via_solver_3d(self, strategy, constraint_kind: str, *, metric_kind: str):
+        """Whole-volume 3D path. ``self._deformation_i`` is the full
+        ``(3, D, H, W)`` ``[dz, dy, dx]`` volume. The 3D constraints accept
+        that layout directly (no reorder); ``result.corrected`` returns it.
+
+        Phased wallbreakers (m10/m14/m14_schwarz) fire ``step_callback`` at
+        phase boundaries — we record full-volume stages (and check the stop
+        flag). Non-phased methods (slsqp_fullgrid, barrier, slsqp_windowed)
+        run to completion and only the init + final snapshots land.
+        """
+        from dvfopt import JdetConstraint3D, Solver, Tet6Constraint3D
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'3D run needs (3, D, H, W); got {vol.shape}')
+        _, D, H, W = vol.shape
+        if constraint_kind == 'tet3d':
+            constraint = Tet6Constraint3D(shape=(D, H, W))
+        elif constraint_kind == 'jdet3d':
+            constraint = JdetConstraint3D(shape=(D, H, W))
+        else:
+            raise ValueError(f'unknown 3D constraint_kind={constraint_kind!r}')
+        objective = self._build_objective()
+        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+
+        # Memory guard: keep mid stages only if the full deque fits the budget.
+        est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
+        keep_stages = est <= MAX_3D_HISTORY_BYTES
+
+        # Initial snapshot (input volume), under the run metric.
+        n0, m0 = _metric_counts_3d(vol, metric_kind)
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+
+        outer = [0]
+
+        def _stage_callback(state):
+            if self._stop_requested:
+                raise KeyboardInterrupt('user requested stop')
+            phi = np.asarray(state['phi'])
+            # Schwarz emits per-cluster crops — use them only for the stop
+            # check above; snapshot only the full-volume phases.
+            if phi.shape != vol.shape:
+                return
+            if not keep_stages:
+                return
+            n, m = _metric_counts_3d(phi, metric_kind)
+            outer[0] += 1
+            self._record(_volume_snapshot(phi, n_neg=n, min_T=m, outer_iter=outer[0]))
+
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        result = solver.fit(vol, step_callback=_stage_callback)
+        corrected = np.asarray(result.corrected, dtype=np.float64)
+        nf, mf = _metric_counts_3d(corrected, metric_kind)
+        self._record(_volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
+        return corrected
+
     def _build_strategy(self):
         """Build a configured Strategy instance for the chosen method.
 
@@ -638,6 +714,28 @@ class SolverWorker(QtCore.QThread):
             return SchwarzStrategy()
         if mid == 'nmvf_jdet':
             return NMVFStrategy()
+        if mid == 'm10_tet3d':
+            from dvfopt import HarmonicALMBarrier3DStrategy
+
+            return HarmonicALMBarrier3DStrategy(time_budget_s=time_budget)
+        if mid == 'm14_tet3d':
+            from dvfopt import HarmonicALMRefineRepair3DStrategy
+
+            return HarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+        if mid == 'm14_schwarz_tet3d':
+            from dvfopt import SchwarzHarmonicALMRefineRepair3DStrategy
+
+            return SchwarzHarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+        if mid == 'slsqp_fullgrid_tet3d':
+            from dvfopt import SLSQPFullGrid3DStrategy
+
+            return SLSQPFullGrid3DStrategy()
+        if mid in ('barrier_jdet3d',):
+            return BarrierStrategy()
+        if mid == 'slsqp_windowed_jdet3d':
+            from dvfopt import SLSQPWindowedStrategy
+
+            return SLSQPWindowedStrategy()
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:
@@ -653,6 +751,10 @@ class SolverWorker(QtCore.QThread):
         mid = self._method_id
         if mid.startswith('slsqp_windowed'):
             return 'jdet'
+        if mid.endswith('_tet3d'):
+            return 'tet3d'
+        if mid.endswith('_jdet3d'):
+            return 'jdet3d'
         return '2tri' if mid.endswith('_2tri') else 'jdet'
 
     # -- main entrypoint ------------------------------------------------------
@@ -665,22 +767,29 @@ class SolverWorker(QtCore.QThread):
             # emit a single final-state snapshot). It uses the same metric
             # as the rest of the run so the convergence curve is coherent.
             metric_kind = self._trajectory_metric_kind()
-            self._emit_initial_snapshot(metric_kind)
+            if metric_kind not in ('tet3d', 'jdet3d'):
+                self._emit_initial_snapshot(metric_kind)
             mid = self._method_id
             if mid == 'slsqp_windowed_jdet':
                 phi_out = self._run_windowed_slsqp(enforce_triangles=False)
             elif mid == 'slsqp_windowed_2tri':
                 phi_out = self._run_windowed_slsqp(enforce_triangles=True)
             else:
-                # Method-id always ends in either ``_2tri`` or ``_jdet``;
-                # split on the LAST underscore so algo names that contain
-                # underscores (e.g. ``m14_schwarz``) round-trip correctly.
+                # Method-id always ends in either ``_2tri``, ``_jdet``,
+                # ``_tet3d``, or ``_jdet3d``; split on the LAST underscore
+                # so algo names that contain underscores (e.g.
+                # ``m14_schwarz``) round-trip correctly.
                 algo, _, kind = mid.rpartition('_')
-                if kind not in ('2tri', 'jdet'):
+                if kind in ('tet3d', 'jdet3d'):
+                    phi_out = self._run_via_solver_3d(
+                        self._build_strategy(), kind, metric_kind=metric_kind
+                    )
+                elif kind in ('2tri', 'jdet'):
+                    phi_out = self._run_via_solver(
+                        self._build_strategy(), kind, metric_kind=metric_kind
+                    )
+                else:
                     raise ValueError(f'unknown method_id={mid!r}')
-                phi_out = self._run_via_solver(
-                    self._build_strategy(), kind, metric_kind=metric_kind
-                )
             self.finishedWithResult.emit(phi_out, None)
         except KeyboardInterrupt:
             # Clean stop requested via request_stop().

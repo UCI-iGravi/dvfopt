@@ -436,3 +436,64 @@ def test_metric_counts_3d_tet_and_jdet():
     assert _metric_counts_3d(ident, 'jdet3d') == (0, pytest.approx(1.0))
     assert _infeasible_count_3d(ident, 'tet3d') == 0
     assert _infeasible_count_3d(ident, 'jdet3d') == 0
+
+
+# ---------------------------------------------------------------------------
+# 3D worker dispatch: metric kind + strategy + end-to-end solve
+# ---------------------------------------------------------------------------
+
+
+def test_worker_3d_trajectory_metric_and_strategy():
+    from dvfopt import (
+        BarrierStrategy,
+        HarmonicALMRefineRepair3DStrategy,
+        SLSQPFullGrid3DStrategy,
+    )
+
+    vol = np.zeros((3, 4, 8, 8))
+    assert SolverWorker(deformation_i=vol, method_id='m14_tet3d')._trajectory_metric_kind() == 'tet3d'
+    assert SolverWorker(deformation_i=vol, method_id='barrier_jdet3d')._trajectory_metric_kind() == 'jdet3d'
+    assert isinstance(
+        SolverWorker(deformation_i=vol, method_id='m14_tet3d')._build_strategy(),
+        HarmonicALMRefineRepair3DStrategy,
+    )
+    assert isinstance(
+        SolverWorker(deformation_i=vol, method_id='slsqp_fullgrid_tet3d')._build_strategy(),
+        SLSQPFullGrid3DStrategy,
+    )
+    assert isinstance(
+        SolverWorker(deformation_i=vol, method_id='barrier_jdet3d')._build_strategy(),
+        BarrierStrategy,
+    )
+
+
+def test_worker_3d_solve_reaches_feasibility():
+    # Small folded volume; M14Tet should clear folds end-to-end.
+    _, yy, xx = np.meshgrid(np.arange(4), np.arange(10), np.arange(10), indexing='ij')
+    vol = np.zeros((3, 4, 10, 10))
+    vol[2, :, 4:6, 4:6] = 1.5
+    from dvfopt_gui.worker import _metric_counts_3d
+
+    n_before, _ = _metric_counts_3d(vol[:, :], 'tet3d')
+    assert n_before > 0
+    w = SolverWorker(deformation_i=vol, method_id='m14_tet3d', params={'time_budget_s': 60.0})
+    phi_out = w._run_via_solver_3d(w._build_strategy(), 'tet3d', metric_kind='tet3d')
+    assert phi_out.shape == (3, 4, 10, 10)
+    n_after, _ = _metric_counts_3d(phi_out, 'tet3d')
+    assert n_after <= n_before
+    # history has an input snapshot (ndim 4) + at least the final.
+    assert w.history_len() >= 2
+    assert w.history_get(0).phi.ndim == 4
+
+
+def test_worker_3d_memory_guard_keeps_init_and_final(monkeypatch):
+    import dvfopt_gui.worker as W
+
+    monkeypatch.setattr(W, 'MAX_3D_HISTORY_BYTES', 1)  # force the guard
+    _, yy, xx = np.meshgrid(np.arange(4), np.arange(10), np.arange(10), indexing='ij')
+    vol = np.zeros((3, 4, 10, 10))
+    vol[2, :, 4:6, 4:6] = 1.5
+    w = SolverWorker(deformation_i=vol, method_id='m14_tet3d', params={'time_budget_s': 60.0})
+    w._run_via_solver_3d(w._build_strategy(), 'tet3d', metric_kind='tet3d')
+    # Guard tripped: only the input + final snapshots, no mid stages.
+    assert w.history_len() == 2
