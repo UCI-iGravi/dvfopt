@@ -740,6 +740,14 @@ class SolverWorker(QtCore.QThread):
             from dvfopt import SLSQPFullGrid3DStrategy
 
             return SLSQPFullGrid3DStrategy()
+        if mid == 'active_band_tet3d':
+            from dvfopt import ActiveBandALM3DStrategy
+
+            return ActiveBandALM3DStrategy()
+        if mid == 'coupled_kring_tet3d':
+            from dvfopt import CoupledKRing3DStrategy
+
+            return CoupledKRing3DStrategy()
         if mid in ('barrier_jdet3d',):
             return BarrierStrategy()
         if mid == 'slsqp_windowed_jdet3d':

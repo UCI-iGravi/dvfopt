@@ -272,6 +272,8 @@ _METHOD_SPECS_TET3D = [
     ('m14_schwarz', 'M14-Schwarz3D (cluster decomposition + global polish)'),
     ('m10', 'M10Tet (harmonic + ALM + barrier polish)'),
     ('slsqp_fullgrid', 'SLSQP full-grid 3D (KKT)'),
+    ('active_band', 'ActiveBandALM3D (banded M10Tet recovery; research)'),
+    ('coupled_kring', 'CoupledKRing3D (k-ring SLSQP attractor escape; research)'),
 ]
 _METHOD_SPECS_JDET3D = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
