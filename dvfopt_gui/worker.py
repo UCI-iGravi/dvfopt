@@ -224,6 +224,36 @@ def _infeasible_count(phi_2hw, kind: str, threshold: float = FEASIBILITY_THRESHO
     return int((_metric_field(phi_2hw, kind) < threshold).sum())
 
 
+def _metric_field_3d(phi3d, kind: str) -> np.ndarray:
+    """Per-cell 3D metric field for ``phi3d`` ``(3, D, H, W)`` ``[dz,dy,dx]``.
+
+    ``kind='tet3d'`` → per-cell min 6-tet signed volume
+    ``(D-1, H-1, W-1)``; ``kind='jdet3d'`` → per-voxel 3D Jacobian
+    determinant ``(D, H, W)``.
+    """
+    if kind == 'tet3d':
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        return six_tet_min_volume_3d(phi3d)
+    if kind == 'jdet3d':
+        from dvfopt.jacobian.numpy_jdet import jacobian_det3D
+
+        return jacobian_det3D(phi3d)
+    raise ValueError(f'unknown 3D metric kind={kind!r}')
+
+
+def _metric_counts_3d(phi3d, kind: str) -> tuple[int, float]:
+    """``(n_neg, min_T)`` over the whole volume under one 3D metric.
+    Folds counted ``<= 0`` (matching the 2D convention)."""
+    field = _metric_field_3d(phi3d, kind)
+    return int((field <= 0).sum()), float(field.min())
+
+
+def _infeasible_count_3d(phi3d, kind: str, threshold: float = FEASIBILITY_THRESHOLD) -> int:
+    """Voxels/cells the solver still considers infeasible: metric ``< threshold``."""
+    return int((_metric_field_3d(phi3d, kind) < threshold).sum())
+
+
 class ReplayHistory:
     """Read-only stand-in for :class:`SolverWorker` that holds a finished
     run's snapshots loaded from disk.
