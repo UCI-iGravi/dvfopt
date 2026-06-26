@@ -74,6 +74,7 @@ def iterative_2d_tri_refine_repair(
     verbose: int = 1,
     eps_l1: float = 1e-4,
     record_history: bool = False,
+    step_callback=None,
 ):
     """Full 4-stage refine-repair pipeline.
 
@@ -113,6 +114,22 @@ def iterative_2d_tri_refine_repair(
     t0 = time.time()
     info: dict = {}
 
+    def _fire(stage: str, phi):
+        """Forward an intermediate phi snapshot to ``step_callback`` if
+        a caller passed one. Each fired stage corresponds to a major
+        pipeline boundary — the GUI consumes these for the history
+        slider so the user can scrub through M14's internal steps.
+        Buggy callbacks are silently swallowed (except KeyboardInterrupt,
+        which is the documented stop-the-solver mechanism)."""
+        if step_callback is None:
+            return
+        try:
+            step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            pass
+
     # Stage 1: m10 seed.
     if seed is None:
         seed = iterative_2d_tri_harmonic_polished(
@@ -133,6 +150,7 @@ def iterative_2d_tri_refine_repair(
             f'  stage1 seed  min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
             flush=True,
         )
+    _fire('stage1_seed', seed)
 
     # Stage 2: soft-penalty L2 pull.
     remaining = max(60.0, time_budget_s - (time.time() - t0))
@@ -162,6 +180,7 @@ def iterative_2d_tri_refine_repair(
             f'n_neg={pulled_neg}  ({time.time() - t0:.1f}s)',
             flush=True,
         )
+    _fire('stage2_pull', pulled)
 
     # Stage 3: harmonic repair of residual folds.
     if pulled_min < threshold:
@@ -183,6 +202,7 @@ def iterative_2d_tri_refine_repair(
             f'L2={repaired_L2:.1f}  ({time.time() - t0:.1f}s)',
             flush=True,
         )
+    _fire('stage3_repair', repaired)
 
     # If repair didn't reach feasibility, ALM nudge. Use the same
     # safety_margin formula as m10 so the two pipelines agree on the
@@ -244,6 +264,12 @@ def iterative_2d_tri_refine_repair(
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
                 flush=True,
             )
+        # Emit one snapshot per μ-step so the GUI can scrub through the
+        # polish loop. Unflatten phi_flat back to (2, H, W).
+        _fire(
+            f'stage4_polish_mu={mu:g}',
+            np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)]),
+        )
 
     phi_out = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
     info['stage4_polish'] = dict(

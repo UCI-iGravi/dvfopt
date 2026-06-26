@@ -1,0 +1,65 @@
+START (BEST_1fold): n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+
+======================================================================
+METHOD B: coupled k=3 SLSQP + M10Tet @ 0.012 recovery
+======================================================================
+  k=3 SLSQP: success=True  fun=1.0081  iter=75  wall=79.8s  cubes=245  DOF=1152
+B.1 k=3 SLSQP only: n_neg=0  n<0.01=19  min_T=+0.005000  L1=431790.1
+  M10Tet @ 0.012 recovery...
+B.2 k=3 SLSQP + M10Tet@0.012: n_neg=0  n<0.01=0  min_T=+0.013000  L1=431790.5
+  *** STRICT FEASIBLE via B ***
+
+======================================================================
+METHOD C: Multi-restart k=2 SLSQP (8 seeds) + M10Tet @ 0.012
+======================================================================
+  C seed=0 SLSQP only: n_neg=2  n<0.01=30  min_T=-0.026541  L1=431788.9
+  C seed=1 SLSQP only: n_neg=22  n<0.01=35  min_T=-0.190135  L1=431799.3
+  C seed=2 SLSQP only: n_neg=0  n<0.01=24  min_T=+0.005000  L1=431790.2
+  C seed=3 SLSQP only: n_neg=0  n<0.01=29  min_T=+0.005000  L1=431788.3
+  C seed=4 SLSQP only: n_neg=0  n<0.01=20  min_T=+0.005000  L1=431789.8
+  C seed=5 SLSQP only: n_neg=0  n<0.01=31  min_T=+0.005000  L1=431787.1
+  C seed=6 SLSQP only: n_neg=2  n<0.01=32  min_T=-0.020055  L1=431788.9
+  C seed=7 SLSQP only: n_neg=2  n<0.01=30  min_T=-0.017221  L1=431788.5
+
+  Best multi-restart SLSQP: seed=2 n_neg=0
+  Now M10Tet @ 0.012 recovery on best...
+C.best (seed=2) + M10Tet@0.012: n_neg=0  n<0.01=0  min_T=+0.013000  L1=431790.1
+  *** STRICT FEASIBLE via C ***
+
+======================================================================
+METHOD D: k=2 SLSQP with FEASIBILITY_THR=1e-3 (Lagrangian) + M10Tet
+======================================================================
+  D k=2 (thr=1e-3): success=True  fun=0.8236  wall=4.6s
+D.1 k=2 thr=1e-3 SLSQP only: n_neg=0  n<0.01=22  min_T=+0.001000  L1=431789.8
+  M10Tet @ 0.012 recovery...
+D.2 k=2 thr=1e-3 + M10Tet@0.012: n_neg=0  n<0.01=0  min_T=+0.013000  L1=431790.5
+  *** STRICT FEASIBLE via D ***
+
+======================================================================
+METHOD E: coupled k=4 trust-constr + M10Tet @ 0.012 recovery
+======================================================================
+  solver error: _minimize_trustregion_constr() got an unexpected keyword argument 'ftol'. Did you mean 'xtol'?
+E.1 k=4 trust-constr only: n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+  M10Tet @ 0.012 recovery...
+E.2 k=4 + M10Tet@0.012: n_neg=1  n<0.01=1  min_T=-0.000289  L1=431788.8
+
+======================================================================
+SUMMARY OF METHODS B-E
+======================================================================
+Method                                    n_neg   n<0.01   wall (s)
+--------------------------------------------------------------------
+B.1 k=3 SLSQP only                            0       19       79.8
+B.2 k=3 + M10Tet@0.012                        0        0     2154.5  *** STRICT ***
+C seed=0 SLSQP only                           2       30       15.5
+C seed=1 SLSQP only                          22       35        9.4
+C seed=2 SLSQP only                           0       24        3.6
+C seed=3 SLSQP only                           0       29       11.9
+C seed=4 SLSQP only                           0       20        7.5
+C seed=5 SLSQP only                           0       31        4.6
+C seed=6 SLSQP only                           2       32        5.9
+C seed=7 SLSQP only                           2       30        3.9
+C best seed=2 + M10Tet@0.012                  0        0     2194.8  *** STRICT ***
+D.1 k=2 thr=1e-3 SLSQP only                   0       22        4.6
+D.2 k=2 thr=1e-3 + M10Tet@0.012               0        0     2198.5  *** STRICT ***
+E.1 k=4 trust-constr only                     1        1        0.0
+E.2 k=4 + M10Tet@0.012                        1        1     1674.7

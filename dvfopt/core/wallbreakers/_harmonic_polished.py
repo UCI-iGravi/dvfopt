@@ -63,6 +63,7 @@ def iterative_2d_tri_harmonic_polished(
     time_budget_s: float = 600.0,
     verbose: int = 1,
     record_history: bool = False,
+    step_callback=None,
 ):
     """3-stage feasibility-guaranteed 2-triangle solver.
 
@@ -121,6 +122,21 @@ def iterative_2d_tri_harmonic_polished(
     t0 = time.time()
     info: dict = {}
 
+    def _fire(stage: str, phi):
+        """Forward an intermediate phi snapshot to ``step_callback`` —
+        the GUI consumes these for the history slider so the user can
+        scrub through M10's internal pipeline. Silent on consumer
+        exceptions; KeyboardInterrupt propagates as the documented
+        stop signal."""
+        if step_callback is None:
+            return
+        try:
+            step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            pass
+
     # Stage 1: harmonic extension.
     seed, r1_info = harmonic_extension_2d(
         phi_in,
@@ -140,6 +156,7 @@ def iterative_2d_tri_harmonic_polished(
             f'  stage1 harmonic min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
             flush=True,
         )
+    _fire('stage1_harmonic', seed)
 
     # Stage 2: ALM cleanup if seed not strictly interior.
     safety_margin = resolved_safety_margin(margin)
@@ -167,6 +184,7 @@ def iterative_2d_tri_harmonic_polished(
                 f'({time.time() - t0:.1f}s)',
                 flush=True,
             )
+        _fire('stage2_alm', seed)
     else:
         info['stage2_alm'] = {'skipped': 'seed-already-feasible'}
 
@@ -221,6 +239,8 @@ def iterative_2d_tri_harmonic_polished(
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
                 flush=True,
             )
+        # Emit per-µ snapshot so the GUI can scrub through the polish.
+        _fire(f'stage3_polish_mu={mu:g}', phi_cur)
 
     phi_out = np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
     info['stage3_polish'] = dict(

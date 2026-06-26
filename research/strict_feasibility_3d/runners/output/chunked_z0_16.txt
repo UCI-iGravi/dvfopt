@@ -1,0 +1,23 @@
+Loading full Stage 1 cache: C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage1.npy
+  full shape: (3, 528, 320, 456)
+
+Chunk z=0..15  shape=(3, 16, 320, 456)
+  Stage 1 chunk:    n_neg=  34181  n<0.01= 201427  min_T=-4.134371
+
+=== Stage 2: M10Tet @ threshold=0.01 ===
+  Stage 2 out:      n_neg=    865  n<0.01=  54871  min_T=-0.012251
+  wall: 3659.0s
+
+=== Stage 3: M10Tet @ threshold=0.015 (overshoot) ===
+  Stage 3 out:      n_neg=    173  n<0.01=   1572  min_T=-0.013450
+  wall: 5243.2s
+
+=== Chunk Final ===
+  shape:              (3, 16, 320, 456)
+  n_neg:              173
+  n_below_threshold:  1572
+  min_T:              -0.013450
+  STRICT 100% feas:   False
+  stage 2+3 wall:     8902.2s
+
+Chunk result saved to C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy

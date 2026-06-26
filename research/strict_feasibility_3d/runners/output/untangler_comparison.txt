@@ -1,0 +1,29 @@
+Crop shape: (3, 16, 125, 132) (from full (3, 16, 320, 456))
+  CROP input: n_neg=173  n<0.01=1571  best_diag_n_neg=94  min_T=-0.013450
+
+=== Garanzha chi_eps untangler ===
+  Garanzha (wall=538.0s): n_neg=136  n<0.01=644  best_diag_n_neg=73  min_T=-0.129432  L1=46853.0
+
+=== TLC lifted-content untangler ===
+  TLC (wall=294.7s): n_neg=364  n<0.01=528  best_diag_n_neg=333  min_T=-0.080737  L1=1884916.1
+
+=== M10Tet (HarmonicALMBarrier3D) @ 0.012 ===
+  M10Tet (wall=789.4s): n_neg=117  n<0.01=485  best_diag_n_neg=65  min_T=-0.010597  L1=1098.0
+
+=== Coupled k-ring (cluster, recover=True) ===
+  CoupledKRing+recover (wall=1310.6s): n_neg=10  n<0.01=1184  best_diag_n_neg=7  min_T=-0.004798  L1=1850.3
+
+=== M10Tet -> Coupled k-ring (full pipeline) ===
+  M10Tet+CoupledKRing (wall=701.2s, +M10Tet above): n_neg=30  n<0.01=259  best_diag_n_neg=14  min_T=-0.035472  L1=2016.2
+
+==============================================================================
+SUMMARY (crop (16, 125, 132))
+==============================================================================
+method                      n_neg   n<0.01  bestdiag_neg       min_T   wall(s)
+------------------------------------------------------------------------------
+input                         173     1571            94    -0.01345       0.0
+garanzha                      136      644            73    -0.12943     538.0
+tlc                           364      528           333    -0.08074     294.7
+m10tet                        117      485            65    -0.01060     789.4
+coupled_kring                  10     1184             7    -0.00480    1310.6
+pipeline                       30      259            14    -0.03547     701.2

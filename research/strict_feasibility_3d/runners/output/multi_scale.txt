@@ -1,0 +1,16 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  n<0.01=1572  min_T=-0.013450
+Coarse shape: (3, 8, 160, 228)
+  coarse stats: n_neg=322  min_T=-105.206866
+
+=== M10Tet on coarse field @ threshold=0.015 ===
+  coarse polished: n_neg=2  n<0.01=2  min_T=-0.001284  wall=801.8s
+
+Upsampled shape: (3, 16, 320, 456)
+  upsampled stats: n_neg=489  n<0.01=610  min_T=-32.308112
+
+=== Final polish at fine scale (M10Tet @ 0.015 from upsampled warm-start) ===
+  final: n_neg=6  n<0.01=6  min_T=-0.003485  L1_from_input=428807.9  wall=2854.8s
+
+=== Final ===
+  STRICT 100% feas: False

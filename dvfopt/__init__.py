@@ -168,6 +168,7 @@ from dvfopt.objectives import (
     SumObjective,
     make_objective,
 )
+from dvfopt.pipeline_3d import Correct3DReport, correct_dvf_3d
 from dvfopt.solver import (
     PhaseInfo,
     SolveInfo,
@@ -179,6 +180,9 @@ from dvfopt.solver import (
 from dvfopt.strategies import (
     ALM3DStrategy,
     BarrierStrategy,
+    BarrierTet3DTorchStrategy,
+    ActiveBandALM3DStrategy,
+    CoupledKRing3DStrategy,
     Harmonic3DStrategy,
     HarmonicALMBarrier3DStrategy,
     HarmonicALMBarrierStrategy,
@@ -231,8 +235,12 @@ __all__ = [
     'DEFAULT_PARAMS',
     'ALM3DStrategy',
     'BarrierStrategy',
+    'BarrierTet3DTorchStrategy',
     'BudgetExhaustedError',
     'Constraint',
+    'Correct3DReport',
+    'ActiveBandALM3DStrategy',
+    'CoupledKRing3DStrategy',
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
@@ -280,6 +288,7 @@ __all__ = [
     'auto_strategy',
     'coerce_to_ndarray',
     'correct_dvf',
+    'correct_dvf_3d',
     'enable_default_handler',
     'generate_random_dvf',
     'generate_random_dvf_3d',

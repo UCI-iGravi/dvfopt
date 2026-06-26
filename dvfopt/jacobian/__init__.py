@@ -32,9 +32,13 @@ from dvfopt.jacobian.sitk_jdet import (
     sitk_jacobian_determinant,
 )
 from dvfopt.jacobian.tetrahedron_sign import (
+    best_diagonal_min_volume,
     build_tet_sparse_jac,
+    n_neg_best_diagonal,
     six_tet_fold_classification,
+    six_tet_min_volume_3d,
     six_tet_volumes_3d,
+    six_tet_volumes_all_diagonals,
     tet_grad_T_v,
     tet_volumes_flat,
 )
@@ -59,6 +63,7 @@ __all__ = [
     "_triangle_signs_2d",
     "_triangulated_shoelace_areas_2d",
     # Public surface.
+    "best_diagonal_min_volume",
     "build_tet_sparse_jac",
     "cell_min_jdet_2d",
     "cell_to_pixel_min",
@@ -70,8 +75,11 @@ __all__ = [
     "shoelace_constraint",
     "shoelace_det2D",
     "sitk_jacobian_determinant",
+    "n_neg_best_diagonal",
     "six_tet_fold_classification",
+    "six_tet_min_volume_3d",
     "six_tet_volumes_3d",
+    "six_tet_volumes_all_diagonals",
     "tet_grad_T_v",
     "tet_volumes_flat",
     "triangle_constraint",

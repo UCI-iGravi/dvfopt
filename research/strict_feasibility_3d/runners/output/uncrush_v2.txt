@@ -1,0 +1,13 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: 94 unfixable cells
+  partitioned into 19 clusters
+  cluster sizes (top 10): [21, 16, 13, 10, 5, 5, 4, 4, 3, 2]
+
+=== Coherent cluster uncrush, target_extent=1.2 ===
+  total L1 cost: 45.9
+After uncrush:  n_neg=471  n<0.01=1883  min_T=-4.238896  L1_from_orig=45.9
+
+=== M10Tet polish @ threshold=0.015 ===
+
+Final:  n_neg=25  n<0.01=33  min_T=-0.004785  L1_from_orig=176104.4  polish_wall=6031.1s
+  STRICT 100% feasible: False

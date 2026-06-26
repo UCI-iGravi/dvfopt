@@ -7,10 +7,10 @@ Usage::
     python -m dvfopt_gui.demo --canonical 03d  # canonical synthetic
     python -m dvfopt_gui.demo --b0039 100 --max-iter 20
 
-The demo wires the windowed-SLSQP path (``iterative_serial``) into the
-live-viz window. Other solvers don't currently expose the
-``step_callback`` hook — see :mod:`dvfopt_gui.worker` docstring for
-the contract to add.
+The demo just loads a sample DVF and opens the live-viz window — the
+solver family, objective, and per-run parameters are chosen from the
+toolbar once the window is up. ``--max-iter`` / ``--max-per-index-iter``
+seed the windowed-SLSQP spinbox values for convenience.
 """
 
 from __future__ import annotations
@@ -56,6 +56,41 @@ def _canonical_case(key: str) -> np.ndarray:
     )
 
 
+def _bowtie_fixture() -> np.ndarray:
+    """The 7x7 shoelace-artifact bowtie from
+    ``notebooks/two-triangle-check/02_optimization.ipynb``.
+
+    Definition (verbatim from the notebook):
+
+    .. code-block:: python
+
+        dy = np.zeros((7, 7))
+        dx = np.zeros((7, 7))
+        dx[3, 3] = +1.2
+        dx[3, 4] = -1.2
+        phi = np.stack([dy, dx])
+
+    Pixels ``(3, 3)`` and ``(3, 4)`` swap in the dx channel — the two
+    cells anchored at those positions get crossed top/bottom edges,
+    i.e. literally bowtie-shaped warped quads. The full grid has
+    exactly **two folded 2-triangle cells** and **zero neg-Jdet
+    pixels** (the central-diff stencil's 2Δ symmetry cancels the
+    artifact out). It's the manuscript's "Jdet-CD misses sub-pixel
+    folds that 2-tri catches" demonstration in its smallest form.
+
+    Returns the canonical ``(3, 1, H, W)`` layout the GUI expects.
+    """
+    H, W = 7, 7
+    dy = np.zeros((H, W), dtype=np.float64)
+    dx = np.zeros((H, W), dtype=np.float64)
+    dx[3, 3] = +1.2
+    dx[3, 4] = -1.2
+    out = np.zeros((3, 1, H, W), dtype=np.float64)
+    out[1, 0] = dy
+    out[2, 0] = dx
+    return out
+
+
 def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = p.add_mutually_exclusive_group()
@@ -97,9 +132,12 @@ def main(argv=None) -> int:
         print(f'Loading canonical {args.canonical}…', flush=True)
         deformation_i = _canonical_case(args.canonical)
     else:
-        # Smallish default with enough folds to be interesting.
-        print('Loading default canonical 03d_20x20_crossing…', flush=True)
-        deformation_i = _canonical_case('03d')
+        # 7x7 shoelace-artifact bowtie from
+        # notebooks/two-triangle-check/02_optimization.ipynb —
+        # dx[3,3]=+1.2 swaps with dx[3,4]=-1.2. Exactly two crossing
+        # cells, zero neg-Jdet pixels.
+        print('Loading default 7x7 bowtie fixture (02_optimization.ipynb)…', flush=True)
+        deformation_i = _bowtie_fixture()
 
     print(f'  shape: {deformation_i.shape}', flush=True)
 

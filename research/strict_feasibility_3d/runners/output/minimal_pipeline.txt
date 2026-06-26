@@ -1,0 +1,45 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Step 1: Cluster raw-input fold cubes ===
+  raw # fold cubes: 118
+  # clusters: 13
+    cluster 0: centroid=(0, 165, 243), size=1, radius=0, chosen_k_ring=2
+    cluster 1: centroid=(0, 188, 248), size=1, radius=0, chosen_k_ring=2
+    cluster 2: centroid=(0, 199, 266), size=15, radius=3, chosen_k_ring=4
+    cluster 3: centroid=(0, 207, 274), size=27, radius=4, chosen_k_ring=4
+    cluster 4: centroid=(1, 214, 220), size=5, radius=3, chosen_k_ring=4
+    cluster 5: centroid=(1, 218, 273), size=42, radius=10, chosen_k_ring=4
+    cluster 6: centroid=(1, 136, 191), size=2, radius=1, chosen_k_ring=3
+    cluster 7: centroid=(5, 188, 271), size=8, radius=2, chosen_k_ring=4
+    cluster 8: centroid=(6, 213, 228), size=6, radius=1, chosen_k_ring=3
+    cluster 9: centroid=(7, 189, 260), size=7, radius=6, chosen_k_ring=4
+    cluster 10: centroid=(7, 195, 271), size=1, radius=0, chosen_k_ring=2
+    cluster 11: centroid=(14, 165, 227), size=2, radius=1, chosen_k_ring=3
+    cluster 12: centroid=(14, 170, 228), size=1, radius=0, chosen_k_ring=2
+
+=== Step 2: Per-cluster coupled SLSQP @ thr=1e-3 (raw input) ===
+  cluster 0: too close to boundary (safe_k=0); skipping
+  cluster 1: too close to boundary (safe_k=0); skipping
+  cluster 2: too close to boundary (safe_k=0); skipping
+  cluster 3: too close to boundary (safe_k=0); skipping
+  cluster 4: k=1 cubes=27 DOF=192 wall=0.1s  n_neg 173->175
+    rejected (n_neg increased)
+  cluster 5: k=1 cubes=27 DOF=192 wall=0.0s  n_neg 173->173
+  cluster 6: k=1 cubes=27 DOF=192 wall=0.1s  n_neg 173->171
+  cluster 7: k=4 cubes=729 DOF=3000 wall=3850.2s  n_neg 171->160
+  cluster 8: k=3 cubes=343 DOF=1536 wall=162.9s  n_neg 160->152
+  cluster 9: k=4 cubes=729 DOF=3000 wall=4870.0s  n_neg 152->145
+  cluster 10: k=2 cubes=125 DOF=648 wall=2.5s  n_neg 145->144
+  cluster 11: too close to boundary (safe_k=0); skipping
+  cluster 12: too close to boundary (safe_k=0); skipping
+
+  total cluster-SLSQP wall=8885.8s (148.10 min)
+  after all cluster SLSQPs: n_neg=144  n<0.01=1685  min_T=-0.010845  L1=10.9
+
+=== Step 3: M10Tet @ 0.012 recovery ===
+  recovery wall=5162.3s
+  FINAL: n_neg=25  n<0.01=47  min_T=-0.006721  L1=56991.7
+
+=== VARIANT D FINAL ===
+  n_neg=25, n<0.01=47
+  total wall = 14048.2s = 234.1 min

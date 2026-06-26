@@ -1,0 +1,48 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Cluster (radius=2) ===
+  # fold cubes: 118
+  # clusters: 16
+  total refined: 28 (sub-)clusters
+
+=== Step 2: Per-cluster coupled SLSQP @ thr=1e-3 ===
+  cluster 0 ((0, 165, 243), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 173->173 (delta=+0) wall=1.4s [ACCEPT]
+  cluster 1 ((0, 188, 248), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 173->172 (delta=-1) wall=2.5s [ACCEPT]
+  cluster 2 ((0, 199, 266), size=15, r=3, k=3, cubes=196, DOF=960): NOT CONVERGED wall=67.4s
+  cluster 3 ((0, 204, 275), size=10, r=2, k=3, cubes=196, DOF=960): NOT CONVERGED wall=84.2s
+  cluster 4 ((0, 206, 272), size=7, r=2, k=3, cubes=196, DOF=960): NOT CONVERGED wall=97.8s
+  cluster 5 ((0, 210, 276), size=1, r=0, k=2, cubes=75, DOF=432): NOT CONVERGED wall=6.5s
+  cluster 6 ((1, 210, 273), size=9, r=2, k=3, cubes=245, DOF=1152): NOT CONVERGED wall=171.4s
+  cluster 7 ((0, 213, 218), size=1, r=0, k=2, cubes=75, DOF=432): NOT CONVERGED wall=5.5s
+  cluster 8 ((1, 214, 223), size=1, r=0, k=2, cubes=100, DOF=540): n_neg 172->174 (delta=+2) wall=4.2s [REJECT]
+  cluster 9 ((1, 215, 220), size=3, r=1, k=3, cubes=245, DOF=1152): NOT CONVERGED wall=201.3s
+  cluster 10 ((0, 220, 276), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 172->173 (delta=+1) wall=3.8s [REJECT]
+  cluster 11 ((1, 219, 282), size=9, r=2, k=3, cubes=245, DOF=1152): NOT CONVERGED wall=241.6s
+  cluster 12 ((1, 215, 271), size=4, r=2, k=3, cubes=245, DOF=1152): n_neg 172->168 (delta=-4) wall=143.6s [ACCEPT]
+  cluster 13 ((1, 215, 282), size=4, r=2, k=3, cubes=245, DOF=1152): n_neg 168->162 (delta=-6) wall=121.5s [ACCEPT]
+  cluster 14 ((1, 221, 278), size=1, r=0, k=2, cubes=100, DOF=540): NOT CONVERGED wall=7.0s
+  cluster 15 ((2, 217, 275), size=1, r=0, k=2, cubes=125, DOF=648): NOT CONVERGED wall=20.6s
+  cluster 16 ((3, 218, 277), size=3, r=1, k=3, cubes=343, DOF=1536): NOT CONVERGED wall=377.8s
+  cluster 17 ((4, 219, 280), size=1, r=0, k=2, cubes=125, DOF=648): NOT CONVERGED wall=35.3s
+  cluster 18 ((1, 218, 266), size=18, r=3, k=3, cubes=245, DOF=1152): NOT CONVERGED wall=43.4s
+  cluster 19 ((1, 136, 191), size=2, r=1, k=3, cubes=245, DOF=1152): n_neg 162->160 (delta=-2) wall=5.2s [ACCEPT]
+  cluster 20 ((5, 188, 271), size=8, r=2, k=3, cubes=343, DOF=1536): n_neg 160->149 (delta=-11) wall=213.3s [ACCEPT]
+  cluster 21 ((6, 213, 228), size=6, r=1, k=3, cubes=343, DOF=1536): n_neg 149->141 (delta=-8) wall=198.2s [ACCEPT]
+  cluster 22 ((7, 188, 259), size=5, r=2, k=3, cubes=343, DOF=1536): n_neg 141->141 (delta=+0) wall=114.2s [ACCEPT]
+  cluster 23 ((7, 192, 263), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 141->139 (delta=-2) wall=6.3s [ACCEPT]
+  cluster 24 ((7, 192, 266), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 139->138 (delta=-1) wall=11.5s [ACCEPT]
+  cluster 25 ((7, 195, 271), size=1, r=0, k=2, cubes=125, DOF=648): n_neg 138->137 (delta=-1) wall=2.4s [ACCEPT]
+  cluster 26 ((14, 165, 227), size=2, r=1, k=3, cubes=196, DOF=960): n_neg 137->135 (delta=-2) wall=3.8s [ACCEPT]
+  cluster 27 ((14, 170, 228), size=1, r=0, k=2, cubes=75, DOF=432): n_neg 135->134 (delta=-1) wall=0.3s [ACCEPT]
+
+  Accepted: 13/28
+  total cluster-SLSQP wall = 2192.0s (36.5 min)
+  after cluster SLSQPs: n_neg=134  n<0.01=1776  min_T=-0.038660  L1=24.6
+
+=== Step 3: M10Tet @ 0.012 recovery ===
+  recovery wall=5487.8s (91.5 min)
+  FINAL: n_neg=30  n<0.01=57  min_T=-0.009606  L1=53821.6
+
+=== VARIANT D'' FINAL ===
+  n_neg=30, n<0.01=57
+  total wall = 7679.8s (128.0 min)

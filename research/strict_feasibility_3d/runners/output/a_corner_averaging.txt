@@ -1,0 +1,44 @@
+Loaded c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy  shape=(3, 16, 320, 456)
+Start:  default n_neg=173  unfixable (any-diag-fails)=94  min_T=-0.013450
+
+=== Strategy A: corner averaging on UNFIXABLE cells only ===
+  pass 0: 94 target cells
+    after pass: n_neg=1544  n<0.01=2780  unfixable=522  min_T=-961.933130  L1_from_orig=1648.1
+  pass 1: 522 target cells
+    after pass: n_neg=3592  n<0.01=4957  unfixable=1102  min_T=-4346.889536  L1_from_orig=6229.3
+  pass 2: 1102 target cells
+    after pass: n_neg=7122  n<0.01=8566  unfixable=2042  min_T=-610.608212  L1_from_orig=13916.6
+  pass 3: 2042 target cells
+    after pass: n_neg=11936  n<0.01=13632  unfixable=3212  min_T=-128.861150  L1_from_orig=20773.6
+  pass 4: 3212 target cells
+    after pass: n_neg=18733  n<0.01=20741  unfixable=4853  min_T=-20.253657  L1_from_orig=27801.6
+
+Unfixable-only result:
+  n_neg=18733
+  n<0.01=20741
+  min_T=-20.253657
+  L1_from_orig=27801.6
+
+=== Strategy A variant: corner averaging on ALL fold cells ===
+  pass 0: 118 target cells
+    after pass: n_neg=1680  n<0.01=2925  unfixable=583  min_T=-961.933130  L1_from_orig=1856.3
+  pass 1: 805 target cells
+    after pass: n_neg=3799  n<0.01=5242  unfixable=1215  min_T=-4346.889536  L1_from_orig=7347.4
+  pass 2: 1584 target cells
+    after pass: n_neg=8343  n<0.01=9973  unfixable=2406  min_T=-1778.677572  L1_from_orig=15790.0
+  pass 3: 2983 target cells
+    after pass: n_neg=14177  n<0.01=16201  unfixable=3911  min_T=-386.088576  L1_from_orig=24131.2
+  pass 4: 4654 target cells
+    after pass: n_neg=21563  n<0.01=24176  unfixable=5719  min_T=-19.338320  L1_from_orig=32560.3
+  pass 5: 6576 target cells
+    after pass: n_neg=31109  n<0.01=34010  unfixable=7960  min_T=-3.833588  L1_from_orig=42545.8
+  pass 6: 8949 target cells
+    after pass: n_neg=42223  n<0.01=45724  unfixable=10458  min_T=-2.045953  L1_from_orig=53784.7
+  pass 7: 11632 target cells
+    after pass: n_neg=54249  n<0.01=58287  unfixable=13052  min_T=-2.413376  L1_from_orig=67202.1
+
+All-folds result:
+  n_neg=54249
+  n<0.01=58287
+  min_T=-2.413376
+  L1_from_orig=67202.1

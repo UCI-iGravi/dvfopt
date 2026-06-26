@@ -1,18 +1,17 @@
 """``dvfopt_gui`` — live, interactive visualisation of dvfopt solvers.
 
 Standalone PyQtGraph app that runs a dvfopt solver in a worker thread
-and renders its per-step state (current Jdet heatmap, active SLSQP
-window + padded ring, current pixel being optimised) in real time.
-Click any pixel to see its current Jdet value in the inspector panel.
+and renders its per-step state (current Jdet / 2-tri heatmap or warped
+deformation grid, active SLSQP window + padded ring, current pixel
+being optimised) in real time. Hover or click any pixel to see its
+current Jdet and triangle areas (T1/T2) in the inspector panel.
 
-v1 inspector limitation: Jdet only. The triangle-area (T1/T2) readout
-is planned for v2 — it needs a ``phi`` snapshot which the worker
-deliberately doesn't carry to keep memory bounded.
-
-Currently instruments :func:`dvfopt.core.slsqp.iterative.iterative_serial`
-(the windowed Jdet SLSQP path). Other solvers can be wired in by
-adding a ``step_callback`` kwarg following the same pattern — see the
-module docstring of :mod:`dvfopt_gui.worker` for the callback contract.
+Multiple solver families are selectable from the toolbar (2-tri
+wallbreakers M10/M14/M14-Schwarz, penalty→barrier L-BFGS-B,
+windowed SLSQP, NMVF). The windowed-SLSQP path fires a per-sub-window
+``step_callback`` for live progress; the wallbreaker family fires it at
+each pipeline-stage boundary. See the module docstring of
+:mod:`dvfopt_gui.worker` for the callback contract.
 
 Entry points
 ------------

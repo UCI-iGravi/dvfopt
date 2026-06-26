@@ -1,0 +1,59 @@
+Slices: [12, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+Methods: ['harmonic_only', 'm14', 'auto_slp']
+
+=== b0039_z012  shape=(320, 456)  init_n_neg=4902 ===
+  harmonic_only      INF  n_neg= 641  min_T=-1.8856  L1=239499.2  (0.6s)
+  m14                OK   n_neg=   0  min_T=+0.0200  L1=178355.6  (241.7s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=180159.0  (46.8s)
+
+=== b0039_z050  shape=(320, 456)  init_n_neg=702 ===
+  harmonic_only      INF  n_neg=   2  min_T=-0.1334  L1=12011.7  (0.3s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=809.0  (51.7s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=703.2  (9.8s)
+
+=== b0039_z100  shape=(320, 456)  init_n_neg=399 ===
+  harmonic_only      OK   n_neg=   0  min_T=+0.0128  L1=4318.9  (0.3s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=449.5  (46.2s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=423.2  (7.0s)
+
+=== b0039_z150  shape=(320, 456)  init_n_neg=588 ===
+  harmonic_only      OK   n_neg=   0  min_T=+0.0178  L1=6365.7  (0.4s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=625.7  (46.5s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=559.4  (7.3s)
+
+=== b0039_z200  shape=(320, 456)  init_n_neg=1003 ===
+  harmonic_only      INF  n_neg=   1  min_T=-0.0633  L1=11641.5  (0.5s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=1282.0  (51.2s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1077.4  (10.5s)
+
+=== b0039_z250  shape=(320, 456)  init_n_neg=1594 ===
+  harmonic_only      INF  n_neg=   2  min_T=-0.1320  L1=15197.6  (0.7s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=2020.9  (49.0s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1891.4  (28.3s)
+
+=== b0039_z300  shape=(320, 456)  init_n_neg=1847 ===
+  harmonic_only      INF  n_neg=   2  min_T=-0.1419  L1=19139.6  (0.9s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=2173.7  (51.4s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2078.7  (16.2s)
+
+=== b0039_z350  shape=(320, 456)  init_n_neg=1661 ===
+  harmonic_only      INF  n_neg=   3  min_T=-0.3015  L1=20671.3  (0.9s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=2281.9  (73.0s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0100  L1=1928.9  (17.0s)
+
+=== b0039_z400  shape=(320, 456)  init_n_neg=1348 ===
+  harmonic_only      INF  n_neg=   1  min_T=-0.0050  L1=13934.0  (0.6s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=1609.1  (48.9s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1455.4  (12.7s)
+
+=== b0039_z450  shape=(320, 456)  init_n_neg=1432 ===
+  harmonic_only      OK   n_neg=   0  min_T=+0.0139  L1=17838.3  (0.8s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=2138.4  (39.9s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=2379.5  (13.1s)
+
+=== b0039_z500  shape=(320, 456)  init_n_neg=1186 ===
+  harmonic_only      OK   n_neg=   0  min_T=+0.0204  L1=14069.4  (0.5s)
+  m14                OK   n_neg=   0  min_T=+0.0110  L1=1579.9  (39.4s)
+  auto_slp           OK   n_neg=   0  min_T=+0.0101  L1=1389.2  (12.1s)
+
+Wrote C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_2d\runners\output\comparison_b0039.csv

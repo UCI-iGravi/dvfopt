@@ -1,0 +1,5 @@
+=== Gradient verification ===
+[gradient check] max|analytic - FD| = 1.929e-07
+
+=== Garanzha chi_eps on CHAIN_BEST (1 fold) ===
+Start: n_neg=1 n<0.01=1 min_T=-0.000323

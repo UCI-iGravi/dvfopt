@@ -105,6 +105,7 @@ def cluster_schwarz_2d_tri(
     final_polish_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     verbose: int = 1,
     record_history: bool = False,
+    step_callback=None,
 ):
     """Generic Schwarz domain decomposition for 2-triangle 2D fields.
 
@@ -162,6 +163,20 @@ def cluster_schwarz_2d_tri(
     H, W = phi_in.shape[1], phi_in.shape[2]
     phi_out = phi_in.copy()
     t0 = time.time()
+
+    def _fire(stage: str, phi):
+        """Forward an intermediate phi snapshot to ``step_callback`` so
+        the live-viz GUI can scrub through each cluster splice. Buggy
+        callbacks are silenced; KeyboardInterrupt propagates as the
+        documented stop signal."""
+        if step_callback is None:
+            return
+        try:
+            step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            pass
 
     init_n_neg, init_min_T = _stats_2d(phi_in)
     history: dict[str, Any] = {
@@ -249,6 +264,7 @@ def cluster_schwarz_2d_tri(
             wall = time.time() - t_cluster
             n_after, min_after = _stats_2d(phi_win_out)
             phi_out[:, y0:y1, x0:x1] = phi_win_out
+            _fire(f'cluster_{b["comp_id"]}_outer{outer}', phi_out)
 
             round_runs.append(
                 dict(
@@ -323,6 +339,7 @@ def cluster_schwarz_2d_tri(
         phi_out = final_polish_fn(phi_out)
         history['final_polish_fired'] = True
         history['final_polish_wall'] = time.time() - t_polish
+        _fire('final_polish', phi_out)
         if verbose:
             final_n, final_m = _stats_2d(phi_out)
             print(

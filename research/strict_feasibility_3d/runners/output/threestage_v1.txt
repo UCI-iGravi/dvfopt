@@ -1,0 +1,34 @@
+Loading B0039...
+
+=== Stage 1: 2D auto_slp on z=10..14 ===
+  z=10: feas=True  wall=161.9s
+  z=11: feas=True  wall=159.6s
+  z=12: feas=True  wall=45.0s
+  z=13: feas=True  wall=36.3s
+  z=14: feas=True  wall=35.1s
+[stage 1] cached to C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_z10_14_stage1.npy
+[stage 1 stack]  n_neg=  6368  n<thresh= 34762  min_T=-1.156348
+  wall: 438.2s
+
+=== Stage 2: M10Tet global 3D pass ===
+[stage 2] cached to C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_z10_14_stage2.npy
+[stage 2 out]  n_neg=     0  n<thresh=    49  min_T=+0.004851
+  wall: 1107.1s
+
+=== Stage 3: cluster_slp_3d polish below threshold ===
+[outer 0] 6 clusters: n_neg 0 -> 25  n<threshold=66  (1003.9s)
+[outer 1] 3 clusters: n_neg 25 -> 14  n<threshold=26  (1063.5s)
+[outer 2] 2 clusters: n_neg 14 -> 6  n<threshold=24  (1096.4s)
+[outer 3] 2 clusters: n_neg 6 -> 0  n<threshold=12  (1125.0s)
+[stage 3 out]  n_neg=     0  n<thresh=    12  min_T=+0.001025
+  wall: 1125.1s
+  cluster solves: 13
+
+=== Final ===
+  shape:             (3, 5, 320, 456)
+  n_neg (V<=0):      0
+  n_below_threshold: 12
+  min_T:             +0.001025
+  L1 vs raw input:   879714.6
+  STRICT 100% feas:  False
+  total wall:        2670.5s

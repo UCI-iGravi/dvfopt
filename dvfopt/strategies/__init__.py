@@ -44,7 +44,10 @@ from __future__ import annotations
 
 # Import concrete strategies — each calls @register_strategy at module
 # import time, so importing this package gives you a populated registry.
-from dvfopt.strategies.barrier import BarrierStrategy
+from dvfopt.strategies.barrier import (
+    BarrierStrategy,
+    BarrierTet3DTorchStrategy,
+)
 
 # Base + registry (no side effects beyond class registration in deps below).
 # Internal: solver.py imports this. Kept exported for backward compat
@@ -66,6 +69,8 @@ from dvfopt.strategies.slsqp import (
 )
 from dvfopt.strategies.wallbreakers import (
     ALM3DStrategy,
+    ActiveBandALM3DStrategy,
+    CoupledKRing3DStrategy,
     Harmonic3DStrategy,
     HarmonicALMBarrier3DStrategy,
     HarmonicALMBarrierStrategy,
@@ -88,6 +93,9 @@ from dvfopt.strategies.wallbreakers import (
 __all__ = [
     'ALM3DStrategy',
     'BarrierStrategy',
+    'BarrierTet3DTorchStrategy',
+    'ActiveBandALM3DStrategy',
+    'CoupledKRing3DStrategy',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
     'HarmonicALMBarrierStrategy',

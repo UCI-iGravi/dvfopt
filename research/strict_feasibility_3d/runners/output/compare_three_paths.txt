@@ -1,0 +1,52 @@
+Loaded c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy  shape=(3, 16, 320, 456)
+Input (173-fold):         n_neg=  173  n<0.01= 1572  min_T=-0.013450
+
+=== Option 3: Local threshold relaxation ===
+  Global min_T:                -0.013450
+  threshold = +0.0100:   1580 tets below (0.012095%)
+  threshold = +0.0050:    415 tets below (0.003177%)
+  threshold = +0.0010:    211 tets below (0.001615%)
+  threshold = +0.0000:    173 tets below (0.001324%)
+  threshold = -0.0010:    142 tets below (0.001087%)
+  threshold = -0.0050:     43 tets below (0.000329%)
+  threshold = -0.0130:      1 tets below (0.000008%)
+  threshold = -0.0140:      0 tets below (0.000000%)
+
+  Cells with at least one tet < 0.01:  739
+  Tets < 0.01:                          1572
+
+  Pragmatic: 100% "fold-free" (V > 0) requires threshold >= -0.013449
+  Strict 0.01 feasibility: NOT achieved without algorithmic fix.
+
+=== Option 2: Topology-modifying move (diagonal flip) ===
+  diagonal (0,7):  global n_neg=173  n<0.01=1572  min_T=-0.013450
+  diagonal (1,6):  global n_neg=23238  n<0.01=46127  min_T=-51176.260859
+  diagonal (2,5):  global n_neg=21722  n<0.01=43214  min_T=-48193.577105
+  diagonal (3,4):  global n_neg=11166  n<0.01=24286  min_T=-17223.336906
+
+  Per-cell BEST diagonal stats:
+    cells with best min_T <= 0:        94
+    cells with best min_T < 0.01:      587
+    global min(best per-cell min_T):  -0.010714
+    cells where flip improves min_T: 435851
+
+  wall: 7.9s
+
+=== Option 1: Non-linear SLSQP (focused crop) ===
+  bbox cells:  z[0,14], y[136,221], x[191,283]
+  crop corner shape: (3, 16, 93, 100)
+  crop too large for SLSQP (446400 vars) — would not converge in reasonable time
+Traceback (most recent call last):
+  File "c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_compare_three_paths.py", line 265, in <module>
+    main()
+    ~~~~^^
+  File "c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_compare_three_paths.py", line 261, in main
+    option1_slsqp(phi)
+    ~~~~~~~~~~~~~^^^^^
+  File "c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\_compare_three_paths.py", line 247, in option1_slsqp
+    print('  SKIPPING. SLSQP only viable when fold bbox is tight (\u2264 ~100k vars).', flush=True)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Andy\anaconda3\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2264' in position 55: character maps to <undefined>

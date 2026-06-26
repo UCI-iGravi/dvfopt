@@ -1,0 +1,24 @@
+Loaded, shape=(3, 16, 320, 456)
+Start: n_neg=173  n<0.01=1572  min_T=-0.013450
+Unfixable cells: 94
+
+--- ring_pad=2 ---
+  inpaint corner mask: 2601 corners
+  Building Laplacian system: 2601 interior corners
+  Solving Laplacian system (2601 unknowns)...
+    solve wall: 0.0s
+  After inpaint:  n_neg=2724  n<0.01=4061  min_T=-4674.037534  L1_from_input=10585.0
+
+--- ring_pad=5 ---
+  inpaint corner mask: 8363 corners
+  Building Laplacian system: 8363 interior corners
+  Solving Laplacian system (8363 unknowns)...
+    solve wall: 0.1s
+  After inpaint:  n_neg=4152  n<0.01=6082  min_T=-1.036967  L1_from_input=33673.5
+
+--- ring_pad=10 ---
+  inpaint corner mask: 23952 corners
+  Building Laplacian system: 23952 interior corners
+  Solving Laplacian system (23952 unknowns)...
+    solve wall: 1.2s
+  After inpaint:  n_neg=11352  n<0.01=14562  min_T=-1.914685  L1_from_input=108917.9

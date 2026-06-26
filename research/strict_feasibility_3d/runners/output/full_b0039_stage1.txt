@@ -1,0 +1,556 @@
+Loading raw B0039...
+  full shape: (3, 528, 320, 456)
+
+=== Stage 1: 2D auto_slp on every z-slice ===
+  z=  0: feas      init_n_neg= 5220  wall=180.4s  elapsed=181s
+  z=  1: feas      init_n_neg= 5232  wall=179.1s  elapsed=360s
+  z=  2: feas      init_n_neg= 5289  wall=168.9s  elapsed=529s
+  z=  3: feas      init_n_neg= 5261  wall=208.5s  elapsed=737s
+  z=  4: feas      init_n_neg= 5204  wall=200.9s  elapsed=938s
+  z=  5: feas      init_n_neg= 5236  wall=208.6s  elapsed=1147s
+  z=  6: feas      init_n_neg= 5211  wall=162.2s  elapsed=1309s
+  z=  7: feas      init_n_neg= 5099  wall=200.3s  elapsed=1509s
+  z=  8: feas      init_n_neg= 4898  wall=186.6s  elapsed=1696s
+  z=  9: feas      init_n_neg= 4645  wall=151.3s  elapsed=1847s
+  z= 10: feas      init_n_neg= 4568  wall=149.6s  elapsed=1997s
+  z= 11: feas      init_n_neg= 4673  wall=154.6s  elapsed=2151s
+  z= 12: feas      init_n_neg= 4902  wall= 41.9s  elapsed=2193s
+  z= 13: feas      init_n_neg= 4993  wall= 33.0s  elapsed=2226s
+  z= 14: feas      init_n_neg= 4835  wall= 32.7s  elapsed=2259s
+  z= 15: feas      init_n_neg= 4465  wall= 26.4s  elapsed=2286s
+  z= 16: feas      init_n_neg= 3678  wall= 39.8s  elapsed=2325s
+  z= 17: feas      init_n_neg= 2866  wall=139.2s  elapsed=2465s
+  z= 18: feas      init_n_neg= 2009  wall=134.4s  elapsed=2599s
+  z= 19: feas      init_n_neg= 1635  wall= 30.2s  elapsed=2629s
+  z= 20: feas      init_n_neg= 1330  wall=  9.6s  elapsed=2639s
+  z= 21: feas      init_n_neg= 1099  wall= 16.0s  elapsed=2655s
+  z= 22: feas      init_n_neg=  775  wall=  9.4s  elapsed=2664s
+  z= 23: feas      init_n_neg=  653  wall=  5.9s  elapsed=2670s
+  z= 24: feas      init_n_neg=  753  wall=  7.5s  elapsed=2678s
+  z= 25: feas      init_n_neg=  924  wall=  6.8s  elapsed=2684s
+  z= 26: feas      init_n_neg= 1032  wall=  7.8s  elapsed=2692s
+  z= 27: feas      init_n_neg=  997  wall=  8.1s  elapsed=2700s
+  z= 28: feas      init_n_neg=  857  wall=  9.2s  elapsed=2710s
+  z= 29: feas      init_n_neg=  793  wall=  7.3s  elapsed=2717s
+  z= 30: feas      init_n_neg=  872  wall=  8.1s  elapsed=2725s
+  z= 31: feas      init_n_neg=  838  wall=  8.2s  elapsed=2733s
+  z= 32: feas      init_n_neg=  786  wall=  8.4s  elapsed=2742s
+  z= 33: feas      init_n_neg=  713  wall=  8.6s  elapsed=2750s
+  z= 34: feas      init_n_neg=  629  wall=  8.2s  elapsed=2759s
+  z= 35: feas      init_n_neg=  661  wall=  8.3s  elapsed=2767s
+  z= 36: feas      init_n_neg=  601  wall=  9.0s  elapsed=2776s
+  z= 37: feas      init_n_neg=  641  wall= 10.0s  elapsed=2786s
+  z= 38: feas      init_n_neg=  641  wall=  9.2s  elapsed=2795s
+  z= 39: feas      init_n_neg=  660  wall=  8.0s  elapsed=2803s
+  z= 40: feas      init_n_neg=  714  wall=  7.4s  elapsed=2811s
+  z= 41: feas      init_n_neg=  573  wall=  7.8s  elapsed=2818s
+  z= 42: feas      init_n_neg=  563  wall=  8.5s  elapsed=2827s
+  z= 43: feas      init_n_neg=  567  wall=  7.6s  elapsed=2834s
+  z= 44: feas      init_n_neg=  526  wall=  8.8s  elapsed=2843s
+  z= 45: feas      init_n_neg=  551  wall=  8.8s  elapsed=2852s
+  z= 46: feas      init_n_neg=  599  wall=  8.0s  elapsed=2860s
+  z= 47: feas      init_n_neg=  562  wall= 14.1s  elapsed=2874s
+  z= 48: feas      init_n_neg=  559  wall=  7.4s  elapsed=2881s
+  z= 49: feas      init_n_neg=  589  wall=  7.4s  elapsed=2889s
+  z= 50: feas      init_n_neg=  702  wall=  8.9s  elapsed=2898s
+  z= 51: feas      init_n_neg=  649  wall=  8.5s  elapsed=2906s
+  z= 52: feas      init_n_neg=  666  wall=  9.2s  elapsed=2916s
+  z= 53: feas      init_n_neg=  577  wall=  7.3s  elapsed=2923s
+  z= 54: feas      init_n_neg=  730  wall=  8.3s  elapsed=2931s
+  z= 55: feas      init_n_neg=  756  wall=  8.3s  elapsed=2939s
+  z= 56: feas      init_n_neg=  878  wall=  8.8s  elapsed=2948s
+  z= 57: feas      init_n_neg=  925  wall=  8.6s  elapsed=2957s
+  z= 58: feas      init_n_neg=  906  wall=  9.9s  elapsed=2967s
+  z= 59: feas      init_n_neg=  832  wall=  8.6s  elapsed=2975s
+  z= 60: feas      init_n_neg=  907  wall=  9.2s  elapsed=2985s
+  z= 61: feas      init_n_neg=  933  wall=  9.0s  elapsed=2994s
+  z= 62: feas      init_n_neg=  899  wall=  9.5s  elapsed=3003s
+  z= 63: feas      init_n_neg=  899  wall=  8.8s  elapsed=3012s
+  z= 64: feas      init_n_neg=  858  wall=  8.8s  elapsed=3021s
+  z= 65: feas      init_n_neg=  775  wall=  9.1s  elapsed=3030s
+  z= 66: feas      init_n_neg=  746  wall= 10.1s  elapsed=3040s
+  z= 67: feas      init_n_neg=  665  wall=  7.9s  elapsed=3048s
+  z= 68: feas      init_n_neg=  741  wall=  8.7s  elapsed=3056s
+  z= 69: feas      init_n_neg=  757  wall= 10.3s  elapsed=3067s
+  z= 70: feas      init_n_neg=  826  wall= 10.9s  elapsed=3078s
+  z= 71: feas      init_n_neg=  873  wall=  9.3s  elapsed=3087s
+  z= 72: feas      init_n_neg=  821  wall= 10.1s  elapsed=3097s
+  z= 73: feas      init_n_neg=  761  wall= 10.2s  elapsed=3107s
+  z= 74: feas      init_n_neg=  909  wall=  8.7s  elapsed=3116s
+  z= 75: feas      init_n_neg=  936  wall=  9.7s  elapsed=3126s
+  z= 76: feas      init_n_neg=  978  wall=  9.0s  elapsed=3135s
+  z= 77: feas      init_n_neg=  924  wall=  9.9s  elapsed=3145s
+  z= 78: feas      init_n_neg=  850  wall=  8.6s  elapsed=3153s
+  z= 79: feas      init_n_neg=  819  wall=  9.5s  elapsed=3163s
+  z= 80: feas      init_n_neg=  778  wall=  9.6s  elapsed=3172s
+  z= 81: feas      init_n_neg=  748  wall=  9.4s  elapsed=3182s
+  z= 82: feas      init_n_neg=  778  wall=  9.8s  elapsed=3191s
+  z= 83: feas      init_n_neg=  764  wall= 10.8s  elapsed=3202s
+  z= 84: feas      init_n_neg=  881  wall= 10.3s  elapsed=3213s
+  z= 85: feas      init_n_neg=  792  wall=  9.9s  elapsed=3222s
+  z= 86: feas      init_n_neg=  856  wall= 10.7s  elapsed=3233s
+  z= 87: feas      init_n_neg=  748  wall=  9.6s  elapsed=3243s
+  z= 88: feas      init_n_neg=  748  wall= 10.3s  elapsed=3253s
+  z= 89: feas      init_n_neg=  718  wall=  8.4s  elapsed=3262s
+  z= 90: feas      init_n_neg=  707  wall= 10.6s  elapsed=3272s
+  z= 91: feas      init_n_neg=  647  wall=  8.5s  elapsed=3281s
+  z= 92: feas      init_n_neg=  553  wall=  8.6s  elapsed=3289s
+  z= 93: feas      init_n_neg=  611  wall=  7.9s  elapsed=3297s
+  z= 94: feas      init_n_neg=  538  wall=  8.0s  elapsed=3305s
+  z= 95: feas      init_n_neg=  407  wall=  7.2s  elapsed=3312s
+  z= 96: feas      init_n_neg=  518  wall=  7.6s  elapsed=3320s
+  z= 97: feas      init_n_neg=  465  wall=  7.6s  elapsed=3328s
+  z= 98: feas      init_n_neg=  500  wall=  7.0s  elapsed=3335s
+  z= 99: feas      init_n_neg=  465  wall=  7.2s  elapsed=3342s
+  z=100: feas      init_n_neg=  399  wall=  6.3s  elapsed=3348s
+  z=101: feas      init_n_neg=  390  wall=  7.1s  elapsed=3355s
+  z=102: feas      init_n_neg=  433  wall=  7.3s  elapsed=3363s
+  z=103: feas      init_n_neg=  409  wall=  7.1s  elapsed=3370s
+  z=104: feas      init_n_neg=  449  wall=  6.9s  elapsed=3377s
+  z=105: feas      init_n_neg=  392  wall=  6.9s  elapsed=3384s
+  z=106: feas      init_n_neg=  370  wall=  7.0s  elapsed=3391s
+  z=107: feas      init_n_neg=  412  wall=  7.1s  elapsed=3398s
+  z=108: feas      init_n_neg=  346  wall=  6.5s  elapsed=3404s
+  z=109: feas      init_n_neg=  319  wall=  6.6s  elapsed=3411s
+  z=110: feas      init_n_neg=  280  wall=  7.2s  elapsed=3418s
+  z=111: feas      init_n_neg=  306  wall=  6.7s  elapsed=3425s
+  z=112: feas      init_n_neg=  366  wall=  7.2s  elapsed=3432s
+  z=113: feas      init_n_neg=  351  wall=  7.0s  elapsed=3439s
+  z=114: feas      init_n_neg=  316  wall=  7.0s  elapsed=3446s
+  z=115: feas      init_n_neg=  336  wall=  6.8s  elapsed=3453s
+  z=116: feas      init_n_neg=  337  wall=  6.3s  elapsed=3459s
+  z=117: feas      init_n_neg=  298  wall=  6.0s  elapsed=3465s
+  z=118: feas      init_n_neg=  327  wall=  6.8s  elapsed=3472s
+  z=119: feas      init_n_neg=  300  wall=  6.1s  elapsed=3478s
+  z=120: feas      init_n_neg=  304  wall=  6.8s  elapsed=3485s
+  z=121: feas      init_n_neg=  308  wall=  7.0s  elapsed=3492s
+  z=122: feas      init_n_neg=  297  wall=  6.5s  elapsed=3498s
+  z=123: feas      init_n_neg=  325  wall=  6.4s  elapsed=3505s
+  z=124: feas      init_n_neg=  353  wall=  6.6s  elapsed=3511s
+  z=125: feas      init_n_neg=  328  wall=  6.4s  elapsed=3518s
+  z=126: feas      init_n_neg=  314  wall=  6.3s  elapsed=3524s
+  z=127: feas      init_n_neg=  326  wall=  6.5s  elapsed=3531s
+  z=128: feas      init_n_neg=  349  wall=  6.5s  elapsed=3537s
+  z=129: feas      init_n_neg=  371  wall=  6.7s  elapsed=3544s
+  z=130: feas      init_n_neg=  398  wall=  7.1s  elapsed=3551s
+  z=131: feas      init_n_neg=  408  wall=  6.6s  elapsed=3558s
+  z=132: feas      init_n_neg=  340  wall=  6.3s  elapsed=3564s
+  z=133: feas      init_n_neg=  432  wall=  7.0s  elapsed=3571s
+  z=134: feas      init_n_neg=  447  wall=  7.3s  elapsed=3578s
+  z=135: feas      init_n_neg=  475  wall=  7.0s  elapsed=3585s
+  z=136: feas      init_n_neg=  495  wall=  7.1s  elapsed=3592s
+  z=137: feas      init_n_neg=  480  wall=  7.9s  elapsed=3600s
+  z=138: feas      init_n_neg=  415  wall=  6.8s  elapsed=3607s
+  z=139: feas      init_n_neg=  428  wall=  7.6s  elapsed=3615s
+  z=140: feas      init_n_neg=  452  wall=  7.0s  elapsed=3622s
+  z=141: feas      init_n_neg=  436  wall=  6.9s  elapsed=3629s
+  z=142: feas      init_n_neg=  364  wall=  7.1s  elapsed=3636s
+  z=143: feas      init_n_neg=  399  wall=  7.4s  elapsed=3643s
+  z=144: feas      init_n_neg=  418  wall=  7.3s  elapsed=3650s
+  z=145: feas      init_n_neg=  412  wall=  7.1s  elapsed=3657s
+  z=146: feas      init_n_neg=  496  wall=  7.2s  elapsed=3665s
+  z=147: feas      init_n_neg=  468  wall=  7.5s  elapsed=3672s
+  z=148: feas      init_n_neg=  566  wall=  7.9s  elapsed=3680s
+  z=149: feas      init_n_neg=  638  wall=  7.9s  elapsed=3688s
+  z=150: feas      init_n_neg=  588  wall=  7.3s  elapsed=3695s
+  z=151: feas      init_n_neg=  572  wall=  7.8s  elapsed=3703s
+  z=152: feas      init_n_neg=  540  wall=  7.4s  elapsed=3711s
+  z=153: feas      init_n_neg=  564  wall=  7.7s  elapsed=3718s
+  z=154: feas      init_n_neg=  619  wall=  7.3s  elapsed=3726s
+  z=155: feas      init_n_neg=  490  wall=  7.9s  elapsed=3734s
+  z=156: feas      init_n_neg=  562  wall=  8.0s  elapsed=3742s
+  z=157: feas      init_n_neg=  656  wall=  8.1s  elapsed=3750s
+  z=158: feas      init_n_neg=  613  wall=  8.9s  elapsed=3759s
+  z=159: feas      init_n_neg=  548  wall=  8.4s  elapsed=3767s
+  z=160: feas      init_n_neg=  621  wall=  8.2s  elapsed=3775s
+  z=161: feas      init_n_neg=  592  wall=  8.1s  elapsed=3783s
+  z=162: feas      init_n_neg=  527  wall=  7.9s  elapsed=3791s
+  z=163: feas      init_n_neg=  578  wall=  8.3s  elapsed=3800s
+  z=164: feas      init_n_neg=  636  wall=  9.1s  elapsed=3809s
+  z=165: feas      init_n_neg=  656  wall=  9.6s  elapsed=3818s
+  z=166: feas      init_n_neg=  584  wall=  8.3s  elapsed=3827s
+  z=167: feas      init_n_neg=  632  wall=  9.0s  elapsed=3836s
+  z=168: feas      init_n_neg=  684  wall=  8.1s  elapsed=3844s
+  z=169: feas      init_n_neg=  645  wall=  9.3s  elapsed=3853s
+  z=170: feas      init_n_neg=  618  wall=  8.8s  elapsed=3862s
+  z=171: feas      init_n_neg=  689  wall=  9.3s  elapsed=3871s
+  z=172: feas      init_n_neg=  674  wall=  8.7s  elapsed=3880s
+  z=173: feas      init_n_neg=  688  wall=  8.9s  elapsed=3889s
+  z=174: feas      init_n_neg=  699  wall=  8.8s  elapsed=3898s
+  z=175: feas      init_n_neg=  778  wall=  9.1s  elapsed=3907s
+  z=176: feas      init_n_neg=  841  wall=  8.9s  elapsed=3916s
+  z=177: feas      init_n_neg=  815  wall=  9.3s  elapsed=3925s
+  z=178: feas      init_n_neg=  828  wall=  9.4s  elapsed=3934s
+  z=179: feas      init_n_neg=  841  wall=  9.5s  elapsed=3944s
+  z=180: feas      init_n_neg=  829  wall=  9.6s  elapsed=3954s
+  z=181: feas      init_n_neg=  793  wall= 10.1s  elapsed=3964s
+  z=182: feas      init_n_neg=  826  wall= 10.2s  elapsed=3974s
+  z=183: feas      init_n_neg=  834  wall= 10.6s  elapsed=3985s
+  z=184: feas      init_n_neg=  840  wall= 11.3s  elapsed=3996s
+  z=185: feas      init_n_neg=  875  wall= 11.3s  elapsed=4007s
+  z=186: feas      init_n_neg=  830  wall= 10.0s  elapsed=4017s
+  z=187: feas      init_n_neg=  849  wall=  9.7s  elapsed=4027s
+  z=188: feas      init_n_neg=  748  wall=  9.7s  elapsed=4037s
+  z=189: feas      init_n_neg=  748  wall= 10.2s  elapsed=4047s
+  z=190: feas      init_n_neg=  820  wall=  9.5s  elapsed=4056s
+  z=191: feas      init_n_neg=  949  wall=  9.9s  elapsed=4066s
+  z=192: feas      init_n_neg=  903  wall=  9.7s  elapsed=4076s
+  z=193: feas      init_n_neg=  894  wall= 10.2s  elapsed=4086s
+  z=194: feas      init_n_neg=  889  wall=  9.9s  elapsed=4096s
+  z=195: feas      init_n_neg=  838  wall=  9.5s  elapsed=4105s
+  z=196: feas      init_n_neg=  882  wall= 10.1s  elapsed=4115s
+  z=197: feas      init_n_neg=  984  wall= 10.2s  elapsed=4126s
+  z=198: feas      init_n_neg= 1042  wall= 11.9s  elapsed=4138s
+  z=199: feas      init_n_neg= 1053  wall=  9.8s  elapsed=4147s
+  z=200: feas      init_n_neg= 1003  wall= 10.6s  elapsed=4158s
+  z=201: feas      init_n_neg= 1004  wall= 11.2s  elapsed=4169s
+  z=202: feas      init_n_neg= 1056  wall= 10.8s  elapsed=4180s
+  z=203: feas      init_n_neg= 1202  wall= 11.6s  elapsed=4191s
+  z=204: feas      init_n_neg= 1173  wall= 11.3s  elapsed=4203s
+  z=205: feas      init_n_neg= 1134  wall= 11.0s  elapsed=4214s
+  z=206: feas      init_n_neg= 1385  wall= 11.6s  elapsed=4225s
+  z=207: feas      init_n_neg= 1415  wall= 12.7s  elapsed=4238s
+  z=208: feas      init_n_neg= 1472  wall= 12.5s  elapsed=4251s
+  z=209: feas      init_n_neg= 1303  wall= 12.2s  elapsed=4263s
+  z=210: feas      init_n_neg= 1239  wall= 12.7s  elapsed=4276s
+  z=211: feas      init_n_neg= 1371  wall= 13.5s  elapsed=4289s
+  z=212: feas      init_n_neg= 1351  wall= 12.1s  elapsed=4301s
+  z=213: feas      init_n_neg= 1455  wall= 13.5s  elapsed=4315s
+  z=214: feas      init_n_neg= 1438  wall= 13.0s  elapsed=4328s
+  z=215: feas      init_n_neg= 1383  wall= 12.4s  elapsed=4340s
+  z=216: feas      init_n_neg= 1368  wall= 12.4s  elapsed=4353s
+  z=217: feas      init_n_neg= 1380  wall= 12.9s  elapsed=4365s
+  z=218: feas      init_n_neg= 1373  wall= 12.2s  elapsed=4378s
+  z=219: feas      init_n_neg= 1406  wall= 12.5s  elapsed=4390s
+  z=220: feas      init_n_neg= 1135  wall= 11.8s  elapsed=4402s
+  z=221: feas      init_n_neg= 1083  wall= 11.1s  elapsed=4413s
+  z=222: feas      init_n_neg= 1274  wall= 12.9s  elapsed=4426s
+  z=223: feas      init_n_neg= 1131  wall= 12.3s  elapsed=4438s
+  z=224: feas      init_n_neg= 1279  wall= 12.4s  elapsed=4451s
+  z=225: feas      init_n_neg= 1202  wall= 11.8s  elapsed=4462s
+  z=226: feas      init_n_neg= 1087  wall= 11.4s  elapsed=4474s
+  z=227: feas      init_n_neg= 1366  wall= 12.7s  elapsed=4487s
+  z=228: feas      init_n_neg= 1389  wall= 12.1s  elapsed=4499s
+  z=229: feas      init_n_neg= 1403  wall= 12.7s  elapsed=4511s
+  z=230: feas      init_n_neg= 1372  wall= 13.6s  elapsed=4525s
+  z=231: feas      init_n_neg= 1347  wall= 12.5s  elapsed=4538s
+  z=232: feas      init_n_neg= 1520  wall= 12.4s  elapsed=4550s
+  z=233: feas      init_n_neg= 1424  wall= 12.2s  elapsed=4562s
+  z=234: feas      init_n_neg= 1460  wall= 12.0s  elapsed=4574s
+  z=235: feas      init_n_neg= 1228  wall= 12.0s  elapsed=4586s
+  z=236: feas      init_n_neg= 1253  wall= 11.9s  elapsed=4598s
+  z=237: feas      init_n_neg= 1375  wall= 13.1s  elapsed=4611s
+  z=238: feas      init_n_neg= 1479  wall= 12.6s  elapsed=4624s
+  z=239: feas      init_n_neg= 1422  wall= 12.6s  elapsed=4636s
+  z=240: feas      init_n_neg= 1565  wall= 12.6s  elapsed=4649s
+  z=241: feas      init_n_neg= 1622  wall= 12.4s  elapsed=4661s
+  z=242: feas      init_n_neg= 1674  wall= 13.0s  elapsed=4674s
+  z=243: feas      init_n_neg= 1726  wall= 13.8s  elapsed=4688s
+  z=244: feas      init_n_neg= 1672  wall= 13.7s  elapsed=4702s
+  z=245: feas      init_n_neg= 1607  wall= 13.4s  elapsed=4715s
+  z=246: feas      init_n_neg= 1548  wall= 14.2s  elapsed=4729s
+  z=247: feas      init_n_neg= 1617  wall= 13.1s  elapsed=4743s
+  z=248: feas      init_n_neg= 1711  wall= 15.5s  elapsed=4758s
+  z=249: feas      init_n_neg= 1606  wall= 14.7s  elapsed=4773s
+  z=250: feas      init_n_neg= 1594  wall= 25.7s  elapsed=4799s
+  z=251: feas      init_n_neg= 1452  wall= 13.7s  elapsed=4812s
+  z=252: feas      init_n_neg= 1614  wall= 13.8s  elapsed=4826s
+  z=253: feas      init_n_neg= 1397  wall= 13.6s  elapsed=4840s
+  z=254: feas      init_n_neg= 1474  wall= 14.1s  elapsed=4854s
+  z=255: feas      init_n_neg= 1458  wall= 14.0s  elapsed=4868s
+  z=256: feas      init_n_neg= 1247  wall= 13.6s  elapsed=4882s
+  z=257: feas      init_n_neg= 1281  wall= 13.8s  elapsed=4895s
+  z=258: feas      init_n_neg= 1385  wall= 14.8s  elapsed=4910s
+  z=259: feas      init_n_neg= 1461  wall= 14.9s  elapsed=4925s
+  z=260: feas      init_n_neg= 1455  wall= 13.7s  elapsed=4939s
+  z=261: feas      init_n_neg= 1461  wall= 13.6s  elapsed=4952s
+  z=262: feas      init_n_neg= 1497  wall= 14.1s  elapsed=4966s
+  z=263: feas      init_n_neg= 1647  wall= 14.4s  elapsed=4981s
+  z=264: feas      init_n_neg= 1547  wall= 14.2s  elapsed=4995s
+  z=265: feas      init_n_neg= 1476  wall= 14.5s  elapsed=5010s
+  z=266: feas      init_n_neg= 1505  wall= 14.2s  elapsed=5024s
+  z=267: feas      init_n_neg= 1564  wall= 14.3s  elapsed=5038s
+  z=268: feas      init_n_neg= 1440  wall= 14.6s  elapsed=5053s
+  z=269: feas      init_n_neg= 1376  wall= 13.5s  elapsed=5066s
+  z=270: feas      init_n_neg= 1318  wall= 13.5s  elapsed=5080s
+  z=271: feas      init_n_neg= 1386  wall= 13.6s  elapsed=5093s
+  z=272: feas      init_n_neg= 1499  wall= 13.9s  elapsed=5107s
+  z=273: feas      init_n_neg= 1455  wall= 14.0s  elapsed=5121s
+  z=274: feas      init_n_neg= 1419  wall= 14.9s  elapsed=5136s
+  z=275: feas      init_n_neg= 1690  wall= 14.8s  elapsed=5151s
+  z=276: feas      init_n_neg= 1564  wall= 15.0s  elapsed=5166s
+  z=277: feas      init_n_neg= 1618  wall= 15.2s  elapsed=5181s
+  z=278: feas      init_n_neg= 1695  wall= 15.7s  elapsed=5197s
+  z=279: feas      init_n_neg= 1764  wall= 15.7s  elapsed=5212s
+  z=280: feas      init_n_neg= 1634  wall= 14.6s  elapsed=5227s
+  z=281: feas      init_n_neg= 1744  wall= 14.1s  elapsed=5241s
+  z=282: feas      init_n_neg= 1734  wall= 15.2s  elapsed=5256s
+  z=283: feas      init_n_neg= 1573  wall= 15.5s  elapsed=5272s
+  z=284: feas      init_n_neg= 1607  wall= 14.8s  elapsed=5287s
+  z=285: feas      init_n_neg= 1380  wall= 13.8s  elapsed=5300s
+  z=286: feas      init_n_neg= 1526  wall= 14.3s  elapsed=5315s
+  z=287: feas      init_n_neg= 1563  wall= 15.2s  elapsed=5330s
+  z=288: feas      init_n_neg= 1537  wall= 16.0s  elapsed=5346s
+  z=289: feas      init_n_neg= 1720  wall= 15.6s  elapsed=5362s
+  z=290: feas      init_n_neg= 1709  wall= 16.0s  elapsed=5378s
+  z=291: feas      init_n_neg= 1737  wall= 15.9s  elapsed=5393s
+  z=292: feas      init_n_neg= 1978  wall= 16.7s  elapsed=5410s
+  z=293: feas      init_n_neg= 1970  wall= 16.8s  elapsed=5427s
+  z=294: feas      init_n_neg= 1955  wall= 17.2s  elapsed=5444s
+  z=295: feas      init_n_neg= 1823  wall= 16.0s  elapsed=5460s
+  z=296: feas      init_n_neg= 1852  wall= 16.7s  elapsed=5477s
+  z=297: feas      init_n_neg= 1967  wall= 17.2s  elapsed=5494s
+  z=298: feas      init_n_neg= 1844  wall= 16.9s  elapsed=5511s
+  z=299: feas      init_n_neg= 1722  wall= 16.8s  elapsed=5528s
+  z=300: feas      init_n_neg= 1847  wall= 16.1s  elapsed=5544s
+  z=301: feas      init_n_neg= 1830  wall= 16.4s  elapsed=5560s
+  z=302: feas      init_n_neg= 1826  wall= 17.1s  elapsed=5577s
+  z=303: feas      init_n_neg= 1840  wall= 16.1s  elapsed=5594s
+  z=304: feas      init_n_neg= 1745  wall= 16.1s  elapsed=5610s
+  z=305: feas      init_n_neg= 1644  wall= 16.5s  elapsed=5626s
+  z=306: feas      init_n_neg= 1636  wall= 15.1s  elapsed=5641s
+  z=307: feas      init_n_neg= 1855  wall= 16.1s  elapsed=5657s
+  z=308: feas      init_n_neg= 1683  wall= 16.0s  elapsed=5673s
+  z=309: feas      init_n_neg= 1683  wall= 17.1s  elapsed=5690s
+  z=310: feas      init_n_neg= 1623  wall= 25.4s  elapsed=5716s
+  z=311: feas      init_n_neg= 1670  wall= 16.4s  elapsed=5732s
+  z=312: feas      init_n_neg= 1656  wall= 16.7s  elapsed=5749s
+  z=313: feas      init_n_neg= 1702  wall= 16.9s  elapsed=5766s
+  z=314: feas      init_n_neg= 1790  wall= 16.9s  elapsed=5783s
+  z=315: feas      init_n_neg= 1850  wall= 16.3s  elapsed=5799s
+  z=316: feas      init_n_neg= 1660  wall= 15.7s  elapsed=5815s
+  z=317: feas      init_n_neg= 1532  wall= 16.1s  elapsed=5831s
+  z=318: feas      init_n_neg= 1543  wall= 15.6s  elapsed=5847s
+  z=319: feas      init_n_neg= 1583  wall= 15.4s  elapsed=5862s
+  z=320: feas      init_n_neg= 1514  wall= 15.6s  elapsed=5878s
+  z=321: feas      init_n_neg= 1522  wall= 15.0s  elapsed=5893s
+  z=322: feas      init_n_neg= 1721  wall= 15.0s  elapsed=5908s
+  z=323: feas      init_n_neg= 1693  wall= 15.4s  elapsed=5923s
+  z=324: feas      init_n_neg= 1702  wall= 16.2s  elapsed=5939s
+  z=325: feas      init_n_neg= 1674  wall= 15.7s  elapsed=5955s
+  z=326: feas      init_n_neg= 1799  wall= 15.9s  elapsed=5971s
+  z=327: feas      init_n_neg= 1802  wall= 15.4s  elapsed=5986s
+  z=328: feas      init_n_neg= 1622  wall= 15.5s  elapsed=6002s
+  z=329: feas      init_n_neg= 2069  wall= 16.3s  elapsed=6018s
+  z=330: feas      init_n_neg= 1992  wall= 15.3s  elapsed=6033s
+  z=331: feas      init_n_neg= 1931  wall= 15.5s  elapsed=6049s
+  z=332: feas      init_n_neg= 1809  wall= 16.2s  elapsed=6065s
+  z=333: feas      init_n_neg= 1804  wall= 16.3s  elapsed=6081s
+  z=334: feas      init_n_neg= 1908  wall= 14.7s  elapsed=6096s
+  z=335: feas      init_n_neg= 1933  wall= 15.8s  elapsed=6112s
+  z=336: feas      init_n_neg= 1923  wall= 16.0s  elapsed=6128s
+  z=337: feas      init_n_neg= 1915  wall= 15.2s  elapsed=6143s
+  z=338: feas      init_n_neg= 1741  wall= 15.1s  elapsed=6158s
+  z=339: feas      init_n_neg= 1746  wall= 15.2s  elapsed=6174s
+  z=340: feas      init_n_neg= 1625  wall= 14.8s  elapsed=6188s
+  z=341: feas      init_n_neg= 1591  wall= 14.8s  elapsed=6203s
+  z=342: feas      init_n_neg= 1609  wall= 15.7s  elapsed=6219s
+  z=343: feas      init_n_neg= 1543  wall= 15.0s  elapsed=6234s
+  z=344: feas      init_n_neg= 1609  wall= 14.4s  elapsed=6248s
+  z=345: feas      init_n_neg= 1563  wall= 15.3s  elapsed=6264s
+  z=346: feas      init_n_neg= 1664  wall= 15.0s  elapsed=6279s
+  z=347: feas      init_n_neg= 1706  wall= 14.9s  elapsed=6293s
+  z=348: feas      init_n_neg= 1694  wall= 15.4s  elapsed=6309s
+  z=349: feas      init_n_neg= 1826  wall= 15.4s  elapsed=6324s
+  z=350: feas      init_n_neg= 1661  wall= 16.1s  elapsed=6340s
+  z=351: feas      init_n_neg= 1817  wall= 14.7s  elapsed=6355s
+  z=352: feas      init_n_neg= 1638  wall= 14.8s  elapsed=6370s
+  z=353: feas      init_n_neg= 1833  wall= 16.3s  elapsed=6386s
+  z=354: feas      init_n_neg= 1892  wall= 14.9s  elapsed=6401s
+  z=355: feas      init_n_neg= 1869  wall= 15.7s  elapsed=6417s
+  z=356: feas      init_n_neg= 1932  wall= 14.9s  elapsed=6432s
+  z=357: feas      init_n_neg= 2189  wall= 15.3s  elapsed=6447s
+  z=358: feas      init_n_neg= 2216  wall= 15.5s  elapsed=6463s
+  z=359: feas      init_n_neg= 1923  wall= 14.3s  elapsed=6477s
+  z=360: feas      init_n_neg= 2012  wall= 15.4s  elapsed=6492s
+  z=361: feas      init_n_neg= 1664  wall= 17.3s  elapsed=6510s
+  z=362: feas      init_n_neg= 1676  wall= 14.4s  elapsed=6524s
+  z=363: feas      init_n_neg= 1490  wall= 13.4s  elapsed=6537s
+  z=364: feas      init_n_neg= 1602  wall= 13.1s  elapsed=6551s
+  z=365: feas      init_n_neg= 1574  wall= 12.9s  elapsed=6563s
+  z=366: feas      init_n_neg= 1492  wall= 12.6s  elapsed=6576s
+  z=367: feas      init_n_neg= 1477  wall= 12.9s  elapsed=6589s
+  z=368: feas      init_n_neg= 1311  wall= 12.6s  elapsed=6602s
+  z=369: feas      init_n_neg= 1249  wall= 12.7s  elapsed=6614s
+  z=370: feas      init_n_neg= 1367  wall= 12.6s  elapsed=6627s
+  z=371: feas      init_n_neg= 1568  wall= 13.5s  elapsed=6640s
+  z=372: feas      init_n_neg= 1474  wall= 13.3s  elapsed=6654s
+  z=373: feas      init_n_neg= 1478  wall= 14.1s  elapsed=6668s
+  z=374: feas      init_n_neg= 1499  wall= 12.6s  elapsed=6680s
+  z=375: feas      init_n_neg= 1319  wall= 12.8s  elapsed=6693s
+  z=376: feas      init_n_neg= 1286  wall= 11.5s  elapsed=6705s
+  z=377: feas      init_n_neg= 1303  wall= 12.3s  elapsed=6717s
+  z=378: feas      init_n_neg= 1310  wall= 12.7s  elapsed=6730s
+  z=379: feas      init_n_neg= 1381  wall= 12.2s  elapsed=6742s
+  z=380: feas      init_n_neg= 1106  wall= 10.8s  elapsed=6753s
+  z=381: feas      init_n_neg= 1087  wall= 11.0s  elapsed=6764s
+  z=382: feas      init_n_neg= 1176  wall= 12.0s  elapsed=6776s
+  z=383: feas      init_n_neg= 1179  wall= 11.7s  elapsed=6787s
+  z=384: feas      init_n_neg= 1157  wall= 12.0s  elapsed=6799s
+  z=385: feas      init_n_neg= 1157  wall= 11.6s  elapsed=6811s
+  z=386: feas      init_n_neg= 1188  wall= 10.9s  elapsed=6822s
+  z=387: feas      init_n_neg= 1144  wall= 11.2s  elapsed=6833s
+  z=388: feas      init_n_neg= 1262  wall= 11.7s  elapsed=6845s
+  z=389: feas      init_n_neg= 1182  wall= 11.7s  elapsed=6857s
+  z=390: feas      init_n_neg= 1096  wall= 11.5s  elapsed=6868s
+  z=391: feas      init_n_neg= 1097  wall= 10.8s  elapsed=6879s
+  z=392: feas      init_n_neg= 1095  wall= 11.7s  elapsed=6891s
+  z=393: feas      init_n_neg= 1119  wall= 11.1s  elapsed=6902s
+  z=394: feas      init_n_neg= 1140  wall= 10.5s  elapsed=6912s
+  z=395: feas      init_n_neg= 1124  wall= 12.0s  elapsed=6924s
+  z=396: feas      init_n_neg= 1234  wall= 11.2s  elapsed=6935s
+  z=397: feas      init_n_neg= 1207  wall= 11.7s  elapsed=6947s
+  z=398: feas      init_n_neg= 1163  wall= 11.2s  elapsed=6958s
+  z=399: feas      init_n_neg= 1156  wall= 11.1s  elapsed=6969s
+  z=400: feas      init_n_neg= 1348  wall= 11.7s  elapsed=6981s
+  z=401: feas      init_n_neg= 1369  wall= 12.4s  elapsed=6994s
+  z=402: feas      init_n_neg= 1393  wall= 12.3s  elapsed=7006s
+  z=403: feas      init_n_neg= 1313  wall= 12.4s  elapsed=7018s
+  z=404: feas      init_n_neg= 1403  wall= 12.5s  elapsed=7031s
+  z=405: feas      init_n_neg= 1422  wall= 13.5s  elapsed=7044s
+  z=406: feas      init_n_neg= 1533  wall= 13.1s  elapsed=7057s
+  z=407: feas      init_n_neg= 1588  wall= 13.0s  elapsed=7070s
+  z=408: feas      init_n_neg= 1596  wall= 13.3s  elapsed=7084s
+  z=409: feas      init_n_neg= 1550  wall= 12.3s  elapsed=7096s
+  z=410: feas      init_n_neg= 1586  wall= 12.3s  elapsed=7108s
+  z=411: feas      init_n_neg= 1585  wall= 13.5s  elapsed=7122s
+  z=412: feas      init_n_neg= 1470  wall= 12.2s  elapsed=7134s
+  z=413: feas      init_n_neg= 1599  wall= 13.3s  elapsed=7147s
+  z=414: feas      init_n_neg= 1476  wall= 12.1s  elapsed=7160s
+  z=415: feas      init_n_neg= 1519  wall= 13.1s  elapsed=7173s
+  z=416: feas      init_n_neg= 1475  wall= 12.0s  elapsed=7185s
+  z=417: feas      init_n_neg= 1564  wall= 11.5s  elapsed=7196s
+  z=418: feas      init_n_neg= 1499  wall= 11.0s  elapsed=7207s
+  z=419: feas      init_n_neg= 1724  wall= 11.2s  elapsed=7218s
+  z=420: feas      init_n_neg= 1710  wall= 11.8s  elapsed=7230s
+  z=421: feas      init_n_neg= 1683  wall= 12.6s  elapsed=7243s
+  z=422: feas      init_n_neg= 1586  wall= 11.7s  elapsed=7255s
+  z=423: feas      init_n_neg= 1170  wall= 11.0s  elapsed=7266s
+  z=424: feas      init_n_neg= 1136  wall= 10.8s  elapsed=7276s
+  z=425: feas      init_n_neg= 1262  wall= 10.5s  elapsed=7287s
+  z=426: feas      init_n_neg= 1277  wall= 11.5s  elapsed=7298s
+  z=427: feas      init_n_neg= 1230  wall= 10.0s  elapsed=7308s
+  z=428: feas      init_n_neg= 1138  wall= 11.3s  elapsed=7320s
+  z=429: feas      init_n_neg= 1121  wall= 11.1s  elapsed=7331s
+  z=430: feas      init_n_neg= 1086  wall= 11.4s  elapsed=7342s
+  z=431: feas      init_n_neg= 1088  wall= 10.5s  elapsed=7353s
+  z=432: feas      init_n_neg= 1270  wall= 11.7s  elapsed=7365s
+  z=433: feas      init_n_neg= 1319  wall= 13.5s  elapsed=7378s
+  z=434: feas      init_n_neg= 1354  wall= 13.2s  elapsed=7391s
+  z=435: feas      init_n_neg= 1402  wall= 13.1s  elapsed=7404s
+  z=436: feas      init_n_neg= 1297  wall= 13.0s  elapsed=7417s
+  z=437: feas      init_n_neg= 1407  wall= 12.5s  elapsed=7430s
+  z=438: feas      init_n_neg= 1371  wall= 11.9s  elapsed=7442s
+  z=439: feas      init_n_neg= 1515  wall= 13.0s  elapsed=7455s
+  z=440: feas      init_n_neg= 1372  wall= 13.4s  elapsed=7468s
+  z=441: feas      init_n_neg= 1556  wall= 13.6s  elapsed=7482s
+  z=442: feas      init_n_neg= 1596  wall= 13.9s  elapsed=7496s
+  z=443: feas      init_n_neg= 1759  wall= 13.6s  elapsed=7509s
+  z=444: feas      init_n_neg= 1653  wall= 12.9s  elapsed=7522s
+  z=445: feas      init_n_neg= 1514  wall= 12.9s  elapsed=7535s
+  z=446: feas      init_n_neg= 1556  wall= 13.2s  elapsed=7548s
+  z=447: feas      init_n_neg= 1491  wall= 16.9s  elapsed=7565s
+  z=448: feas      init_n_neg= 1392  wall= 13.1s  elapsed=7578s
+  z=449: feas      init_n_neg= 1329  wall= 12.3s  elapsed=7591s
+  z=450: feas      init_n_neg= 1432  wall= 13.5s  elapsed=7604s
+  z=451: feas      init_n_neg= 1392  wall= 12.2s  elapsed=7616s
+  z=452: feas      init_n_neg= 1365  wall= 12.0s  elapsed=7628s
+  z=453: feas      init_n_neg= 1282  wall= 12.2s  elapsed=7640s
+  z=454: feas      init_n_neg= 1346  wall= 12.1s  elapsed=7653s
+  z=455: feas      init_n_neg= 1367  wall= 12.4s  elapsed=7665s
+  z=456: feas      init_n_neg= 1554  wall= 13.4s  elapsed=7678s
+  z=457: feas      init_n_neg= 1546  wall= 12.4s  elapsed=7691s
+  z=458: feas      init_n_neg= 1411  wall= 13.2s  elapsed=7704s
+  z=459: feas      init_n_neg= 1226  wall= 12.3s  elapsed=7716s
+  z=460: feas      init_n_neg= 1486  wall= 13.7s  elapsed=7730s
+  z=461: feas      init_n_neg= 1536  wall= 13.6s  elapsed=7744s
+  z=462: feas      init_n_neg= 1527  wall= 14.0s  elapsed=7758s
+  z=463: feas      init_n_neg= 1539  wall= 12.3s  elapsed=7770s
+  z=464: feas      init_n_neg= 1535  wall= 13.2s  elapsed=7783s
+  z=465: feas      init_n_neg= 1517  wall= 13.3s  elapsed=7796s
+  z=466: feas      init_n_neg= 1411  wall= 12.4s  elapsed=7809s
+  z=467: feas      init_n_neg= 1242  wall= 10.7s  elapsed=7820s
+  z=468: feas      init_n_neg= 1174  wall= 11.6s  elapsed=7831s
+  z=469: feas      init_n_neg= 1307  wall= 12.2s  elapsed=7843s
+  z=470: feas      init_n_neg= 1292  wall= 12.0s  elapsed=7855s
+  z=471: feas      init_n_neg= 1370  wall= 11.6s  elapsed=7867s
+  z=472: feas      init_n_neg= 1325  wall= 11.7s  elapsed=7879s
+  z=473: feas      init_n_neg= 1220  wall= 12.5s  elapsed=7891s
+  z=474: feas      init_n_neg= 1227  wall= 10.5s  elapsed=7902s
+  z=475: feas      init_n_neg= 1196  wall= 11.0s  elapsed=7913s
+  z=476: feas      init_n_neg= 1160  wall= 10.3s  elapsed=7923s
+  z=477: feas      init_n_neg= 1099  wall= 11.5s  elapsed=7935s
+  z=478: feas      init_n_neg= 1251  wall= 10.3s  elapsed=7945s
+  z=479: feas      init_n_neg= 1121  wall= 10.5s  elapsed=7955s
+  z=480: feas      init_n_neg= 1098  wall= 11.0s  elapsed=7966s
+  z=481: feas      init_n_neg= 1126  wall= 10.7s  elapsed=7977s
+  z=482: feas      init_n_neg= 1099  wall= 11.2s  elapsed=7988s
+  z=483: feas      init_n_neg= 1246  wall= 11.3s  elapsed=8000s
+  z=484: feas      init_n_neg= 1229  wall= 10.5s  elapsed=8010s
+  z=485: feas      init_n_neg= 1266  wall= 11.0s  elapsed=8021s
+  z=486: feas      init_n_neg= 1269  wall= 11.3s  elapsed=8032s
+  z=487: feas      init_n_neg= 1291  wall= 11.8s  elapsed=8044s
+  z=488: feas      init_n_neg= 1314  wall= 11.8s  elapsed=8056s
+  z=489: feas      init_n_neg= 1285  wall= 12.3s  elapsed=8068s
+  z=490: feas      init_n_neg= 1221  wall= 11.1s  elapsed=8079s
+  z=491: feas      init_n_neg= 1225  wall= 11.6s  elapsed=8091s
+  z=492: feas      init_n_neg= 1237  wall= 12.6s  elapsed=8104s
+  z=493: feas      init_n_neg= 1183  wall= 11.7s  elapsed=8115s
+  z=494: feas      init_n_neg= 1181  wall= 11.6s  elapsed=8127s
+  z=495: feas      init_n_neg= 1098  wall= 10.9s  elapsed=8138s
+  z=496: feas      init_n_neg= 1260  wall= 12.2s  elapsed=8150s
+  z=497: feas      init_n_neg= 1135  wall= 11.3s  elapsed=8161s
+  z=498: feas      init_n_neg= 1187  wall= 11.4s  elapsed=8173s
+  z=499: feas      init_n_neg= 1168  wall= 12.9s  elapsed=8186s
+  z=500: feas      init_n_neg= 1186  wall= 10.9s  elapsed=8197s
+  z=501: feas      init_n_neg= 1176  wall= 12.4s  elapsed=8209s
+  z=502: feas      init_n_neg= 1166  wall= 10.6s  elapsed=8219s
+  z=503: feas      init_n_neg= 1283  wall= 11.7s  elapsed=8231s
+  z=504: feas      init_n_neg= 1270  wall= 12.0s  elapsed=8243s
+  z=505: feas      init_n_neg= 1285  wall= 12.4s  elapsed=8256s
+  z=506: feas      init_n_neg= 1251  wall= 18.1s  elapsed=8274s
+  z=507: feas      init_n_neg= 1200  wall= 11.8s  elapsed=8286s
+  z=508: feas      init_n_neg= 1177  wall= 11.8s  elapsed=8297s
+  z=509: feas      init_n_neg= 1113  wall= 10.9s  elapsed=8308s
+  z=510: feas      init_n_neg= 1272  wall= 12.2s  elapsed=8320s
+  z=511: feas      init_n_neg= 1210  wall= 10.3s  elapsed=8331s
+  z=512: feas      init_n_neg= 1281  wall= 10.9s  elapsed=8342s
+  z=513: feas      init_n_neg= 1118  wall=  9.9s  elapsed=8352s
+  z=514: feas      init_n_neg=  955  wall=  9.8s  elapsed=8361s
+  z=515: feas      init_n_neg=  894  wall=  9.1s  elapsed=8371s
+  z=516: feas      init_n_neg= 1002  wall=  9.0s  elapsed=8380s
+  z=517: feas      init_n_neg=  992  wall=  9.8s  elapsed=8389s
+  z=518: feas      init_n_neg=  901  wall=  8.3s  elapsed=8398s
+  z=519: feas      init_n_neg=  842  wall=  8.0s  elapsed=8406s
+  z=520: feas      init_n_neg=  767  wall=  8.9s  elapsed=8415s
+  z=521: feas      init_n_neg=  730  wall=  7.7s  elapsed=8422s
+  z=522: feas      init_n_neg=  835  wall=  7.6s  elapsed=8430s
+  z=523: feas      init_n_neg=  890  wall=  7.7s  elapsed=8438s
+  z=524: feas      init_n_neg=  983  wall= 14.7s  elapsed=8452s
+  z=525: feas      init_n_neg= 1064  wall=  7.0s  elapsed=8459s
+  z=526: feas      init_n_neg= 1098  wall=  7.5s  elapsed=8467s
+  z=527: feas      init_n_neg=  551  wall=  5.5s  elapsed=8473s
+
+[stage 1] cached to c:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage1.npy  (8474.2s)
+
+=== Checking 3D 6-tet feasibility on full stacked field ===
+  six_tet_volumes_3d wall: 9.6s
+
+  total tets: 458,948,490
+  n_neg (V<=0):            1059911  (0.230943%)
+  n_below_threshold:       3828269  (0.834139%)
+  min_T:                -4.134371
+  max_T:                +7.860784
+
+  z-layers with at least one 3D fold: 527 of 527
+  Top 10 z-layers by 3D fold count:
+    cube z=3: 3166 fold cells
+    cube z=4: 3155 fold cells
+    cube z=2: 2863 fold cells
+    cube z=0: 2719 fold cells
+    cube z=7: 2688 fold cells
+    cube z=356: 2419 fold cells
+    cube z=357: 2411 fold cells
+    cube z=329: 2392 fold cells
+    cube z=293: 2384 fold cells
+    cube z=292: 2316 fold cells

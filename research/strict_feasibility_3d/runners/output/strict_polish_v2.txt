@@ -1,0 +1,5 @@
+Stage 2 cache: n_neg=0  n<thresh=49  min_T=+0.004851
+
+--- M10Tet polish with threshold=0.015 ---
+  result: n_neg=0  n<thresh(0.01)=0  min_T=+0.015531  L1_from_s2=2438.8  wall=1051.3s
+  *** STRICT 100% FEASIBLE *** at threshold=0.015

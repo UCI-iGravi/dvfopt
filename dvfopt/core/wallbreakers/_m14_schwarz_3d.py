@@ -40,6 +40,7 @@ def iterative_3d_tet_refine_repair_schwarz(
     time_budget_s: float = 600.0,
     verbose: int = 1,
     record_history: bool = False,
+    step_callback=None,
     **m14_kwargs,
 ):
     """Cluster-localized 3D refine-repair (m14-Schwarz-3D).
@@ -76,6 +77,7 @@ def iterative_3d_tet_refine_repair_schwarz(
             eps_l1=eps_l1,
             time_budget_s=time_budget_s if time_budget_s is not None else 600.0,
             verbose=max(0, verbose - 1),
+            step_callback=step_callback,
             **m14_kwargs,
         )
 

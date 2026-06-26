@@ -1,0 +1,28 @@
+Loaded C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy  shape=(3, 16, 320, 456)
+Start:  default n_neg=173  unfixable=94  min_T=-0.013450
+
+=== Strategy D: per-cell SLSQP Gauss-Seidel sweep ===
+  pass 0: 739 target cells
+    pass 0 done: fixed=500  failed=0  n_neg=383  n<thresh=1841  min_T=-5.876727  L1_from_orig=30.6
+  pass 1: 939 target cells
+    pass 1 done: fixed=500  failed=0  n_neg=343  n<thresh=1810  min_T=-1.554665  L1_from_orig=36.3
+  pass 2: 934 target cells
+    pass 2 done: fixed=500  failed=0  n_neg=354  n<thresh=1931  min_T=-0.950894  L1_from_orig=42.2
+  pass 3: 995 target cells
+    pass 3 done: fixed=500  failed=0  n_neg=358  n<thresh=1928  min_T=-0.884640  L1_from_orig=45.8
+  pass 4: 1010 target cells
+    pass 4 done: fixed=500  failed=0  n_neg=356  n<thresh=1911  min_T=-0.907144  L1_from_orig=49.6
+  pass 5: 987 target cells
+    pass 5 done: fixed=500  failed=0  n_neg=311  n<thresh=1963  min_T=-0.518332  L1_from_orig=52.5
+  pass 6: 1026 target cells
+    pass 6 done: fixed=500  failed=0  n_neg=311  n<thresh=2010  min_T=-0.521301  L1_from_orig=55.7
+  pass 7: 1051 target cells
+    pass 7 done: fixed=500  failed=0  n_neg=338  n<thresh=2040  min_T=-0.543397  L1_from_orig=58.7
+
+Final:
+  n_neg=338
+  n<0.01=2040
+  min_T=-0.543397
+  L1_from_orig=58.7
+  wall: 86.3s
+  STRICT 100% feasible: False

@@ -1,0 +1,37 @@
+INPUT (raw): n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Step 1: M10Tet @ 0.015 on raw input ===
+  M10Tet wall=4797.3s
+  after M10Tet: n_neg=17  n<0.01=23  min_T=-0.005547  L1=164473.8
+
+=== Step 2: Identify fold clusters ===
+  # fold cubes: 15
+  # clusters (radius=3): 5
+    cluster 0: centroid=(0, 217, 268), size=4, radius=2
+    cluster 1: centroid=(1, 217, 281), size=5, radius=3
+    cluster 2: centroid=(1, 211, 276), size=4, radius=2
+    cluster 3: centroid=(1, 210, 271), size=1, radius=0
+    cluster 4: centroid=(1, 212, 222), size=1, radius=0
+
+=== Step 3: Per-cluster coupled SLSQP @ thr=1e-3 ===
+  cluster 0: k_ring clipped to 1 for boundary safety
+  cluster 0: k=1 cubes=18 DOF=144 wall=0.6s  n_neg=17->15
+  cluster 1: k_ring clipped to 1 for boundary safety
+  cluster 1: k=1 cubes=27 DOF=192 wall=0.1s  n_neg=15->16
+  cluster 2: k_ring clipped to 1 for boundary safety
+  cluster 2: k=1 cubes=27 DOF=192 wall=0.9s  n_neg=16->15
+  cluster 3: k_ring clipped to 1 for boundary safety
+  cluster 3: SLSQP did not converge (success=False)
+  cluster 4: k_ring clipped to 1 for boundary safety
+  cluster 4: k=1 cubes=27 DOF=192 wall=0.1s  n_neg=15->14
+
+  total cluster-SLSQP wall=2.4s
+  after cluster SLSQP: n_neg=14  n<0.01=51  min_T=-0.425285  L1=164474.2
+
+=== Step 4: M10Tet @ 0.012 recovery ===
+  recovery wall=5505.4s
+  FINAL: n_neg=7  n<0.01=9  min_T=-0.002695  L1=164359.5
+
+=== VARIANT C FINAL ===
+  n_neg=7, n<0.01=9
+  total wall = 10305.1s = 171.8 min

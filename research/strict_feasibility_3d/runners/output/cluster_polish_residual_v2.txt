@@ -1,0 +1,9 @@
+Loaded input:      n_neg=   173  n<0.01=  1572  min_T=-0.013450
+  shape: (3, 16, 320, 456)
+
+  fold mask shape: (15, 319, 455)  fold cells: 118
+  merge_dilation=0: n_components=41  top sizes: [16, 10, 9, 9, 8]
+  merge_dilation=1: n_components=20  top sizes: [104, 64, 60, 57, 53]
+  merge_dilation=2: n_components=13  top sizes: [536, 135, 124, 113, 92]
+
+=== cluster_slp_3d polish (m10_fast inner, md=1) ===

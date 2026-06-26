@@ -1,0 +1,18 @@
+
+=== bowtie_3d_cube_8  shape=(3, 8, 8, 8)  init n_neg=6  min_T=-0.3333 ===
+  m10            OK   n_neg=   0  min_T=+0.0110  L1=      2.07  (0.68s)
+  m14            OK   n_neg=   0  min_T=+0.1667  L1=      3.00  (0.41s)
+  lp_oneshot     OK   n_neg=   0  min_T=+0.0100  L1=      2.06  (0.74s)
+  slp_iter       OK   n_neg=   0  min_T=+0.0100  L1=      2.06  (0.92s)
+
+=== bowtie_3d_cube_12  shape=(3, 12, 12, 12)  init n_neg=6  min_T=-0.3333 ===
+  m10            OK   n_neg=   0  min_T=+0.0110  L1=      2.07  (1.12s)
+  m14            OK   n_neg=   0  min_T=+0.0196  L1=      2.12  (0.64s)
+  lp_oneshot     OK   n_neg=   0  min_T=+0.0100  L1=      2.06  (1.22s)
+  slp_iter       OK   n_neg=   0  min_T=+0.0100  L1=      2.06  (3.53s)
+
+=== dense_random_3d_10  shape=(3, 10, 10, 10)  init n_neg=1433  min_T=-1.9497 ===
+  m10            OK   n_neg=   0  min_T=+0.0110  L1=    328.31  (14.27s)
+  m14            INF  n_neg= 150  min_T=-0.3006  L1=    853.03  (7.75s)
+  lp_oneshot     INF  n_neg=  14  min_T=-0.1348  L1=    323.26  (19.54s)
+  slp_iter       OK   n_neg=   0  min_T=+0.0100  L1=    324.52  (25.23s)

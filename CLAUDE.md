@@ -120,6 +120,7 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 ### Directory layout
 
 - `dvfopt/` — installable package (core solvers, jacobian, dvf utils, viz, io)
+- `dvfopt_gui/` — PyQtGraph live-solver GUI (`app.py`, `worker.py`, `convergence.py`, `history.py`, `persistence.py`, `demo.py`). The GUI also supports a **true-3D mode**: load a `(3, D, H, W)` volume and pick the `6-tet (3D)` or `Jdet (3D)` constraint to solve the whole volume with the 3D pipelines (M14Tet/M14-Schwarz3D/M10Tet/SLSQP-fullgrid-3D, or Barrier/SLSQP-windowed for Jdet3D). 3D wallbreaker runs stream per-phase snapshots and honor Stop at phase boundaries; the viewer renders the 6-tet min-volume slice of the current z.
 - `laplacian/` — standalone Laplacian interpolation package (matrix construction, CG/LGMRES solvers, contour correspondence matching)
 - `test_cases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
 - `notebooks/` — canonical experiment notebooks

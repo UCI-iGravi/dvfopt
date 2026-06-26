@@ -1,0 +1,9 @@
+Loaded C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\research\strict_feasibility_3d\runners\output\b0039_FULL_stage3_z000_016.npy
+  start: n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Iter 0: M10Tet @ threshold=0.015 ===
+  result: n_neg=19  n<0.01=29  min_T=-0.007119  wall=3227.1s
+
+=== Iter 1: M10Tet @ threshold=0.015 ===
+  result: n_neg=19  n<0.01=24  min_T=-0.006400  wall=3976.7s
+  No progress — stopping.

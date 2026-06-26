@@ -1,0 +1,29 @@
+Start: n_neg=173  n<0.01=1572  min_T=-0.013450
+
+--- Step 1/7: threshold=-0.0100 (current n_neg=173, n<0.01=1572, min_T=-0.013450) ---
+  result: n_neg=479  n<0.01(true)=1984  min_T=-0.009000  L1_from_orig=834.6  wall=3580.0s
+
+--- Step 2/7: threshold=-0.0050 (current n_neg=479, n<0.01=1984, min_T=-0.009000) ---
+  result: n_neg=646  n<0.01(true)=2606  min_T=-0.004001  L1_from_orig=2246.7  wall=3920.2s
+
+--- Step 3/7: threshold=+0.0000 (current n_neg=646, n<0.01=2606, min_T=-0.004001) ---
+  result: n_neg=139  n<0.01(true)=2762  min_T=-0.001058  L1_from_orig=2611.9  wall=3166.9s
+
+--- Step 4/7: threshold=+0.0050 (current n_neg=139, n<0.01=2762, min_T=-0.001058) ---
+  result: n_neg=95  n<0.01(true)=3508  min_T=-0.004286  L1_from_orig=3122.9  wall=2939.8s
+
+--- Step 5/7: threshold=+0.0100 (current n_neg=95, n<0.01=3508, min_T=-0.004286) ---
+  result: n_neg=74  n<0.01(true)=351  min_T=-0.008846  L1_from_orig=4996.0  wall=2883.0s
+
+--- Step 6/7: threshold=+0.0150 (current n_neg=74, n<0.01=351, min_T=-0.008846) ---
+  result: n_neg=24  n<0.01(true)=26  min_T=-0.004781  L1_from_orig=30650.2  wall=3156.0s
+
+--- Step 7/7: threshold=+0.0200 (current n_neg=24, n<0.01=26, min_T=-0.004781) ---
+  result: n_neg=33  n<0.01(true)=58  min_T=-0.009514  L1_from_orig=75159.5  wall=4125.3s
+
+=== Final ===
+  n_neg=33
+  n<0.01=58
+  min_T=-0.009514
+  L1 from orig=75159.5
+  STRICT 100% feas: False

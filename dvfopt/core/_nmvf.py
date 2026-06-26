@@ -115,6 +115,7 @@ def nmvf_correct_2d(
     max_iter: int = 1000,
     record_history: bool = False,
     verbose: int = 0,
+    step_callback=None,
 ):
     """NMVF heuristic correction on a 2D deformation field.
 
@@ -223,6 +224,24 @@ def nmvf_correct_2d(
                     wall_s=iter_wall,
                 )
             )
+        if step_callback is not None:
+            # Fire once per smoothing iteration. The GUI consumes this
+            # for the history slider. The output layout always carries
+            # the (2, H, W) [dy, dx] field that the rest of the v0.2
+            # pipeline expects. Exceptions (other than KeyboardInterrupt,
+            # the documented stop signal) are swallowed so a buggy
+            # callback can't take down the smoother.
+            try:
+                step_callback(
+                    {
+                        'phi': np.stack([phi[1, 0].copy(), phi[2, 0].copy()]),
+                        'stage': f'nmvf_iter_{cur_iter}',
+                    }
+                )
+            except KeyboardInterrupt:
+                raise
+            except Exception:
+                pass
 
     info['final_neg'] = num_neg
     info['final_min_J'] = min_J

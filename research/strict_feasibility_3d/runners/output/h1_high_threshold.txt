@@ -1,0 +1,3 @@
+Input: n_neg=173  n<0.01=1572  min_T=-0.013450
+
+--- M10Tet @ threshold=0.025 ---

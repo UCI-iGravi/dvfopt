@@ -1,0 +1,12 @@
+Loaded, shape=(3, 16, 320, 456)
+Start:  n_neg=173  n<0.01=1572  unfixable=94  min_T=-0.013450
+
+=== Uncrush pass: target_extent=1.2 ===
+  processed: 76  skipped (no-op): 18  total ideal L1 cost: 314.6
+
+After uncrush:  n_neg=1122  n<0.01=2405  min_T=-25.586211  L1_from_orig=192.1
+
+=== M10Tet polish @ threshold=0.015 ===
+
+Final:  n_neg=22  n<0.01=32  min_T=-0.007572  L1_from_orig=28258.4  polish_wall=4222.3s
+  STRICT 100% feasible: False

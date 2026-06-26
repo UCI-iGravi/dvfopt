@@ -1,0 +1,13 @@
+START (BEST_1fold): n_neg=1  n<0.01=1  min_T=-0.000323  L1=431788.6
+
+======================================================================
+METHOD A: coupled k=2 SLSQP -> M10Tet @ 0.012 recovery
+======================================================================
+  k=2 SLSQP: success=True  fun=2.1984  iter=62  wall=12.2s
+  A.1 k=2 SLSQP: n_neg=2  n<0.01=30  min_T=-0.022430  L1=431788.8
+  Now M10Tet @ 0.012 recovery...
+  M10Tet recovery wall=2518.5s
+  A.2 k=2 + M10Tet@0.012: n_neg=0  n<0.01=0  min_T=+0.013000  L1=431789.0
+    *** NEW BEST: A.2 k=2 + M10Tet@0.012 n_neg=0 ***
+
+*** STRICT 100% FEASIBLE via A.2 k=2 + M10Tet@0.012 ***

@@ -6,7 +6,7 @@ gets snapshotted into plain ``numpy.ndarray`` copies (the live
 ``jacobian_matrix`` / ``quality_matrix`` are mutated in-place by the
 solver — reading them un-copied from the GUI thread would race), then
 pushed onto a bounded ``queue.Queue``. The GUI's ``QTimer`` drains
-the queue at ~30 Hz; older snapshots are dropped if the GUI can't keep
+the queue at ~10 Hz; older snapshots are dropped if the GUI can't keep
 up. This bounds memory use and prevents render lag from slowing the
 solver.
 
@@ -35,17 +35,58 @@ from __future__ import annotations
 
 import queue
 import traceback
+from collections import deque
 
 import numpy as np
 from PyQt5 import QtCore
 
+from dvfopt._defaults import DEFAULT_PARAMS
+
+# Solver feasibility threshold. Every dvfopt constraint is ``C(phi) >=
+# threshold`` (see ``dvfopt/constraints.py``), so a cell is only
+# *feasible to the solver* once its Jdet / triangle area clears this
+# margin — not merely once it's non-negative. The GUI surfaces this so a
+# field reading "0 folds" (no inversions) but ``min < threshold`` is not
+# mistaken for "already solved". Sourced from the package default (0.01)
+# so the GUI tracks the solver if that default ever changes.
+FEASIBILITY_THRESHOLD = float(DEFAULT_PARAMS['threshold'])
+
+# Default cap on snapshots kept in the per-run history buffer. Each
+# ``StateSnapshot`` carries only ``phi`` (2*H*W floats) — the jacobian
+# is recomputed from phi at render time (it's a pure function of phi,
+# costs ~50 µs at 128×128, and removing the cache saves 33% of
+# per-snapshot memory). At H=W=256 that's ~1 MB/snapshot, so 500 caps
+# memory at ~500 MB worst case. Realistic runs use far less: one-shot
+# wallbreakers emit 2 snapshots; SLSQP-windowed emits ~one per fold
+# (typically <200). Oldest snapshots are dropped if the cap is
+# exceeded.
+#
+# Overridable per-worker via :class:`SolverWorker`'s ``history_max_size``
+# kwarg (the GUI's Params dialog edits the window-level default).
+DEFAULT_HISTORY_MAX = 500
+# Back-compat alias for callers that referenced the old constant name.
+HISTORY_MAX = DEFAULT_HISTORY_MAX
+
+# 3D runs emit few (phase-level) snapshots, but each is a full
+# (3, D, H, W) volume. Cap the deque small and guard total bytes: past
+# the budget we keep only the input + final snapshots.
+DEFAULT_HISTORY_MAX_3D = 8
+MAX_3D_HISTORY_BYTES = 2 * 1024 ** 3  # ~2 GB
+
 
 class StateSnapshot:
-    """Plain-numpy snapshot of one solver step, decoupled from solver memory."""
+    """Plain-numpy snapshot of one solver step, decoupled from solver memory.
+
+    Carries ``phi`` (a copy — solver mutates the live buffer in place)
+    plus the per-step scalar bookkeeping. The Jdet heatmap is **not**
+    cached here: it's a pure function of ``phi`` and gets recomputed
+    in the GUI's render path. Dropping the cache saves 33% of
+    per-snapshot memory at ~50 µs/scrub of recompute cost — invisible
+    to the user.
+    """
 
     __slots__ = (
         'is_padded',
-        'jacobian',
         'min_T',
         'n_neg',
         'neg_x',
@@ -56,6 +97,7 @@ class StateSnapshot:
         'opt_y1',
         'outer_iter',
         'per_index_iter',
+        'phi',
         'window_x0',
         'window_x1',
         'window_y0',
@@ -65,7 +107,7 @@ class StateSnapshot:
     def __init__(
         self,
         *,
-        jacobian,
+        phi,
         window_y0,
         window_y1,
         window_x0,
@@ -82,7 +124,7 @@ class StateSnapshot:
         n_neg,
         min_T,
     ):
-        self.jacobian = jacobian
+        self.phi = phi
         self.window_y0 = window_y0
         self.window_y1 = window_y1
         self.window_x0 = window_x0
@@ -101,16 +143,24 @@ class StateSnapshot:
 
 
 def _state_to_snapshot(state: dict) -> StateSnapshot:
-    """Convert the solver's callback dict into a thread-safe snapshot."""
-    jac = np.asarray(state['jacobian'][0]).copy()  # (H, W)
+    """Convert the solver's callback dict into a thread-safe snapshot.
+
+    ``phi`` is *copied* — the solver mutates the live buffer in place
+    between callback fires, so a stale view from the GUI thread would
+    otherwise race. The jacobian is dropped (the GUI recomputes it from
+    phi on demand — see ``StateSnapshot`` docstring).
+    """
+    # ``phi`` from the iterative_serial path is ``(2, H, W)`` channels
+    # ``[dy, dx]``. Copy so the GUI thread can read it safely.
+    phi_arr = np.asarray(state['phi']).copy()
     cy, cx = state['window_center']
     sy, sx = state['window_size']
     osy, osx = state['opt_size']
     hy, hx = sy // 2, sx // 2
     ohy, ohx = osy // 2, osx // 2
-    H, W = jac.shape
+    H, W = phi_arr.shape[1:]
     return StateSnapshot(
-        jacobian=jac,
+        phi=phi_arr,
         window_y0=max(0, cy - hy),
         window_y1=min(H, cy + (sy - hy)),
         window_x0=max(0, cx - hx),
@@ -129,6 +179,140 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
     )
 
 
+def _volume_snapshot(phi3d, *, n_neg: int, min_T: float, outer_iter: int) -> StateSnapshot:
+    """Build a 3D StateSnapshot: phi is the full (3, D, H, W) volume;
+    window/opt rects collapse to zero (no active-window overlay in 3D)."""
+    return StateSnapshot(
+        phi=np.asarray(phi3d, dtype=np.float64).copy(),
+        window_y0=0, window_y1=0, window_x0=0, window_x1=0,
+        opt_y0=0, opt_y1=0, opt_x0=0, opt_x1=0,
+        is_padded=False, neg_y=0, neg_x=0,
+        per_index_iter=0, outer_iter=int(outer_iter),
+        n_neg=int(n_neg), min_T=float(min_T),
+    )
+
+
+def _metric_field(phi_2hw, kind: str) -> np.ndarray:
+    """Return the per-cell metric field for ``phi_2hw`` under one metric.
+
+    ``kind='2tri'`` → per-cell ``min(T1, T2)`` (signed triangle area,
+    catches sub-pixel folds the central-difference stencil misses);
+    ``kind='jdet'`` → per-pixel central-difference Jacobian determinant.
+    """
+    if kind == '2tri':
+        from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
+        T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
+        return np.minimum(T1, T2)
+    from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+
+    return jacobian_det2D(phi_2hw)[0]
+
+
+def _metric_counts(phi_2hw, kind: str) -> tuple[int, float]:
+    """Return ``(n_neg, min_T)`` for ``phi_2hw`` under one metric.
+
+    ``n_neg`` counts *folded* cells — those whose metric is ``<= 0`` (an
+    inverted or degenerate-zero-area cell) — and ``min_T`` is the worst
+    (smallest) signed value. The ``<= 0`` convention is shared by **both**
+    metrics and matches the live windowed-SLSQP callback, which reports
+    ``(jac <= 0).sum()`` (see ``dvfopt/core/_internal/metrics.py``), so a
+    run's step-0 count lines up with its live tail instead of differing by
+    the number of exactly-zero cells. For the solver's stricter
+    feasibility margin (``< threshold``), see :func:`_infeasible_count`.
+
+    A run uses ONE metric for *every* snapshot it emits — init,
+    per-stage, and final — so its convergence trajectory is internally
+    consistent (no Jdet-counted step 0 spliced onto a 2-tri-counted
+    tail). See :meth:`SolverWorker._trajectory_metric_kind`.
+    """
+    field = _metric_field(phi_2hw, kind)
+    return int((field <= 0).sum()), float(field.min())
+
+
+def _infeasible_count(phi_2hw, kind: str, threshold: float = FEASIBILITY_THRESHOLD) -> int:
+    """Count cells the *solver* still considers infeasible: metric
+    ``< threshold`` (default 0.01), not merely ``<= 0``.
+
+    A field can have zero folds yet a nonzero infeasible count when its
+    minimum sits in ``(0, threshold)`` — positive, so not inverted, but
+    inside the solver's safety margin. Surfacing this keeps the GUI's
+    "is it done?" reading honest about what the solver is actually
+    chasing.
+    """
+    return int((_metric_field(phi_2hw, kind) < threshold).sum())
+
+
+def _metric_field_3d(phi3d, kind: str) -> np.ndarray:
+    """Per-cell 3D metric field for ``phi3d`` ``(3, D, H, W)`` ``[dz,dy,dx]``.
+
+    ``kind='tet3d'`` → per-cell min 6-tet signed volume
+    ``(D-1, H-1, W-1)``; ``kind='jdet3d'`` → per-voxel 3D Jacobian
+    determinant ``(D, H, W)``.
+    """
+    if kind == 'tet3d':
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        return six_tet_min_volume_3d(phi3d)
+    if kind == 'jdet3d':
+        from dvfopt.jacobian.numpy_jdet import jacobian_det3D
+
+        return jacobian_det3D(phi3d)
+    raise ValueError(f'unknown 3D metric kind={kind!r}')
+
+
+def _metric_counts_3d(phi3d, kind: str) -> tuple[int, float]:
+    """``(n_neg, min_T)`` over the whole volume under one 3D metric.
+    Folds counted ``<= 0`` (matching the 2D convention)."""
+    field = _metric_field_3d(phi3d, kind)
+    return int((field <= 0).sum()), float(field.min())
+
+
+def _infeasible_count_3d(phi3d, kind: str, threshold: float = FEASIBILITY_THRESHOLD) -> int:
+    """Voxels/cells the solver still considers infeasible: metric ``< threshold``."""
+    return int((_metric_field_3d(phi3d, kind) < threshold).sum())
+
+
+class ReplayHistory:
+    """Read-only stand-in for :class:`SolverWorker` that holds a finished
+    run's snapshots loaded from disk.
+
+    The GUI's history-scrub widgets and render tick only need a handful
+    of read accessors (``history_len``/``history_get``/``history_total``/
+    ``take_latest``/``isRunning``/``callback_count``). A loaded ``.npz``
+    run has no live thread, so this exposes exactly that surface — letting
+    a saved run be scrubbed through the same code path as a live one.
+    """
+
+    def __init__(self, snapshots, history_total: int | None = None):
+        self._history = list(snapshots)
+        self._history_total = (
+            int(history_total) if history_total is not None else len(self._history)
+        )
+
+    def history_len(self) -> int:
+        return len(self._history)
+
+    def history_get(self, idx: int):
+        if 0 <= idx < len(self._history):
+            return self._history[idx]
+        return None
+
+    @property
+    def history_total(self) -> int:
+        return self._history_total
+
+    def take_latest(self):
+        return None
+
+    @property
+    def callback_count(self) -> int:
+        return 0
+
+    def isRunning(self) -> bool:  # mirror QThread.isRunning
+        return False
+
+
 class SolverWorker(QtCore.QThread):
     """Run the solver in a worker thread.
 
@@ -137,21 +321,47 @@ class SolverWorker(QtCore.QThread):
     a per-callback Qt signal because queued cross-thread signals
     accumulate in the GUI event loop, defeating the bounded-queue
     design. Solver pace is the bottleneck; the GUI drains the queue
-    on its own render timer at ~30 Hz.
+    on its own render timer at ~10 Hz.
     """
 
     finishedWithResult = QtCore.pyqtSignal(object, object)  # corrected_phi, info
     errored = QtCore.pyqtSignal(str)
 
-    def __init__(self, *, deformation_i, solver_kwargs=None, parent=None):
+    def __init__(
+        self,
+        *,
+        deformation_i,
+        method_id: str = 'slsqp_windowed_2tri',
+        params=None,
+        history_max_size: int = DEFAULT_HISTORY_MAX,
+        parent=None,
+    ):
         super().__init__(parent)
         self._deformation_i = deformation_i
-        self._solver_kwargs = dict(solver_kwargs or {})
+        self._method_id = method_id
+        self._params = dict(params or {})
         self._stop_requested = False
         # Bounded queue so a slow GUI doesn't stall the solver. The
         # producer pre-drains the old item before pushing — we always
         # surface only the most recent snapshot.
         self._latest: queue.Queue = queue.Queue(maxsize=1)
+        # Per-run history buffer. Every snapshot the solver emits gets
+        # appended here as well (independent of the bounded ``_latest``
+        # queue) so the GUI's scrub slider can replay the run later.
+        # CPython's ``deque.append`` + indexing are atomic under the GIL,
+        # so cross-thread access is safe without an explicit lock as
+        # long as ``StateSnapshot`` instances are treated as immutable
+        # after construction (which they are — ``phi``/``jacobian`` are
+        # copies of the solver's live buffers).
+        #
+        # ``history_max_size`` caps the deque. Bumping it via the GUI's
+        # Params dialog only takes effect for the NEXT worker — deques
+        # can't be resized in place.
+        self._history: deque = deque(maxlen=max(2, int(history_max_size)))
+        # Track total snapshots ever emitted (independent of the deque's
+        # capped length) so the GUI can show e.g. "step 3000 of 5421"
+        # when older entries have aged out.
+        self._history_total = 0
         # Atomic counter for callback fires; the GUI reads this for its
         # FPS / callbacks-per-second display.
         self._callback_count = 0
@@ -168,7 +378,14 @@ class SolverWorker(QtCore.QThread):
             # window's solve time — not zero.
             raise KeyboardInterrupt('user requested stop')
         snap = _state_to_snapshot(state)
+        self._record(snap)
+
+    def _record(self, snap) -> None:
+        """Single funnel for emitting a snapshot — pushes to both the
+        bounded live queue (latest-only) and the full history deque."""
         self._callback_count += 1
+        self._history.append(snap)
+        self._history_total += 1
         # Drop the previous snapshot if the GUI hasn't picked it up yet.
         try:
             self._latest.get_nowait()
@@ -178,6 +395,25 @@ class SolverWorker(QtCore.QThread):
             self._latest.put_nowait(snap)
         except queue.Full:
             pass
+
+    def history_len(self) -> int:
+        """Number of snapshots currently retained (≤ ``HISTORY_MAX``)."""
+        return len(self._history)
+
+    def history_get(self, idx: int):
+        """Return the snapshot at index ``idx`` (0-based), or ``None``
+        if out of range. Thread-safe: relies on CPython's atomic
+        ``deque`` indexing + immutable ``StateSnapshot`` instances."""
+        n = len(self._history)
+        if n == 0 or idx < 0 or idx >= n:
+            return None
+        return self._history[idx]
+
+    @property
+    def history_total(self) -> int:
+        """Total snapshots ever emitted by this worker (may exceed
+        ``history_len()`` if old entries have aged out of the deque)."""
+        return self._history_total
 
     def take_latest(self):
         """GUI thread calls this on its render timer. Returns the most
@@ -197,17 +433,365 @@ class SolverWorker(QtCore.QThread):
         """
         return self._callback_count
 
+    # -- one-shot helpers -----------------------------------------------------
+
+    def _emit_synthetic_snapshot(self, phi_2hw, n_neg: int, min_T: float) -> None:
+        """Push one synthetic snapshot through the queue so the GUI can
+        render the final state of a one-shot (no-step_callback) solver.
+
+        The window / target overlays are collapsed to a zero-sized rect
+        since there's no live window to show.
+        """
+        snap = StateSnapshot(
+            phi=phi_2hw.copy(),
+            window_y0=0,
+            window_y1=0,
+            window_x0=0,
+            window_x1=0,
+            opt_y0=0,
+            opt_y1=0,
+            opt_x0=0,
+            opt_x1=0,
+            is_padded=False,
+            neg_y=0,
+            neg_x=0,
+            per_index_iter=0,
+            outer_iter=0,
+            n_neg=int(n_neg),
+            min_T=float(min_T),
+        )
+        self._record(snap)
+
+    def _emit_initial_snapshot(self, metric_kind: str) -> None:
+        """Snapshot the *input* phi as history[0] so the scrub slider can
+        always go back to the unsolved field. Called once at the start of
+        ``run()`` before any solver work.
+
+        ``n_neg`` / ``min_T`` are computed under ``metric_kind`` (the same
+        metric every later snapshot of this run uses), so step 0 lines up
+        with the rest of the convergence trajectory rather than being a
+        Jdet count grafted onto a 2-tri tail."""
+        phi_2hw = np.stack(
+            [
+                self._deformation_i[1, 0].astype(np.float64),
+                self._deformation_i[2, 0].astype(np.float64),
+            ]
+        )
+        n_neg, min_T = _metric_counts(phi_2hw, metric_kind)
+        snap = StateSnapshot(
+            phi=phi_2hw,
+            window_y0=0,
+            window_y1=0,
+            window_x0=0,
+            window_x1=0,
+            opt_y0=0,
+            opt_y1=0,
+            opt_x0=0,
+            opt_x1=0,
+            is_padded=False,
+            neg_y=0,
+            neg_x=0,
+            per_index_iter=0,
+            outer_iter=0,
+            n_neg=n_neg,
+            min_T=min_T,
+        )
+        self._record(snap)
+
+    def _run_windowed_slsqp(self, enforce_triangles: bool):
+        """Live-progress path: ``iterative_serial`` with our
+        ``step_callback`` hook so the GUI sees every sub-window solve."""
+        from dvfopt.core.slsqp.iterative import iterative_serial
+
+        kwargs = {
+            'verbose': 0,
+            'enforce_triangles': enforce_triangles,
+        }
+        if 'max_iterations' in self._params:
+            kwargs['max_iterations'] = int(self._params['max_iterations'])
+        if self._params.get('max_per_index_iter') is not None:
+            kwargs['max_per_index_iter'] = int(self._params['max_per_index_iter'])
+        if self._params.get('method_name'):
+            kwargs['method_name'] = str(self._params['method_name'])
+        phi_out = iterative_serial(
+            self._deformation_i.copy(),
+            step_callback=self._callback,
+            **kwargs,
+        )
+        return phi_out
+
+    def _build_objective(self):
+        """Build an Objective instance for ``self._params['objective_id']``.
+
+        Defaults to L1 if the param is missing (so callers that didn't
+        thread the choice through get the same behaviour as before).
+        """
+        from dvfopt import L1Objective, L2Objective, NoneObjective
+
+        oid = self._params.get('objective_id', 'l1')
+        if oid == 'l1':
+            return L1Objective(eps=1e-4)
+        if oid == 'l2':
+            return L2Objective()
+        if oid == 'none':
+            return NoneObjective()
+        raise ValueError(f'unknown objective_id={oid!r}')
+
+    def _run_via_solver(self, strategy, constraint_kind: str, *, metric_kind: str):
+        """One-shot path through ``dvfopt.Solver``. Strategies that
+        support a ``step_callback`` kwarg (currently:
+        :class:`HarmonicALMRefineRepairStrategy` / M14) will fire it at
+        each pipeline-stage boundary — those snapshots flow into the
+        worker's history deque and become scrub-able in the GUI. For
+        other strategies the callback is ignored and only the final
+        synthetic snapshot lands in history.
+
+        ``constraint_kind`` is ``'2tri'`` or ``'jdet'`` — picks
+        :class:`TriConstraint2DFullCoverage` vs :class:`JdetConstraint2D`.
+        ``metric_kind`` is the metric used to count folds in every
+        snapshot (init/stage/final) — normally equal to
+        ``constraint_kind``. The objective comes from
+        ``self._params['objective_id']``.
+        """
+        from dvfopt import (
+            JdetConstraint2D,
+            Solver,
+            TriConstraint2DFullCoverage,
+        )
+
+        # iterative_serial gets the (3, 1, H, W) layout; Solver takes
+        # the (2, H, W) one. Strip the singleton dz row.
+        phi_2hw = np.stack(
+            [
+                self._deformation_i[1, 0].astype(np.float64),
+                self._deformation_i[2, 0].astype(np.float64),
+            ]
+        )
+        H, W = phi_2hw.shape[1:]
+        if constraint_kind == '2tri':
+            constraint = TriConstraint2DFullCoverage(shape=(H, W))
+        elif constraint_kind == 'jdet':
+            constraint = JdetConstraint2D(shape=(H, W))
+        else:
+            raise ValueError(f'unknown constraint_kind={constraint_kind!r}')
+        objective = self._build_objective()
+        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+
+        # Per-stage callback adapter: convert {'phi', 'stage'} dicts from
+        # the strategy into ``StateSnapshot`` records on the worker's
+        # history deque. ``n_neg`` / ``min_T`` use ``metric_kind`` — the
+        # same metric as the init + final snapshots — so the convergence
+        # trajectory is internally consistent.
+        outer = [0]
+
+        def _stage_callback(state):
+            if self._stop_requested:
+                raise KeyboardInterrupt('user requested stop')
+            phi = np.asarray(state['phi'])
+            n_neg, min_T = _metric_counts(phi, metric_kind)
+            outer[0] += 1
+            snap = StateSnapshot(
+                phi=phi.copy(),
+                window_y0=0,
+                window_y1=0,
+                window_x0=0,
+                window_x1=0,
+                opt_y0=0,
+                opt_y1=0,
+                opt_x0=0,
+                opt_x1=0,
+                is_padded=False,
+                neg_y=0,
+                neg_x=0,
+                per_index_iter=0,
+                outer_iter=outer[0],
+                n_neg=n_neg,
+                min_T=min_T,
+            )
+            self._record(snap)
+
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        result = solver.fit(phi_2hw, step_callback=_stage_callback)
+        # ``_emit_synthetic_snapshot`` still fires once at the end so
+        # there's an authoritative "final" entry — strategies that
+        # didn't emit any per-stage snapshots fall back to just this.
+        # Recount under ``metric_kind`` (rather than the SolveResult's own
+        # final stats) so it matches the rest of this run's trajectory.
+        final_n_neg, final_min_T = _metric_counts(np.asarray(result.corrected), metric_kind)
+        self._emit_synthetic_snapshot(result.corrected, n_neg=final_n_neg, min_T=final_min_T)
+        return result.corrected
+
+    def _run_via_solver_3d(self, strategy, constraint_kind: str, *, metric_kind: str):
+        """Whole-volume 3D path. ``self._deformation_i`` is the full
+        ``(3, D, H, W)`` ``[dz, dy, dx]`` volume. The 3D constraints accept
+        that layout directly (no reorder); ``result.corrected`` returns it.
+
+        Phased wallbreakers (m10/m14/m14_schwarz) fire ``step_callback`` at
+        phase boundaries — we record full-volume stages (and check the stop
+        flag). Non-phased methods (slsqp_fullgrid, barrier, slsqp_windowed)
+        run to completion and only the init + final snapshots land.
+        """
+        from dvfopt import JdetConstraint3D, Solver, Tet6Constraint3D
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'3D run needs (3, D, H, W); got {vol.shape}')
+        _, D, H, W = vol.shape
+        if constraint_kind == 'tet3d':
+            constraint = Tet6Constraint3D(shape=(D, H, W))
+        elif constraint_kind == 'jdet3d':
+            constraint = JdetConstraint3D(shape=(D, H, W))
+        else:
+            raise ValueError(f'unknown 3D constraint_kind={constraint_kind!r}')
+        objective = self._build_objective()
+        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+
+        # Memory guard: keep mid stages only if the full deque fits the budget.
+        est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
+        keep_stages = est <= MAX_3D_HISTORY_BYTES
+
+        # Initial snapshot (input volume), under the run metric.
+        n0, m0 = _metric_counts_3d(vol, metric_kind)
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+
+        outer = [0]
+
+        def _stage_callback(state):
+            if self._stop_requested:
+                raise KeyboardInterrupt('user requested stop')
+            phi = np.asarray(state['phi'])
+            # Schwarz emits per-cluster crops — use them only for the stop
+            # check above; snapshot only the full-volume phases.
+            if phi.shape != vol.shape:
+                return
+            if not keep_stages:
+                return
+            n, m = _metric_counts_3d(phi, metric_kind)
+            outer[0] += 1
+            self._record(_volume_snapshot(phi, n_neg=n, min_T=m, outer_iter=outer[0]))
+
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        result = solver.fit(vol, step_callback=_stage_callback)
+        corrected = np.asarray(result.corrected, dtype=np.float64)
+        nf, mf = _metric_counts_3d(corrected, metric_kind)
+        self._record(_volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
+        return corrected
+
+    def _build_strategy(self):
+        """Build a configured Strategy instance for the chosen method.
+
+        ``self._method_id`` is always ``<algo>_<constraint>``. The
+        wallbreaker family (m10/m14/m14_schwarz) is 2-tri-only by design;
+        Barrier and NMVF work with either constraint family.
+        """
+        from dvfopt import (
+            BarrierStrategy,
+            HarmonicALMBarrierStrategy,
+            HarmonicALMRefineRepairStrategy,
+            NMVFStrategy,
+            SchwarzHarmonicALMRefineRepairStrategy,
+        )
+
+        time_budget = float(self._params.get('time_budget_s', 60.0))
+        mid = self._method_id
+        if mid in ('barrier_2tri', 'barrier_jdet'):
+            return BarrierStrategy()
+        if mid == 'm10_2tri':
+            return HarmonicALMBarrierStrategy(time_budget_s=time_budget)
+        if mid == 'm14_2tri':
+            return HarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+        if mid == 'm14_schwarz_2tri':
+            return SchwarzHarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+        if mid == 'slsqp_fullgrid_2tri':
+            from dvfopt import SLSQPFullGridStrategy
+
+            return SLSQPFullGridStrategy()
+        if mid == 'schwarz_2tri':
+            from dvfopt import SchwarzStrategy
+
+            return SchwarzStrategy()
+        if mid == 'nmvf_jdet':
+            return NMVFStrategy()
+        if mid == 'm10_tet3d':
+            from dvfopt import HarmonicALMBarrier3DStrategy
+
+            return HarmonicALMBarrier3DStrategy(time_budget_s=time_budget)
+        if mid == 'm14_tet3d':
+            from dvfopt import HarmonicALMRefineRepair3DStrategy
+
+            return HarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+        if mid == 'm14_schwarz_tet3d':
+            from dvfopt import SchwarzHarmonicALMRefineRepair3DStrategy
+
+            return SchwarzHarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+        if mid == 'slsqp_fullgrid_tet3d':
+            from dvfopt import SLSQPFullGrid3DStrategy
+
+            return SLSQPFullGrid3DStrategy()
+        if mid in ('barrier_jdet3d',):
+            return BarrierStrategy()
+        if mid == 'slsqp_windowed_jdet3d':
+            from dvfopt import SLSQPWindowedStrategy
+
+            return SLSQPWindowedStrategy()
+        raise ValueError(f'unknown method_id={mid!r}')
+
+    def _trajectory_metric_kind(self) -> str:
+        """Pick the single metric used for this run's whole convergence
+        trajectory (init + every stage + final).
+
+        The windowed-SLSQP path reports Jdet stats straight from the
+        solver's own bookkeeping — regardless of its 2-tri *constraint*
+        flag — so its trajectory is Jdet-based. 3D methods (``_tet3d``
+        / ``_jdet3d`` suffix) go through ``_run_via_solver_3d`` and use
+        the 3D metric. Every other path goes through ``_run_via_solver``
+        and counts folds with the constraint's own metric (``_2tri`` →
+        2-tri, ``_jdet`` → Jdet).
+        """
+        mid = self._method_id
+        if mid.endswith('_tet3d'):
+            return 'tet3d'
+        if mid.endswith('_jdet3d'):
+            return 'jdet3d'
+        if mid.startswith('slsqp_windowed'):
+            return 'jdet'
+        return '2tri' if mid.endswith('_2tri') else 'jdet'
+
+    # -- main entrypoint ------------------------------------------------------
+
     def run(self):
         try:
-            from dvfopt.core.slsqp.iterative import iterative_serial
-
-            kwargs = dict(self._solver_kwargs)
-            kwargs.setdefault('verbose', 0)
-            phi_out = iterative_serial(
-                self._deformation_i.copy(),
-                step_callback=self._callback,
-                **kwargs,
-            )
+            # Always seed history[0] with the input field. This makes the
+            # scrub slider's leftmost position meaningful even for the
+            # one-shot wallbreaker methods (which would otherwise only
+            # emit a single final-state snapshot). It uses the same metric
+            # as the rest of the run so the convergence curve is coherent.
+            metric_kind = self._trajectory_metric_kind()
+            if metric_kind not in ('tet3d', 'jdet3d'):
+                self._emit_initial_snapshot(metric_kind)
+            mid = self._method_id
+            if mid == 'slsqp_windowed_jdet':
+                phi_out = self._run_windowed_slsqp(enforce_triangles=False)
+            elif mid == 'slsqp_windowed_2tri':
+                phi_out = self._run_windowed_slsqp(enforce_triangles=True)
+            else:
+                # Method-id always ends in either ``_2tri``, ``_jdet``,
+                # ``_tet3d``, or ``_jdet3d``; split on the LAST underscore
+                # so algo names that contain underscores (e.g.
+                # ``m14_schwarz``) round-trip correctly.
+                algo, _, kind = mid.rpartition('_')
+                if kind in ('tet3d', 'jdet3d'):
+                    phi_out = self._run_via_solver_3d(
+                        self._build_strategy(), kind, metric_kind=metric_kind
+                    )
+                elif kind in ('2tri', 'jdet'):
+                    phi_out = self._run_via_solver(
+                        self._build_strategy(), kind, metric_kind=metric_kind
+                    )
+                else:
+                    raise ValueError(f'unknown method_id={mid!r}')
             self.finishedWithResult.emit(phi_out, None)
         except KeyboardInterrupt:
             # Clean stop requested via request_stop().

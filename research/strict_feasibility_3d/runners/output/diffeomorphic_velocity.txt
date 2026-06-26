@@ -1,0 +1,28 @@
+Start: shape=(3, 16, 320, 456)  n_neg=173  n<0.01=1572  min_T=-0.013450
+
+=== Diffeomorphic optimization: N_squaring=6, lr=0.05, lambda_grad=0.001, epochs=800 ===
+  epoch    0: L1_loss=0.43076  grad_loss=3610242.0  n_neg=286  n<0.01=616  min_T=-2.3007  L1_from_input=3017122.0
+  epoch   50: L1_loss=0.46704  grad_loss=1879132.4  n_neg=208  n<0.01=425  min_T=-1.5230  L1_from_input=3271216.5
+  epoch  100: L1_loss=0.50883  grad_loss=1601672.4  n_neg=158  n<0.01=323  min_T=-1.0967  L1_from_input=3563938.0
+  epoch  150: L1_loss=0.55785  grad_loss=1409486.8  n_neg=115  n<0.01=219  min_T=-0.5979  L1_from_input=3907302.5
+  epoch  200: L1_loss=0.61488  grad_loss=1249299.5  n_neg=85  n<0.01=165  min_T=-0.3889  L1_from_input=4306744.0
+  epoch  250: L1_loss=0.67790  grad_loss=1112869.0  n_neg=57  n<0.01=128  min_T=-0.1840  L1_from_input=4748145.0
+  epoch  300: L1_loss=0.74539  grad_loss=996109.6  n_neg=40  n<0.01=100  min_T=-0.1757  L1_from_input=5220841.5
+  epoch  350: L1_loss=0.81602  grad_loss=896047.6  n_neg=32  n<0.01=85  min_T=-0.1599  L1_from_input=5715515.0
+  epoch  400: L1_loss=0.88878  grad_loss=810212.2  n_neg=28  n<0.01=75  min_T=-0.1386  L1_from_input=6225135.5
+  epoch  450: L1_loss=0.96285  grad_loss=736462.9  n_neg=27  n<0.01=72  min_T=-0.1167  L1_from_input=6743937.0
+  epoch  500: L1_loss=1.03765  grad_loss=672927.6  n_neg=26  n<0.01=68  min_T=-0.0953  L1_from_input=7267856.0
+  epoch  550: L1_loss=1.11274  grad_loss=617983.4  n_neg=24  n<0.01=63  min_T=-0.0781  L1_from_input=7793811.0
+  epoch  600: L1_loss=1.18776  grad_loss=570230.2  n_neg=25  n<0.01=60  min_T=-0.0622  L1_from_input=8319280.0
+  epoch  650: L1_loss=1.26238  grad_loss=528472.0  n_neg=24  n<0.01=61  min_T=-0.0479  L1_from_input=8841925.0
+  epoch  700: L1_loss=1.33643  grad_loss=491724.6  n_neg=28  n<0.01=57  min_T=-0.0420  L1_from_input=9360554.0
+  epoch  750: L1_loss=1.40965  grad_loss=459148.8  n_neg=28  n<0.01=58  min_T=-0.0386  L1_from_input=9873382.0
+  epoch  799: L1_loss=1.48051  grad_loss=430616.1  n_neg=27  n<0.01=56  min_T=-0.0390  L1_from_input=10369752.0
+
+=== Final ===
+  n_neg=27  n<0.01=56
+  min_T=-0.039048
+  L1 from input=10379818.0
+  best n_neg seen during opt: 24
+  wall=66.3s
+  STRICT 100% feas: False
