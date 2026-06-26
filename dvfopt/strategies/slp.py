@@ -17,6 +17,7 @@ Mechanism (see :mod:`dvfopt.core.slp`):
   (:func:`dvfopt.core.slp.cluster_slp_iter`); small slices use the global
   :func:`dvfopt.core.slp.slp_iter`. This auto-routing matches ``auto_slp``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -87,14 +88,18 @@ class SLPStrategy(Strategy):
         H, W = phi.shape[1:]
         if self.cluster_pixel_threshold >= H * W:
             phi_out, info = slp_iter(
-                phi, threshold=threshold, seed=self.global_seed,
+                phi,
+                threshold=threshold,
+                seed=self.global_seed,
             )
             info = {**info, 'slp_dispatch': 'global'}
         else:
             phi_out, info = cluster_slp_iter(
-                phi, threshold=threshold,
+                phi,
+                threshold=threshold,
                 max_outer_iters=self.max_outer_iters,
-                n_workers=self.n_workers, scheduler=self.scheduler,
+                n_workers=self.n_workers,
+                scheduler=self.scheduler,
                 inner_seed=self.cluster_seed,
             )
             info = {**info, 'slp_dispatch': 'cluster'}

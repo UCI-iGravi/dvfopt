@@ -3,16 +3,16 @@
 import numpy as np
 import pytest
 
-from dvfopt import correct_dvf_3d, Correct3DReport
+from dvfopt import Correct3DReport, correct_dvf_3d
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
 def _planted(seed=0, centers=((3, 8, 8), (6, 25, 28), (9, 32, 12))):
     rng = np.random.default_rng(seed)
     phi = rng.normal(0, 0.02, (3, 12, 40, 40)).astype(np.float64)
-    for (z, y, x) in centers:
-        phi[0, z, y:y + 2, x:x + 2] = 1.5
-        phi[0, z + 1, y:y + 2, x:x + 2] = -1.5
+    for z, y, x in centers:
+        phi[0, z, y : y + 2, x : x + 2] = 1.5
+        phi[0, z + 1, y : y + 2, x : x + 2] = -1.5
     return phi
 
 

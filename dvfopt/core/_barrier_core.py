@@ -267,8 +267,7 @@ def run_penalty_barrier_lbfgs(
             t0 = time.time()
             res = minimize(
                 lambda p, mu_=mu: _barrier_objective(
-                    p, mu_, threshold=threshold,
-                    grad_rtol=barrier_grad_rtol, **obj_kwargs
+                    p, mu_, threshold=threshold, grad_rtol=barrier_grad_rtol, **obj_kwargs
                 ),
                 phi_flat,
                 jac=True,

@@ -58,6 +58,7 @@ class BarrierStrategy(Strategy):
         if step_callback is None:
             inner_cb = None
         else:
+
             def inner_cb(state):
                 phi_arr = constraint.unflatten(state['phi_flat'])
                 step_callback({'phi': phi_arr, 'stage': state['stage']})
@@ -171,9 +172,7 @@ class BarrierTet3DTorchStrategy(Strategy):
         else:
             phi_out, history = out, {}
         phi_out = np.asarray(phi_out, dtype=np.float64)
-        return phi_out, _build_solve_info(
-            'BarrierTet3DTorchStrategy', history, threshold
-        )
+        return phi_out, _build_solve_info('BarrierTet3DTorchStrategy', history, threshold)
 
 
 __all__ = ['BarrierStrategy', 'BarrierTet3DTorchStrategy']

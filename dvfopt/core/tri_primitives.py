@@ -120,21 +120,21 @@ if _HAVE_NUMBA:
                 if v1_ij != 0.0:
                     # T1 (A=TR, B=BL, C=BR) — coefficient = v1 * 0.5.
                     c1 = 0.5 * v1_ij
-                    g_dx[i,     j + 1] +=  c1 * (y_br - y_bl)
-                    g_dy[i,     j + 1] +=  c1 * (x_bl - x_br)
-                    g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
-                    g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
-                    g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
+                    g_dx[i, j + 1] += c1 * (y_br - y_bl)
+                    g_dy[i, j + 1] += c1 * (x_bl - x_br)
+                    g_dx[i + 1, j] += -c1 * (y_br - y_tr)
+                    g_dy[i + 1, j] += c1 * (x_br - x_tr)
+                    g_dx[i + 1, j + 1] += c1 * (y_bl - y_tr)
                     g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
                 if v2_ij != 0.0:
                     # T2 (A=TL, B=BL, C=TR) — coefficient = v2 * 0.5.
                     c2 = 0.5 * v2_ij
-                    g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
-                    g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
-                    g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
-                    g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
-                    g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
-                    g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
+                    g_dx[i, j] += c2 * (y_tr - y_bl)
+                    g_dy[i, j] += c2 * (x_bl - x_tr)
+                    g_dx[i + 1, j] += -c2 * (y_tr - y_tl)
+                    g_dy[i + 1, j] += c2 * (x_tr - x_tl)
+                    g_dx[i, j + 1] += c2 * (y_bl - y_tl)
+                    g_dy[i, j + 1] += -c2 * (x_bl - x_tl)
         return g_dy, g_dx
 
 

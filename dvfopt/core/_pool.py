@@ -14,6 +14,7 @@ a run (and across runs in the same session). Callers get the pool via
 :func:`get_pool`; it is reused while the requested worker count is
 unchanged and torn down at interpreter exit.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -40,6 +41,7 @@ def _warmup_worker():  # pragma: no cover - runs in subprocess
     with the kernels."""
     try:
         import numba
+
         numba.set_num_threads(1)
     except Exception:  # pragma: no cover
         pass
@@ -58,9 +60,7 @@ def _warmup_worker():  # pragma: no cover - runs in subprocess
     six_tet_min_volume_3d(phi)
     six_tet_volumes_all_diagonals(phi)
     n = 4 * 4 * 4
-    tet_grad_T_v(
-        np.zeros(3 * n), 4, 4, 4, np.zeros(6 * 3 * 3 * 3)
-    )
+    tet_grad_T_v(np.zeros(3 * n), 4, 4, 4, np.zeros(6 * 3 * 3 * 3))
 
 
 def get_pool(n_workers: int) -> ProcessPoolExecutor:
@@ -75,9 +75,7 @@ def get_pool(n_workers: int) -> ProcessPoolExecutor:
         if _POOL is None or n_workers != _POOL_N:
             if _POOL is not None:
                 _POOL.shutdown(wait=False)
-            _POOL = ProcessPoolExecutor(
-                max_workers=n_workers, initializer=_warmup_worker
-            )
+            _POOL = ProcessPoolExecutor(max_workers=n_workers, initializer=_warmup_worker)
             _POOL_N = n_workers
         return _POOL
 

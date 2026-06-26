@@ -10,14 +10,15 @@ def _planted_cluster(shape=(3, 16, 16, 16), scale=1.2):
     rng = np.random.default_rng(0)
     phi = rng.normal(0, 0.05, shape).astype(np.float64)
     z = shape[1] // 2
-    phi[0, z - 1:z + 2, 7:10, 7:10] = scale
-    phi[0, z:z + 3, 7:10, 7:10] = -scale
+    phi[0, z - 1 : z + 2, 7:10, 7:10] = scale
+    phi[0, z : z + 3, 7:10, 7:10] = -scale
     return phi
 
 
 class TestPersistentPool:
     def test_get_pool_reuse_and_resize(self):
         from dvfopt.core._pool import get_pool, shutdown_pool
+
         try:
             p1 = get_pool(2)
             p2 = get_pool(2)
@@ -30,6 +31,7 @@ class TestPersistentPool:
     def test_pool_executes_warm(self):
         """A trivial task runs on the warmed pool (workers imported + JIT'd)."""
         from dvfopt.core._pool import get_pool, shutdown_pool
+
         try:
             pool = get_pool(2)
             out = list(pool.map(abs, [-1, -2, -3]))
@@ -40,6 +42,7 @@ class TestPersistentPool:
     def test_pool_map_results(self):
         """pool_map maps a worker over args and returns the result list."""
         from dvfopt.core._pool import pool_map, shutdown_pool
+
         try:
             out = pool_map(abs, [-1, -2, -3], 2)
             assert out == [1, 2, 3]
@@ -50,6 +53,7 @@ class TestPersistentPool:
         """A dead worker (BrokenProcessPool) must not crash the caller:
         pool_map tears the pool down and completes the work serially."""
         from concurrent.futures.process import BrokenProcessPool
+
         import dvfopt.core._pool as poolmod
 
         teardowns = []
@@ -60,9 +64,7 @@ class TestPersistentPool:
 
         broken = _BrokenPool()
         monkeypatch.setattr(poolmod, 'get_pool', lambda n: broken)
-        monkeypatch.setattr(
-            poolmod, '_shutdown_if_current', lambda ex: teardowns.append(ex)
-        )
+        monkeypatch.setattr(poolmod, '_shutdown_if_current', lambda ex: teardowns.append(ex))
         # Serial fallback still produces the correct answer...
         out = poolmod.pool_map(abs, [-5, -6], 2)
         assert out == [5, 6]
@@ -100,8 +102,10 @@ class TestPersistentPool:
 class TestMultiscaleSeed:
     def test_shape_helpers_roundtrip(self):
         from dvfopt.core.wallbreakers._multiscale_3d import (
-            _downsample_2x, _upsample_2x,
+            _downsample_2x,
+            _upsample_2x,
         )
+
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.05, (3, 16, 18, 20)).astype(np.float64)
         coarse = _downsample_2x(phi)
@@ -111,6 +115,7 @@ class TestMultiscaleSeed:
 
     def test_reduces_folds(self):
         from dvfopt.core.wallbreakers._multiscale_3d import multiscale_seed_3d
+
         phi = _planted_cluster()
         n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
         if n0 == 0:
@@ -122,6 +127,7 @@ class TestMultiscaleSeed:
 
     def test_too_small_falls_back(self):
         from dvfopt.core.wallbreakers._multiscale_3d import multiscale_seed_3d
+
         phi = np.zeros((3, 3, 3, 3))  # halving -> 1 cube, too small
         out, info = multiscale_seed_3d(phi, threshold=0.012)
         assert info['used_multiscale'] is False
@@ -131,6 +137,7 @@ class TestMultiscaleSeed:
 class TestMultiscaleRoute:
     def test_explicit_multiscale_route(self):
         from dvfopt import correct_dvf_3d
+
         phi = _planted_cluster(scale=1.2)
         n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
         if n0 == 0:

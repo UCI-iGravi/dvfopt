@@ -16,8 +16,13 @@ def _bowtie_phi():
 
 def test_method_names_include_core_methods():
     expected = {
-        'harmonic_only', 'm10', 'm14', 'm14_schwarz',
-        'cluster_pipeline', 'lp_oneshot', 'slp_iter',
+        'harmonic_only',
+        'm10',
+        'm14',
+        'm14_schwarz',
+        'cluster_pipeline',
+        'lp_oneshot',
+        'slp_iter',
     }
     assert set(METHOD_NAMES) >= expected
 
@@ -26,9 +31,17 @@ def test_run_method_lp_oneshot_returns_expected_keys():
     phi_in = _bowtie_phi()
     rec = run_method('lp_oneshot', phi_in)
     for k in (
-        'method', 'phi_out', 'init_n_neg_2tri', 'init_min_T',
-        'final_n_neg_2tri', 'final_min_T', 'feasible',
-        'L1_dev', 'L2_dev', 'Linf_dev', 'wall_s',
+        'method',
+        'phi_out',
+        'init_n_neg_2tri',
+        'init_min_T',
+        'final_n_neg_2tri',
+        'final_min_T',
+        'feasible',
+        'L1_dev',
+        'L2_dev',
+        'Linf_dev',
+        'wall_s',
     ):
         assert k in rec, f'missing key {k!r}'
     assert rec['method'] == 'lp_oneshot'

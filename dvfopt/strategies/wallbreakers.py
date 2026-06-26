@@ -940,23 +940,15 @@ class CoupledKRing3DStrategy(Strategy):
         self._check_constraint(constraint)
 
         if self.mode not in ('worst', 'cluster'):
-            raise ValueError(
-                f"mode must be 'worst' or 'cluster', got {self.mode!r}"
-            )
+            raise ValueError(f"mode must be 'worst' or 'cluster', got {self.mode!r}")
 
-        rec_thr = (
-            self.recover_threshold
-            if self.recover_threshold is not None
-            else 1.2 * threshold
-        )
+        rec_thr = self.recover_threshold if self.recover_threshold is not None else 1.2 * threshold
 
         if self.mode == 'worst':
             if self.target_cube is None:
                 fold = find_worst_fold_cube(phi_in)
                 if fold is None:
-                    return phi_in, _build_solve_info(
-                        'CoupledKRing3DStrategy', {}, threshold
-                    )
+                    return phi_in, _build_solve_info('CoupledKRing3DStrategy', {}, threshold)
                 cz, cy, cx = fold
             else:
                 cz, cy, cx = self.target_cube
@@ -973,13 +965,15 @@ class CoupledKRing3DStrategy(Strategy):
                 use_analytical_jacobian=self.use_analytical_jacobian,
             )
             V = six_tet_volumes_3d(phi_out)
-            phases = [{
-                'phase': 'coupled_kring_slsqp',
-                'n_neg': int((V <= 0).sum()),
-                'min_T': float(V.min()),
-                'wall_s': info['wall_s'],
-                **info,
-            }]
+            phases = [
+                {
+                    'phase': 'coupled_kring_slsqp',
+                    'n_neg': int((V <= 0).sum()),
+                    'min_T': float(V.min()),
+                    'wall_s': info['wall_s'],
+                    **info,
+                }
+            ]
             if self.recover:
                 phi_out, rinfo = local_alm_recovery_3d(
                     phi_out,
@@ -990,31 +984,25 @@ class CoupledKRing3DStrategy(Strategy):
                     verbose=verbose,
                 )
                 Vr = six_tet_volumes_3d(phi_out)
-                phases.append({
-                    'phase': 'local_alm_recovery',
-                    'n_neg': int((Vr <= 0).sum()),
-                    'min_T': float(Vr.min()),
-                    'wall_s': rinfo['wall_s'],
-                    **rinfo,
-                })
-            return phi_out, _build_solve_info(
-                'CoupledKRing3DStrategy', phases, threshold
-            )
+                phases.append(
+                    {
+                        'phase': 'local_alm_recovery',
+                        'n_neg': int((Vr <= 0).sum()),
+                        'min_T': float(Vr.min()),
+                        'wall_s': rinfo['wall_s'],
+                        **rinfo,
+                    }
+                )
+            return phi_out, _build_solve_info('CoupledKRing3DStrategy', phases, threshold)
 
         # mode == 'cluster': identify clusters, run SLSQP per centroid
         # (in parallel where halos don't overlap).
         V_in = six_tet_volumes_3d(phi_in)
         fold_mask = V_in.min(axis=0) <= 0
-        fold_cells = [
-            tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))
-        ]
+        fold_cells = [tuple(int(c) for c in p) for p in zip(*np.where(fold_mask))]
         if not fold_cells:
-            return phi_in, _build_solve_info(
-                'CoupledKRing3DStrategy', {}, threshold
-            )
-        centroids, _, _ = cluster_fold_cubes(
-            fold_cells, radius=self.cluster_radius
-        )
+            return phi_in, _build_solve_info('CoupledKRing3DStrategy', {}, threshold)
+        centroids, _, _ = cluster_fold_cubes(fold_cells, radius=self.cluster_radius)
         phi_out, infos = coupled_kring_slsqp_3d_parallel(
             phi_in,
             centroids,
@@ -1027,14 +1015,16 @@ class CoupledKRing3DStrategy(Strategy):
         )
         V_out = six_tet_volumes_3d(phi_out)
         wall_total = sum(i['wall_s'] for i in infos)
-        phases = [{
-            'phase': 'coupled_kring_slsqp_cluster',
-            'n_neg': int((V_out <= 0).sum()),
-            'min_T': float(V_out.min()),
-            'wall_s': wall_total,
-            'n_clusters': len(centroids),
-            'cluster_infos': infos,
-        }]
+        phases = [
+            {
+                'phase': 'coupled_kring_slsqp_cluster',
+                'n_neg': int((V_out <= 0).sum()),
+                'min_T': float(V_out.min()),
+                'wall_s': wall_total,
+                'n_clusters': len(centroids),
+                'cluster_infos': infos,
+            }
+        ]
         if self.recover:
             # Local recovery around each cluster centroid (sequential;
             # each verifies globally before accepting).
@@ -1050,16 +1040,16 @@ class CoupledKRing3DStrategy(Strategy):
                 )
                 rec_wall += rinfo['wall_s']
             Vr = six_tet_volumes_3d(phi_out)
-            phases.append({
-                'phase': 'local_alm_recovery_cluster',
-                'n_neg': int((Vr <= 0).sum()),
-                'min_T': float(Vr.min()),
-                'wall_s': rec_wall,
-                'n_clusters': len(centroids),
-            })
-        return phi_out, _build_solve_info(
-            'CoupledKRing3DStrategy', phases, threshold
-        )
+            phases.append(
+                {
+                    'phase': 'local_alm_recovery_cluster',
+                    'n_neg': int((Vr <= 0).sum()),
+                    'min_T': float(Vr.min()),
+                    'wall_s': rec_wall,
+                    'n_clusters': len(centroids),
+                }
+            )
+        return phi_out, _build_solve_info('CoupledKRing3DStrategy', phases, threshold)
 
 
 @register_strategy('active_band_alm_3d')
@@ -1131,11 +1121,7 @@ class ActiveBandALM3DStrategy(Strategy):
         )
 
         self._check_constraint(constraint)
-        band_thr = (
-            self.band_threshold
-            if self.band_threshold is not None
-            else 1.2 * threshold
-        )
+        band_thr = self.band_threshold if self.band_threshold is not None else 1.2 * threshold
         phi_out, info = active_band_alm_recovery_3d(
             phi_in,
             threshold=band_thr,
@@ -1153,9 +1139,7 @@ class ActiveBandALM3DStrategy(Strategy):
             'wall_s': info['wall_s'],
             **{k: v for k, v in info.items() if k != 'per_cluster'},
         }
-        return phi_out, _build_solve_info(
-            'ActiveBandALM3DStrategy', [phase], threshold
-        )
+        return phi_out, _build_solve_info('ActiveBandALM3DStrategy', [phase], threshold)
 
 
 # Names in ``__all__`` are sorted alphabetically (ruff RUF022).

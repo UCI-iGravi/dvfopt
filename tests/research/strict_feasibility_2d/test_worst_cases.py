@@ -1,4 +1,5 @@
 """Smoke-test the worst-case loaders."""
+
 import numpy as np
 import pytest
 
@@ -14,7 +15,7 @@ def test_load_synthetic_canonical():
 
 
 def test_synthetic_shapes():
-    for name, phi, meta in _load.load_synthetic_canonical():
+    for name, phi, _meta in _load.load_synthetic_canonical():
         assert phi.ndim == 3 and phi.shape[0] == 2, name
         assert phi.dtype == np.float64, name
 

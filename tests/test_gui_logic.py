@@ -63,10 +63,21 @@ def _make_state(phi, *, cy=2, cx=3, sy=3, sx=3, osy=3, osx=3, **over):
 def _snap(phi, **over):
     base = dict(
         phi=phi,
-        window_y0=0, window_y1=0, window_x0=0, window_x1=0,
-        opt_y0=0, opt_y1=0, opt_x0=0, opt_x1=0,
-        is_padded=False, neg_y=0, neg_x=0,
-        per_index_iter=0, outer_iter=0, n_neg=0, min_T=0.0,
+        window_y0=0,
+        window_y1=0,
+        window_x0=0,
+        window_x1=0,
+        opt_y0=0,
+        opt_y1=0,
+        opt_x0=0,
+        opt_x1=0,
+        is_padded=False,
+        neg_y=0,
+        neg_x=0,
+        per_index_iter=0,
+        outer_iter=0,
+        n_neg=0,
+        min_T=0.0,
     )
     base.update(over)
     return StateSnapshot(**base)
@@ -451,8 +462,13 @@ def test_worker_3d_trajectory_metric_and_strategy():
     )
 
     vol = np.zeros((3, 4, 8, 8))
-    assert SolverWorker(deformation_i=vol, method_id='m14_tet3d')._trajectory_metric_kind() == 'tet3d'
-    assert SolverWorker(deformation_i=vol, method_id='barrier_jdet3d')._trajectory_metric_kind() == 'jdet3d'
+    assert (
+        SolverWorker(deformation_i=vol, method_id='m14_tet3d')._trajectory_metric_kind() == 'tet3d'
+    )
+    assert (
+        SolverWorker(deformation_i=vol, method_id='barrier_jdet3d')._trajectory_metric_kind()
+        == 'jdet3d'
+    )
     assert isinstance(
         SolverWorker(deformation_i=vol, method_id='m14_tet3d')._build_strategy(),
         HarmonicALMRefineRepair3DStrategy,
@@ -471,8 +487,13 @@ def test_worker_3d_trajectory_metric_and_strategy():
     w = SolverWorker(deformation_i=vol, method_id='slsqp_windowed_jdet3d')
     assert w._trajectory_metric_kind() == 'jdet3d'
     assert isinstance(w._build_strategy(), SLSQPWindowedStrategy)
-    assert SolverWorker(deformation_i=vol, method_id='m10_tet3d')._trajectory_metric_kind() == 'tet3d'
-    assert SolverWorker(deformation_i=vol, method_id='m14_schwarz_tet3d')._trajectory_metric_kind() == 'tet3d'
+    assert (
+        SolverWorker(deformation_i=vol, method_id='m10_tet3d')._trajectory_metric_kind() == 'tet3d'
+    )
+    assert (
+        SolverWorker(deformation_i=vol, method_id='m14_schwarz_tet3d')._trajectory_metric_kind()
+        == 'tet3d'
+    )
 
 
 def test_worker_3d_solve_reaches_feasibility():

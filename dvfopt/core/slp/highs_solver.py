@@ -12,6 +12,7 @@ Triangle (lin): ``-J @ phi <= -threshold + T_lin - J @ phi_lin``.
 Trust region:   ``phi - phi_lin in [-trust, +trust]``  (only if set).
 ``t`` bounds:   ``t >= 0`` (no upper bound).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -65,23 +66,28 @@ def solve_l1_lp_step(
 
     # 1) L1 epigraph upper:  phi - t <= phi_in
     A1 = sp.hstack([sp.eye(n), -sp.eye(n)])
-    blocks.append(A1); b_ub_blocks.append(phi_in_flat)
+    blocks.append(A1)
+    b_ub_blocks.append(phi_in_flat)
     # 2) L1 epigraph lower: -phi - t <= -phi_in
     A2 = sp.hstack([-sp.eye(n), -sp.eye(n)])
-    blocks.append(A2); b_ub_blocks.append(-phi_in_flat)
+    blocks.append(A2)
+    b_ub_blocks.append(-phi_in_flat)
 
     # 3) Linearised triangle: -J @ phi <= -threshold + T_lin - J @ phi_lin
     if K > 0:
         rhs_tri = -threshold + T_lin - J_csr @ phi_lin_flat
         A3 = sp.hstack([-J_csr, sp.csr_matrix((K, n))])
-        blocks.append(A3); b_ub_blocks.append(rhs_tri)
+        blocks.append(A3)
+        b_ub_blocks.append(rhs_tri)
 
     # 4) Optional trust region: -trust <= phi - phi_lin <= +trust
     if trust_radius is not None:
         A4 = sp.hstack([sp.eye(n), sp.csr_matrix((n, n))])
-        blocks.append(A4); b_ub_blocks.append(phi_lin_flat + trust_radius)
+        blocks.append(A4)
+        b_ub_blocks.append(phi_lin_flat + trust_radius)
         A5 = sp.hstack([-sp.eye(n), sp.csr_matrix((n, n))])
-        blocks.append(A5); b_ub_blocks.append(-phi_lin_flat + trust_radius)
+        blocks.append(A5)
+        b_ub_blocks.append(-phi_lin_flat + trust_radius)
 
     A_ub = sp.vstack(blocks).tocsr()
     b_ub = np.concatenate(b_ub_blocks)

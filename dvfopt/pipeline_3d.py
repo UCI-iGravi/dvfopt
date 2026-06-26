@@ -23,6 +23,7 @@ n_neg=0 on B0039 z=0..15 (REPORT Parts XIII–XVII). It reuses the
 parallel kernels, active-band recovery, coupled-escape, and (optionally)
 the GPU barrier — all deep-audited bit-exact / feasibility-safe.
 """
+
 from __future__ import annotations
 
 import time
@@ -46,11 +47,11 @@ class Correct3DReport:
     n_neg_out: int
     n_below_out: int
     min_T_out: float
-    best_diag_floor_in: int          # cubes with NO positive triangulation (input)
-    best_diag_floor_out: int         # ditto (output) — the true irreducible set
+    best_diag_floor_in: int  # cubes with NO positive triangulation (input)
+    best_diag_floor_out: int  # ditto (output) — the true irreducible set
     l1_from_input: float
     wall_s: float
-    stages: list = field(default_factory=list)   # per-stage dicts
+    stages: list = field(default_factory=list)  # per-stage dicts
     residual_cubes: list = field(default_factory=list)  # (cz,cy,cx, min_T, diag_fixable)
 
 
@@ -144,14 +145,22 @@ def correct_dvf_3d(
     def _m10tet(p, thr, gpu=False):
         if gpu:
             from dvfopt import BarrierTet3DTorchStrategy
+
             strat = BarrierTet3DTorchStrategy(dtype='float64')
         else:
             from dvfopt import HarmonicALMBarrier3DStrategy
+
             strat = HarmonicALMBarrier3DStrategy()
-        return Solver(
-            constraint=constraint, objective=objective,
-            strategy=strat, threshold=thr,
-        ).fit(p).corrected
+        return (
+            Solver(
+                constraint=constraint,
+                objective=objective,
+                strategy=strat,
+                threshold=thr,
+            )
+            .fit(p)
+            .corrected
+        )
 
     t0 = time.time()
     stages = []
@@ -161,10 +170,20 @@ def correct_dvf_3d(
     mv, n_neg_in, n_below_in, min_in = _stats(cur, threshold)
     bd_floor_in = n_neg_best_diagonal(cur, threshold=0.0)
     if verbose:
-        print(f'[triage] n_neg={n_neg_in} n<thr={n_below_in} min_T={min_in:+.5f} '
-              f'best-diag-floor={bd_floor_in}', flush=True)
-    stages.append(dict(stage='triage', n_neg=n_neg_in, n_below=n_below_in,
-                       min_T=min_in, best_diag_floor=bd_floor_in))
+        print(
+            f'[triage] n_neg={n_neg_in} n<thr={n_below_in} min_T={min_in:+.5f} '
+            f'best-diag-floor={bd_floor_in}',
+            flush=True,
+        )
+    stages.append(
+        dict(
+            stage='triage',
+            n_neg=n_neg_in,
+            n_below=n_below_in,
+            min_T=min_in,
+            best_diag_floor=bd_floor_in,
+        )
+    )
     if n_neg_in == 0 and n_below_in == 0:
         return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
 
@@ -186,10 +205,14 @@ def correct_dvf_3d(
     ts = time.time()
     if route == 'active_band':
         cur, info = active_band_alm_recovery_3d(
-            cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+            cur,
+            threshold=rec_thr,
+            n_workers=n_workers,
+            verbose=verbose,
         )
     elif route == 'multiscale':
         from dvfopt.core.wallbreakers._multiscale_3d import multiscale_seed_3d
+
         cur, _ = multiscale_seed_3d(cur, threshold=rec_thr, verbose=verbose)
     elif route == 'gpu':
         cur = _m10tet(cur, rec_thr, gpu=True)
@@ -197,10 +220,19 @@ def correct_dvf_3d(
         cur = _m10tet(cur, rec_thr, gpu=False)
     mv, n_neg_b, n_below_b, min_b = _stats(cur, threshold)
     if verbose:
-        print(f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} '
-              f'({time.time()-ts:.1f}s)', flush=True)
-    stages.append(dict(stage=f'bulk:{route}', n_neg=n_neg_b, n_below=n_below_b,
-                       min_T=min_b, wall_s=time.time()-ts))
+        print(
+            f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} ({time.time() - ts:.1f}s)',
+            flush=True,
+        )
+    stages.append(
+        dict(
+            stage=f'bulk:{route}',
+            n_neg=n_neg_b,
+            n_below=n_below_b,
+            min_T=min_b,
+            wall_s=time.time() - ts,
+        )
+    )
 
     # ---- Stage 2: coupled-escape loop ----
     # Pathology guard (a-priori): if a large FRACTION of cubes have no
@@ -212,11 +244,14 @@ def correct_dvf_3d(
     floor_frac = bd_floor_in / max(1, mv.size)
     if n_neg_b > 0 and floor_frac > 0.2:
         if verbose:
-            print(f'[escape] skipped — {bd_floor_in} cubes ({floor_frac:.0%}) have '
-                  f'no positive triangulation; feasible set ~empty, annotating',
-                  flush=True)
-        stages.append(dict(stage='escape:skipped_pathological',
-                           n_neg=n_neg_b, best_diag_floor=bd_floor_in))
+            print(
+                f'[escape] skipped — {bd_floor_in} cubes ({floor_frac:.0%}) have '
+                f'no positive triangulation; feasible set ~empty, annotating',
+                flush=True,
+            )
+        stages.append(
+            dict(stage='escape:skipped_pathological', n_neg=n_neg_b, best_diag_floor=bd_floor_in)
+        )
         return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
 
     # Iterate the coupled k-ring escape; when it stalls, ESCALATE the halo
@@ -232,22 +267,39 @@ def correct_dvf_3d(
             if n_now == 0:
                 break
             ts = time.time()
-            cur = Solver(
-                constraint=constraint, objective=objective,
-                strategy=CoupledKRing3DStrategy(
-                    k_ring=k, feasibility_thr=escape_feasibility_thr,
-                    mode='cluster', n_workers=n_workers,
-                    recover=True, recover_threshold=rec_thr,
-                ),
-                threshold=threshold,
-            ).fit(cur).corrected
+            cur = (
+                Solver(
+                    constraint=constraint,
+                    objective=objective,
+                    strategy=CoupledKRing3DStrategy(
+                        k_ring=k,
+                        feasibility_thr=escape_feasibility_thr,
+                        mode='cluster',
+                        n_workers=n_workers,
+                        recover=True,
+                        recover_threshold=rec_thr,
+                    ),
+                    threshold=threshold,
+                )
+                .fit(cur)
+                .corrected
+            )
             _, n_after, _, min_after = _stats(cur, threshold)
             if verbose:
-                print(f'[escape{tag} {it+1} k={k}] n_neg {n_now}->{n_after} '
-                      f'min_T={min_after:+.5f} ({time.time()-ts:.1f}s)', flush=True)
-            stages.append(dict(stage=f'escape{tag}{it+1}', k_ring=k,
-                               n_neg=n_after, min_T=min_after,
-                               wall_s=time.time()-ts))
+                print(
+                    f'[escape{tag} {it + 1} k={k}] n_neg {n_now}->{n_after} '
+                    f'min_T={min_after:+.5f} ({time.time() - ts:.1f}s)',
+                    flush=True,
+                )
+            stages.append(
+                dict(
+                    stage=f'escape{tag}{it + 1}',
+                    k_ring=k,
+                    n_neg=n_after,
+                    min_T=min_after,
+                    wall_s=time.time() - ts,
+                )
+            )
             if n_after == 0:
                 break
             if n_after >= last_n:
@@ -257,8 +309,7 @@ def correct_dvf_3d(
                     k += 1
                     stall = 0
                     if verbose:
-                        print(f'[escape] stalled — escalating halo to k={k}',
-                              flush=True)
+                        print(f'[escape] stalled — escalating halo to k={k}', flush=True)
                     continue
                 if stall >= 2:
                     if verbose:
@@ -278,20 +329,27 @@ def correct_dvf_3d(
     # band's single-scale plateau in the research) and re-escape ONCE.
     _, n_esc, _, _ = _stats(cur, threshold)
     floor_frac = bd_floor_in / max(1, mv.size)
-    if (thorough and n_esc > 0 and route != 'multiscale'
-            and floor_frac <= 0.2 and min(cur.shape[1:]) >= 8):
+    if (
+        thorough
+        and n_esc > 0
+        and route != 'multiscale'
+        and floor_frac <= 0.2
+        and min(cur.shape[1:]) >= 8
+    ):
         from dvfopt.core.wallbreakers._multiscale_3d import multiscale_seed_3d
+
         ts = time.time()
         if verbose:
-            print(f'[multiscale-fallback] escape plateaued at {n_esc}; '
-                  f're-seeding coarse-to-fine', flush=True)
+            print(
+                f'[multiscale-fallback] escape plateaued at {n_esc}; re-seeding coarse-to-fine',
+                flush=True,
+            )
         seeded, _ = multiscale_seed_3d(cur, threshold=rec_thr, verbose=verbose)
         _, n_seed, _, _ = _stats(seeded, threshold)
         # Accept the re-seed only if it didn't make things worse.
         if n_seed <= n_esc:
             cur = seeded
-        stages.append(dict(stage='multiscale_fallback', n_neg=n_seed,
-                           wall_s=time.time()-ts))
+        stages.append(dict(stage='multiscale_fallback', n_neg=n_seed, wall_s=time.time() - ts))
         cur = _run_escape(cur, tag='2')
 
     # ---- Stage 3: final tighten (n<threshold but feasible) ----
@@ -300,11 +358,13 @@ def correct_dvf_3d(
         ts = time.time()
         # local recovery to lift near-threshold cells above the strict bar
         cur, _ = active_band_alm_recovery_3d(
-            cur, threshold=rec_thr, n_workers=n_workers, verbose=verbose,
+            cur,
+            threshold=rec_thr,
+            n_workers=n_workers,
+            verbose=verbose,
         )
         _, _, n_below_fin, _ = _stats(cur, threshold)
-        stages.append(dict(stage='tighten', n_below=n_below_fin,
-                           wall_s=time.time()-ts))
+        stages.append(dict(stage='tighten', n_below=n_below_fin, wall_s=time.time() - ts))
 
     return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
 
@@ -315,13 +375,19 @@ def _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0):
     residual = []
     if n_neg > 0:
         from dvfopt.jacobian.tetrahedron_sign import best_diagonal_min_volume
+
         best_min, _ = best_diagonal_min_volume(cur)
         cz, cy, cx = np.where(mv <= 0)
         for z, y, x in zip(cz, cy, cx):
-            residual.append((
-                int(z), int(y), int(x), float(mv[z, y, x]),
-                bool(best_min[z, y, x] > 0),  # fixable by re-triangulation?
-            ))
+            residual.append(
+                (
+                    int(z),
+                    int(y),
+                    int(x),
+                    float(mv[z, y, x]),
+                    bool(best_min[z, y, x] > 0),  # fixable by re-triangulation?
+                )
+            )
     return Correct3DReport(
         feasible=(n_neg == 0 and n_below == 0),
         n_neg_in=n_neg_in,
