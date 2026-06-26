@@ -6,11 +6,17 @@ Usage::
     python -m dvfopt_gui.demo --b0039 12       # B0039 z=12 (dense extreme)
     python -m dvfopt_gui.demo --canonical 03d  # canonical synthetic
     python -m dvfopt_gui.demo --b0039 100 --max-iter 20
+    python -m dvfopt_gui.demo --synthetic-3d   # small folded 3D volume (no data)
+    python -m dvfopt_gui.demo --b0039-3d 16    # first 16 z-slices of B0039 as a 3D volume
 
 The demo just loads a sample DVF and opens the live-viz window — the
 solver family, objective, and per-run parameters are chosen from the
 toolbar once the window is up. ``--max-iter`` / ``--max-per-index-iter``
 seed the windowed-SLSQP spinbox values for convenience.
+
+The ``--*-3d`` options load a ``(3, D, H, W)`` volume and pre-select the
+``6-tet (3D)`` constraint, so the window opens straight into true-3D
+mode — press **Run full** to solve the whole volume (M14Tet by default).
 """
 
 from __future__ import annotations
@@ -38,6 +44,33 @@ def _b0039_slice(z: int) -> np.ndarray:
     out = np.zeros((3, 1, *phi_2d.shape[1:]), dtype=np.float64)
     out[1, 0] = phi_2d[0]
     out[2, 0] = phi_2d[1]
+    return out
+
+
+def _b0039_volume(n_slices: int) -> np.ndarray:
+    """Load the first ``n_slices`` z-slices of B0039 as a ``(3, n, H, W)``
+    volume for true-3D solving (channels ``[dz, dy, dx]``)."""
+    if not _B0039_PATH.exists():
+        raise FileNotFoundError(
+            f'B0039 DVF not found at {_B0039_PATH}; either install it or use --synthetic-3d instead.'
+        )
+    phi_volume = np.load(_B0039_PATH).astype(np.float64)  # (3, D, H, W)
+    D = phi_volume.shape[1]
+    n = max(2, min(int(n_slices), D))  # need D>1 for 3D; cap at available
+    return np.ascontiguousarray(phi_volume[:, :n])
+
+
+def _synthetic_3d_volume() -> np.ndarray:
+    """A small, data-free folded 3D volume for a quick true-3D demo.
+
+    A localised ``dx`` bump across every z-slice of a ``(3, 4, 16, 16)``
+    field creates several inverted 6-tet cells — enough for M14Tet to
+    visibly drive the 3D fold count to zero in a couple of seconds.
+    Returns the canonical ``(3, D, H, W)`` ``[dz, dy, dx]`` layout.
+    """
+    D, H, W = 4, 16, 16
+    out = np.zeros((3, D, H, W), dtype=np.float64)
+    out[2, :, 7:9, 7:9] = 1.5  # dx bump → folded tets
     return out
 
 
@@ -104,6 +137,22 @@ def _parse_args(argv=None) -> argparse.Namespace:
         metavar='KEY',
         help='Load a canonical_2tri_2d case (e.g. 03d).',
     )
+    g.add_argument(
+        '--b0039-3d',
+        type=int,
+        nargs='?',
+        const=16,
+        default=None,
+        metavar='N',
+        dest='b0039_3d',
+        help='Load the first N z-slices of B0039 as a 3D volume (default 16); opens in 6-tet 3D mode.',
+    )
+    g.add_argument(
+        '--synthetic-3d',
+        action='store_true',
+        dest='synthetic_3d',
+        help='Load a small data-free folded 3D volume; opens in 6-tet 3D mode.',
+    )
     p.add_argument(
         '--max-iter',
         type=int,
@@ -125,7 +174,19 @@ def _parse_args(argv=None) -> argparse.Namespace:
 def main(argv=None) -> int:
     args = _parse_args(argv)
 
-    if args.b0039 is not None:
+    # ``initial_constraint`` opens the window straight into 3D mode for the
+    # ``--*-3d`` options; left None for the 2D cases.
+    initial_constraint = None
+
+    if args.synthetic_3d:
+        print('Loading synthetic folded 3D volume (4×16×16)…', flush=True)
+        deformation_i = _synthetic_3d_volume()
+        initial_constraint = 'tet3d'
+    elif args.b0039_3d is not None:
+        print(f'Loading B0039 first {args.b0039_3d} z-slices as a 3D volume…', flush=True)
+        deformation_i = _b0039_volume(args.b0039_3d)
+        initial_constraint = 'tet3d'
+    elif args.b0039 is not None:
         print(f'Loading B0039 z={args.b0039}…', flush=True)
         deformation_i = _b0039_slice(args.b0039)
     elif args.canonical is not None:
@@ -155,7 +216,7 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 2
-    return launch(deformation_i, solver_kwargs=solver_kwargs)
+    return launch(deformation_i, solver_kwargs=solver_kwargs, initial_constraint=initial_constraint)
 
 
 if __name__ == '__main__':
