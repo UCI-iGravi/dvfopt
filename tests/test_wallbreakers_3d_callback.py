@@ -42,3 +42,47 @@ def test_m14tet_core_default_callback_none_unchanged():
     phi = _folded_volume_3d()
     out = iterative_3d_tet_refine_repair(phi, time_budget_s=30.0, verbose=0)
     assert out.shape == phi.shape
+
+
+# ---------------------------------------------------------------------------
+# Task 4: strategy-level step_callback wiring
+# ---------------------------------------------------------------------------
+
+def test_m10tet_strategy_fires_harmonic_and_alm():
+    from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D
+
+    phi = _folded_volume_3d()
+    seen = []
+    solver = Solver(
+        constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+        objective=L2Objective(),
+        strategy=M10TetStrategy(),
+    )
+    solver.fit(phi, step_callback=lambda s: seen.append(s['stage']))
+    assert 'harmonic' in seen and 'alm' in seen
+
+
+def test_m14tet_strategy_forwards_callback():
+    from dvfopt import L2Objective, M14TetStrategy, Solver, Tet6Constraint3D
+
+    phi = _folded_volume_3d()
+    seen = []
+    solver = Solver(
+        constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+        objective=L2Objective(),
+        strategy=M14TetStrategy(time_budget_s=30.0),
+    )
+    solver.fit(phi, step_callback=lambda s: seen.append(s['stage']))
+    assert 'seed' in seen
+
+
+def test_m14schwarz3d_stop_via_callback_raises():
+    from dvfopt import L2Objective, M14Schwarz3DStrategy, Solver, Tet6Constraint3D
+
+    phi = _folded_volume_3d()
+    with pytest.raises(KeyboardInterrupt):
+        Solver(
+            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            objective=L2Objective(),
+            strategy=M14Schwarz3DStrategy(time_budget_s=30.0),
+        ).fit(phi, step_callback=lambda s: (_ for _ in ()).throw(KeyboardInterrupt()))
