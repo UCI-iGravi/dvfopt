@@ -1437,6 +1437,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if not fast:
                 self._fold_overlay.setPath(_folded_cells_path(slice_2hw))
                 self._fold_overlay.setVisible(True)
+            else:
+                self._fold_overlay.setVisible(False)
         else:
             field = self._heatmap_slice_3d(phi3d)
             self._img.setImage(field, autoLevels=False)
