@@ -60,6 +60,7 @@ from dvfopt.strategies.base import (
     register_strategy,
 )
 from dvfopt.strategies.nmvf import NMVFStrategy
+from dvfopt.strategies.slp import SLPStrategy
 from dvfopt.strategies.schwarz import SchwarzStrategy
 from dvfopt.strategies.schwarz_wrapper import SchwarzWrapperStrategy
 from dvfopt.strategies.slsqp import (
@@ -108,6 +109,7 @@ __all__ = [
     'M14Strategy',
     'M14TetStrategy',
     'NMVFStrategy',
+    'SLPStrategy',
     'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
