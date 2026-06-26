@@ -598,6 +598,14 @@ class SolverWorker(QtCore.QThread):
             return HarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
         if mid == 'm14_schwarz_2tri':
             return SchwarzHarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+        if mid == 'slsqp_fullgrid_2tri':
+            from dvfopt import SLSQPFullGridStrategy
+
+            return SLSQPFullGridStrategy()
+        if mid == 'schwarz_2tri':
+            from dvfopt import SchwarzStrategy
+
+            return SchwarzStrategy()
         if mid == 'nmvf_jdet':
             return NMVFStrategy()
         raise ValueError(f'unknown method_id={mid!r}')

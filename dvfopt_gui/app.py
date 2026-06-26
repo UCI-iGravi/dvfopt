@@ -253,6 +253,8 @@ _METHOD_SPECS_2TRI = [
     ('m10', 'M10 (Harmonic + ALM + barrier polish)'),
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
+    ('slsqp_fullgrid', 'SLSQP full-grid (2-tri; KKT, smallest L1 on mild folds)'),
+    ('schwarz', 'Schwarz (2-tri; overlapping-tile decomposition)'),
 ]
 _METHOD_SPECS_JDET = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),

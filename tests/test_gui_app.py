@@ -278,6 +278,14 @@ def test_levels_fixed_vs_autoscale(qapp):
     assert hi > 1.0  # this field really does exceed the fixed band
 
 
+def test_2tri_menu_has_fullgrid_and_schwarz(qapp):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
+    win._select_combo_data(win._constraint_combo, '2tri')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'slsqp_fullgrid' in algos
+    assert 'schwarz' in algos
+
+
 def test_run_all_disabled_for_2d(qapp):
     win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
     assert not win._run_all_btn.isEnabled()

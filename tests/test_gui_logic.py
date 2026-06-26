@@ -398,3 +398,12 @@ def test_parse_loaded_npz_phi_only(tmp_path):
     loaded.close()
     assert run.volume.shape == (3, 1, 4, 4)
     assert run.snapshots == []
+
+
+def test_build_strategy_adds_2d_fullgrid_and_schwarz():
+    from dvfopt import SLSQPFullGridStrategy, SchwarzStrategy
+
+    w1 = SolverWorker(deformation_i=np.zeros((3, 1, 6, 6)), method_id='slsqp_fullgrid_2tri')
+    assert isinstance(w1._build_strategy(), SLSQPFullGridStrategy)
+    w2 = SolverWorker(deformation_i=np.zeros((3, 1, 6, 6)), method_id='schwarz_2tri')
+    assert isinstance(w2._build_strategy(), SchwarzStrategy)
