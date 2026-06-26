@@ -510,3 +510,28 @@ def test_initial_params_override_saved_max_iter(qapp, tmp_path, monkeypatch):
     # Demo-style explicit override wins over the saved value.
     w2 = LiveSolverWindow(initial_params={'max_iterations': 999})
     assert w2._max_iter_spin.value() == 999
+
+
+# ---------------------------------------------------------------------------
+# 3D mode: constraint gating + run-control gating
+# ---------------------------------------------------------------------------
+
+
+def test_3d_constraints_gated_by_volume_depth(qapp):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))  # 2D section
+    tet_idx = win._constraint_combo.findData('tet3d')
+    assert tet_idx >= 0
+    model = win._constraint_combo.model()
+    assert not model.item(tet_idx).isEnabled()  # disabled for D == 1
+    win._load_array(np.zeros((3, 4, 6, 6)))  # 3D volume
+    assert model.item(win._constraint_combo.findData('tet3d')).isEnabled()
+
+
+def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert win._is_3d_run
+    assert not win._run_roi_btn.isEnabled()
+    assert not win._run_all_btn.isEnabled()
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'm14' in algos and 'm14_schwarz' in algos and 'm10' in algos and 'slsqp_fullgrid' in algos

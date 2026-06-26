@@ -237,9 +237,13 @@ VIEW_DIFF = 'diff'
 # always ``<algo>_<constraint>`` so the dispatch table stays flat.
 CONSTRAINT_2TRI = '2tri'
 CONSTRAINT_JDET = 'jdet'
+CONSTRAINT_TET3D = 'tet3d'
+CONSTRAINT_JDET3D = 'jdet3d'
 _CONSTRAINT_SPECS = [
     (CONSTRAINT_2TRI, '2-tri (full-coverage; catches sub-pixel folds)'),
     (CONSTRAINT_JDET, 'Jdet (central-diff; blind to sub-pixel folds)'),
+    (CONSTRAINT_TET3D, '6-tet (3D; whole-volume true 3D)'),
+    (CONSTRAINT_JDET3D, 'Jdet (3D; whole-volume central-diff)'),
 ]
 DEFAULT_CONSTRAINT = CONSTRAINT_2TRI
 
@@ -261,13 +265,27 @@ _METHOD_SPECS_JDET = [
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('nmvf', 'NMVF (heuristic neighborhood-mean smoother)'),
 ]
+_METHOD_SPECS_TET3D = [
+    ('m14', 'M14Tet (harmonic + ALM + L2 refine + repair + polish)'),
+    ('m14_schwarz', 'M14-Schwarz3D (cluster decomposition + global polish)'),
+    ('m10', 'M10Tet (harmonic + ALM + barrier polish)'),
+    ('slsqp_fullgrid', 'SLSQP full-grid 3D (KKT)'),
+]
+_METHOD_SPECS_JDET3D = [
+    ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
+    ('slsqp_windowed', 'SLSQP windowed 3D'),
+]
 _METHOD_SPECS_BY_CONSTRAINT = {
     CONSTRAINT_2TRI: _METHOD_SPECS_2TRI,
     CONSTRAINT_JDET: _METHOD_SPECS_JDET,
+    CONSTRAINT_TET3D: _METHOD_SPECS_TET3D,
+    CONSTRAINT_JDET3D: _METHOD_SPECS_JDET3D,
 }
 DEFAULT_METHOD_BY_CONSTRAINT = {
     CONSTRAINT_2TRI: 'm14',
     CONSTRAINT_JDET: 'slsqp_windowed',
+    CONSTRAINT_TET3D: 'm14',
+    CONSTRAINT_JDET3D: 'barrier',
 }
 
 # Objective families. The L-BFGS-based strategies (Barrier, M10, M14,
@@ -449,6 +467,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # a full-slice run. Set per-run; initialised here so any read
         # (e.g. ``_on_finished``) before the first run is well-defined.
         self._section_bounds: tuple[int, int, int, int] | None = None
+        # True when the selected constraint is a whole-volume 3D family
+        # (tet3d / jdet3d). In 3D mode: Run-section and Run-all z are
+        # disabled; Run-full passes the entire (3, D, H, W) volume.
+        self._is_3d_run = False
         # When non-None, a "Run all z" batch is in flight; holds the
         # z-slice indices still to be solved (current one already popped
         # and running). Drives the sequential chain in ``_on_finished``.
@@ -632,6 +654,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # gets re-filled whenever the constraint changes.
         self._repopulate_method_combo(DEFAULT_CONSTRAINT)
         self._constraint_combo.currentIndexChanged.connect(self._on_constraint_changed)
+        # Disable 3D constraint entries until a D>1 volume is loaded.
+        self._update_3d_constraint_enabled()
         method_bar.addWidget(self._method_combo, stretch=2)
 
         method_bar.addWidget(QtWidgets.QLabel('Objective:'))
@@ -1243,6 +1267,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._save_btn.setEnabled(True)
         self._revert_btn.setEnabled(True)
         self._run_all_btn.setEnabled(D > 1)
+        self._update_3d_constraint_enabled()
+        # A freshly-loaded D==1 field can't stay in a 3D constraint.
+        if self._is_3d_run and D <= 1:
+            self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
+        self._apply_mode_gating()
 
         if run.snapshots:
             # Re-loaded run: wire the snapshots into a read-only history so
@@ -1467,9 +1496,30 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._method_combo.setCurrentIndex(idx)
         self._method_combo.blockSignals(False)
 
+    def _constraint_is_3d(self, tag: str) -> bool:
+        return tag in (CONSTRAINT_TET3D, CONSTRAINT_JDET3D)
+
+    def _update_3d_constraint_enabled(self) -> None:
+        """Enable the 3D constraint entries only for D>1 volumes."""
+        D = self._volume.shape[1] if self._volume is not None else 1
+        model = self._constraint_combo.model()
+        for tag in (CONSTRAINT_TET3D, CONSTRAINT_JDET3D):
+            idx = self._constraint_combo.findData(tag)
+            if idx >= 0:
+                model.item(idx).setEnabled(D > 1)
+
+    def _apply_mode_gating(self) -> None:
+        """Reflect 2D/3D mode in the run controls."""
+        D = self._volume.shape[1] if self._volume is not None else 1
+        self._run_roi_btn.setEnabled(not self._is_3d_run)
+        self._run_all_btn.setEnabled((not self._is_3d_run) and D > 1)
+        self._section_roi.setVisible((not self._is_3d_run) and self._volume is not None)
+
     def _on_constraint_changed(self, idx: int):
         constraint = self._constraint_combo.itemData(idx)
+        self._is_3d_run = self._constraint_is_3d(constraint)
         self._repopulate_method_combo(constraint)
+        self._apply_mode_gating()
 
     def _on_z_changed(self, value: int):
         self._z = int(value)
@@ -1510,6 +1560,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.information(
                 self, 'Already running', 'Stop the current run first.'
             )
+            return
+
+        if self._is_3d_run:
+            self._section_bounds = None
+            self._start_worker(self._original_volume.copy())
             return
 
         deformation_i = self._current_slice()
@@ -1668,14 +1723,17 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if self._run_all_remaining is None:
                 self._push_undo_state()
             phi_out = np.asarray(phi_out)
-            sb = getattr(self, '_section_bounds', None)
-            if sb is not None:
-                y0, y1, x0, x1 = sb
-                self._volume[1, self._z, y0:y1, x0:x1] = phi_out[0]
-                self._volume[2, self._z, y0:y1, x0:x1] = phi_out[1]
+            if phi_out.ndim == 4:  # full-volume 3D result [dz,dy,dx]
+                self._volume[...] = phi_out
             else:
-                self._volume[1, self._z] = phi_out[0]
-                self._volume[2, self._z] = phi_out[1]
+                sb = self._section_bounds
+                if sb is not None:
+                    y0, y1, x0, x1 = sb
+                    self._volume[1, self._z, y0:y1, x0:x1] = phi_out[0]
+                    self._volume[2, self._z, y0:y1, x0:x1] = phi_out[1]
+                else:
+                    self._volume[1, self._z] = phi_out[0]
+                    self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
