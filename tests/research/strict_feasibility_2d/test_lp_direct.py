@@ -34,6 +34,7 @@ def test_lp_oneshot_strictly_improves_min_T_vs_input():
 def test_lp_oneshot_L1_is_smaller_than_harmonic_only():
     """LP should pull the seed back toward phi_in -- L1 must drop."""
     from dvfopt.core.wallbreakers import harmonic_extension_2d
+
     phi_in = _bowtie_phi()
     seed = harmonic_extension_2d(phi_in, threshold=0.01)
     seed_L1 = float(np.abs(seed - phi_in).sum())

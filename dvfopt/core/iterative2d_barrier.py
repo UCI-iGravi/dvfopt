@@ -50,7 +50,7 @@ def _coerce_2d(deformation):
 # ============================================================
 # _adjoint_central_diff is the dimension-agnostic adjoint of np.gradient;
 # defined once in barrier_objective.
-from dvfopt.core.barrier_objective import _adjoint_central_diff  # noqa: E402
+from dvfopt.core.barrier_objective import _adjoint_central_diff  # noqa: E402, I001  (mid-file: avoids barrier_objective import cycle)
 
 
 def _split_phi_2d(phi_flat, grid_size):

@@ -14,17 +14,18 @@ solves these in tens of milliseconds.
 
 Triggers spec fallback row 5 (``cluster_lp``).
 """
+
 from __future__ import annotations
 
 import time
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-from scipy.ndimage import binary_dilation, find_objects, label as cc_label
+from scipy.ndimage import binary_dilation, find_objects
+from scipy.ndimage import label as cc_label
 
+from dvfopt.core.slp.lp_direct_2tri import slp_iter
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-
-from dvfopt.core.slp.lp_direct_2tri import slp_iter  # noqa: E402
 
 BBOX_PAD = 4  # cell-units of padding around each cluster's bbox
 MERGE_DILATION_BASE = 2
@@ -64,10 +65,7 @@ def _partition_clusters_nonoverlapping(clusters):
         for r in rounds:
             ok = True
             for c2 in r:
-                if not (
-                    y1 < c2['y0'] or c2['y1'] < y0
-                    or x1 < c2['x0'] or c2['x1'] < x0
-                ):
+                if not (y1 < c2['y0'] or c2['y1'] < y0 or x1 < c2['x0'] or c2['x1'] < x0):
                     ok = False
                     break
             if ok:
@@ -85,10 +83,7 @@ def _boxes_conflict(a, b):
     Same predicate ``_partition_clusters_nonoverlapping`` uses; factored
     out for the continuous (as-completed) scheduler's admission test.
     """
-    return not (
-        a['y1'] < b['y0'] or b['y1'] < a['y0']
-        or a['x1'] < b['x0'] or b['x1'] < a['x0']
-    )
+    return not (a['y1'] < b['y0'] or b['y1'] < a['y0'] or a['x1'] < b['x0'] or b['x1'] < a['x0'])
 
 
 def _fold_clusters(
@@ -109,7 +104,9 @@ def _fold_clusters(
     fold_mask = cell_min < target_threshold
     if not fold_mask.any():
         return []
-    merged = binary_dilation(fold_mask, iterations=merge_dilation) if merge_dilation > 0 else fold_mask
+    merged = (
+        binary_dilation(fold_mask, iterations=merge_dilation) if merge_dilation > 0 else fold_mask
+    )
     labels, n_comp = cc_label(merged)
     Hc, Wc = fold_mask.shape
     bboxes = find_objects(labels)
@@ -124,11 +121,17 @@ def _fold_clusters(
         x0 = max(0, cx0 - BBOX_PAD)
         x1 = min(Wc, cx1 + BBOX_PAD)
         comp_cells = int(((labels[y0:y1, x0:x1] == (idx + 1)) & fold_mask[y0:y1, x0:x1]).sum())
-        out.append({
-            'y0': y0, 'y1': y1, 'x0': x0, 'x1': x1,
-            'crop_cells_y': y1 - y0, 'crop_cells_x': x1 - x0,
-            'n_fold_cells': comp_cells,
-        })
+        out.append(
+            {
+                'y0': y0,
+                'y1': y1,
+                'x0': x0,
+                'x1': x1,
+                'crop_cells_y': y1 - y0,
+                'crop_cells_x': x1 - x0,
+                'n_fold_cells': comp_cells,
+            }
+        )
     # Sort large clusters first.
     out.sort(key=lambda c: -c['n_fold_cells'])
     return out
@@ -143,11 +146,12 @@ def _splice_interior(phi_full: np.ndarray, c: dict, phi_crop_corrected: np.ndarr
     crop_w = x1 - x0 + 1
     if crop_h < 3 or crop_w < 3:
         # Too small for an interior — fall back to splicing the whole crop.
-        phi_full[:, y0:y0 + crop_h, x0:x0 + crop_w] = phi_crop_corrected
+        phi_full[:, y0 : y0 + crop_h, x0 : x0 + crop_w] = phi_crop_corrected
         return
     # Interior corners only.
-    phi_full[:, y0 + 1:y0 + crop_h - 1, x0 + 1:x0 + crop_w - 1] = \
-        phi_crop_corrected[:, 1:-1, 1:-1]
+    phi_full[:, y0 + 1 : y0 + crop_h - 1, x0 + 1 : x0 + crop_w - 1] = phi_crop_corrected[
+        :, 1:-1, 1:-1
+    ]
 
 
 def cluster_slp_iter(
@@ -237,7 +241,9 @@ def cluster_slp_iter(
             # neighbour still sees the update in its frozen ring. Removes
             # the inter-sub-round straggler idle (the recoverable part of
             # the ~16% serial fraction measured on B0039 slices).
-            from concurrent.futures import FIRST_COMPLETED, wait as _wait
+            from concurrent.futures import FIRST_COMPLETED
+            from concurrent.futures import wait as _wait
+
             pending = list(clusters)  # largest-first
             inflight = {}  # future -> cluster
             while pending or inflight:
@@ -245,19 +251,24 @@ def cluster_slp_iter(
                 while len(inflight) < n_workers:
                     pick = None
                     for i, c in enumerate(pending):
-                        if not any(_boxes_conflict(c, c2)
-                                   for c2 in inflight.values()):
+                        if not any(_boxes_conflict(c, c2) for c2 in inflight.values()):
                             pick = i
                             break
                     if pick is None:
                         break
                     c = pending.pop(pick)
                     y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-                    phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
-                    fut = pool.submit(_solve_cluster_worker, (
-                        phi_crop, inner_threshold,
-                        inner_trust_radius_0, inner_max_iter, inner_seed,
-                    ))
+                    phi_crop = phi_out[:, y0 : y1 + 1, x0 : x1 + 1].copy()
+                    fut = pool.submit(
+                        _solve_cluster_worker,
+                        (
+                            phi_crop,
+                            inner_threshold,
+                            inner_trust_radius_0,
+                            inner_max_iter,
+                            inner_seed,
+                        ),
+                    )
                     inflight[fut] = c
                 if not inflight:
                     break  # nothing admittable and nothing running
@@ -279,11 +290,16 @@ def cluster_slp_iter(
                 arg_list = []
                 for c in sub_round:
                     y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-                    phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
-                    arg_list.append((
-                        phi_crop, inner_threshold,
-                        inner_trust_radius_0, inner_max_iter, inner_seed,
-                    ))
+                    phi_crop = phi_out[:, y0 : y1 + 1, x0 : x1 + 1].copy()
+                    arg_list.append(
+                        (
+                            phi_crop,
+                            inner_threshold,
+                            inner_trust_radius_0,
+                            inner_max_iter,
+                            inner_seed,
+                        )
+                    )
                 t_c = time.time()
                 if len(sub_round) > 1:
                     results = list(pool.map(_solve_cluster_worker, arg_list))
@@ -297,7 +313,7 @@ def cluster_slp_iter(
         else:
             for c in clusters:
                 y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
-                phi_crop = phi_out[:, y0:y1 + 1, x0:x1 + 1].copy()
+                phi_crop = phi_out[:, y0 : y1 + 1, x0 : x1 + 1].copy()
                 t_c = time.time()
                 try:
                     phi_corr, _ = slp_iter(
@@ -318,15 +334,17 @@ def cluster_slp_iter(
         T_min = np.minimum(T1, T2)
         post_n_neg = int((T_min <= 0).sum())
         post_n_below_threshold = int((T_min < threshold - 1e-5).sum())
-        info['rounds'].append({
-            'outer': outer_it,
-            'n_clusters': len(clusters),
-            'pre_n_neg': pre_n_neg,
-            'post_n_neg': post_n_neg,
-            'post_n_below_threshold': post_n_below_threshold,
-            'wall': time.time() - t0,
-            'cluster_runs': round_runs if verbose else None,
-        })
+        info['rounds'].append(
+            {
+                'outer': outer_it,
+                'n_clusters': len(clusters),
+                'pre_n_neg': pre_n_neg,
+                'post_n_neg': post_n_neg,
+                'post_n_below_threshold': post_n_below_threshold,
+                'wall': time.time() - t0,
+                'cluster_runs': round_runs if verbose else None,
+            }
+        )
         if verbose:
             print(
                 f'[outer {outer_it}] {len(clusters)} clusters: '
@@ -362,8 +380,7 @@ def cluster_slp_iter(
     # trigger fires the polish on cases where the cluster pass is
     # essentially done -- and the polish costs ~3× the cluster pass.
     polish_margin = 5 * 1e-5  # 5x safety_tol
-    if (final_global_polish
-            and (cluster_n_neg > 0 or cluster_min_T < threshold - polish_margin)):
+    if final_global_polish and (cluster_n_neg > 0 or cluster_min_T < threshold - polish_margin):
         if verbose:
             print(
                 f'[polish] cluster min_T={cluster_min_T:+.4f} < threshold; '
@@ -397,9 +414,7 @@ def cluster_slp_iter(
     if pool is not None:
         pool.shutdown(wait=True)
 
-    info['final_min_T_exact'] = float(np.minimum(
-        *_triangle_areas_2d(phi_out[0], phi_out[1])
-    ).min())
+    info['final_min_T_exact'] = float(np.minimum(*_triangle_areas_2d(phi_out[0], phi_out[1])).min())
     info['L1_dev'] = float(np.abs(phi_out - phi_in_2hw).sum())
     info['wall_s'] = time.time() - t0
     return phi_out, info

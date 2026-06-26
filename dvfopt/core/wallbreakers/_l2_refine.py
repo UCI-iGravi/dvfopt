@@ -42,9 +42,7 @@ except ImportError:  # pragma: no cover
 if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False)
-    def _soft_pen_l1_fused_kernel(
-        dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1
-    ):
+    def _soft_pen_l1_fused_kernel(dy, dx, dy_in, dx_in, H, W, threshold, lam, eps_l1):
         """Fused L1-anchor + T-areas + viol + grad in one kernel.
 
         Returns (val, g_dy, g_dx). Anchor val and grad use smoothed L1
@@ -94,20 +92,20 @@ if _HAVE_NUMBA:
                 val += lam * (v1 * v1 + v2 * v2)
                 if v1 != 0.0:
                     c1 = -2.0 * lam * 0.5 * v1
-                    g_dx[i,     j + 1] +=  c1 * (y_br - y_bl)
-                    g_dy[i,     j + 1] +=  c1 * (x_bl - x_br)
-                    g_dx[i + 1, j]     += -c1 * (y_br - y_tr)
-                    g_dy[i + 1, j]     +=  c1 * (x_br - x_tr)
-                    g_dx[i + 1, j + 1] +=  c1 * (y_bl - y_tr)
+                    g_dx[i, j + 1] += c1 * (y_br - y_bl)
+                    g_dy[i, j + 1] += c1 * (x_bl - x_br)
+                    g_dx[i + 1, j] += -c1 * (y_br - y_tr)
+                    g_dy[i + 1, j] += c1 * (x_br - x_tr)
+                    g_dx[i + 1, j + 1] += c1 * (y_bl - y_tr)
                     g_dy[i + 1, j + 1] += -c1 * (x_bl - x_tr)
                 if v2 != 0.0:
                     c2 = -2.0 * lam * 0.5 * v2
-                    g_dx[i,     j]     +=  c2 * (y_tr - y_bl)
-                    g_dy[i,     j]     +=  c2 * (x_bl - x_tr)
-                    g_dx[i + 1, j]     += -c2 * (y_tr - y_tl)
-                    g_dy[i + 1, j]     +=  c2 * (x_tr - x_tl)
-                    g_dx[i,     j + 1] +=  c2 * (y_bl - y_tl)
-                    g_dy[i,     j + 1] += -c2 * (x_bl - x_tl)
+                    g_dx[i, j] += c2 * (y_tr - y_bl)
+                    g_dy[i, j] += c2 * (x_bl - x_tr)
+                    g_dx[i + 1, j] += -c2 * (y_tr - y_tl)
+                    g_dy[i + 1, j] += c2 * (x_tr - x_tl)
+                    g_dx[i, j + 1] += c2 * (y_bl - y_tl)
+                    g_dy[i, j + 1] += -c2 * (x_bl - x_tl)
         return val, g_dy, g_dx
 
 

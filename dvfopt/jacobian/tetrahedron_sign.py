@@ -354,9 +354,7 @@ def _tets_for_diagonal(start, end):
     "perimeter" path between start and end (edges not touching either
     endpoint). Mirrors the construction in the research runners.
     """
-    cube_edges = [
-        (v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)
-    ]
+    cube_edges = [(v, w) for v in range(8) for w in range(v + 1, 8) if (v ^ w) in (1, 2, 4)]
     perimeter = [e for e in cube_edges if start not in e and end not in e]
     return [(start, a, b, end) for (a, b) in perimeter]
 
@@ -371,7 +369,9 @@ def _build_all_diagonal_tables():
     )  # (8, 3)
 
     def _vol(a, b, c, d):
-        ab = b - a; ac = c - a; ad = d - a
+        ab = b - a
+        ac = c - a
+        ad = d - a
         return (
             ab[0] * (ac[1] * ad[2] - ac[2] * ad[1])
             - ab[1] * (ac[0] * ad[2] - ac[2] * ad[0])
@@ -388,8 +388,7 @@ def _build_all_diagonal_tables():
             s, e = _MAIN_DIAGONALS[d]
             dtets = _tets_for_diagonal(s, e)
             dsigns = [
-                1.0 if _vol(id_pos[i0], id_pos[i1], id_pos[i2], id_pos[i3]) > 0
-                else -1.0
+                1.0 if _vol(id_pos[i0], id_pos[i1], id_pos[i2], id_pos[i3]) > 0 else -1.0
                 for (i0, i1, i2, i3) in dtets
             ]
         for k, (i0, i1, i2, i3) in enumerate(dtets):
@@ -477,29 +476,26 @@ def six_tet_volumes_all_diagonals(phi: np.ndarray) -> np.ndarray:
         spatial = pos.shape[2:]
         out = np.empty((4, *spatial), dtype=np.float64)
         out[0] = _six_tet_volumes_3d_numpy(phi).min(axis=0)
-        id_pos = _voxel_corner_positions(
-            np.zeros_like(dz), np.zeros_like(dz), np.zeros_like(dz)
-        )
+        id_pos = _voxel_corner_positions(np.zeros_like(dz), np.zeros_like(dz), np.zeros_like(dz))
         for d in range(1, 4):
             s, e = _MAIN_DIAGONALS[d]
             tets = _tets_for_diagonal(s, e)
             V_d = np.empty((6, *spatial), dtype=np.float64)
             for k, (i0, i1, i2, i3) in enumerate(tets):
-                v_id = float(_tet_volume_from_vertices(
-                    id_pos[i0], id_pos[i1], id_pos[i2], id_pos[i3]
-                )[(0,) * len(spatial)])
+                v_id = float(
+                    _tet_volume_from_vertices(id_pos[i0], id_pos[i1], id_pos[i2], id_pos[i3])[
+                        (0,) * len(spatial)
+                    ]
+                )
                 sgn = 1.0 if v_id > 0 else -1.0
-                V_d[k] = sgn * _tet_volume_from_vertices(
-                    pos[i0], pos[i1], pos[i2], pos[i3])
+                V_d[k] = sgn * _tet_volume_from_vertices(pos[i0], pos[i1], pos[i2], pos[i3])
             out[d] = V_d.min(axis=0)
         return out
     D, H, W = phi.shape[1:]
     dz = np.ascontiguousarray(phi[0])
     dy = np.ascontiguousarray(phi[1])
     dx = np.ascontiguousarray(phi[2])
-    return _all_diag_min_kernel(
-        dz, dy, dx, D, H, W, _ALL_DIAG_TETS, _ALL_DIAG_SIGNS
-    )
+    return _all_diag_min_kernel(dz, dy, dx, D, H, W, _ALL_DIAG_TETS, _ALL_DIAG_SIGNS)
 
 
 def best_diagonal_min_volume(phi: np.ndarray):
@@ -694,16 +690,24 @@ if _HAVE_NUMBA:
                     for slot in range(4):
                         if slot == 0:
                             ci = i0
-                            gz_v = gAz; gy_v = gAy; gx_v = gAx
+                            gz_v = gAz
+                            gy_v = gAy
+                            gx_v = gAx
                         elif slot == 1:
                             ci = i1
-                            gz_v = gBz; gy_v = gBy; gx_v = gBx
+                            gz_v = gBz
+                            gy_v = gBy
+                            gx_v = gBx
                         elif slot == 2:
                             ci = i2
-                            gz_v = gCz; gy_v = gCy; gx_v = gCx
+                            gz_v = gCz
+                            gy_v = gCy
+                            gx_v = gCx
                         else:
                             ci = i3
-                            gz_v = gDz; gy_v = gDy; gx_v = gDx
+                            gz_v = gDz
+                            gy_v = gDy
+                            gx_v = gDx
                         oz2 = (ci >> 2) & 1
                         oy2 = (ci >> 1) & 1
                         ox2 = ci & 1
@@ -728,9 +732,7 @@ if _HAVE_NUMBA:
             n_layers = (n_cz - color + 1) // 2
             for li in prange(n_layers):
                 cz = color + 2 * li
-                _tet_grad_T_v_cz_layer(
-                    cz, dz, dy, dx, v, g_dz, g_dy, g_dx, D, H, W, n_cells
-                )
+                _tet_grad_T_v_cz_layer(cz, dz, dy, dx, v, g_dz, g_dy, g_dx, D, H, W, n_cells)
         return g_dz, g_dy, g_dx
 
 

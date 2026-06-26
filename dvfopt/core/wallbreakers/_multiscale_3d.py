@@ -18,6 +18,7 @@ Pipeline:
 Returns the fine-polished field. Use as a bulk-reduction route for thick
 dense chunks where active-band / single-scale M10Tet plateau high.
 """
+
 from __future__ import annotations
 
 import time
@@ -34,7 +35,7 @@ def _downsample_2x(phi):
     Dh, Hh, Wh = D // 2, H // 2, W // 2
     if Dh < 1 or Hh < 1 or Wh < 1:
         return None
-    phi_t = phi[:, :2 * Dh, :2 * Hh, :2 * Wh]
+    phi_t = phi[:, : 2 * Dh, : 2 * Hh, : 2 * Wh]
     coarse = phi_t.reshape(3, Dh, 2, Hh, 2, Wh, 2).mean(axis=(2, 4, 6))
     return coarse * 0.5
 
@@ -52,11 +53,11 @@ def _upsample_2x(coarse, target_shape):
             full[:mz, :my, :mx] = up[:mz, :my, :mx]
             # edge-replicate any uncovered border planes
             if mz < target_shape[0]:
-                full[mz:] = full[mz - 1:mz]
+                full[mz:] = full[mz - 1 : mz]
             if my < target_shape[1]:
-                full[:, my:] = full[:, my - 1:my]
+                full[:, my:] = full[:, my - 1 : my]
             if mx < target_shape[2]:
-                full[:, :, mx:] = full[:, :, mx - 1:mx]
+                full[:, :, mx:] = full[:, :, mx - 1 : mx]
             up = full
         out[c] = up
     return out * 2.0
@@ -89,42 +90,52 @@ def multiscale_seed_3d(
     """
     phi = np.asarray(phi, dtype=np.float64)
     if inner_solve is None:
+
         def inner_solve(field, thr):
             from dvfopt import (
-                HarmonicALMBarrier3DStrategy, L1Objective, Solver,
+                HarmonicALMBarrier3DStrategy,
+                L1Objective,
+                Solver,
                 Tet6Constraint3D,
             )
-            return Solver(
-                constraint=Tet6Constraint3D(shape=field.shape[1:]),
-                objective=L1Objective(eps=1e-4),
-                strategy=HarmonicALMBarrier3DStrategy(),
-                threshold=thr,
-            ).fit(field).corrected
+
+            return (
+                Solver(
+                    constraint=Tet6Constraint3D(shape=field.shape[1:]),
+                    objective=L1Objective(eps=1e-4),
+                    strategy=HarmonicALMBarrier3DStrategy(),
+                    threshold=thr,
+                )
+                .fit(field)
+                .corrected
+            )
 
     t0 = time.time()
     coarse = _downsample_2x(phi)
     if coarse is None or min(coarse.shape[1:]) < 2:
         if verbose:
-            print('  [multiscale] too small to downsample — single fine solve',
-                  flush=True)
+            print('  [multiscale] too small to downsample — single fine solve', flush=True)
         out = inner_solve(phi, threshold)
         return out, {'used_multiscale': False, 'wall_s': time.time() - t0}
 
     if verbose:
         cv = six_tet_min_volume_3d(coarse)
-        print(f'  [multiscale] coarse {coarse.shape[1:]} '
-              f'n_neg={int((cv<=0).sum())}', flush=True)
+        print(f'  [multiscale] coarse {coarse.shape[1:]} n_neg={int((cv <= 0).sum())}', flush=True)
     coarse_out = inner_solve(coarse, coarse_threshold)
     ups = _upsample_2x(coarse_out, phi.shape[1:])
     if verbose:
         uv = six_tet_min_volume_3d(ups)
-        print(f'  [multiscale] upsampled n_neg={int((uv<=0).sum())} '
-              f'(transient) -> fine polish', flush=True)
+        print(
+            f'  [multiscale] upsampled n_neg={int((uv <= 0).sum())} (transient) -> fine polish',
+            flush=True,
+        )
     out = inner_solve(ups, threshold)
     if verbose:
         ov = six_tet_min_volume_3d(out)
-        print(f'  [multiscale] fine n_neg={int((ov<=0).sum())} '
-              f'({time.time()-t0:.1f}s)', flush=True)
+        print(
+            f'  [multiscale] fine n_neg={int((ov <= 0).sum())} ({time.time() - t0:.1f}s)',
+            flush=True,
+        )
     return out, {'used_multiscale': True, 'wall_s': time.time() - t0}
 
 

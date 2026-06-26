@@ -1,4 +1,5 @@
 """3D wallbreaker step_callback hook: live staging + stop."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -47,6 +48,7 @@ def test_m14tet_core_default_callback_none_unchanged():
 # ---------------------------------------------------------------------------
 # Task 4: strategy-level step_callback wiring
 # ---------------------------------------------------------------------------
+
 
 def test_m10tet_strategy_fires_harmonic_and_alm():
     from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D

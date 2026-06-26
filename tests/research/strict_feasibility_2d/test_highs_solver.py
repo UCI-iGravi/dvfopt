@@ -29,6 +29,7 @@ def test_lp_satisfies_linearized_constraint():
     phi_lin = phi_in.copy()
 
     from research.strict_feasibility_2d.algorithms.tri_linearize import linearize_T_2tri
+
     T_lin, J = linearize_T_2tri(phi_lin, H, W)
     phi_out, status = solve_l1_lp_step(
         phi_in_flat=phi_in,
@@ -48,6 +49,7 @@ def test_trust_region_bounds_l_inf_step():
     phi_in = np.zeros(2 * H * W)
     phi_lin = phi_in.copy()
     from research.strict_feasibility_2d.algorithms.tri_linearize import linearize_T_2tri
+
     T_lin, J = linearize_T_2tri(phi_lin, H, W)
     phi_out, status = solve_l1_lp_step(
         phi_in_flat=phi_in,

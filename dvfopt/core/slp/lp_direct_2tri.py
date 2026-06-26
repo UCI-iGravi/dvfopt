@@ -10,6 +10,7 @@ Two variants:
 
 Both minimise ``||phi - phi_in||_1`` and return ``(phi_out, info)``.
 """
+
 from __future__ import annotations
 
 import time
@@ -22,6 +23,7 @@ from dvfopt.core.slp.tri_linearize import linearize_T_2tri
 
 def _exact_min_T(phi_2hw: np.ndarray) -> float:
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
     T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
     return float(np.minimum(T1, T2).min())
 
@@ -43,6 +45,7 @@ def _harmonic_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     for guaranteed feasibility there.
     """
     from dvfopt.core.wallbreakers import harmonic_extension_2d
+
     return harmonic_extension_2d(phi_in_2hw, threshold=threshold)
 
 
@@ -168,9 +171,7 @@ def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
     global polish step)."""
     if isinstance(seed, np.ndarray):
         if seed.shape != phi_in_2hw.shape:
-            raise ValueError(
-                f'seed ndarray shape {seed.shape} != phi_in shape {phi_in_2hw.shape}'
-            )
+            raise ValueError(f'seed ndarray shape {seed.shape} != phi_in shape {phi_in_2hw.shape}')
         return seed.astype(np.float64).copy()
     if seed == 'harmonic':
         return _harmonic_seed(phi_in_2hw, threshold)

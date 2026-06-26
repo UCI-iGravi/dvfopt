@@ -64,21 +64,20 @@ would be 2-3 months of engineering to match scipy's robustness on a
 step that's already 2 orders of magnitude faster than the dominant
 M10Tet recovery cost.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt.jacobian.tetrahedron_sign import (
+    _TET_SIGN,
+    _TET_VERTICES,
     six_tet_min_volume_3d,
     six_tet_volumes_3d,
-    _TET_VERTICES,
-    _TET_SIGN,
 )
-
 
 _TET_VERTICES_ARR = np.array(_TET_VERTICES, dtype=np.int64)
 _TET_SIGN_ARR = np.array(_TET_SIGN, dtype=np.float64)
@@ -101,10 +100,7 @@ def find_worst_fold_cube(phi):
 
 def _cube_corners(cz, cy, cx):
     """Return the 8 lattice corners of cube ``(cz, cy, cx)``."""
-    return [
-        (cz + ((i >> 2) & 1), cy + ((i >> 1) & 1), cx + (i & 1))
-        for i in range(8)
-    ]
+    return [(cz + ((i >> 2) & 1), cy + ((i >> 1) & 1), cx + (i & 1)) for i in range(8)]
 
 
 def _build_problem(phi, cz, cy, cx, k_ring):
@@ -116,9 +112,7 @@ def _build_problem(phi, cz, cy, cx, k_ring):
         for dy in range(-k_ring, k_ring + 1):
             for dx in range(-k_ring, k_ring + 1):
                 nz, ny, nx = cz + dz, cy + dy, cx + dx
-                if (0 <= nz < cube_max[0]
-                        and 0 <= ny < cube_max[1]
-                        and 0 <= nx < cube_max[2]):
+                if 0 <= nz < cube_max[0] and 0 <= ny < cube_max[1] and 0 <= nx < cube_max[2]:
                     cubes.append((nz, ny, nx))
     corner_set = set()
     for cube in cubes:
@@ -152,8 +146,7 @@ def _make_index_tables(cubes, corner_idx):
     return cube_corner_x_idx, cube_corner_base
 
 
-def _make_constraint_fn(cube_corner_x_idx, cube_corner_base,
-                         feasibility_thr):
+def _make_constraint_fn(cube_corner_x_idx, cube_corner_base, feasibility_thr):
     """Vectorised constraint values ``g(x) = V - feasibility_thr``."""
     tets = _TET_VERTICES_ARR
     signs = _TET_SIGN_ARR
@@ -168,17 +161,18 @@ def _make_constraint_fn(cube_corner_x_idx, cube_corner_base,
         AB = B - A
         AC = C - A
         AD = D - A
-        vols = (AB[..., 0] * (AC[..., 1] * AD[..., 2] - AC[..., 2] * AD[..., 1])
-                - AB[..., 1] * (AC[..., 0] * AD[..., 2] - AC[..., 2] * AD[..., 0])
-                + AB[..., 2] * (AC[..., 0] * AD[..., 1] - AC[..., 1] * AD[..., 0])) / 6.0
+        vols = (
+            AB[..., 0] * (AC[..., 1] * AD[..., 2] - AC[..., 2] * AD[..., 1])
+            - AB[..., 1] * (AC[..., 0] * AD[..., 2] - AC[..., 2] * AD[..., 0])
+            + AB[..., 2] * (AC[..., 0] * AD[..., 1] - AC[..., 1] * AD[..., 0])
+        ) / 6.0
         vols = vols * signs[None, :]
         return (vols - feasibility_thr).reshape(-1)
 
     return constraint
 
 
-def _make_constraint_jacobian(cube_corner_x_idx, cube_corner_base,
-                               n_dof):
+def _make_constraint_jacobian(cube_corner_x_idx, cube_corner_base, n_dof):
     """Analytical Jacobian of ``g(x)`` w.r.t. ``x``.
 
     For each tet ``(A, B, C, D)`` with edges ``AB = B-A``, ``AC``,
@@ -219,7 +213,7 @@ def _make_constraint_jacobian(cube_corner_x_idx, cube_corner_base,
         grad_D = cross_BC * sgn
         J = np.zeros((n_cubes * 6, n_dof))
         rows = (np.arange(n_cubes)[:, None] * 6 + np.arange(6)[None, :]).reshape(-1)
-        for k_local, (grad_corner, corner_axis) in enumerate(
+        for _k_local, (grad_corner, corner_axis) in enumerate(
             zip((grad_A, grad_B, grad_C, grad_D), (0, 1, 2, 3))
         ):
             corner_indices = tets[:, corner_axis]
@@ -307,23 +301,15 @@ def coupled_kring_slsqp_3d(
         ``message``.
     """
     if phi.shape[0] != 3 or phi.ndim != 4:
-        raise ValueError(
-            f'phi must have shape (3, D, H, W), got {phi.shape}'
-        )
+        raise ValueError(f'phi must have shape (3, D, H, W), got {phi.shape}')
 
-    cubes, free_corners, corner_idx, x0 = _build_problem(
-        phi, cz, cy, cx, k_ring
-    )
+    cubes, free_corners, corner_idx, x0 = _build_problem(phi, cz, cy, cx, k_ring)
     n_dof = 3 * len(free_corners)
     n_cubes = len(cubes)
     n_constraints = 6 * n_cubes
 
-    cube_corner_x_idx, cube_corner_base = _make_index_tables(
-        cubes, corner_idx
-    )
-    constraint_fn = _make_constraint_fn(
-        cube_corner_x_idx, cube_corner_base, feasibility_thr
-    )
+    cube_corner_x_idx, cube_corner_base = _make_index_tables(cubes, corner_idx)
+    constraint_fn = _make_constraint_fn(cube_corner_x_idx, cube_corner_base, feasibility_thr)
     obj, obj_grad = _make_objective(x0.copy())
 
     constraint_dict = {'type': 'ineq', 'fun': constraint_fn}
@@ -367,6 +353,7 @@ def _default_m10tet_inner(threshold):
     Lazily imports the Solver/Strategy layer (which imports core, so a
     top-level import here would be circular). Safe at call time.
     """
+
     def inner(crop, time_budget_s=600.0):
         from dvfopt import (  # local import to avoid import cycle
             HarmonicALMBarrier3DStrategy,
@@ -374,6 +361,7 @@ def _default_m10tet_inner(threshold):
             Solver,
             Tet6Constraint3D,
         )
+
         solver = Solver(
             constraint=Tet6Constraint3D(shape=crop.shape[1:]),
             objective=L1Objective(eps=1e-4),
@@ -461,9 +449,13 @@ def local_alm_recovery_3d(
         fold_mask = V0.min(axis=0) <= 0
         if not fold_mask.any():
             return phi.copy(), {
-                'crop_bbox': None, 'crop_shape': None, 'wall_s': 0.0,
-                'n_neg_before': n_neg_before, 'n_neg_after': n_neg_before,
-                'widen_used': 0, 'accepted': True,
+                'crop_bbox': None,
+                'crop_shape': None,
+                'wall_s': 0.0,
+                'n_neg_before': n_neg_before,
+                'n_neg_after': n_neg_before,
+                'widen_used': 0,
+                'accepted': True,
             }
         cz, cy, cx = np.where(fold_mask)
         cube_lo = (int(cz.min()), int(cy.min()), int(cx.min()))
@@ -494,15 +486,15 @@ def local_alm_recovery_3d(
         if z1 - z0 < 2 or y1 - y0 < 2 or x1 - x0 < 2:
             # Crop too small to contain a cube; nothing to do.
             break
-        crop = phi[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1].copy()
+        crop = phi[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].copy()
         try:
             crop_out = inner_solve(crop)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if verbose:
                 print(f'  local recovery inner_solve failed: {exc}', flush=True)
             break
         trial = phi.copy()
-        trial[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = crop_out
+        trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
         V_trial = six_tet_volumes_3d(trial)
         n_trial = int((V_trial <= 0).sum())
         if verbose:
@@ -544,7 +536,7 @@ def _solve_band_crop(args):
     inner = _default_m10tet_inner(threshold)
     try:
         return inner(crop)
-    except Exception:  # noqa: BLE001 — failed crops are dropped (None)
+    except Exception:
         return None
 
 
@@ -553,9 +545,12 @@ def _padded_box(bbox, pad, shape):
     cz0, cz1, cy0, cy1, cx0, cx1 = bbox
     D, H, W = shape
     return (
-        max(0, cz0 - pad), min(D - 1, cz1 + 1 + pad),
-        max(0, cy0 - pad), min(H - 1, cy1 + 1 + pad),
-        max(0, cx0 - pad), min(W - 1, cx1 + 1 + pad),
+        max(0, cz0 - pad),
+        min(D - 1, cz1 + 1 + pad),
+        max(0, cy0 - pad),
+        min(H - 1, cy1 + 1 + pad),
+        max(0, cx0 - pad),
+        min(W - 1, cx1 + 1 + pad),
     )
 
 
@@ -565,9 +560,12 @@ def _boxes_separated(a, b, gap=2):
     az0, az1, ay0, ay1, ax0, ax1 = a
     bz0, bz1, by0, by1, bx0, bx1 = b
     return (
-        az1 + gap < bz0 or bz1 + gap < az0
-        or ay1 + gap < by0 or by1 + gap < ay0
-        or ax1 + gap < bx0 or bx1 + gap < ax0
+        az1 + gap < bz0
+        or bz1 + gap < az0
+        or ay1 + gap < by0
+        or by1 + gap < ay0
+        or ax1 + gap < bx0
+        or bx1 + gap < ax0
     )
 
 
@@ -598,6 +596,8 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
     from scipy.ndimage import (
         binary_dilation,
         generate_binary_structure,
+    )
+    from scipy.ndimage import (
         label as cc_label,
     )
 
@@ -613,8 +613,14 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
             continue
         cz, cy, cx = np.where(comp)
         bboxes.append(
-            (int(cz.min()), int(cz.max()), int(cy.min()), int(cy.max()),
-             int(cx.min()), int(cx.max()))
+            (
+                int(cz.min()),
+                int(cz.max()),
+                int(cy.min()),
+                int(cy.max()),
+                int(cx.min()),
+                int(cx.max()),
+            )
         )
     return bboxes
 
@@ -717,9 +723,12 @@ def active_band_alm_recovery_3d(
         pboxes = [_padded_box(bb, pad, (D, H, W)) for bb in small]
         for batch in _batch_nonoverlapping_boxes(pboxes):
             crops = [
-                cur[:, pboxes[i][0]:pboxes[i][1] + 1,
-                    pboxes[i][2]:pboxes[i][3] + 1,
-                    pboxes[i][4]:pboxes[i][5] + 1].copy()
+                cur[
+                    :,
+                    pboxes[i][0] : pboxes[i][1] + 1,
+                    pboxes[i][2] : pboxes[i][3] + 1,
+                    pboxes[i][4] : pboxes[i][5] + 1,
+                ].copy()
                 for i in batch
             ]
             if len(batch) == 1:
@@ -736,60 +745,77 @@ def active_band_alm_recovery_3d(
                 if crop_out is None:
                     continue
                 z0, z1, y0, y1, x0, x1 = pboxes[i]
-                trial[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = crop_out
+                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
-                print(f'  active-band parallel batch ({len(batch)} crops): '
-                      f'n_neg {n_before}->{n_after}', flush=True)
+                print(
+                    f'  active-band parallel batch ({len(batch)} crops): '
+                    f'n_neg {n_before}->{n_after}',
+                    flush=True,
+                )
             if n_after <= n_before:
                 cur = trial
                 for i in batch:
                     pb = pboxes[i]
-                    per_cluster.append(dict(
-                        bbox=pb,
-                        crop_shape=(pb[1]-pb[0]+1, pb[3]-pb[2]+1, pb[5]-pb[4]+1),
-                        n_before=n_before, n_after=n_after, parallel=True))
+                    per_cluster.append(
+                        dict(
+                            bbox=pb,
+                            crop_shape=(pb[1] - pb[0] + 1, pb[3] - pb[2] + 1, pb[5] - pb[4] + 1),
+                            n_before=n_before,
+                            n_after=n_after,
+                            parallel=True,
+                        )
+                    )
         # Oversized clusters handled by the sequential path.
         bboxes = large
 
-    for (cz0, cz1, cy0, cy1, cx0, cx1) in bboxes:
+    for cz0, cz1, cy0, cy1, cx0, cx1 in bboxes:
         # Fraction of each axis the cluster spans (for global fallback).
         frac = max(
             (cz1 - cz0 + 1) / max(1, Dc),
             (cy1 - cy0 + 1) / max(1, Hc),
             (cx1 - cx0 + 1) / max(1, Wc),
         )
-        accepted = False
         for widen in range(max_widen + 1):
             p = pad + widen * pad
-            z0 = max(0, cz0 - p); z1 = min(D - 1, cz1 + 1 + p)
-            y0 = max(0, cy0 - p); y1 = min(H - 1, cy1 + 1 + p)
-            x0 = max(0, cx0 - p); x1 = min(W - 1, cx1 + 1 + p)
+            z0 = max(0, cz0 - p)
+            z1 = min(D - 1, cz1 + 1 + p)
+            y0 = max(0, cy0 - p)
+            y1 = min(H - 1, cy1 + 1 + p)
+            x0 = max(0, cx0 - p)
+            x1 = min(W - 1, cx1 + 1 + p)
             if frac > max_band_fraction:
                 # Cluster too big to benefit from cropping — solve global.
                 z0, z1, y0, y1, x0, x1 = 0, D - 1, 0, H - 1, 0, W - 1
             if z1 - z0 < 2 or y1 - y0 < 2 or x1 - x0 < 2:
                 break
-            crop = cur[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1].copy()
+            crop = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].copy()
             n_before = int((six_tet_min_volume_3d(cur) <= 0).sum())
             try:
                 crop_out = inner_solve(crop)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 if verbose:
                     print(f'  active-band cluster solve failed: {exc}', flush=True)
                 break
             trial = cur.copy()
-            trial[:, z0:z1 + 1, y0:y1 + 1, x0:x1 + 1] = crop_out
+            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
-                print(f'  active-band bbox z[{z0}:{z1}] y[{y0}:{y1}] x[{x0}:{x1}] '
-                      f'crop={crop.shape[1:]} n_neg {n_before}->{n_after}', flush=True)
+                print(
+                    f'  active-band bbox z[{z0}:{z1}] y[{y0}:{y1}] x[{x0}:{x1}] '
+                    f'crop={crop.shape[1:]} n_neg {n_before}->{n_after}',
+                    flush=True,
+                )
             if n_after <= n_before:
                 cur = trial
-                accepted = True
-                per_cluster.append(dict(bbox=(z0, z1, y0, y1, x0, x1),
-                                        crop_shape=tuple(int(s) for s in crop.shape[1:]),
-                                        n_before=n_before, n_after=n_after))
+                per_cluster.append(
+                    dict(
+                        bbox=(z0, z1, y0, y1, x0, x1),
+                        crop_shape=tuple(int(s) for s in crop.shape[1:]),
+                        n_before=n_before,
+                        n_after=n_after,
+                    )
+                )
                 break
             if frac > max_band_fraction:
                 break  # global solve already tried; don't widen further
@@ -816,7 +842,7 @@ def _solve_zband_worker(args):
             band, threshold=threshold, pad=pad, n_workers=1, verbose=0
         )
         return out
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -886,7 +912,7 @@ def parallel_zband_solve(
     while s < Dc:
         e = min(s + band_size, Dc)
         cz0 = max(0, s - overlap)
-        cz1 = min(Dc, e + overlap)       # cube range [cz0, cz1)
+        cz1 = min(Dc, e + overlap)  # cube range [cz0, cz1)
         # corner range covering cubes [cz0, cz1): corners [cz0, cz1] inclusive
         bands.append((cz0, cz1 + 0, s, e))
         s = e
@@ -900,7 +926,7 @@ def parallel_zband_solve(
         )
     else:
         # Extract band crops (full y, x; corner z-range [cz0, cz1]).
-        crops = [phi[:, cz0:cz1 + 1, :, :].copy() for (cz0, cz1, _, _) in bands]
+        crops = [phi[:, cz0 : cz1 + 1, :, :].copy() for (cz0, cz1, _, _) in bands]
         if n_workers == 1:
             results = [_solve_zband_worker((c, threshold, pad)) for c in crops]
         else:
@@ -911,7 +937,7 @@ def parallel_zband_solve(
             )
         # Paste each band's INTERIOR corner planes (cubes [s, e) -> corner
         # planes [s, e); the last band also writes its top corner plane e).
-        for (cz0, cz1, si, ei), solved in zip(bands, results):
+        for (cz0, _cz1, si, ei), solved in zip(bands, results):
             if solved is None:
                 continue
             # corner planes to write: [si, ei] inclusive for the last band,
@@ -1014,10 +1040,12 @@ def _run_one_cluster(args):
     We return just the free-corner displacements + index list rather
     than the whole phi to keep IPC payload small.
     """
-    (phi, cz, cy, cx, k_ring, feasibility_thr, maxiter, ftol,
-     use_analytical_jacobian) = args
+    (phi, cz, cy, cx, k_ring, feasibility_thr, maxiter, ftol, use_analytical_jacobian) = args
     phi_out, info = coupled_kring_slsqp_3d(
-        phi, cz, cy, cx,
+        phi,
+        cz,
+        cy,
+        cx,
         k_ring=k_ring,
         feasibility_thr=feasibility_thr,
         maxiter=maxiter,
@@ -1028,13 +1056,17 @@ def _run_one_cluster(args):
     # them back in the parent without shipping the entire phi.
     _, free_corners, _, _ = _build_problem(phi, cz, cy, cx, k_ring)
     deltas = []
-    for (z, y, x) in free_corners:
+    for z, y, x in free_corners:
         if not np.array_equal(phi_out[:, z, y, x], phi[:, z, y, x]):
             deltas.append(
-                ((int(z), int(y), int(x)),
-                 (float(phi_out[0, z, y, x]),
-                  float(phi_out[1, z, y, x]),
-                  float(phi_out[2, z, y, x])))
+                (
+                    (int(z), int(y), int(x)),
+                    (
+                        float(phi_out[0, z, y, x]),
+                        float(phi_out[1, z, y, x]),
+                        float(phi_out[2, z, y, x]),
+                    ),
+                )
             )
     return deltas, info
 
@@ -1114,7 +1146,10 @@ def coupled_kring_slsqp_3d_parallel(
             # Sequential path.
             for c in batch:
                 phi_new, info = coupled_kring_slsqp_3d(
-                    cur, c[0], c[1], c[2],
+                    cur,
+                    c[0],
+                    c[1],
+                    c[2],
                     k_ring=k_ring,
                     feasibility_thr=feasibility_thr,
                     maxiter=maxiter,
@@ -1129,15 +1164,14 @@ def coupled_kring_slsqp_3d_parallel(
             continue
         # Parallel path: each worker gets its own copy of `cur`.
         args = [
-            (cur, c[0], c[1], c[2], k_ring, feasibility_thr, maxiter,
-             ftol, use_analytical_jacobian)
+            (cur, c[0], c[1], c[2], k_ring, feasibility_thr, maxiter, ftol, use_analytical_jacobian)
             for c in batch
         ]
         results = pool_map(_run_one_cluster, args, min(n_workers, len(batch)))
         for deltas, info in results:
             infos.append(info)
             trial = cur.copy()
-            for ((z, y, x), (dz, dy, dx)) in deltas:
+            for (z, y, x), (dz, dy, dx) in deltas:
                 trial[0, z, y, x] = dz
                 trial[1, z, y, x] = dy
                 trial[2, z, y, x] = dx
@@ -1163,9 +1197,10 @@ def _partition_non_overlapping(centres, k_ring):
         for batch in batches:
             ok = True
             for other in batch:
-                if max(abs(c[0] - other[0]),
-                       abs(c[1] - other[1]),
-                       abs(c[2] - other[2])) <= overlap_radius:
+                if (
+                    max(abs(c[0] - other[0]), abs(c[1] - other[1]), abs(c[2] - other[2]))
+                    <= overlap_radius
+                ):
                     ok = False
                     break
             if ok:

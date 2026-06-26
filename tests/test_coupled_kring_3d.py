@@ -85,16 +85,10 @@ class TestAnalyticalJacobian:
     def test_matches_finite_difference(self):
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.1, (3, 4, 5, 5)).astype(np.float64)
-        cubes, free_corners, corner_idx, x0 = _build_problem(
-            phi, 1, 2, 2, k_ring=1
-        )
-        cube_corner_x_idx, cube_corner_base = _make_index_tables(
-            cubes, corner_idx
-        )
+        cubes, free_corners, corner_idx, x0 = _build_problem(phi, 1, 2, 2, k_ring=1)
+        cube_corner_x_idx, cube_corner_base = _make_index_tables(cubes, corner_idx)
         fn = _make_constraint_fn(cube_corner_x_idx, cube_corner_base, 0.0)
-        jac = _make_constraint_jacobian(
-            cube_corner_x_idx, cube_corner_base, len(x0)
-        )
+        jac = _make_constraint_jacobian(cube_corner_x_idx, cube_corner_base, len(x0))
 
         J_an = jac(x0)
         eps = 1e-6
@@ -122,9 +116,7 @@ class TestCoupledKRingModule:
         if loc is None:
             pytest.skip('synthetic test case did not plant a fold')
         cz, cy, cx = loc
-        phi_out, info = coupled_kring_slsqp_3d(
-            phi, cz, cy, cx, k_ring=1, feasibility_thr=1e-3
-        )
+        phi_out, info = coupled_kring_slsqp_3d(phi, cz, cy, cx, k_ring=1, feasibility_thr=1e-3)
         assert phi_out.shape == phi.shape
         assert 'success' in info
         assert 'wall_s' in info
@@ -145,9 +137,7 @@ class TestCoupledKRing3DStrategy:
         solver = Solver(
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
-            strategy=CoupledKRing3DStrategy(
-                k_ring=1, feasibility_thr=1e-3
-            ),
+            strategy=CoupledKRing3DStrategy(k_ring=1, feasibility_thr=1e-3),
             threshold=0.01,
         )
         result = solver.fit(phi)
@@ -160,9 +150,7 @@ class TestCoupledKRing3DStrategy:
         solver = Solver(
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
-            strategy=CoupledKRing3DStrategy(
-                k_ring=1, feasibility_thr=1e-3, target_cube=(2, 2, 2)
-            ),
+            strategy=CoupledKRing3DStrategy(k_ring=1, feasibility_thr=1e-3, target_cube=(2, 2, 2)),
             threshold=0.01,
         )
         result = solver.fit(phi)
@@ -186,7 +174,11 @@ class TestAnalyticalJacobianOption:
             pytest.skip('synthetic test case did not plant a fold')
         cz, cy, cx = loc
         _, info = coupled_kring_slsqp_3d(
-            phi, cz, cy, cx, k_ring=1,
+            phi,
+            cz,
+            cy,
+            cx,
+            k_ring=1,
             feasibility_thr=1e-3,
             use_analytical_jacobian=True,
         )
@@ -202,6 +194,7 @@ class TestClusterFoldCubes:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             cluster_fold_cubes,
         )
+
         centroids, members, radii = cluster_fold_cubes([])
         assert centroids == [] and members == [] and radii == []
 
@@ -209,6 +202,7 @@ class TestClusterFoldCubes:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             cluster_fold_cubes,
         )
+
         centroids, members, radii = cluster_fold_cubes([(2, 2, 2)])
         assert centroids == [(2, 2, 2)]
         assert members == [[(2, 2, 2)]]
@@ -218,10 +212,9 @@ class TestClusterFoldCubes:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             cluster_fold_cubes,
         )
+
         # Chebyshev distance 1, well within default radius=2.
-        centroids, members, _ = cluster_fold_cubes(
-            [(0, 0, 0), (1, 0, 0)], radius=2
-        )
+        centroids, members, _ = cluster_fold_cubes([(0, 0, 0), (1, 0, 0)], radius=2)
         assert len(centroids) == 1
         assert sorted(members[0]) == [(0, 0, 0), (1, 0, 0)]
 
@@ -229,10 +222,9 @@ class TestClusterFoldCubes:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             cluster_fold_cubes,
         )
+
         # Chebyshev distance 10 > radius=2 → separate clusters.
-        centroids, members, _ = cluster_fold_cubes(
-            [(0, 0, 0), (10, 10, 10)], radius=2
-        )
+        centroids, members, _ = cluster_fold_cubes([(0, 0, 0), (10, 10, 10)], radius=2)
         assert len(centroids) == 2
 
 
@@ -242,7 +234,9 @@ class TestClusterMode:
     def test_cluster_mode_no_folds_noop(self):
         phi = np.zeros((3, 5, 5, 5))
         strategy = CoupledKRing3DStrategy(
-            k_ring=1, feasibility_thr=1e-3, mode='cluster',
+            k_ring=1,
+            feasibility_thr=1e-3,
+            mode='cluster',
         )
         solver = Solver(
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
@@ -263,8 +257,10 @@ class TestClusterMode:
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(
-                k_ring=1, feasibility_thr=1e-3,
-                mode='cluster', n_workers=1,
+                k_ring=1,
+                feasibility_thr=1e-3,
+                mode='cluster',
+                n_workers=1,
             ),
             threshold=0.01,
         )
@@ -281,10 +277,12 @@ class TestClusterMode:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             _partition_non_overlapping,
         )
+
         # k_ring=2 → overlap radius 4. (0,0,0) and (3,0,0) overlap;
         # (0,0,0) and (10,0,0) do not.
         batches = _partition_non_overlapping(
-            [(0, 0, 0), (3, 0, 0), (10, 0, 0)], k_ring=2,
+            [(0, 0, 0), (3, 0, 0), (10, 0, 0)],
+            k_ring=2,
         )
         # First batch: (0,0,0) and (10,0,0). Second: (3,0,0).
         assert len(batches) == 2
@@ -315,6 +313,7 @@ class TestLocalAlmRecovery:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             local_alm_recovery_3d,
         )
+
         phi = np.zeros((3, 6, 6, 6))
         out, info = local_alm_recovery_3d(phi, center=None)
         assert np.array_equal(out, phi)
@@ -344,7 +343,10 @@ class TestLocalAlmRecovery:
         phi[0, 11, 10:12, 10:12] = -2.0
 
         _, info = local_alm_recovery_3d(
-            phi, center=(10, 10, 10), k_ring=2, pad=3,
+            phi,
+            center=(10, 10, 10),
+            k_ring=2,
+            pad=3,
             inner_solve=fake_inner,
         )
         # Crop must be far smaller than the full 20^3 field.
@@ -359,6 +361,7 @@ class TestLocalAlmRecovery:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             local_alm_recovery_3d,
         )
+
         phi = _planted_fold_3d(scale=2.0)
         n0 = int((six_tet_volumes_3d(phi) <= 0).sum())
         if n0 == 0:
@@ -371,8 +374,12 @@ class TestLocalAlmRecovery:
             return crop + rng.normal(0, 3.0, crop.shape)
 
         out, info = local_alm_recovery_3d(
-            phi, center=find_worst_fold_cube(phi), k_ring=2, pad=2,
-            inner_solve=wrecking_inner, max_widen=1,
+            phi,
+            center=find_worst_fold_cube(phi),
+            k_ring=2,
+            pad=2,
+            inner_solve=wrecking_inner,
+            max_widen=1,
         )
         # Wrecking inner regresses -> original returned.
         assert info['accepted'] is False
@@ -384,8 +391,10 @@ class TestFusedMinKernel:
 
     def test_matches_min_over_volumes(self):
         from dvfopt.jacobian.tetrahedron_sign import (
-            six_tet_volumes_3d, six_tet_min_volume_3d,
+            six_tet_min_volume_3d,
+            six_tet_volumes_3d,
         )
+
         rng = np.random.default_rng(7)
         for shape in [(3, 5, 6, 7), (3, 16, 32, 32)]:
             phi = rng.normal(0, 0.3, shape).astype(np.float64)
@@ -396,6 +405,7 @@ class TestFusedMinKernel:
 
     def test_identity_positive(self):
         from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
         phi = np.zeros((3, 5, 5, 5))
         mv = six_tet_min_volume_3d(phi)
         assert (mv > 0).all()  # identity: every cube min tet = +1/6
@@ -406,8 +416,10 @@ class TestBestDiagonal:
 
     def test_all_diagonals_shape_and_diag0_matches_fixed(self):
         from dvfopt.jacobian.tetrahedron_sign import (
-            six_tet_volumes_3d, six_tet_volumes_all_diagonals,
+            six_tet_volumes_3d,
+            six_tet_volumes_all_diagonals,
         )
+
         rng = np.random.default_rng(3)
         phi = rng.normal(0, 0.1, (3, 5, 6, 7)).astype(np.float64)
         alld = six_tet_volumes_all_diagonals(phi)
@@ -419,8 +431,10 @@ class TestBestDiagonal:
     def test_best_diag_dominates_fixed(self):
         """Best-of-4 min volume is always >= the fixed-diagonal min."""
         from dvfopt.jacobian.tetrahedron_sign import (
-            six_tet_volumes_3d, best_diagonal_min_volume,
+            best_diagonal_min_volume,
+            six_tet_volumes_3d,
         )
+
         rng = np.random.default_rng(4)
         phi = rng.normal(0, 0.25, (3, 5, 5, 5)).astype(np.float64)
         fixed = six_tet_volumes_3d(phi).min(axis=0)
@@ -431,8 +445,10 @@ class TestBestDiagonal:
 
     def test_n_neg_best_diag_le_fixed(self):
         from dvfopt.jacobian.tetrahedron_sign import (
-            six_tet_volumes_3d, n_neg_best_diagonal,
+            n_neg_best_diagonal,
+            six_tet_volumes_3d,
         )
+
         rng = np.random.default_rng(5)
         phi = rng.normal(0, 0.3, (3, 6, 6, 6)).astype(np.float64)
         fixed_neg = int((six_tet_volumes_3d(phi).min(axis=0) <= 0).sum())
@@ -444,6 +460,7 @@ class TestBestDiagonal:
         from dvfopt.jacobian.tetrahedron_sign import (
             six_tet_volumes_all_diagonals,
         )
+
         phi = np.zeros((3, 5, 5, 5))
         alld = six_tet_volumes_all_diagonals(phi)
         # Identity: every diagonal yields positive worst-tet (= +1/6).
@@ -457,6 +474,7 @@ class TestActiveBandRecovery:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             active_band_alm_recovery_3d,
         )
+
         phi = np.zeros((3, 6, 6, 6))
         out, info = active_band_alm_recovery_3d(phi, threshold=0.012)
         assert info['n_clusters'] == 0
@@ -467,13 +485,17 @@ class TestActiveBandRecovery:
         """Two separate planted folds -> two clusters, each solved on a
         crop far smaller than the full field; never increases folds."""
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
-            active_band_alm_recovery_3d, _fold_cluster_bboxes,
+            _fold_cluster_bboxes,
+            active_band_alm_recovery_3d,
         )
         from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.02, (3, 8, 24, 24)).astype(np.float64)
-        phi[0, 3, 4:6, 4:6] = 1.5; phi[0, 4, 4:6, 4:6] = -1.5
-        phi[0, 3, 18:20, 18:20] = 1.5; phi[0, 4, 18:20, 18:20] = -1.5
+        phi[0, 3, 4:6, 4:6] = 1.5
+        phi[0, 4, 4:6, 4:6] = -1.5
+        phi[0, 3, 18:20, 18:20] = 1.5
+        phi[0, 4, 18:20, 18:20] = -1.5
         mv = six_tet_min_volume_3d(phi)
         n0 = int((mv <= 0).sum())
         if n0 == 0:
@@ -494,20 +516,23 @@ class TestActiveBandParallelBatching:
 
     def test_boxes_separated(self):
         from dvfopt.core.wallbreakers._coupled_kring_3d import _boxes_separated
+
         a = (0, 5, 0, 5, 0, 5)
-        far = (10, 15, 0, 5, 0, 5)      # gap 4 on z
-        near = (6, 9, 0, 5, 0, 5)       # gap 0 on z (touching+1)
+        far = (10, 15, 0, 5, 0, 5)  # gap 4 on z
+        near = (6, 9, 0, 5, 0, 5)  # gap 0 on z (touching+1)
         assert _boxes_separated(a, far, gap=2) is True
         assert _boxes_separated(a, near, gap=2) is False
 
     def test_batch_partition_disjoint(self):
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
-            _batch_nonoverlapping_boxes, _boxes_separated,
+            _batch_nonoverlapping_boxes,
+            _boxes_separated,
         )
+
         boxes = [
             (0, 5, 0, 5, 0, 5),
-            (7, 9, 0, 5, 0, 5),     # overlaps box0 (gap 1) -> different batch
-            (20, 25, 0, 5, 0, 5),   # far from both -> can share a batch
+            (7, 9, 0, 5, 0, 5),  # overlaps box0 (gap 1) -> different batch
+            (20, 25, 0, 5, 0, 5),  # far from both -> can share a batch
         ]
         batches = _batch_nonoverlapping_boxes(boxes)
         # Every pair within a batch must be separated.
@@ -518,6 +543,7 @@ class TestActiveBandParallelBatching:
 
     def test_padded_box_clips(self):
         from dvfopt.core.wallbreakers._coupled_kring_3d import _padded_box
+
         # Near the origin and the far edge, padding must clip to [0, dim-1].
         pb = _padded_box((0, 1, 0, 1, 0, 1), pad=4, shape=(8, 8, 8))
         assert pb[0] == 0 and pb[2] == 0 and pb[4] == 0
@@ -529,15 +555,22 @@ class TestActiveBandStrategy:
 
     def test_solver_reaches_feasible_on_scattered_folds(self):
         from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.02, (3, 8, 24, 24)).astype(np.float64)
-        phi[0, 3, 4:6, 4:6] = 1.5; phi[0, 4, 4:6, 4:6] = -1.5
-        phi[0, 3, 18:20, 18:20] = 1.5; phi[0, 4, 18:20, 18:20] = -1.5
+        phi[0, 3, 4:6, 4:6] = 1.5
+        phi[0, 4, 4:6, 4:6] = -1.5
+        phi[0, 3, 18:20, 18:20] = 1.5
+        phi[0, 4, 18:20, 18:20] = -1.5
         if int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0:
             pytest.skip('no fold planted')
         from dvfopt import (
-            ActiveBandALM3DStrategy, L1Objective, Solver, Tet6Constraint3D,
+            ActiveBandALM3DStrategy,
+            L1Objective,
+            Solver,
+            Tet6Constraint3D,
         )
+
         res = Solver(
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
@@ -560,16 +593,22 @@ class TestParallelZBand:
             parallel_zband_solve,
         )
         from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.02, (3, 48, 40, 40)).astype(np.float64)
-        for (z, y, x) in [(5, 10, 10), (27, 20, 28), (40, 30, 12)]:
-            phi[0, z, y:y+2, x:x+2] = 1.5
-            phi[0, z+1, y:y+2, x:x+2] = -1.5
+        for z, y, x in [(5, 10, 10), (27, 20, 28), (40, 30, 12)]:
+            phi[0, z, y : y + 2, x : x + 2] = 1.5
+            phi[0, z + 1, y : y + 2, x : x + 2] = -1.5
         n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
         if n0 == 0:
             pytest.skip('no fold planted')
         out, info = parallel_zband_solve(
-            phi, threshold=0.012, band_size=16, overlap=4, pad=3, n_workers=1,
+            phi,
+            threshold=0.012,
+            band_size=16,
+            overlap=4,
+            pad=3,
+            n_workers=1,
         )
         assert info['n_bands'] == 3
         # Never worse than input; here reaches strict feasibility.
@@ -580,9 +619,13 @@ class TestParallelZBand:
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             parallel_zband_solve,
         )
+
         phi = np.zeros((3, 8, 10, 10))
         out, info = parallel_zband_solve(
-            phi, threshold=0.012, band_size=32, n_workers=1,
+            phi,
+            threshold=0.012,
+            band_size=32,
+            n_workers=1,
         )
         assert info['n_bands'] == 1
         assert info['n_neg_after'] == 0
@@ -591,22 +634,27 @@ class TestParallelZBand:
         """n_workers>1 with multiple bands must route through the shared
         pool without a NameError (regression: pool_map import was dropped
         when the path was switched off a per-call executor)."""
+        from dvfopt.core._pool import shutdown_pool
         from dvfopt.core.wallbreakers._coupled_kring_3d import (
             parallel_zband_solve,
         )
-        from dvfopt.core._pool import shutdown_pool
         from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
         rng = np.random.default_rng(1)
         phi = rng.normal(0, 0.02, (3, 48, 36, 36)).astype(np.float64)
-        for (z, y, x) in [(6, 10, 10), (28, 18, 24)]:
-            phi[0, z, y:y+2, x:x+2] = 1.5
-            phi[0, z+1, y:y+2, x:x+2] = -1.5
+        for z, y, x in [(6, 10, 10), (28, 18, 24)]:
+            phi[0, z, y : y + 2, x : x + 2] = 1.5
+            phi[0, z + 1, y : y + 2, x : x + 2] = -1.5
         n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
         if n0 == 0:
             pytest.skip('no fold planted')
         try:
             out, info = parallel_zband_solve(
-                phi, threshold=0.012, band_size=16, overlap=4, pad=3,
+                phi,
+                threshold=0.012,
+                band_size=16,
+                overlap=4,
+                pad=3,
                 n_workers=2,
             )
         finally:
@@ -631,7 +679,10 @@ class TestRecoverMode:
             constraint=Tet6Constraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(
-                k_ring=1, feasibility_thr=1e-3, recover=True, recover_pad=2,
+                k_ring=1,
+                feasibility_thr=1e-3,
+                recover=True,
+                recover_pad=2,
             ),
             threshold=0.01,
         )

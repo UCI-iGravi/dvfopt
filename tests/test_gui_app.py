@@ -43,10 +43,21 @@ def qapp():
 def _snap(phi, **over):
     base = dict(
         phi=phi,
-        window_y0=0, window_y1=0, window_x0=0, window_x1=0,
-        opt_y0=0, opt_y1=0, opt_x0=0, opt_x1=0,
-        is_padded=False, neg_y=0, neg_x=0,
-        per_index_iter=0, outer_iter=0, n_neg=0, min_T=0.0,
+        window_y0=0,
+        window_y1=0,
+        window_x0=0,
+        window_x1=0,
+        opt_y0=0,
+        opt_y1=0,
+        opt_x0=0,
+        opt_x1=0,
+        is_padded=False,
+        neg_y=0,
+        neg_x=0,
+        per_index_iter=0,
+        outer_iter=0,
+        n_neg=0,
+        min_T=0.0,
     )
     base.update(over)
     return StateSnapshot(**base)
@@ -534,7 +545,9 @@ def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
     assert not win._run_roi_btn.isEnabled()
     assert not win._run_all_btn.isEnabled()
     algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
-    assert 'm14' in algos and 'm14_schwarz' in algos and 'm10' in algos and 'slsqp_fullgrid' in algos
+    assert (
+        'm14' in algos and 'm14_schwarz' in algos and 'm10' in algos and 'slsqp_fullgrid' in algos
+    )
 
 
 def test_run_all_stays_disabled_in_3d_after_run_finishes(qapp):
@@ -550,7 +563,9 @@ def test_run_all_in_3d_routes_to_full_volume_run(qapp, monkeypatch):
     win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
     win._select_combo_data(win._constraint_combo, 'tet3d')
     captured = {}
-    monkeypatch.setattr(win, '_start_worker', lambda def_i, *a, **k: captured.setdefault('shape', def_i.shape))
+    monkeypatch.setattr(
+        win, '_start_worker', lambda def_i, *a, **k: captured.setdefault('shape', def_i.shape)
+    )
     win._on_run_all()
     # 3D Run-all must hand the worker the FULL (3,D,H,W) volume, not a (3,1,H,W) slice.
     assert captured['shape'] == (3, 4, 6, 6)

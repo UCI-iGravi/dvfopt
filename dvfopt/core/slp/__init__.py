@@ -17,19 +17,20 @@ Public entry points:
   constraint linearisation.
 * :func:`solve_l1_lp_step` — one L1-epigraph LP step (HiGHS backend).
 """
+
+from dvfopt.core.slp.cluster_lp_2tri import cluster_slp_iter
 from dvfopt.core.slp.highs_solver import solve_l1_lp_step
+from dvfopt.core.slp.lp_direct_2tri import lp_oneshot, slp_iter
 from dvfopt.core.slp.tri_linearize import (
     build_sparse_jacobian_T,
     linearize_T_2tri,
 )
-from dvfopt.core.slp.lp_direct_2tri import slp_iter, lp_oneshot
-from dvfopt.core.slp.cluster_lp_2tri import cluster_slp_iter
 
 __all__ = [
-    'solve_l1_lp_step',
     'build_sparse_jacobian_T',
-    'linearize_T_2tri',
-    'slp_iter',
-    'lp_oneshot',
     'cluster_slp_iter',
+    'linearize_T_2tri',
+    'lp_oneshot',
+    'slp_iter',
+    'solve_l1_lp_step',
 ]

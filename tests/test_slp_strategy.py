@@ -4,6 +4,7 @@ The auto_slp champion, promoted from research into the dvfopt package.
 Covers both dispatch paths (global small-slice, cluster large-slice) and
 constraint compatibility.
 """
+
 import numpy as np
 import pytest
 
@@ -19,7 +20,7 @@ def _n_neg(p):
 
 def _planted(H, W, spots):
     phi = np.zeros((2, H, W))
-    for (r, c) in spots:
+    for r, c in spots:
         phi[0, r, c] = 1.3
         phi[0, r, c + 1] = -1.3
     return phi
@@ -58,6 +59,7 @@ def test_slp_is_2d_only():
     """SLPStrategy must reject a 3D constraint (supports_3d=False)."""
     from dvfopt import Tet6Constraint3D
     from dvfopt.exceptions import IncompatibleConstraintError
+
     with pytest.raises((IncompatibleConstraintError, Exception)):
         Solver(
             constraint=Tet6Constraint3D(shape=(4, 4, 4)),
@@ -70,5 +72,6 @@ def test_slp_is_2d_only():
 def test_slp_registered_label():
     """The strategy is registered under 'slp' (string-based construction)."""
     from dvfopt.strategies import make_strategy
+
     s = make_strategy('slp')
     assert isinstance(s, SLPStrategy)

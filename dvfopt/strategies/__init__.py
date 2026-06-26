@@ -60,17 +60,17 @@ from dvfopt.strategies.base import (
     register_strategy,
 )
 from dvfopt.strategies.nmvf import NMVFStrategy
-from dvfopt.strategies.slp import SLPStrategy
 from dvfopt.strategies.schwarz import SchwarzStrategy
 from dvfopt.strategies.schwarz_wrapper import SchwarzWrapperStrategy
+from dvfopt.strategies.slp import SLPStrategy
 from dvfopt.strategies.slsqp import (
     SLSQPFullGrid3DStrategy,
     SLSQPFullGridStrategy,
     SLSQPWindowedStrategy,
 )
 from dvfopt.strategies.wallbreakers import (
-    ALM3DStrategy,
     ActiveBandALM3DStrategy,
+    ALM3DStrategy,
     CoupledKRing3DStrategy,
     Harmonic3DStrategy,
     HarmonicALMBarrier3DStrategy,
@@ -93,9 +93,9 @@ from dvfopt.strategies.wallbreakers import (
 # at the same dataclass.
 __all__ = [
     'ALM3DStrategy',
+    'ActiveBandALM3DStrategy',
     'BarrierStrategy',
     'BarrierTet3DTorchStrategy',
-    'ActiveBandALM3DStrategy',
     'CoupledKRing3DStrategy',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
