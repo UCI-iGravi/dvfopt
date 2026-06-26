@@ -1688,9 +1688,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # counted with the SAME metric the run's trajectory uses (Jdet for
         # the windowed-SLSQP path, else the constraint's own metric), so
         # the before→after delta lines up with the live n_neg readout.
-        phi_in = np.stack([deformation_i[1, 0], deformation_i[2, 0]])
-        metric_kind = 'jdet' if method_id.startswith('slsqp_windowed') else constraint
-        self._input_n_neg, _ = _metric_counts(phi_in, metric_kind)
+        if self._is_3d_run:
+            # 3D run: count folds over the whole volume with the run's 3D
+            # metric, matching the per-step snapshot's n_neg (the "after").
+            kind = 'tet3d' if constraint == CONSTRAINT_TET3D else 'jdet3d'
+            self._input_n_neg, _ = _metric_counts_3d(deformation_i, kind)
+        else:
+            phi_in = np.stack([deformation_i[1, 0], deformation_i[2, 0]])
+            metric_kind = 'jdet' if method_id.startswith('slsqp_windowed') else constraint
+            self._input_n_neg, _ = _metric_counts(phi_in, metric_kind)
         self._active_method_id = method_id
         self._run_elapsed.restart()
         params = {

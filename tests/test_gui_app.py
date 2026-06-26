@@ -609,3 +609,18 @@ def test_progress_3d_fullgrid_is_busy(qapp):
     win._active_method_id = 'slsqp_fullgrid_tet3d'
     win._update_progress()
     assert win._progress.maximum() == 0  # busy indicator
+
+
+def test_input_n_neg_uses_3d_metric_in_3d_mode(qapp, monkeypatch):
+    from dvfopt_gui.worker import _metric_counts_3d
+
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, :, 3:5, 3:5] = 1.4  # a few folded cells across all z
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    # Don't actually launch the solver thread.
+    monkeypatch.setattr('dvfopt_gui.worker.SolverWorker.start', lambda self: None)
+    win._start_worker(win._original_volume.copy())
+    expected, _ = _metric_counts_3d(vol, 'tet3d')
+    assert win._input_n_neg == expected
+    assert expected > 0  # the field really does have 3D folds
