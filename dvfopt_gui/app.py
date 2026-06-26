@@ -625,7 +625,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         bar.addWidget(self._run_all_btn)
         self._stop_btn = QtWidgets.QPushButton('Stop')
         self._stop_btn.setShortcut('Esc')
-        self._stop_btn.setToolTip('Request the running solve to stop (Esc).')
+        self._stop_btn.setToolTip(
+            'Request the running solve to stop (Esc). In 3D the wallbreaker '
+            'methods (M10Tet/M14Tet/M14-Schwarz3D) stop at the next phase '
+            'boundary; SLSQP-fullgrid-3D / Barrier run to completion '
+            '(bound them with time_budget_s / max_iter).'
+        )
         self._stop_btn.clicked.connect(self._on_stop)
         self._stop_btn.setEnabled(False)
         bar.addWidget(self._stop_btn)
@@ -1877,7 +1882,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._progress.setRange(0, 100)
             self._progress.setValue(int(frac * 100))
             self._progress.setFormat(f'{elapsed:.0f}s / {budget:.0f}s')
-        elif mid.startswith('slsqp'):
+        elif mid.startswith('slsqp_windowed'):
             mx = int(self._max_iter_spin.value())
             cur = self._latest.outer_iter if self._latest is not None else 0
             frac = min(1.0, cur / mx) if mx > 0 else 0.0
@@ -1885,7 +1890,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._progress.setValue(int(frac * 100))
             self._progress.setFormat(f'iter {cur} / {mx}  ·  {elapsed:.0f}s')
         else:
-            # barrier / nmvf: no clean fraction — busy indicator + elapsed.
+            # barrier / nmvf / slsqp_fullgrid: busy indicator + elapsed.
             self._progress.setRange(0, 0)
             self._progress.setFormat(f'{elapsed:.0f}s')
 

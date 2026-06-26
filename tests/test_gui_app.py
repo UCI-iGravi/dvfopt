@@ -590,3 +590,22 @@ def test_3d_zslider_reslices_without_dropping_worker(qapp):
     win._latest = snap
     win._z_slider.setValue(2)  # re-slice
     assert win._worker is not None  # not reset in 3D mode
+
+
+def test_progress_3d_wallbreaker_is_time_budget(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._worker = _RunningStub()
+    win._run_elapsed.restart()
+    win._active_method_id = 'm14_tet3d'
+    win._budget_spin.setValue(60.0)
+    win._update_progress()
+    assert '/ 60s' in win._progress.format()
+
+
+def test_progress_3d_fullgrid_is_busy(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._worker = _RunningStub()
+    win._run_elapsed.restart()
+    win._active_method_id = 'slsqp_fullgrid_tet3d'
+    win._update_progress()
+    assert win._progress.maximum() == 0  # busy indicator
