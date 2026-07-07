@@ -3446,3 +3446,210 @@ finalization that only writes the canonical file when strictly feasible).
   correct, so no band work was wasted.
 
 
+
+## Part XXI — Fresh-eyes re-evaluation: prevention, relaxation, and untried levers
+
+A deliberate step back after the full-volume result and the solver
+optimization study. The solvers are near-optimal for the problem *as
+posed*; the remaining headroom is in **changing the problem**. This part
+records the re-evaluation, the option list, and (below) the experimental
+outcomes for each.
+
+### Consolidated residual-fold anatomy (evidence)
+
+On the canonical stage-3 dense band (173 folds, min_T −0.0134):
+
+1. **Tiny and rare** — 173 tets ≤ 0 of ~12M (0.0013%); merely-positive
+   needs only tolerance −0.0134. **1 572 tets sit in the 0…0.01 margin
+   band** — ~90% of "infeasibility" is margin-tightening, not folding.
+2. **~54% geometric-floor** — 94/173 cells have no positive triangulation
+   under any of the 4 main diagonals (crushed, near-coplanar corners).
+   The other 79 are folded only relative to the fixed Kuhn diagonal.
+3. **LP-invisible** — the linearized 6-tet LP at the plateau is
+   *infeasible at every trust radius* (`_focused_polish` v2/v3, HiGHS
+   Status 8). In 3D the nonconvex ALM/escape work is essential; SLP
+   cannot replace it at the residual stage.
+4. **Global diagonal flips are catastrophic** (173 → 11k–23k folds); only
+   *per-cell* triangulation choice can help.
+5. Established earlier: shared-corner Nash attractor at min_T ≈ −1e-4;
+   the 728k stage-1 3D folds are z-direction only (dz≡0), high-frequency
+   (multiscale-proof), uniform across z.
+
+### The option list
+
+| # | option | class | idea |
+|---|---|---|---|
+| A | **2.5D marching correction** | prevention | correct slices sequentially; add linearized inter-layer 6-tet constraints against the frozen previous slice during the 2D solve (dz≡0 ⇒ inter-layer tets depend only on the two slices' dy/dx). Prevent the 728k 3D folds instead of repairing them for ~2.4 days. |
+| B | **constraint-semantics relaxations** | problem change | (i) per-cell best-diagonal (mixed triangulation) output — converts the 79 non-floor residuals into free wins; (ii) two-tier threshold (strict >0 everywhere; tighten to 0.01 only where L1-cheap); (iii) tolerance −1e-4 ≈ the attractor floor. All hinge on what the application actually requires (fixed-diagonal Kuhn vs trilinear invertibility — the discrete test is provably stricter, Liu et al. 2024). |
+| C | **elastic Sℓ₁LP (Fletcher)** | speed | slacked constraints `T ≥ τ − s, s ≥ 0`, objective `μ·1ᵀs + ‖φ−φin‖₁`: always-feasible LP, no seed. Could remove the m14 seed (the profiled 2D bottleneck) and give 3D an LP path that cannot return "infeasible". |
+| D | **overlapping feasibility-checked polish sweeps** | accuracy | close the ~13.5% sparse-slice L1 gap of frozen-ring clustering with windowed, exact-feasibility-accepted L1 polish sweeps (the earlier *global unchecked* polish broke feasibility; windows + accept-check fix that), at ~2–3× wall instead of the 18× global solve. |
+| E | **best-diagonal routing oracle** | targeting | use the fixable/floor split to route: diagonal-fixable cells → cheap nudges (or free under B-i); floor cells → coupled k-ring surgery. |
+
+### Experimental outcomes
+
+**B + E (quantified on real artifacts — `_b_relaxation_quant.py`).** Both
+weaker than hypothesized, honestly recorded:
+- Mixed triangulation (B-i) converts only **24/118** stage-3 residual
+  cells (the earlier 79/173 figure counted tets, not cells); 94 are true
+  floor. At the escape plateau the last fold is floor-type — so the E
+  routing oracle cannot help the endgame, only the pre-escape phase.
+- Tolerance (B-iii): the plateau's last fold sits at **−3.2e-4**, so a
+  −1e-4 tolerance buys *nothing*; **−1e-3 clears the plateau entirely**
+  (would have skipped the multiscale+escape2 endgame). The lever is real
+  but requires the application to accept a 10× looser bar than assumed.
+
+**C — elastic (Fletcher Sl1LP) seedless SLP: NEGATIVE on deep folds.**
+(`_elastic_slp.py`, `_bench_elastic.py`.) On mild-fold crops elastic
+matches the seeded champion exactly (z300 crop: feasible, L1 7.84 vs
+7.90). On deep folds it crawls: z450 crop (min_T −11) still 4 folds after
+**200 LPs** (seeded: 0 in 4 s); z12 crop still 140 folds after 120 LPs /
+28 min (seeded: 0 in 20 s). The m14 seed's harmonic+ALM performs global
+nonconvex untangling that local linearization cannot replicate — same
+lesson as the GN prototype. The seed stays essential.
+
+**D — feasibility-checked overlap polish: NEGATIVE, diagnostically
+valuable.** (`_bench_overlap_polish.py`.) Recovered **0.0%** of the 13.5%
+cluster-vs-global L1 gap on z=450/z=300 (feasibility preserved — the
+exact-acceptance gate works). The cluster solution is already *locally*
+L1-optimal in every window: the gap is **coordination/basin-topological**
+(the global optimum resolves folds differently across regions), reachable
+only by the global solve. This also explains why the earlier unchecked
+polish could only reduce L1 by breaking feasibility.
+
+**A — 2.5D marching prevention: BREAKTHROUGH on moderate data.**
+(`_marching_25d.py`; starts from the saved 2D-corrected slices, repairs
+each layer against the frozen previous slice with elastic inter-layer +
+intra-slice LP rows, frozen-ring splice.) Moderate range z200–205:
+
+```
+baseline per-layer 3D folds: 1148, 1173, 1253, 1241, 1266  (6081 total)
+marching:  layer 0->1: 1148->520 (cold start, rounds capped)
+           layers 1->5: 897->0, 818->0, 796->0, 854->0   <- ZERO, per layer
+2D feasibility preserved (n_neg=0); n<0.01 residual 2-6/layer
+~75-160 s and ~600 added L1 per slice
+```
+
+Repairing slice z against z−1 also pre-reduces the (z, z+1) layer
+(1173→897 before its own repair) — corrections are z-correlated.
+Projection if it holds at scale: ~527 layers ≈ **12–24 h serial** to
+*prevent* what the 3D band loop *repairs* in ~58 h, at roughly **4× less
+added L1** (~0.3M vs the 3D pipeline's 1.34M). Dense-range test and the
+cold-start fix pending below.
+
+**2D combo — cheap seed + polish: NEGATIVE, completes a clean finding.**
+(`_bench_cheapseed_polish.py`.) Polish recovered **0.0–0.2%** of the
+harmonic seed's 8× L1 penalty (z300: 17 960 → 17 959; z450: 14 129 →
+14 107), at 10× the wall of just using the m14_fast seed. Three
+independent results now confirm one structural fact: **L1 quality is
+decided at basin-selection time (the seed's homotopy path) and is
+immutable afterward under feasibility** — (i) seed sweep: cheap seeds 8×
+worse; (ii) option D: 0% recoverable from the locally-optimal solution;
+(iii) this combo: ~0% recoverable from a sloppy solution. The L1 excess
+is locked into *which side each fold resolves to*; there is no feasible
+local L1 descent. For 2D, the m14_fast-seeded cluster SLP **is** the
+fast/accurate frontier; only the 18× global solve reaches lower L1.
+
+**A — dense-range result: VALIDATED.** z2–7 (the hard band, baseline
+13 354 inter-layer folds):
+
+```
+layer 0->1: 2835->268  (cold start; 6212 s — elastic slow on deep folds)
+layer 1->2: 1599->4    (561 s)   layer 2->3: 2479->2  (2654 s)
+layer 3->4: 1604->0    (636 s)   layer 4->5: 1933->0  (558 s)
+total: 13354 -> 274 (98.0% eliminated), 2D feasibility preserved
+```
+
+Warm layers reach 0–4 folds even on dense data; the pre-reduction effect
+is strong (3124 baseline → 1599 at repair time). The **cold-start layer
+dominates** both residual (268/274) and wall (6212 of 10621 s) — it is
+exactly the elastic-on-deep-folds slowness of option C, and has three
+clear fixes: within-slice cluster parallelism (prototype solves clusters
+serially; 16 workers ≈ 4–8× on heavy layers), an ALM fallback for
+stubborn clusters, and/or starting the sweep at a mild z so no layer is
+cold. Full-volume projection: added L1 ≈ 0.55M (**~2.4× less** than the
+3D repair pipeline's 1.34M) and, with parallelism, a marching stage of
+roughly 10–20 h replacing the ~58 h band loop — leaving only a few
+hundred residual folds for one light 3D pass.
+
+### Part XXI final ranking
+
+| rank | option | verdict |
+|---|---|---|
+| 1 | **A — 2.5D marching prevention** | **validated breakthrough**: 98–100% of 3D folds prevented per layer at ~2.4× less L1; productize (parallel clusters + cold-start fix + light 3D mop-up) |
+| 2 | B-iii — tolerance −1e-3 | real lever (clears the escape-plateau endgame entirely); requires an application decision on the feasibility bar |
+| 3 | B-i / E — mixed triangulation + routing | modest (24/118 residual cells) and application-gated; routing useless at the endgame (last folds are floor-type) |
+| 4 | C — elastic seedless SLP | negative (stalls on deep folds); niche mild-fold fast path only |
+| 5 | D / cheap-seed+polish | negative, but yields the structural finding: **feasible-L1 is fixed at seed time** — no post-hoc recovery exists |
+
+The re-evaluation's one-line summary: the solvers were already optimal
+for the problem as posed; the win came from **changing the problem** —
+preventing the 3D folds during the 2D stage instead of repairing them
+after.
+
+## Part XXII — Productized full-volume 2.5D marching (all 528 slices)
+
+Option A, productized and run end-to-end on the full B0039 volume
+(`runners/_marching_full_volume.py`): sweep OUTWARD from the mildest layer
+(auto origin z=110, so no layer is cold-started against raw data), repair
+each slice against its already-repaired neighbour via parallel per-cluster
+elastic LPs (inter-layer 6-tet + intra-slice 2-tri rows, frozen ring,
+exact-value acceptance), resumable memmap + progress JSON.
+
+### End-to-end result (3D 6-tet, whole volume)
+
+| stage | negative 6-tet volumes | min_T |
+|---|---:|---:|
+| raw Laplacian | 2 890 473 | −380.8 |
+| stage-1 (every slice individually 2D-feasible) | **1 058 831** | −3.64 |
+| after 2.5D marching sweep (14.2 h) | **97** | −0.062 |
+| after frozen-ring 3D-interior mop | **33** | −0.035 |
+
+**99.997% of the 3D folds eliminated** (1 058 831 → 33) at negligible cost:
+the sweep added L1 414 004 over the whole volume; the mop added only 171.
+The result also **proves the thesis**: per-slice 2D feasibility is NOT 3D
+feasibility — stage-1 carries 1.06M inter-layer folds despite every slice
+being individually fold-free.
+
+Of the 528 up/down layers, **only the two cold-start boundary layers**
+(auto-origin z=110's first neighbour and the volume-bottom z=0) and the
+pathological dense band (z0–18) left any residual; ~525 layers reached
+exactly 0 inter-layer folds.
+
+### The crashed shipped mop-up, and the correct replacement
+
+The runner's final `active_band_alm_recovery_3d` was called on the WHOLE
+volume; a merged dense-band cluster hit its `max_band_fraction` global-
+fallback and SuperLU OOM'd (`Can't expand MemType 0: jcol 3133920` →
+SIGSEGV, exit 139). The sweep memmap was intact (resumable design). Two
+lessons: (1) the active-band recovery must never fall back to a full-field
+solve — cap crop size / tile instead; (2) crop+paste mops must **freeze
+the entire crop rim** — a first naive sub-volume retry pasted modified
+boundary slices and blew the global count 97 → 1209 (min_T −19748) via
+boundary-discontinuity folds.
+
+The correct mop (`runners/_marching_mopup_3d_interior.py`) generalises the
+sweep's own elastic SLP: per fold cluster, crop a small box, freeze all six
+faces, and free the **interior dy/dx of every box slice** (dz≡0 preserved)
+so BOTH slices of a folded pair move together — which single-plane marching
+structurally cannot do. 6-tet-only LP rows + exact-violation acceptance
+(the guard includes 2-tri, so no 2D area regresses). Took 97 → 33.
+
+### The residual 33 are the geometric floor
+
+Iterating the mop with escalating box padding (pad 6→12, i.e. large free
+interiors) could not move min_T past **exactly −0.03502** across three
+consecutive passes — and pad=12 alone cost 7.5 h for **zero** fixes. A
+fixed worst-case min under growing freedom + an exact-feasibility solver is
+the signature of the **geometric floor**: cells with no feasible 6-tet
+(Kuhn) decomposition under the fixed diagonal (the 3D analogue of the 2D
+true-floor). They cluster in the worst dense slices (z=4 holds 22 of 33,
+z=0 holds 6). Irreducible without a much larger deformation or a
+per-cell/mixed tet-decomposition convention (an application decision, cf.
+Part XXI options B/E). Chasing them with more freedom is pure compute waste.
+
+**Deliverable:** `runners/output/b0039_FULL_marching25d_mop3d.npy`
+(3, 528, 320, 456; dz≡0; 33 residual floor-type folds; +171 L1 over the
+sweep). The ~58 h full-resolution band-loop baseline (Part XX) reached
+strict feasibility by *repairing*; this reaches 33 floor-type residuals by
+*prevention* in 14.2 h + a few h of mop — the marching is the cheaper path,
+and its residual is the geometric floor rather than a solver limitation.

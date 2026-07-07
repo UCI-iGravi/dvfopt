@@ -509,6 +509,50 @@ class TestActiveBandRecovery:
         for pc in info['per_cluster']:
             assert pc['crop_shape'][1] < 24 and pc['crop_shape'][2] < 24
 
+    def test_oversized_cluster_tiles_not_global(self):
+        """A cluster spanning most of an axis must be TILED into bounded
+        crops, never solved as the full field (the OOM-segfault bug)."""
+        from dvfopt.core.wallbreakers._coupled_kring_3d import (
+            active_band_alm_recovery_3d,
+        )
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        rng = np.random.default_rng(0)
+        phi = rng.normal(0, 0.02, (3, 6, 40, 40)).astype(np.float64)
+        # Plant a wide fold band spanning most of the y and x extent (well
+        # over max_band_fraction of those axes).
+        phi[0, 2, 2:38, 2:38] = 1.5
+        phi[0, 3, 2:38, 2:38] = -1.5
+        n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
+        if n0 == 0:
+            pytest.skip('no fold planted')
+
+        recorded = []
+
+        def recording_inner(crop, time_budget_s=600.0):
+            recorded.append(tuple(int(s) for s in crop.shape))
+            return crop  # no-op: still exercises crop/paste/verify
+
+        pad = 2
+        max_box = 16
+        out, info = active_band_alm_recovery_3d(
+            phi,
+            threshold=0.012,
+            pad=pad,
+            max_box=max_box,
+            inner_solve=recording_inner,
+        )
+        # (c) ran without error and returned the right shape.
+        assert out.shape == phi.shape
+        assert recorded, 'inner_solve was never called'
+        # (a) the global fallback is gone: no crop is the whole field.
+        assert (3, 6, 40, 40) not in recorded
+        # (b) every crop is bounded on y and x by the tile cap + padding.
+        bound = max_box + 2 * pad + 4
+        for shp in recorded:
+            assert shp[2] <= bound, f'crop y-extent {shp[2]} exceeds {bound}'
+            assert shp[3] <= bound, f'crop x-extent {shp[3]} exceeds {bound}'
+
 
 class TestActiveBandParallelBatching:
     """Non-overlap batching logic for the parallel active-band path

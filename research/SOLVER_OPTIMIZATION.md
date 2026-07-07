@@ -23,6 +23,12 @@ solve and ~35% of a 2D solve**. Therefore:
   LP solve. So the seed is the thing to attack, and running slices
   concurrently is the biggest single win because the seed leaves 23/24
   cores idle in the current sequential stage.
+- **Accuracy (round 3):** the *local* cluster-SLP champion is near its L1
+  ceiling, but a **global GPU untangle achieves ~2× lower L1 on dense
+  slices** (95k vs 185k on the z=13 worst case) — at a wall cost. There is
+  a real **global-vs-local L1 axis**, not just a speed dial. It is *not* a
+  faster method: first-order flow stalls on sliver-folds and needs an
+  LP-SLP mop-up. See round 3 below.
 
 ## Profiling evidence
 
@@ -260,20 +266,122 @@ Could be exposed as an `accuracy={'fast','optimal'}` knob on `auto_slp`
 (cluster vs global), but there is **no point on the curve that is both
 faster and more accurate** than the current default for a given slice.
 
-## Final bottom line (after two experimental rounds)
+## Experimental round 3 — independent-2D levers + global GPU untangler
 
-The 2D/3D fold-elimination pipelines are at a **strong local optimum**.
-Across ~10 prototyped/benchmarked levers, the only clean win was the
-**continuous scheduler (~1.1×, now default)**. Every other lever was
-negative, marginal, or a pure speed/accuracy trade:
+Scope: **single, unrelated 2D slices** (no cross-slice/temporal tricks —
+each slice an independent dataset). Two questions: cheap intra-slice levers,
+and whether a fundamentally different *method* beats SLP+seed.
+
+### Intra-slice tuning levers — all rejected
+
+- **Elastic (seedless) SLP routing.** Route mild-fold clusters to the
+  seedless elastic LP (skip the m14 seed). Rejected: elastic only reaches
+  feasibility on **69% of mild clusters, ≤22% of medium/deep**
+  (`_bench_depth_routing.py`) — too unreliable, needs a seed fallback
+  anyway, and the wall saving is marginal.
+- **Depth-adaptive seed** (m10 for shallow clusters, m14_fast for deep).
+  A single-crop probe looked promising (m10 2× faster at negligible L1),
+  but the whole-slice aggregate (`_bench_adaptive_seed.py`, 80 clusters ×
+  3 slices) rejects it: **+123% to +436% L1 for only ~1.2× speedup**. m10
+  lands a worse basin even on shallow-*depth* clusters once the cluster is
+  non-trivial. Fold *depth* ≠ L1 cost.
+
+Confirms round-2's finding from the other direction: the m14-seeded cluster
+SLP's per-cluster basin is not cheaply reducible.
+
+### Global GPU untangler — NOT faster, but ~2× lower L1 on dense slices
+
+A first-order **whole-slice** untangler on the GPU (Adam on a smooth
+penalty / PHR augmented-Lagrangian over all 2-tri areas at once, no
+clustering — `algorithms/_gpu_untangle.py`, `_bench_gpu_untangle.py`,
+`_bench_gpu_alm.py`). Torch areas verified against `tri_areas_flat`
+(max|Δ|=4e-14).
+
+| slice | method | wall | folds | L1 | vs champion |
+|---|---|---:|---:|---:|---:|
+| z=300 mild (2360) | GPU-ALM→mop | 86 s | 0 | 3 424 | +65% L1, 3× slower |
+| | champion | 27 s | 0 | 2 080 | — |
+| z=13 dense (9057) | GPU-penalty→mop | 283 s | 0 | 155 988 | −16% L1 |
+| | GPU-ALM→mop | 341 s | 0 | **95 137** | **−49% L1**, 4.6× slower |
+| | champion | 74 s | 0 | 185 131 | — |
+
+Two firm conclusions:
+
+1. **Not a faster method.** First-order flow (penalty *and* ALM) **stalls
+   on sliver-folds** — near-collapsed triangles have degenerate area
+   gradients, so Adam starves exactly where feasibility is hardest
+   (worst_g plateaus at ≈−0.02 to −0.2). Feasibility always requires an
+   LP-based SLP mop-up; the champion's SLP is the speed frontier because
+   its LP linearization + exact-feasibility acceptance resolves slivers
+   that gradient descent cannot.
+2. **A better-L1 method on dense fields — substantially.** A *global*
+   untangle lands ~**2× lower L1** than the *local* cluster-SLP champion
+   on the dense worst case (95k vs 185k). This **updates round-2's
+   conclusion**: the "no point both faster and more accurate" frontier and
+   "L1 basin-fixed" claims hold for the *local* SLP family, but a global
+   solve breaks the local ceiling on dense slices. The local cluster
+   decomposition (frozen-ring boundaries, per-cluster basins) sacrifices
+   global L1 optimality — invisible when folds are sparse, but worth half
+   the L1 when they're pervasive. Note the earlier *CPU* global LP could
+   not even reach feasibility on dense (n_neg=4 after 921 s); the GPU
+   global untangler does, and at far lower L1.
+
+**Can the global untangler reach strict feasibility standalone (no mop)?**
+Tested four formulations (`algorithms/_gpu_untangle.py`), aiming to kill the
+expensive SLP mop-up:
+
+| formulation | start | 0 folds standalone? | dense L1 |
+|---|---|---|---|
+| quadratic penalty | φ_in | no — stalls ~2650 slivers | 156k basin |
+| PHR aug-Lagrangian | φ_in | no — stalls ~1408 slivers | 95k basin |
+| Adam→L-BFGS-ALM polish | φ_in | no — worst_g μ-invariant at −0.02 | — |
+| **log-barrier (interior pt)** | **identity** | **YES — 0 folds, no mop** | 477k |
+| shifted/relaxed barrier | φ_in | no — slack-floor kills the untangling gradient; un-floored freezes on stiff gradient | — |
+
+**Conclusion — a structural wall, not a tuning gap.** Standalone GPU
+feasibility *is* reachable, but only by the log-barrier from a **feasible
+identity start**, which lands in a high-L1 basin (dense 477k ≫ champion
+185k) — feasible but useless. Every formulation that starts from the
+low-L1 φ_in basin **fails to reach strict feasibility**: the last
+~1400 sliver-folds are near-collapsed triangles needing *coordinated
+multi-vertex moves* that (a) the data term resists and (b) first-order /
+quasi-Newton dynamics cannot organize. A log-barrier can't even start from
+φ_in (infeasible → log undefined); the shifted-barrier relaxation to fix
+that either freezes the guard (stiff gradient) or, once slacks are floored
+to stay defined, makes the shifted margin constant in Aₖ so the barrier
+exerts **zero** untangling force. The champion's SLP resolves these slivers
+because an **LP step coordinates the whole cluster and accepts only
+strictly-feasible moves** — that is exactly what a first-order untangler
+lacks.
+
+**So the division of labour is the answer, not a workaround:** the GPU
+untangler is a superb **low-L1 seed**, and the SLP is the **feasibility
+solver**. `GPU-ALM(from φ_in) → SLP mop` reaches strict feasibility at
+**~2× lower L1** than the champion on dense (95k vs 185k), at ~4.6× wall —
+a genuine **high-accuracy mode** (L1 is the standing objective), just not a
+speedup. Making the mop cheap would require the GPU stage to leave fewer
+residual slivers, which the wall above shows first-order methods cannot do.
+
+## Final bottom line (after three experimental rounds)
+
+The 2D/3D fold-elimination pipelines are at a **strong local optimum for
+speed**, and the local SLP family is near its L1 ceiling — but a *global*
+solve beats that ceiling on dense fields. Across ~13 prototyped/benchmarked
+levers, the only clean speed win was the **continuous scheduler (~1.1×, now
+default)**; the notable accuracy finding is the **global GPU untangler's
+~2× dense-slice L1 reduction** (at a wall cost).
 
 - speed: parallelism is saturated (within-slice cluster pool, ~85% of a
-  ~6× Amdahl ceiling); seed/float32/grad_rtol/GN all rejected.
-- accuracy: the 13.5% cluster L1 gap is real but recoverable only by
-  spending 9–18× more wall; no cheap, feasibility-safe polish.
-- the one true step-change (a better trust-region/IPM solver than SLP+seed)
-  is large, uncertain, and the GN prototype showed the obvious formulation
-  is dominated by the existing SLP.
+  ~6× Amdahl ceiling); seed/float32/grad_rtol/GN/elastic-routing/
+  depth-adaptive-seed all rejected. First-order GPU untangling is slower
+  (sliver stall → SLP mop-up).
+- accuracy: the local cluster L1 gap is a genuine speed/accuracy dial
+  (9–18× wall for the sparse-slice +13.5%); **separately, a global GPU
+  untangle achieves ~2× lower L1 than the local champion on dense slices**
+  — a global-vs-local axis, not a tuning knob.
+- the one true speed step-change (a better trust-region/IPM solver than
+  SLP+seed) is large and uncertain; the GN prototype was dominated, and
+  osqp/cyipopt/clarabel are not installed to test a sparse IPM here.
 
 ## Full-volume per-slice validation (shipped continuous default)
 

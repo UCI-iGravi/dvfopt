@@ -75,3 +75,59 @@ def test_slp_registered_label():
 
     s = make_strategy('slp')
     assert isinstance(s, SLPStrategy)
+
+
+def _accuracy_tag(info):
+    """Best-effort extraction of the 'accuracy' tag from a SolveInfo."""
+    extras = getattr(info, 'extras', None)
+    if isinstance(extras, dict) and 'accuracy' in extras:
+        return extras['accuracy']
+    for p in getattr(info, 'phases', []) or []:
+        pe = getattr(p, 'extras', None)
+        if isinstance(pe, dict) and 'accuracy' in pe:
+            return pe['accuracy']
+    return None
+
+
+def test_slp_accuracy_max_reaches_feasibility():
+    """accuracy='max' prepends the GPU untangler and still reaches 0 folds."""
+    pytest.importorskip('torch')
+    phi = _planted(24, 24, [(11, 11)])
+    if _n_neg(phi) == 0:
+        pytest.skip('no fold planted')
+    res = Solver(
+        constraint=TriConstraint2D(shape=(24, 24)),
+        objective=L1Objective(eps=1e-4),
+        strategy=SLPStrategy(accuracy='max'),
+        threshold=0.01,
+    ).fit(phi)
+    assert _n_neg(res.corrected) == 0
+    tag = _accuracy_tag(res.info)
+    if tag is not None:
+        assert tag == 'max'
+
+
+def test_slp_accuracy_max_via_correct_dvf():
+    """correct_dvf(strategy='slp', accuracy='max') flows through kwargs."""
+    pytest.importorskip('torch')
+    from dvfopt import correct_dvf
+
+    H, W = 24, 24
+    phi = _planted(H, W, [(11, 11)])
+    if _n_neg(phi) == 0:
+        pytest.skip('no fold planted')
+    res = correct_dvf(
+        phi,
+        constraint='2tri',
+        shape=(H, W),
+        strategy='slp',
+        accuracy='max',
+        threshold=0.01,
+    )
+    assert _n_neg(res.corrected) == 0
+
+
+def test_slp_accuracy_invalid_raises():
+    """An unknown accuracy mode is rejected (pure validation, no torch)."""
+    with pytest.raises(ValueError):
+        SLPStrategy(accuracy='nonsense')

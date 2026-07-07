@@ -625,6 +625,59 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
     return bboxes
 
 
+def _tile_bbox(bbox, max_box):
+    """Split an oversized cube bbox into bounded sub-bboxes.
+
+    ``bbox`` is an inclusive cube-index box ``(cz0, cz1, cy0, cy1, cx0,
+    cx1)``. Any axis spanning more than ``max_box`` cubes is tiled into
+    pieces of at most ``max_box`` cubes each (all three axes z, y, x),
+    generalising the 2D per-slice ``range(start, stop, MAX_BOX)`` tiling in
+    ``research/strict_feasibility_3d/runners/_marching_full_volume.py``.
+    A box already within ``max_box`` on every axis yields itself unchanged.
+    Tiles abut (share one corner plane); the padded crops overlap, and the
+    global verify after each paste keeps the seams honest.
+    """
+    cz0, cz1, cy0, cy1, cx0, cx1 = bbox
+    zs = list(range(cz0, cz1, max_box)) or [cz0]
+    ys = list(range(cy0, cy1, max_box)) or [cy0]
+    xs = list(range(cx0, cx1, max_box)) or [cx0]
+    tiles = []
+    for tz in zs:
+        for ty in ys:
+            for tx in xs:
+                tiles.append(
+                    (
+                        tz,
+                        min(cz1, tz + max_box),
+                        ty,
+                        min(cy1, ty + max_box),
+                        tx,
+                        min(cx1, tx + max_box),
+                    )
+                )
+    return tiles
+
+
+def _freeze_rim(crop, crop_out):
+    """Return ``crop_out`` with its six outer boundary faces reset to
+    ``crop``'s originals.
+
+    The inner solve is free to move interior corners, but its rim must not
+    move: a moved rim would introduce a boundary-discontinuity fold at the
+    paste seam (the crop's rim corners are shared with cells outside the
+    crop). Restoring the rim guarantees the paste cannot create a seam fold;
+    the post-paste global verify still rejects any interior regression.
+    """
+    out = crop_out.copy()
+    out[:, 0, :, :] = crop[:, 0, :, :]
+    out[:, -1, :, :] = crop[:, -1, :, :]
+    out[:, :, 0, :] = crop[:, :, 0, :]
+    out[:, :, -1, :] = crop[:, :, -1, :]
+    out[:, :, :, 0] = crop[:, :, :, 0]
+    out[:, :, :, -1] = crop[:, :, :, -1]
+    return out
+
+
 def active_band_alm_recovery_3d(
     phi,
     *,
@@ -633,6 +686,7 @@ def active_band_alm_recovery_3d(
     merge_dilation=2,
     inner_solve=None,
     max_widen=1,
+    max_box=48,
     max_band_fraction=0.7,
     n_workers=1,
     verbose=0,
@@ -654,10 +708,11 @@ def active_band_alm_recovery_3d(
     verified crop+paste+verify pattern already proven in
     :func:`local_alm_recovery_3d`.
 
-    A cluster whose bounding box spans more than ``max_band_fraction`` of
-    any axis falls back to a global solve for that cluster (the crop would
-    not save enough to be worth the paste/verify overhead and risks
-    boundary effects).
+    A cluster whose bounding box spans more than ``max_box`` cubes on any
+    axis is split into bounded, padded tiles (:func:`_tile_bbox`) and each
+    tile goes through the same crop->solve->paste->verify loop. The full
+    field is never solved as one crop (which on a large volume builds a
+    multi-million-column sparse tet system and OOM-segfaults SuperLU).
 
     Parameters
     ----------
@@ -668,7 +723,10 @@ def active_band_alm_recovery_3d(
     inner_solve : callable | None      (crop, time_budget_s=...) -> crop_out;
                                        defaults to M10Tet via _default_m10tet_inner
     max_widen : int, default 1         pad-widen retries on a regressing paste
-    max_band_fraction : float          per-cluster global-fallback trigger
+    max_box : int, default 48          per-axis cube cap; larger clusters are
+                                       tiled into bounded boxes (never global)
+    max_band_fraction : float          deprecated no-op, kept for backward
+                                       compatibility (tiling replaced it)
     n_workers : int, default 1
         Process-pool workers for solving non-overlapping cluster crops
         concurrently. ``1`` = sequential (default). ``None`` = cpu_count.
@@ -687,7 +745,6 @@ def active_band_alm_recovery_3d(
     if phi.shape[0] != 3 or phi.ndim != 4:
         raise ValueError(f'phi must have shape (3, D, H, W), got {phi.shape}')
     D, H, W = phi.shape[1:]
-    Dc, Hc, Wc = D - 1, H - 1, W - 1
     if inner_solve is None:
         inner_solve = _default_m10tet_inner(threshold)
 
@@ -697,13 +754,16 @@ def active_band_alm_recovery_3d(
     n_neg_before = int((min0 <= 0).sum())
     bboxes = _fold_cluster_bboxes(min0, threshold, merge_dilation)
     n_clusters_total = len(bboxes)
+    # Tile oversized clusters up front so BOTH the parallel and sequential
+    # paths only ever see bounded boxes — the full field is never solved as
+    # one crop.
+    bboxes = [tile for bb in bboxes for tile in _tile_bbox(bb, max_box)]
     per_cluster = []
 
-    # Parallel path: solve non-overlapping cluster crops concurrently.
-    # Only clusters that fit a crop (frac <= max_band_fraction) are
-    # eligible; oversized clusters fall through to the sequential global
-    # path below. Each batch is intra-disjoint, so crops paste
-    # independently; batches are pasted+verified sequentially.
+    # Parallel path: solve non-overlapping cluster crops concurrently. All
+    # boxes are already tiled to <= max_box per axis, so every crop is
+    # bounded. Each batch is intra-disjoint, so crops paste independently;
+    # batches are pasted+verified sequentially.
     if n_workers != 1 and len(bboxes) > 1:
         import os
 
@@ -711,16 +771,7 @@ def active_band_alm_recovery_3d(
 
         if n_workers is None:
             n_workers = max(1, os.cpu_count() or 1)
-        small, large = [], []
-        for bb in bboxes:
-            cz0, cz1, cy0, cy1, cx0, cx1 = bb
-            frac = max(
-                (cz1 - cz0 + 1) / max(1, Dc),
-                (cy1 - cy0 + 1) / max(1, Hc),
-                (cx1 - cx0 + 1) / max(1, Wc),
-            )
-            (large if frac > max_band_fraction else small).append(bb)
-        pboxes = [_padded_box(bb, pad, (D, H, W)) for bb in small]
+        pboxes = [_padded_box(bb, pad, (D, H, W)) for bb in bboxes]
         for batch in _batch_nonoverlapping_boxes(pboxes):
             crops = [
                 cur[
@@ -745,7 +796,10 @@ def active_band_alm_recovery_3d(
                 if crop_out is None:
                     continue
                 z0, z1, y0, y1, x0, x1 = pboxes[i]
-                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
+                orig = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
+                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
+                    orig, crop_out
+                )
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
                 print(
@@ -766,16 +820,10 @@ def active_band_alm_recovery_3d(
                             parallel=True,
                         )
                     )
-        # Oversized clusters handled by the sequential path.
-        bboxes = large
+        # All boxes were solved in the parallel batches above.
+        bboxes = []
 
     for cz0, cz1, cy0, cy1, cx0, cx1 in bboxes:
-        # Fraction of each axis the cluster spans (for global fallback).
-        frac = max(
-            (cz1 - cz0 + 1) / max(1, Dc),
-            (cy1 - cy0 + 1) / max(1, Hc),
-            (cx1 - cx0 + 1) / max(1, Wc),
-        )
         for widen in range(max_widen + 1):
             p = pad + widen * pad
             z0 = max(0, cz0 - p)
@@ -784,9 +832,6 @@ def active_band_alm_recovery_3d(
             y1 = min(H - 1, cy1 + 1 + p)
             x0 = max(0, cx0 - p)
             x1 = min(W - 1, cx1 + 1 + p)
-            if frac > max_band_fraction:
-                # Cluster too big to benefit from cropping — solve global.
-                z0, z1, y0, y1, x0, x1 = 0, D - 1, 0, H - 1, 0, W - 1
             if z1 - z0 < 2 or y1 - y0 < 2 or x1 - x0 < 2:
                 break
             crop = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].copy()
@@ -798,7 +843,9 @@ def active_band_alm_recovery_3d(
                     print(f'  active-band cluster solve failed: {exc}', flush=True)
                 break
             trial = cur.copy()
-            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
+            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
+                crop, crop_out
+            )
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
                 print(
@@ -817,8 +864,6 @@ def active_band_alm_recovery_3d(
                     )
                 )
                 break
-            if frac > max_band_fraction:
-                break  # global solve already tried; don't widen further
     min_f = six_tet_min_volume_3d(cur)
     n_neg_after = int((min_f <= 0).sum())
     info = {

@@ -193,11 +193,11 @@ def correct_dvf_3d(
     frac = n_fold / max(1, n_cubes)
     route = bulk
     if route == 'auto':
-        # Active-band self-routes per cluster (it falls back to a global
-        # solve only for a cluster that spans > max_band_fraction of the
-        # chunk), so it is the right default for any localized fold set —
-        # crops are small relative to the full extent. Use a plain global
-        # solve only when folds saturate the chunk. Multi-scale is NOT
+        # Active-band self-routes per cluster (oversized clusters are tiled
+        # into bounded sub-boxes rather than solved globally), so it is the
+        # right default for any localized fold set — crops are small
+        # relative to the full extent. Use a plain global solve only when
+        # folds saturate the chunk. Multi-scale is NOT
         # auto-selected (hard to predict when it helps); it is an explicit
         # route + the escape-stall fallback below, invoked only when the
         # cheap path actually plateaus.
