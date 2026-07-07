@@ -98,6 +98,11 @@ class DVFoptConfig:
     objective: str = 'l2'  # 'l2', 'l1', 'none'
     eps_l1: float = 1e-4
 
+    # SLP accuracy mode. 'fast' (default) runs SLP directly; 'max' prepends
+    # the whole-slice GPU untangler as a low-L1 seed. Only affects the 'slp'
+    # solver path (ignored for other strategies); requires PyTorch.
+    accuracy: str = 'fast'  # 'fast' | 'max'
+
     # ---- output ----
     verbose: int = 1
     debug: bool = False
@@ -470,10 +475,16 @@ class DVFopt:
             strategy_label = auto_strategy(
                 constraint, init_n_neg, init_min, objective_label=c.objective
             )
-            strategy = make_strategy(strategy_label, **c.strategy_kwargs)
+            kw = dict(c.strategy_kwargs)
+            if strategy_label == 'slp' and c.accuracy != 'fast':
+                kw['accuracy'] = c.accuracy
+            strategy = make_strategy(strategy_label, **kw)
         else:
             strategy_label = c.solver
-            strategy = make_strategy(strategy_label, **c.strategy_kwargs)
+            kw = dict(c.strategy_kwargs)
+            if strategy_label == 'slp' and c.accuracy != 'fast':
+                kw['accuracy'] = c.accuracy
+            strategy = make_strategy(strategy_label, **kw)
         objective = make_objective(c.objective, eps_l1=c.eps_l1)
 
         # Snapshot init if requested.

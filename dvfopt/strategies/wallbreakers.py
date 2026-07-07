@@ -1066,10 +1066,11 @@ class ActiveBandALM3DStrategy(Strategy):
 
     Measured ~70x vs global M10Tet on a scattered-fold field (273 s →
     3.9 s, identical n_neg=0). On a pathological dense band where folds
-    form one large cluster spanning the region there is no locality to
-    exploit, so it degenerates to ~global (a no-op, not a loss — it
-    rejects regressing crop solves); that band still needs the full
-    multi-scale/iterated pipeline.
+    form one large cluster spanning the region, the cluster is TILED into
+    bounded sub-boxes (``max_box``) and each tile solved locally — it never
+    falls back to a full-field solve (that path caused a SuperLU OOM on
+    large volumes); that band still needs the full multi-scale/iterated
+    pipeline for best quality.
 
     Delegates to
     :func:`dvfopt.core.wallbreakers._coupled_kring_3d.active_band_alm_recovery_3d`.
@@ -1083,8 +1084,9 @@ class ActiveBandALM3DStrategy(Strategy):
     max_widen : int, default 1
         Pad-widen retries if a crop paste regresses the global count.
     max_band_fraction : float, default 0.7
-        Clusters spanning more than this fraction of an axis fall back to
-        a global solve (no locality to exploit).
+        Deprecated no-op (kept for backward compatibility). Oversized
+        clusters are now tiled into bounded sub-boxes instead of falling
+        back to a global solve.
     n_workers : int | None, default 1
         Process-pool workers for non-overlapping cluster crops. ``1`` =
         sequential. Parallelism only pays off with many large clusters

@@ -54,6 +54,13 @@ class SLPStrategy(Strategy):
     cluster_pixel_threshold : int, default 5000
         Slices with ``H*W`` above this take the cluster path; smaller
         slices use the global LP (cheap enough un-decomposed).
+    accuracy : {'fast', 'max'}, default 'fast'
+        ``'fast'`` runs the SLP path directly on the input (the shipped
+        behaviour). ``'max'`` first runs the whole-slice GPU PHR-ALM
+        untangler (:func:`dvfopt.core.slp._gpu_untangle.gpu_untangle_alm_2d`)
+        to reach a low-L1, mostly-untangled basin, then feeds that field
+        into the SLP solver — reaching strict feasibility at ~2x lower L1
+        on dense slices. Requires PyTorch.
     """
 
     n_workers: int = 16
@@ -62,9 +69,16 @@ class SLPStrategy(Strategy):
     cluster_seed: str = 'm14_fast'
     global_seed: str = 'm14'
     cluster_pixel_threshold: int = 5000
+    accuracy: str = 'fast'
 
     supports_3d: bool = False
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+
+    def __post_init__(self):
+        if self.accuracy not in ('fast', 'max'):
+            raise ValueError(
+                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
+            )
 
     def solve(
         self,
@@ -86,16 +100,41 @@ class SLPStrategy(Strategy):
         # area lower bound.
         phi = np.asarray(phi_in, dtype=np.float64)
         H, W = phi.shape[1:]
+
+        # accuracy='max': untangle the whole slice on the GPU first to reach
+        # a low-L1, mostly-untangled basin, then run SLP from it. Keep the
+        # RAW input `phi` intact as the L1 anchor — the untangled field is
+        # only the SLP *starting point*, never the objective anchor.
+        gpu_seed = None
+        if self.accuracy == 'max':
+            try:
+                from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
+            except Exception as exc:
+                raise ImportError(
+                    "accuracy='max' requires PyTorch (pip install torch)."
+                ) from exc
+            gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold)
+
         if self.cluster_pixel_threshold >= H * W:
+            # Global path: anchor L1 to the raw input `phi`; when max, start
+            # the SLP from the untangled field via seed= (an array seed;
+            # _build_seed accepts it) instead of recomputing an m14 seed.
             phi_out, info = slp_iter(
                 phi,
                 threshold=threshold,
-                seed=self.global_seed,
+                seed=(gpu_seed if gpu_seed is not None else self.global_seed),
             )
             info = {**info, 'slp_dispatch': 'global'}
         else:
+            # Cluster path: when max, run cluster_slp_iter ON the untangled
+            # field so fold-clustering operates on the near-feasible field
+            # (few residual clusters) rather than the raw input's dense fold
+            # mass. cluster_slp_iter uses its first arg as both the L1 anchor
+            # and the cluster-detection field, so in this path the anchor is
+            # the untangled field by construction — validated to reach ~2x
+            # lower L1 vs the raw input than the 'fast' path on dense slices.
             phi_out, info = cluster_slp_iter(
-                phi,
+                gpu_seed if gpu_seed is not None else phi,
                 threshold=threshold,
                 max_outer_iters=self.max_outer_iters,
                 n_workers=self.n_workers,
@@ -103,6 +142,9 @@ class SLPStrategy(Strategy):
                 inner_seed=self.cluster_seed,
             )
             info = {**info, 'slp_dispatch': 'cluster'}
+        info = {**info, 'accuracy': self.accuracy}
+        if self.accuracy == 'max':
+            info['slp_seed'] = 'gpu'
         return phi_out, _build_solve_info('SLPStrategy', info, threshold)
 
 
