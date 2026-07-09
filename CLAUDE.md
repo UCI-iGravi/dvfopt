@@ -109,6 +109,32 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 | `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.tri_primitives` | Canonical 2-tri constraint + adjoint |
 | `anchor_term()` / `run_penalty_barrier_lbfgs()` | `dvfopt.core._barrier_core` | Shared anchor + penalty→barrier homotopy |
 
+### 2.5D marching (3D fold *prevention*)
+
+`correct_dvf_25d()` ([dvfopt/pipeline_25d.py](dvfopt/pipeline_25d.py)) prevents
+inter-layer 6-tet folds instead of repairing them. **Precondition: `dz ≡ 0`**
+(i.e. the input is per-slice 2D-corrected) — the inter-layer 6-tet volume then
+depends only on adjacent slices' `dy/dx`. The pipeline validates this and raises
+if `dz ≠ 0`; it never writes `phi[0]`.
+
+It auto-picks the mildest inter-layer as a frozen seed (no layer is cold-started
+against raw data), sweeps outward in both directions repairing each slice against
+its already-repaired neighbour (`march_slice`, elastic LP over the free plane's
+interior with a frozen ring), then runs a frozen-rim 3D-interior mop
+(`mop_interior_3d`) for folds that need *both* slices of a pair to move — which
+the single-frozen-plane sweep structurally cannot fix.
+
+On the full 528-slice B0039 volume this took the 3D fold count from **1,058,831 →
+33** (99.997%). The residual ~33 are the **geometric floor** of the fixed-diagonal
+6-tet decomposition (no feasible tet split exists), not a solver limitation — an
+exact-feasibility solver with escalating freedom cannot move them.
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `correct_dvf_25d()` / `Correct25DReport` | `dvfopt.pipeline_25d` | End-to-end 2.5D marching orchestrator |
+| `march_slice()` / `layer_min_v()` | `dvfopt.core.marching` | Per-slice sweep repair + inter-layer min-volume |
+| `mop_interior_3d()` | `dvfopt.core.marching` | Frozen-rim 3D-interior elastic-SLP residual mop |
+
 **Other primitives:**
 
 | Function | Module | Purpose |
