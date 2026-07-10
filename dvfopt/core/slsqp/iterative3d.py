@@ -83,6 +83,16 @@ def iterative_3d(
     phi : ndarray, shape ``(3, D, H, W)``
         Corrected displacement field ``[dz, dy, dx]``.
     """
+    # NaN-aware entry guard: the outer-loop gate `(jdet <= thr).any()`
+    # is NaN-blind while `np.argmin` is NaN-attracted, so a single NaN
+    # voxel would livelock the solver on max_iterations failed SLSQP
+    # calls targeting the NaN window while real folds go untouched.
+    if not np.isfinite(deformation).all():
+        raise ValueError(
+            'phi contains non-finite values (NaN/Inf); '
+            'iterative_3d requires a finite field.'
+        )
+
     p = _resolve_params(
         threshold=threshold,
         err_tol=err_tol,

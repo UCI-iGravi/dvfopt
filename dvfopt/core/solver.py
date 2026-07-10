@@ -87,6 +87,7 @@ def _serial_fix_pixel(
     deformation_i=None,
     min_window=(3, 3),
     labeled=None,
+    quality_matrix=None,
 ):
     """Fix a single pixel using the serial adaptive-window inner loop.
 
@@ -96,22 +97,32 @@ def _serial_fix_pixel(
 
     Mutates *phi* and the accumulator lists in-place.
 
+    Parameters
+    ----------
+    quality_matrix : ndarray or None
+        The caller's current quality map (must be consistent with *phi*
+        and *jacobian_matrix*).  When ``None`` it is (re)computed here —
+        a full-grid ``_quality_map`` pass when any ``enforce_*`` flag is
+        set.  Callers that already track the quality map should pass it
+        to avoid that recomputation.
+
     Returns
     -------
     jacobian_matrix, quality_matrix, submatrix_size, per_index_iter, (cy, cx)
     """
     _use_quality = enforce_shoelace or enforce_injectivity or enforce_triangles
-    quality_matrix = (
-        _quality_map(
-            phi,
-            enforce_shoelace,
-            enforce_injectivity,
-            enforce_triangles=enforce_triangles,
-            jacobian_matrix=jacobian_matrix,
+    if quality_matrix is None:
+        quality_matrix = (
+            _quality_map(
+                phi,
+                enforce_shoelace,
+                enforce_injectivity,
+                enforce_triangles=enforce_triangles,
+                jacobian_matrix=jacobian_matrix,
+            )
+            if _use_quality
+            else jacobian_matrix
         )
-        if _use_quality
-        else jacobian_matrix
-    )
 
     # Adaptive starting size from negative-Jdet bounding box
     submatrix_size, bbox_center = neg_jdet_bounding_window(
@@ -231,6 +242,20 @@ def _serial_fix_pixel(
                 f"  [warn] SLSQP did not converge at win {sy}x{sx} (sub-iter {per_index_iter})",
             )
 
+        # Compare-and-rollback guard: snapshot the write region and the
+        # local metric patch region (window + 1px border — exactly what
+        # _patch_jacobian_2d / _patch_quality_2d rewrite) so a
+        # failed/worse SLSQP result is rejected instead of applied
+        # unconditionally.
+        _wy0, _wy1 = max(cy - hy - 1, 0), min(cy + hy_hi + 1, _H)
+        _wx0, _wx1 = max(cx - hx - 1, 0), min(cx + hx_hi + 1, _W)
+        _phi_snap = phi[:, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi].copy()
+        _jac_snap = jacobian_matrix[:, _wy0:_wy1, _wx0:_wx1].copy()
+        _qual_snap = quality_matrix[:, _wy0:_wy1, _wx0:_wx1].copy() if _use_quality else None
+        _old_loc = quality_matrix[0, _wy0:_wy1, _wx0:_wx1]
+        _old_n = int((_old_loc <= threshold - err_tol).sum())
+        _old_min = float(_old_loc.min())
+
         _apply_result(
             phi, result_x, cy, cx, opt_size, write_size=submatrix_size if is_padded else None
         )
@@ -247,7 +272,31 @@ def _serial_fix_pixel(
             patch_center=(cy, cx),
             patch_size=submatrix_size,
             enforce_triangles=enforce_triangles,
+            quality_matrix=quality_matrix if _use_quality else None,
         )
+
+        # Roll back if the sub-solve made the window locally *strictly*
+        # worse ((n_neg_local, -min_local) lexicographic).
+        _new_loc = quality_matrix[0, _wy0:_wy1, _wx0:_wx1]
+        _new_n = int((_new_loc <= threshold - err_tol).sum())
+        _new_min = float(_new_loc.min())
+        if _new_n > _old_n or (_new_n == _old_n and _new_min < _old_min):
+            phi[:, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi] = _phi_snap
+            jacobian_matrix[:, _wy0:_wy1, _wx0:_wx1] = _jac_snap
+            if _use_quality:
+                quality_matrix[:, _wy0:_wy1, _wx0:_wx1] = _qual_snap
+            _cur_neg = int((jacobian_matrix <= 0).sum())
+            _cur_min = float(jacobian_matrix.min())
+            num_neg_jac[-1] = _cur_neg
+            min_jdet_list[-1] = _cur_min
+            if error_list:
+                error_list[-1] = float(np.sqrt(np.sum((phi - phi_init) ** 2)))
+            _log(
+                verbose,
+                1,
+                f"  [rollback] sub-solve left window locally worse "
+                f"(neg {_old_n}->{_new_n}, min {_old_min:+.4f}->{_new_min:+.4f}) — reverted",
+            )
 
         _log(
             verbose,

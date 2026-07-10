@@ -16,8 +16,16 @@ Public entry: ``iterative_3d_barrier_torch(deformation, ...)``.
 import time
 
 import numpy as np
-import torch
 from scipy.ndimage import label
+
+# Torch is an optional dependency (in the ``[benchmarks]`` extra). Fall
+# back to ``torch = None`` so the module stays importable on a torch-less
+# install; the public entry raises a friendly ImportError at call time
+# (same pattern as iterative2d_barrier.py).
+try:
+    import torch
+except ImportError:
+    torch = None
 
 from dvfopt._defaults import _log, _resolve_params
 from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
@@ -226,6 +234,13 @@ def _optimize_batch_3d_torch(
     if bool(feasible_k.any().item()):
         active_bar = active_cell & feasible_k.view(K, 1, 1, 1)
         active_bar_f = active_bar.to(dtype=dtype)
+        # Mask the shared data term to FEASIBLE patches only. Infeasible
+        # patches are excluded from the barrier term (active_bar), so an
+        # unmasked data term would drag their free DOFs back toward init,
+        # undoing the penalty phase's progress. With both terms masked
+        # their gradient entries are identically zero, so LBFGS leaves
+        # them frozen at their best penalty-phase state.
+        feas_patch_f = feasible_k.view(K, 1, 1, 1, 1).to(dtype=dtype)
         prev_l2 = None
         for mu in mu_schedule:
 
@@ -234,7 +249,7 @@ def _optimize_batch_3d_torch(
                     phi_var.grad.zero_()
                 phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
                 diff = phi_eff - phi_batch_init
-                data = 0.5 * (diff * diff).sum()
+                data = 0.5 * (diff * diff * feas_patch_f).sum()
                 j = _jdet_3d_torch_batched(phi_eff)
                 slack = j - threshold_f
                 safe_slack = torch.where(active_bar, slack, torch.ones_like(slack))
@@ -461,7 +476,7 @@ def iterative_3d_barrier_torch(
     pad=2,
     active_set_radius=10,
     device=None,
-    dtype=torch.float32,
+    dtype=None,  # resolved to torch.float32 inside (torch.X can't be a default — torch may be None at import)
 ):
     """Penalty -> log-barrier 3D corrector on GPU/CPU via torch autograd.
 
@@ -503,6 +518,13 @@ def iterative_3d_barrier_torch(
     -------
     phi : ndarray, shape ``(3, D, H, W)`` on host.
     """
+    if torch is None:
+        raise ImportError(
+            "iterative_3d_barrier_torch requires torch (optional dependency). "
+            "Install with: pip install -e '.[benchmarks]'"
+        )
+    if dtype is None:
+        dtype = torch.float32
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)

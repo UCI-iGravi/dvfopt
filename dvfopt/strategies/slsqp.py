@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -70,6 +71,20 @@ class SLSQPWindowedStrategy(Strategy):
     Finds the worst-Jdet voxel/pixel, builds a bbox + 1-cell ring,
     solves the local SLSQP subproblem with frozen edges, repeats. Also
     supports the 2-triangle constraint via ``enforce_triangles=True``.
+
+    .. note::
+        **Objective contract.** The delegated windowed solvers
+        (``iterative_serial`` / ``iterative_3d``) hard-code an **L2**
+        anchor objective (``objective_euc``); the composed
+        :class:`~dvfopt.objectives.Objective` is **not** plumbed
+        through. Composing anything other than
+        :class:`~dvfopt.objectives.L2Objective` /
+        :class:`~dvfopt.objectives.NoneObjective` with this strategy
+        emits a :class:`UserWarning` and the composed objective is
+        ignored. Use :class:`SLSQPFullGridStrategy`,
+        :class:`~dvfopt.strategies.SLPStrategy`, or
+        :class:`~dvfopt.strategies.BarrierStrategy` if you need an L1
+        anchor.
     """
 
     max_iterations: int = 80
@@ -80,6 +95,14 @@ class SLSQPWindowedStrategy(Strategy):
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
     ):
+        _label = getattr(objective, 'label', None) if objective is not None else None
+        if objective is not None and _label not in ('l2', 'none'):
+            warnings.warn(
+                'SLSQPWindowedStrategy optimises an L2 objective; the composed '
+                f"'{_label or type(objective).__name__}' objective is ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
         if isinstance(constraint, JdetConstraint2D):
             from dvfopt.core import iterative_serial
 

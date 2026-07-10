@@ -112,6 +112,16 @@ def iterative_serial(
     phi : ndarray, shape ``(2, H, W)``
         Corrected displacement field ``[dy, dx]``.
     """
+    # NaN-aware entry guard: the outer-loop gate `(quality <= thr).any()`
+    # is NaN-blind while `np.argmin` is NaN-attracted, so a single NaN
+    # pixel would livelock the solver on max_iterations failed SLSQP
+    # calls targeting the NaN window while real folds go untouched.
+    if not np.isfinite(deformation_i).all():
+        raise ValueError(
+            'phi contains non-finite values (NaN/Inf); '
+            'iterative_serial requires a finite field.'
+        )
+
     p = _resolve_params(
         threshold=threshold,
         err_tol=err_tol,
@@ -271,6 +281,7 @@ def iterative_serial(
                 deformation_i=deformation_i,
                 min_window=global_min_window,
                 labeled=_labeled_neg,
+                quality_matrix=quality_matrix,
             )
         )
         if debug is not None:
@@ -342,8 +353,9 @@ def iterative_serial(
                 jacobian_before=_snap_before,
             )
 
-        # One-line progress per outer iteration (threshold-consistent with stall detection)
-        cur_neg = int((quality_matrix[0] <= threshold - err_tol).sum())
+        # One-line progress per outer iteration (threshold-consistent with
+        # stall detection). `cur_neg` was computed above and nothing between
+        # touches phi/quality — reuse it rather than recomputing.
         cur_min = float(jacobian_matrix.min())
         cur_err = error_list[-1] if error_list else 0.0
         _sy, _sx = _unpack_size(submatrix_size)
