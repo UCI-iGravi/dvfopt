@@ -2112,6 +2112,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z = z
         self._z_label.setText(f'{z} / {D - 1}')
         self._section_bounds = None
+        self._section_bounds_3d = None
         remaining = len(self._run_all_remaining)
         self.statusBar().showMessage(f'Run all z: solving slice {z} ({D - remaining}/{D})…', 0)
         # Solve from the pristine input for this slice.
