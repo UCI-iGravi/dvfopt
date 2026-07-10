@@ -61,11 +61,13 @@ class TestAutoStrategy:
     """
 
     def test_2tri_uses_smaller_severe_threshold(self):
+        # Legacy tiering now applies only to non-l1 objectives (l1 routes
+        # straight to the SLP champion, see TestAutoStrategySLPRouting).
         c = TriConstraint2D((12, 12))
         # init_min between -0.25 and -1.0 is severe for 2tri.
-        assert auto_strategy(c, init_n_neg=5, init_min=-0.5) == "barrier"
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l2') == "barrier"
         # init_min above -0.25 with few folds is mild.
-        assert auto_strategy(c, init_n_neg=5, init_min=-0.1) == "slsqp"
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.1, objective_label='l2') == "slsqp"
 
     def test_jdet_uses_minus_one_threshold(self):
         c = JdetConstraint2D((12, 12))
@@ -75,17 +77,19 @@ class TestAutoStrategy:
 
     def test_count_overrides_min(self):
         c = TriConstraint2D((12, 12))
-        # n_neg > 100 routes to barrier for 2tri regardless of min_T.
-        assert auto_strategy(c, init_n_neg=600, init_min=-0.01) == "barrier"
+        # n_neg > 100 routes to barrier for 2tri (non-l1) regardless of min_T.
+        assert auto_strategy(c, init_n_neg=600, init_min=-0.01, objective_label='l2') == "barrier"
 
     def test_extreme_picks_wallbreaker(self):
+        # Wallbreaker routing in the extreme tier now applies to non-l1,
+        # non-l2 objectives (l1 routes to 'slp'; l2 to 'm10' below).
         c_small = TriConstraint2D((20, 20))
         # Smaller slice (<20K corners) still picks m14 instead of m14_schwarz.
-        assert auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='l1') == "m14"
+        assert auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='none') == "m14"
         # Large slice (>20K corners) routes to m14_schwarz.
         c_big = TriConstraint2D((320, 456))
         assert (
-            auto_strategy(c_big, init_n_neg=6000, init_min=-15, objective_label='l1')
+            auto_strategy(c_big, init_n_neg=6000, init_min=-15, objective_label='none')
             == "m14_schwarz"
         )
         # L2 objective routes to m10 (L2-optimal in ALM phase).
@@ -115,6 +119,57 @@ class TestAutoStrategy:
         # solver_used should reflect the class name when an instance was
         # passed (rather than a string label).
         assert res.slice_results[0].solver_used == "BarrierStrategy"
+
+
+class TestAutoStrategySLPRouting:
+    """2-tri + L1 auto-routes to the SLP champion at EVERY fold tier.
+
+    SLPStrategy handles small/large slices internally
+    (``cluster_pixel_threshold``) and reaches strict feasibility on every
+    benchmarked slice, Pareto-dominating m14/m10 in the L1 regime — so the
+    fold-density tiering only applies to non-l1 objectives.
+    """
+
+    # (n_neg, min_T) representative of each legacy tier: mild, moderate,
+    # extreme-by-count, extreme-by-depth.
+    TIERS = [(5, -0.1), (5, -0.5), (600, -0.01), (6000, -15.0)]
+
+    @pytest.mark.parametrize('n_neg,init_min', TIERS)
+    def test_2tri_l1_routes_to_slp_every_tier(self, n_neg, init_min):
+        for c in (TriConstraint2D((20, 20)), TriConstraint2D((320, 456))):
+            assert (
+                auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l1')
+                == 'slp'
+            )
+
+    def test_2tri_l1_default_label_routes_to_slp(self):
+        """objective_label defaults to 'l1' → 'slp'."""
+        c = TriConstraint2D((12, 12))
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.1) == 'slp'
+
+    def test_2tri_fullcoverage_l1_routes_to_slp(self):
+        from dvfopt.constraints import TriConstraint2DFullCoverage
+
+        c = TriConstraint2DFullCoverage((20, 20))
+        assert auto_strategy(c, init_n_neg=600, init_min=-0.5, objective_label='l1') == 'slp'
+
+    @pytest.mark.parametrize(
+        'n_neg,init_min,expected',
+        [(5, -0.1, 'slsqp'), (5, -0.5, 'barrier'), (600, -0.01, 'barrier'), (6000, -15.0, 'm10')],
+    )
+    def test_2tri_l2_keeps_legacy_routing(self, n_neg, init_min, expected):
+        c = TriConstraint2D((20, 20))
+        assert (
+            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l2')
+            == expected
+        )
+
+    def test_jdet_l1_never_routes_to_slp(self):
+        """SLP is 2-tri-only; the Jdet family keeps its legacy routing
+        even for l1."""
+        c = JdetConstraint2D((12, 12))
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l1') == 'slsqp_windowed'
+        assert auto_strategy(c, init_n_neg=5000, init_min=-1.5, objective_label='l1') == 'barrier'
 
 
 class TestConfigValidation:
@@ -196,20 +251,58 @@ class TestAccuracyPlumbing:
             DVFopt(cfg).fit(phi)
 
     def test_auto_solver_max_accuracy_warns_when_not_slp(self):
-        """accuracy='max' with solver='auto' was a silent no-op:
-        ``auto_strategy`` never resolves to 'slp', so the documented
-        accuracy path did nothing. Now it warns and names the label
-        auto actually selected."""
+        """accuracy='max' with solver='auto' warns when auto resolves to a
+        non-SLP label. With 2tri + the facade's default objective='l2',
+        auto keeps the legacy (non-slp) routing, so accuracy would
+        silently do nothing — the facade warns and names the label auto
+        actually selected. (2tri + objective='l1' auto-resolves to 'slp'
+        and must NOT warn — see the companion test below.)"""
         phi = _planted_fold_2d()
         cfg = DVFoptConfig(
             solver='auto',
             accuracy='max',
             constraint='2tri',
+            objective='l2',
             verbose=0,
             record_history=False,
         )
         with pytest.warns(UserWarning, match="applies only to.*solver='slp'"):
             DVFopt(cfg).fit(phi)
+
+    def test_auto_solver_l1_max_accuracy_injects_into_slp(self, monkeypatch, recwarn):
+        """2tri + objective='l1' + solver='auto' resolves to 'slp', so
+        accuracy='max' is forwarded into SLPStrategy instead of warning.
+
+        The make_strategy spy downgrades the actual construction to
+        accuracy='fast' so the test never needs torch/GPU — the assertion
+        is about the label and kwargs the facade *requested*."""
+        import dvfopt.unified as unified_mod
+
+        captured = {}
+        real_make = unified_mod.make_strategy
+
+        def spy(label, **kw):
+            captured['label'] = label
+            captured['kwargs'] = dict(kw)
+            if label == 'slp':
+                kw = {**kw, 'accuracy': 'fast'}
+            return real_make(label, **kw)
+
+        monkeypatch.setattr(unified_mod, 'make_strategy', spy)
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver='auto',
+            accuracy='max',
+            constraint='2tri',
+            objective='l1',
+            verbose=0,
+            record_history=False,
+        )
+        DVFopt(cfg).fit(phi)
+        assert captured['label'] == 'slp'
+        assert captured['kwargs']['accuracy'] == 'max'
+        # No "applies only to solver='slp'" warning in the auto+l1 path.
+        assert not [w for w in recwarn.list if 'applies only' in str(w.message)]
 
     def test_auto_solver_fast_accuracy_no_warning(self, recwarn):
         """The default accuracy='fast' with solver='auto' stays silent."""

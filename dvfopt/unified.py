@@ -522,8 +522,10 @@ class DVFopt:
                     # the config-level shorthand.
                     kw.setdefault('accuracy', c.accuracy)
                 else:
-                    # auto_strategy currently never resolves to 'slp', so
-                    # accuracy would silently do nothing — say so.
+                    # auto resolved to a non-SLP label (l2/none objectives,
+                    # Jdet constraints), where accuracy would silently do
+                    # nothing — say so. (2-tri + l1 auto-resolves to 'slp'
+                    # and takes the branch above.)
                     import warnings
 
                     warnings.warn(

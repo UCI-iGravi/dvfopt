@@ -416,8 +416,9 @@ def correct_dvf(
                           strategy=strategy, shape=shape,
                           threshold=threshold).fit(phi_in)
 
-    With ``strategy='auto'``, picks a strategy based on the initial
-    fold density (see :func:`auto_strategy`).
+    With ``strategy='auto'``, picks a strategy based on the constraint
+    family, objective, and initial fold density (see
+    :func:`auto_strategy`; 2-tri + L1 always routes to ``'slp'``).
 
     .. note::
         The default objective here is ``'l1'``, while
@@ -454,23 +455,36 @@ def auto_strategy(
 ) -> str:
     """Pick a strategy label given initial fold stats and constraint family.
 
-    Tiered for the 2-triangle constraint:
+    For the 2-triangle constraint:
 
-    * **Extreme** (``n_neg > 5000`` or ``init_min < -10``) — wallbreakers.
-      ``m10`` for L2 (its ALM phase is L2-optimal); ``m14_schwarz`` for L1
-      on large slices (>20K corners); ``m14`` for L1 on smaller.
-    * **Moderate-to-dense** (``n_neg > 100`` or ``init_min < -0.25``) —
-      ``barrier`` (dominates SLSQP by 100x at this density).
-    * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
-      certs).
+    * **L1 objective** — ``slp`` at every fold tier. The SLP champion
+      (per-cluster trust-region SLP + m14 seed + HiGHS L1 step) reaches
+      strict feasibility on every benchmarked slice and Pareto-dominates
+      the m14/m10 wallbreakers on wall time at equal-or-better L1; it
+      auto-routes small vs large slices internally via
+      ``cluster_pixel_threshold``, so no fold-density tiering is needed.
+    * **Other objectives (l2, none, …)** — legacy tiering:
 
-    For the Jdet family (no wallbreakers): barrier above
+      * **Extreme** (``n_neg > 5000`` or ``init_min < -10``) —
+        wallbreakers. ``m10`` for L2 (its ALM phase is L2-optimal);
+        ``m14_schwarz`` on large slices (>20K corners); ``m14`` on
+        smaller.
+      * **Moderate-to-dense** (``n_neg > 100`` or ``init_min < -0.25``)
+        — ``barrier`` (dominates SLSQP by 100x at this density).
+      * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
+        certs).
+
+    For the Jdet family (no wallbreakers, no SLP): barrier above
     ``n_neg > 500`` or ``init_min < -1``, slsqp below.
     """
     from dvfopt.constraints import Tet6Constraint3D
 
     is_tri = isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage))
     if is_tri:
+        if objective_label == 'l1':
+            # The SLP champion is the validated L1 regime at every fold
+            # tier; it handles small/large routing itself.
+            return 'slp'
         if init_n_neg > 5000 or init_min < -10.0:
             if objective_label == 'l2':
                 return 'm10'
