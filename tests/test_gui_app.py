@@ -846,5 +846,40 @@ def test_rejected_load_shows_no_success_message(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(QtWidgets.QMessageBox, 'critical', staticmethod(lambda *a, **k: None))
     win._on_load()
+    # Load now runs on a QThread; the result is delivered asynchronously
+    # via a queued signal, so wait for the worker then pump the event loop.
+    win._load_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
     assert win._volume is None  # rejected: nothing loaded
     assert 'Loaded' not in win.statusBar().currentMessage()
+
+
+def test_export_writes_npy(qapp, tmp_path, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 2, 5, 5)))
+    out = tmp_path / 'corr.npy'
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        'getSaveFileName',
+        staticmethod(lambda *a, **k: (str(out), 'NumPy array (*.npy)')),
+    )
+    win._on_export()
+    assert out.exists() and np.load(out).shape == (3, 2, 5, 5)
+
+
+def test_load_worker_path_used_by_on_load(qapp, tmp_path, monkeypatch):
+    # _on_load must go through LoadWorker (GUI thread does no np.load).
+    npy = tmp_path / 'f.npy'
+    np.save(npy, np.zeros((3, 1, 6, 6)))
+    win = LiveSolverWindow()
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        'getOpenFileName',
+        staticmethod(lambda *a, **k: (str(npy), '')),
+    )
+    win._on_load()
+    win._load_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+    assert win._volume is not None and win._volume.shape == (3, 1, 6, 6)
+    assert win._load_btn.isEnabled()

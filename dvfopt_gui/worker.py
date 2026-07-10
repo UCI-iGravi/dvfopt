@@ -323,6 +323,43 @@ class ReplayHistory:
         return False
 
 
+class LoadWorker(QtCore.QThread):
+    """Load a DVF file off the GUI thread.
+
+    Dispatches by extension: ``.npy``/``.npz`` through
+    :func:`dvfopt_gui.persistence.parse_loaded` (full saved-run support),
+    SimpleITK formats through :func:`dvfopt_gui.io_formats.load_dvf_sitk`.
+    Emits ``loadedRun`` with a ``LoadedRun`` on success, else ``failed``
+    with a message. GB-scale ``np.load`` + float64 conversion no longer
+    freeze the window.
+    """
+
+    loadedRun = QtCore.pyqtSignal(object)
+    failed = QtCore.pyqtSignal(str)
+
+    def __init__(self, path: str, parent=None):
+        super().__init__(parent)
+        self._path = str(path)
+
+    def run(self):
+        try:
+            from dvfopt_gui.io_formats import is_sitk_path, load_dvf_sitk
+            from dvfopt_gui.persistence import LoadedRun, parse_loaded
+
+            if is_sitk_path(self._path):
+                run = LoadedRun(volume=load_dvf_sitk(self._path))
+            else:
+                loaded = np.load(self._path, allow_pickle=False)
+                try:
+                    run = parse_loaded(loaded)
+                finally:
+                    if isinstance(loaded, np.lib.npyio.NpzFile):
+                        loaded.close()
+            self.loadedRun.emit(run)
+        except Exception as exc:
+            self.failed.emit(f'{type(exc).__name__}: {exc}')
+
+
 class SolverWorker(QtCore.QThread):
     """Run the solver in a worker thread.
 

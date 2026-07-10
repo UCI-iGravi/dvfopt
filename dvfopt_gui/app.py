@@ -37,11 +37,11 @@ from dvfopt_gui.persistence import (
     LoadedRun,
     build_save_payload,
     normalise_to_volume,
-    parse_loaded,
 )
 from dvfopt_gui.worker import (
     DEFAULT_HISTORY_MAX,
     FEASIBILITY_THRESHOLD,
+    LoadWorker,
     ReplayHistory,
     SolverWorker,
     StateSnapshot,
@@ -538,11 +538,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         bar = QtWidgets.QHBoxLayout()
         outer.addLayout(bar)
 
-        load_btn = QtWidgets.QPushButton('Load DVF…')
-        load_btn.setShortcut('Ctrl+O')
-        load_btn.setToolTip('Load a .npy DVF or a saved .npz run (Ctrl+O).')
-        load_btn.clicked.connect(self._on_load)
-        bar.addWidget(load_btn)
+        self._load_btn = QtWidgets.QPushButton('Load DVF…')
+        self._load_btn.setShortcut('Ctrl+O')
+        self._load_btn.setToolTip('Load a .npy DVF or a saved .npz run (Ctrl+O).')
+        self._load_btn.clicked.connect(self._on_load)
+        bar.addWidget(self._load_btn)
 
         self._save_btn = QtWidgets.QPushButton('Save…')
         self._save_btn.setShortcut('Ctrl+S')
@@ -1011,6 +1011,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         file_menu = menubar.addMenu('&File')
         file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
         file_menu.addAction('Save…\tCtrl+S', self._on_save)
+        file_menu.addAction('Export corrected DVF…', self._on_export)
         file_menu.addAction('Revert', self._on_revert)
         file_menu.addSeparator()
         # Quit owns its own shortcut (no toolbar button competes for it).
@@ -1078,38 +1079,46 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     # ----- DVF loading -------------------------------------------------------
 
     def _on_load(self):
+        flt = 'DVF files (*.npy *.npz'
+        from dvfopt_gui.io_formats import SITK_EXTENSIONS, sitk_available
+
+        if sitk_available():
+            flt += ' ' + ' '.join(f'*{e}' for e in SITK_EXTENSIONS)
+        flt += ');;NumPy arrays (*.npy);;NumPy compressed (*.npz)'
+        if sitk_available():
+            flt += ';;Medical images (' + ' '.join(f'*{e}' for e in SITK_EXTENSIONS) + ')'
+        flt += ';;All files (*)'
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             'Load DVF (.npy or .npz)',
             self._last_dir,
-            'DVF files (*.npy *.npz);;NumPy arrays (*.npy);;NumPy compressed (*.npz);;All files (*)',
+            flt,
         )
         if not path:
             return
         self._last_dir = str(Path(path).parent)
-        try:
-            loaded = np.load(path, allow_pickle=False)
-            try:
-                # ``parse_loaded`` handles both a bare ``.npy`` DVF and a
-                # full saved run (``phi_full_volume`` + ``history_*`` keys),
-                # reconstructing the per-step snapshots so a saved run can
-                # be re-scrubbed in the history slider.
-                run = parse_loaded(loaded)
-            finally:
-                if isinstance(loaded, np.lib.npyio.NpzFile):
-                    loaded.close()
-        except ValueError as exc:
-            QtWidgets.QMessageBox.critical(self, 'Bad shape', str(exc))
-            return
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, 'Load failed', f'{type(exc).__name__}: {exc}')
-            return
+        # Loading dispatches to a QThread (LoadWorker): GB-scale np.load +
+        # float64 conversion + sitk decode no longer block the GUI thread.
+        self._load_btn.setEnabled(False)
+        self.statusBar().showMessage(f'Loading {Path(path).name}…', 0)
+        self._load_worker = LoadWorker(path, parent=self)
+        self._load_worker.loadedRun.connect(lambda run: self._on_load_finished(path, run))
+        self._load_worker.failed.connect(self._on_load_failed)
+        self._load_worker.start()
+
+    def _on_load_finished(self, path: str, run) -> None:
+        self._load_btn.setEnabled(True)
         if not self._apply_loaded_run(run):
             self.statusBar().clearMessage()
             return
         n_hist = len(run.snapshots)
         suffix = f'  ({n_hist} history step(s))' if n_hist else ''
         self.statusBar().showMessage(f'Loaded {path}{suffix}', 5_000)
+
+    def _on_load_failed(self, msg: str) -> None:
+        self._load_btn.setEnabled(True)
+        self.statusBar().clearMessage()
+        QtWidgets.QMessageBox.critical(self, 'Load failed', msg)
 
     def _on_save(self):
         """Open a save dialog and write the current DVF + run history
@@ -1146,6 +1155,40 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(
             f'Saved {Path(path).name}  ({n_steps} history step(s))', 10_000
         )
+
+    def _on_export(self):
+        """Write just the corrected volume (no run history) as .npy or, when
+        SimpleITK is available, .nii.gz — for interop with the rest of the
+        registration pipeline."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(
+                self, 'Nothing to export', 'Load a DVF first via "Load DVF…".'
+            )
+            return
+        from dvfopt_gui.io_formats import save_dvf_sitk, sitk_available
+
+        filters = 'NumPy array (*.npy)'
+        if sitk_available():
+            filters += ';;NIfTI (*.nii.gz)'
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Export corrected DVF', str(Path(self._last_dir) / 'corrected_dvf.npy'), filters
+        )
+        if not path:
+            return
+        self._last_dir = str(Path(path).parent)
+        try:
+            if 'NIfTI' in chosen or path.lower().endswith(('.nii', '.nii.gz')):
+                if not path.lower().endswith(('.nii', '.nii.gz')):
+                    path += '.nii.gz'
+                save_dvf_sitk(path, self._volume)
+            else:
+                if not path.lower().endswith('.npy'):
+                    path += '.npy'
+                np.save(path, self._volume)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, 'Export failed', f'{type(exc).__name__}: {exc}')
+            return
+        self.statusBar().showMessage(f'Exported {path}', 8_000)
 
     def _on_revert(self):
         """Discard all corrections: restore the originally-loaded volume
