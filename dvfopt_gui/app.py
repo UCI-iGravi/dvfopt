@@ -1978,16 +1978,19 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self, '2.5D needs a volume', '2.5D marching needs a (3, D>1, H, W) volume.'
             )
             return
-        if float(np.abs(self._volume[0]).max()) > 1e-9:
+        max_dz = float(np.abs(self._volume[0]).max())
+        if max_dz > 1e-9:
             ans = QtWidgets.QMessageBox.question(
                 self,
                 'dz is not zero',
-                '2.5D marching requires dz == 0 (per-slice 2D-corrected input).\n'
-                'Run the full pipeline (per-slice 2D, then 2.5D) instead?',
+                '2.5D marching requires dz == 0 (its input is per-slice '
+                f'2D-corrected data). This volume has max |dz| = {max_dz:.3g}.\n\n'
+                'Zero the dz channel and run the full pipeline (per-slice 2D, '
+                'then 2.5D)? The change is one undoable operation.',
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             )
             if ans == QtWidgets.QMessageBox.Yes:
-                self._on_run_pipeline_full()
+                self._on_run_pipeline_full(zero_dz=True)
             return
         self._start_marching_25d()
 
@@ -2000,9 +2003,18 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage('2.5D marching…', 0)
         self._start_worker(self._volume.copy(), method_id='marching25d_tet3d')
 
-    def _on_run_pipeline_full(self):
+    def _on_run_pipeline_full(self, *, zero_dz: bool = False):
         """One-click production workflow: per-slice 2D (selected method) →
-        2.5D marching, as a single undoable operation."""
+        2.5D marching, as a single undoable operation.
+
+        ``zero_dz`` is the explicit-consent path from ``_on_run_25d``'s
+        dz-violation dialog (the user agreed to zero dz so the 2.5D
+        stage's ``dz == 0`` precondition holds). Keyword-only: this slot
+        is wired directly to ``QAction.triggered`` (Pipeline ▾ menu and
+        the Run menu below), which passes a positional ``checked: bool`` —
+        a positional ``zero_dz`` would silently receive that bool instead
+        of its default.
+        """
         if self._volume is None:
             QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
             return
@@ -2020,6 +2032,19 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             # Per-slice stage needs a 2D method; drop back to the 2-tri family.
             self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
         self._push_undo_state()
+        if zero_dz:
+            # Zero BOTH: the per-slice 2D stage below reads
+            # ``_original_volume`` per slice (see ``_run_all_step``) and
+            # the 2.5D stage reads ``self._volume`` (see
+            # ``_start_marching_25d``). ``_original_volume`` is
+            # intentionally zeroed too -- the pipeline's semantic input is
+            # the dz-stripped field, not the as-loaded one. The undo entry
+            # just pushed above snapshotted the pre-zero ``self._volume``,
+            # so Ctrl+Z after this restores the displayed volume's dz;
+            # ``_original_volume`` isn't on the undo stack and stays
+            # zeroed, matching the dialog's "one undoable operation".
+            self._volume[0] = 0.0
+            self._original_volume[0] = 0.0
         self._pipeline_active = True
         self._pipeline_after_run_all = True
         self.statusBar().showMessage('Pipeline: per-slice 2D…', 0)
@@ -2096,7 +2121,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage('Run finished.', 10_000)
 
     def _on_error(self, err: str):
-        if self.sender() is not self._worker:
+        sender = self.sender()
+        if sender is not None and sender is not self._worker:
             return
         self._run_all_remaining = None
         self._pipeline_active = False

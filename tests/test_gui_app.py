@@ -935,6 +935,29 @@ def test_run_25d_rejects_nonzero_dz(qapp, monkeypatch):
     assert not started.get('s'), 'declined prompt must not start a run'
 
 
+def test_run_25d_zero_dz_consent_runs_pipeline(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5  # nonzero dz
+    win._original_volume[0, 1, 2, 2] = 0.5
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.Yes),
+    )
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._on_run_25d()
+    # Consent -> dz zeroed on BOTH volumes, inside one undo entry, pipeline armed.
+    assert float(np.abs(win._volume[0]).max()) == 0.0
+    assert float(np.abs(win._original_volume[0]).max()) == 0.0
+    assert win._pipeline_active and win._pipeline_after_run_all
+    assert len(win._undo_stack) == 1
+    # Undo restores the pre-zero dz.
+    win._pipeline_active = False  # simulate pipeline over
+    win._run_all_remaining = None
+    win._on_undo()
+    assert win._volume[0, 1, 2, 2] == pytest.approx(0.5)
+
+
 def test_run_25d_starts_marching_on_current_volume(qapp, monkeypatch):
     win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
     win._volume[2, 1, 2, 2] = 0.3  # differs from _original_volume
