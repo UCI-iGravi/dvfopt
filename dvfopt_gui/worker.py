@@ -790,7 +790,10 @@ class SolverWorker(QtCore.QThread):
         # callback_copies=False: zero-copy events are safe here — _cb never
         # retains event['phi']; _volume_snapshot() copies before recording.
         phi_out, report = correct_dvf_25d(
-            vol, threshold=thr, verbose=0, progress_callback=_cb,
+            vol,
+            threshold=thr,
+            verbose=0,
+            progress_callback=_cb,
             callback_copies=False,
         )
         self.pipeline_report = report

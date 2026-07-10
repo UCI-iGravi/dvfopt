@@ -50,9 +50,7 @@ def test_progress_callback_events_are_independent_snapshots():
     alias each other or the live buffer."""
     vol = _interlayer_folded_volume()
     events = []
-    out, _ = correct_dvf_25d(
-        vol, verbose=0, progress_callback=lambda e: events.append(dict(e))
-    )
+    out, _ = correct_dvf_25d(vol, verbose=0, progress_callback=lambda e: events.append(dict(e)))
     assert len(events) >= 2, 'need >= 2 events to check snapshot independence'
     # No event carries the live output buffer, and no two events share storage.
     for e in events:
@@ -62,9 +60,9 @@ def test_progress_callback_events_are_independent_snapshots():
         assert not np.shares_memory(a['phi'], b['phi'])
     # The snapshots capture *different* pipeline states: at least one earlier
     # event differs from a later one (repairs kept mutating the buffer).
-    assert any(
-        not np.array_equal(events[0]['phi'], e['phi']) for e in events[1:]
-    ), 'per-event snapshots are identical — aliasing regression?'
+    assert any(not np.array_equal(events[0]['phi'], e['phi']) for e in events[1:]), (
+        'per-event snapshots are identical — aliasing regression?'
+    )
     # Mutation independence: writing into one snapshot leaves the rest intact.
     ref = events[-1]['phi'].copy()
     events[0]['phi'][:] = 12345.0

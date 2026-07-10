@@ -110,9 +110,10 @@ def _repair_cluster(args):
     # asserts once per cluster, before any LP work.
     _pf0 = _stack_flat(*_geo(cur_c))
     assert _pf0.size == 3 * n2, 'DX_FIRST tet pack must be [dx|dy|dz] of length 3*(2*HW)'
-    assert not _pf0[2 * n2:].any(), 'dz third of the DX_FIRST tet pack must be zero (2.5D)'
-    assert np.concatenate([cur_c[0].ravel(), cur_c[1].ravel()]).size == 2 * n_pix, \
+    assert not _pf0[2 * n2 :].any(), 'dz third of the DX_FIRST tet pack must be zero (2.5D)'
+    assert np.concatenate([cur_c[0].ravel(), cur_c[1].ravel()]).size == 2 * n_pix, (
         'DY_FIRST 2-tri pack must be [dy|dx] of length 2*HW'
+    )
     if ii.size:
         assert free3.max() < 2 * n2, 'free3 must stay inside the dx/dy thirds (never dz)'
         assert free2.max() < 2 * n_pix, 'free2 out of DY_FIRST pack range'

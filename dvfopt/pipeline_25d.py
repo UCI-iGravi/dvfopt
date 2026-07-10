@@ -253,8 +253,13 @@ def correct_dvf_25d(
             # the live buffer; False: zero-copy (see docstring caveat).
             phi_evt = out.copy() if callback_copies else out
             progress_callback(
-                {'phase': phase, 'index': index, 'total': total, 'n_neg': int(n_neg),
-                 'phi': phi_evt}
+                {
+                    'phase': phase,
+                    'index': index,
+                    'total': total,
+                    'n_neg': int(n_neg),
+                    'phi': phi_evt,
+                }
             )
 
     # Up: repair slice z against frozen slice z-1 (cur is the upper layer).
