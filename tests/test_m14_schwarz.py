@@ -284,15 +284,18 @@ class TestUnifiedAPI:
 
     def test_auto_routes_large_extreme_to_schwarz(self):
         """The auto resolver picks m14_schwarz for large slices in the
-        extreme-density tier when objective != 'l2'."""
+        extreme-density tier when objective is neither 'l1' (which now
+        routes to the SLP champion at every tier) nor 'l2' (m10)."""
         from dvfopt.constraints import TriConstraint2D
         from dvfopt.solver import auto_strategy
 
         c_big = TriConstraint2D((320, 456))
         c_small = TriConstraint2D((60, 60))
-        assert auto_strategy(c_big, 6000, -15.0, objective_label='l1') == 'm14_schwarz'
+        assert auto_strategy(c_big, 6000, -15.0, objective_label='none') == 'm14_schwarz'
         # Small extreme dense — falls back to plain m14.
-        assert auto_strategy(c_small, 6000, -15.0, objective_label='l1') == 'm14'
+        assert auto_strategy(c_small, 6000, -15.0, objective_label='none') == 'm14'
+        # L1 no longer reaches the wallbreakers via auto — SLP champion.
+        assert auto_strategy(c_big, 6000, -15.0, objective_label='l1') == 'slp'
 
     def test_auto_l2_still_picks_m10_on_extreme(self):
         from dvfopt.constraints import TriConstraint2D

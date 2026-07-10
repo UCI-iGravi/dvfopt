@@ -603,7 +603,12 @@ def test_slp_and_auto_dispatch():
     wa = SolverWorker(deformation_i=phi, method_id='auto_2tri', params={'objective_id': 'l1'})
     strat = wa._build_strategy()
     assert strat is not None
-    assert wa.resolved_strategy_label in ('m10', 'm14_schwarz', 'm14', 'barrier', 'slsqp')
+    # 2-tri + L1 now auto-routes to the SLP champion at every fold tier.
+    assert wa.resolved_strategy_label == 'slp'
+    # Non-l1 objectives keep the legacy tiered routing.
+    wl2 = SolverWorker(deformation_i=phi, method_id='auto_2tri', params={'objective_id': 'l2'})
+    wl2._build_strategy()
+    assert wl2.resolved_strategy_label in ('m10', 'barrier', 'slsqp')
     wj = SolverWorker(deformation_i=phi, method_id='auto_jdet', params={'objective_id': 'l1'})
     wj._build_strategy()
     assert wj.resolved_strategy_label in ('barrier', 'slsqp_windowed')
