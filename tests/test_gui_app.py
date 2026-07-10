@@ -904,3 +904,93 @@ def test_tet3d_menu_pipeline_and_torch_gating(qapp, monkeypatch):
     idx = win._method_combo.findData('barrier_torch')
     assert idx >= 0
     assert not win._method_combo.model().item(idx).isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# Pipeline ▾: 2.5D marching + one-click full pipeline (2D + 2.5D)
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_button_exists_and_gates(qapp):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))  # 2D: disabled
+    assert hasattr(win, '_pipeline_btn')
+    assert not win._pipeline_btn.isEnabled()
+    win._load_array(np.zeros((3, 4, 6, 6)))  # volume: enabled
+    assert win._pipeline_btn.isEnabled()
+
+
+def test_run_25d_rejects_nonzero_dz(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5  # nonzero dz
+    asked = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: asked.setdefault('q', True) and QtWidgets.QMessageBox.No),
+    )
+    started = {}
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: started.setdefault('s', True))
+    win._on_run_25d()
+    assert asked.get('q'), 'dz violation must prompt'
+    assert not started.get('s'), 'declined prompt must not start a run'
+
+
+def test_run_25d_starts_marching_on_current_volume(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[2, 1, 2, 2] = 0.3  # differs from _original_volume
+    captured = {}
+
+    def fake_start(def_i, method_id=None):
+        captured['shape'] = def_i.shape
+        captured['mid'] = method_id
+        captured['val'] = float(def_i[2, 1, 2, 2])
+
+    monkeypatch.setattr(win, '_start_worker', fake_start)
+    win._on_run_25d()
+    assert captured['mid'] == 'marching25d_tet3d'
+    assert captured['shape'] == (3, 4, 6, 6)
+    assert captured['val'] == pytest.approx(0.3)  # CURRENT volume, not original
+
+
+def test_full_pipeline_chains_25d_after_batch(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 3, 6, 6)))
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._on_run_pipeline_full()
+    assert win._pipeline_active and win._pipeline_after_run_all
+    assert len(win._undo_stack) == 1  # exactly one entry for the whole pipeline
+    # Simulate the batch draining to completion.
+    started = {}
+    monkeypatch.setattr(win, '_start_marching_25d', lambda: started.setdefault('m', True))
+    win._run_all_remaining = []
+    win._run_all_step()
+    assert started.get('m'), '2.5D stage must start after the batch'
+    assert not win._pipeline_after_run_all
+
+
+def test_pipeline_report_message_is_final(qapp):
+    # _on_finished must leave a pipeline run's report summary as the LAST
+    # status-bar message, not overwrite it with the generic 'Run finished.'
+    # Uses a plain fake worker + a direct call (not a real signal emission)
+    # -- see the ``sender()`` note on ``_on_finished``: a direct call always
+    # has ``sender() is None``, so the guard trusts ``self._worker`` as given
+    # rather than requiring it to equal the (nonexistent) signal sender.
+    win = LiveSolverWindow(np.zeros((3, 2, 4, 4)))
+
+    class _FakeReport:
+        n_neg_in = 5
+        n_neg_out = 0
+        feasible = True
+        wall_s = 1.23
+
+    class _FakeWorker:
+        pipeline_report = _FakeReport()
+
+        def history_len(self):
+            return 0
+
+    win._worker = _FakeWorker()
+    vol4d = np.zeros((3, 2, 4, 4))
+    win._on_finished(vol4d, None)
+    msg = win.statusBar().currentMessage()
+    assert 'Pipeline:' in msg
+    assert 'Run finished' not in msg

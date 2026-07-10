@@ -514,6 +514,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # z-slice indices still to be solved (current one already popped
         # and running). Drives the sequential chain in ``_on_finished``.
         self._run_all_remaining: list[int] | None = None
+        # Full-pipeline (per-slice 2D -> 2.5D marching) state. `_pipeline_active`
+        # suppresses the per-run undo push (ONE entry covers the whole
+        # pipeline); `_pipeline_after_run_all` arms the 2.5D stage to start
+        # when the Run-all batch drains.
+        self._pipeline_active = False
+        self._pipeline_after_run_all = False
         # Active run bookkeeping for the progress bar / ETA and the
         # before→after stats delta.
         self._active_method_id: str | None = None
@@ -665,6 +671,22 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._run_all_btn.setEnabled(False)
         self._run_all_btn.clicked.connect(self._on_run_all)
         bar.addWidget(self._run_all_btn)
+        self._pipeline_btn = QtWidgets.QToolButton()
+        self._pipeline_btn.setText('Pipeline ▾')
+        self._pipeline_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self._pipeline_btn.setToolTip(
+            'Volume workflows: 2.5D marching (fold prevention; needs dz == 0, '
+            'i.e. per-slice-corrected input) or the full pipeline (per-slice '
+            '2D with the selected method, then 2.5D marching).'
+        )
+        pipe_menu = QtWidgets.QMenu(self._pipeline_btn)
+        self._act_run_25d = pipe_menu.addAction('Run 2.5D marching', self._on_run_25d)
+        self._act_run_pipeline = pipe_menu.addAction(
+            'Full pipeline (2D + 2.5D)', self._on_run_pipeline_full
+        )
+        self._pipeline_btn.setMenu(pipe_menu)
+        self._pipeline_btn.setEnabled(False)
+        bar.addWidget(self._pipeline_btn)
         self._stop_btn = QtWidgets.QPushButton('Stop')
         self._stop_btn.setShortcut('Esc')
         self._stop_btn.setToolTip(
@@ -1037,6 +1059,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         run_menu.addAction('Run full\tF5', lambda: self._on_run(use_roi=False))
         run_menu.addAction('Run section\tCtrl+R', lambda: self._on_run(use_roi=True))
         run_menu.addAction('Run all z', self._on_run_all)
+        run_menu.addAction('Run 2.5D marching', self._on_run_25d)
+        run_menu.addAction('Full pipeline (2D + 2.5D)', self._on_run_pipeline_full)
         run_menu.addAction('Stop\tEsc', self._on_stop)
 
         help_menu = menubar.addMenu('&Help')
@@ -1708,6 +1732,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         D = self._volume.shape[1] if self._volume is not None else 1
         self._run_roi_btn.setEnabled(not self._is_3d_run)
         self._run_all_btn.setEnabled((not self._is_3d_run) and D > 1)
+        self._pipeline_btn.setEnabled(D > 1)
         self._section_roi.setVisible((not self._is_3d_run) and self._volume is not None)
 
     def _on_constraint_changed(self, idx: int):
@@ -1801,11 +1826,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._section_bounds = None
             self._start_worker(deformation_i)
 
-    def _start_worker(self, deformation_i: np.ndarray):
-        algo = self._method_combo.currentData()
-        constraint = self._constraint_combo.currentData()
+    def _start_worker(self, deformation_i: np.ndarray, method_id: str | None = None):
         objective_id = self._objective_combo.currentData()
-        method_id = _compose_method_id(algo, constraint)
+        if method_id is None:
+            algo = self._method_combo.currentData()
+            constraint = self._constraint_combo.currentData()
+            method_id = _compose_method_id(algo, constraint)
+        else:
+            constraint = self._constraint_combo.currentData()
 
         # Baseline fold count of *this run's* input (full slice or ROI),
         # counted with the SAME metric the run's trajectory uses (Jdet for
@@ -1845,6 +1873,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._run_full_btn.setEnabled(False)
         self._run_roi_btn.setEnabled(False)
         self._run_all_btn.setEnabled(False)
+        self._pipeline_btn.setEnabled(False)
         self._undo_btn.setEnabled(False)
         self._redo_btn.setEnabled(False)
         # Freeze the z-slider during a run: switching slices mid-solve
@@ -1899,12 +1928,25 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # so a single Ctrl+Z reverts the entire Run-all (not just its last
         # slice).
         self._push_undo_state()
+        self._begin_run_all_batch()
+
+    def _begin_run_all_batch(self) -> None:
+        """Start the per-slice batch WITHOUT pushing an undo entry (callers
+        own the undo semantics: Run-all pushes one; the full pipeline pushes
+        one covering both stages)."""
+        D = self._volume.shape[1]
         self._run_all_remaining = list(range(D))
         self._run_all_step()
 
     def _run_all_step(self):
         """Start the next queued slice in a Run-all batch, or finish the
         batch if the queue is empty."""
+        if not self._run_all_remaining and self._pipeline_after_run_all:
+            self._run_all_remaining = None
+            self._pipeline_after_run_all = False
+            self.statusBar().showMessage('Pipeline: 2.5D marching…', 0)
+            self._start_marching_25d()
+            return
         if not self._run_all_remaining:
             self._run_all_remaining = None
             self._finalize_run_ui()
@@ -1920,12 +1962,81 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Solve from the pristine input for this slice.
         self._start_worker(self._original_volume[:, z : z + 1].copy())
 
+    def _on_run_25d(self):
+        """Run 2.5D marching on the CURRENT volume (which must be per-slice
+        corrected: dz == 0)."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Already running', 'Stop the current run first.'
+            )
+            return
+        if self._volume.shape[1] <= 1:
+            QtWidgets.QMessageBox.information(
+                self, '2.5D needs a volume', '2.5D marching needs a (3, D>1, H, W) volume.'
+            )
+            return
+        if float(np.abs(self._volume[0]).max()) > 1e-9:
+            ans = QtWidgets.QMessageBox.question(
+                self,
+                'dz is not zero',
+                '2.5D marching requires dz == 0 (per-slice 2D-corrected input).\n'
+                'Run the full pipeline (per-slice 2D, then 2.5D) instead?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            )
+            if ans == QtWidgets.QMessageBox.Yes:
+                self._on_run_pipeline_full()
+            return
+        self._start_marching_25d()
+
+    def _start_marching_25d(self) -> None:
+        """Launch the 2.5D worker on the CURRENT volume (the deliberate
+        exception to the runs-read-the-pristine-original rule — the 2.5D
+        input IS the per-slice-corrected state)."""
+        self._select_combo_data(self._constraint_combo, CONSTRAINT_TET3D)
+        self._section_bounds = None
+        self.statusBar().showMessage('2.5D marching…', 0)
+        self._start_worker(self._volume.copy(), method_id='marching25d_tet3d')
+
+    def _on_run_pipeline_full(self):
+        """One-click production workflow: per-slice 2D (selected method) →
+        2.5D marching, as a single undoable operation."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Already running', 'Stop the current run first.'
+            )
+            return
+        if self._volume.shape[1] <= 1:
+            QtWidgets.QMessageBox.information(
+                self, 'Pipeline needs a volume', 'The full pipeline needs a (3, D>1, H, W) volume.'
+            )
+            return
+        if self._is_3d_run:
+            # Per-slice stage needs a 2D method; drop back to the 2-tri family.
+            self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
+        self._push_undo_state()
+        self._pipeline_active = True
+        self._pipeline_after_run_all = True
+        self.statusBar().showMessage('Pipeline: per-slice 2D…', 0)
+        self._begin_run_all_batch()
+
     def _on_finished(self, phi_out, info):
         # Ignore late signals from a worker we've already replaced /
-        # discarded (e.g. user loaded a new DVF mid-run). Without this
-        # guard the old worker's phi_out would get spliced into the
-        # *new* volume.
-        if self.sender() is not self._worker:
+        # discarded (e.g. user loaded a new DVF mid-run). ``sender()`` is
+        # only non-None inside a slot invoked via an actual signal
+        # emission — a direct Python call (e.g. from a test) always sees
+        # None, in which case there is no "other" worker to guard against
+        # and we trust ``self._worker`` as given. A real, stale signal
+        # (sender() is some past worker, no longer ``self._worker``) is
+        # still rejected: without that, the old worker's phi_out would
+        # get spliced into the *new* volume.
+        sender = self.sender()
+        if sender is not None and sender is not self._worker:
             return
         # Splice the result back into the volume so subsequent runs /
         # view toggles see the corrected state.
@@ -1933,8 +2044,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             # Snapshot the pre-splice volume for Undo — but only for a
             # standalone run. A Run-all batch pushes one undo entry up
             # front (see ``_on_run_all``) so the whole batch undoes as a
-            # unit rather than one slice at a time.
-            if self._run_all_remaining is None:
+            # unit rather than one slice at a time; the full pipeline
+            # (``_on_run_pipeline_full``) likewise pushes ONE entry
+            # covering both the per-slice batch and the 2.5D stage, so
+            # every worker finish along the way must skip this too.
+            if self._run_all_remaining is None and not self._pipeline_active:
                 self._push_undo_state()
             phi_out = np.asarray(phi_out)
             if phi_out.ndim == 4:  # full-volume 3D result [dz,dy,dx]
@@ -1949,7 +2063,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
-        report = getattr(self.sender(), 'pipeline_report', None)
+        report = getattr(self._worker, 'pipeline_report', None)
         if report is not None:
             self.statusBar().showMessage(
                 f'Pipeline: {report.n_neg_in} → {report.n_neg_out} folds, '
@@ -1964,6 +2078,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if self._run_all_remaining is not None:
             if info is not None:
                 self._run_all_remaining = None
+                self._pipeline_active = False
+                self._pipeline_after_run_all = False
                 self._finalize_run_ui()
                 self.statusBar().showMessage(f'Run all z stopped: {info}.', 10_000)
             else:
@@ -1971,13 +2087,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return
 
         self._finalize_run_ui()
-        msg = 'Run finished.' if info is None else f'Run stopped: {info}.'
-        self.statusBar().showMessage(msg, 10_000)
+        if info is not None:
+            self.statusBar().showMessage(f'Run stopped: {info}.', 10_000)
+        elif report is None:
+            # When a pipeline_report was surfaced above, that message IS
+            # the finish message for this run — don't clobber it with the
+            # generic one.
+            self.statusBar().showMessage('Run finished.', 10_000)
 
     def _on_error(self, err: str):
         if self.sender() is not self._worker:
             return
         self._run_all_remaining = None
+        self._pipeline_active = False
+        self._pipeline_after_run_all = False
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
         self._finalize_run_ui()
@@ -2002,6 +2125,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._progress.setRange(0, 100)
             self._progress.setValue(0)
             self._progress.setFormat('')
+            # The pipeline (if any) is over once its last worker finalizes
+            # with no batch left to run. ``_pipeline_after_run_all`` is
+            # cleared separately, right where the chain either fires (see
+            # ``_run_all_step``) or the run/batch is aborted (see above
+            # and ``_on_error``) — by the time we get here it only needs
+            # to have lived long enough for THIS call's undo-suppression
+            # check above, which already ran.
+            self._pipeline_active = False
 
     def _update_progress(self) -> None:
         """Repaint the progress bar for the active run. Wallbreakers show
