@@ -17,6 +17,10 @@ def _planted_cluster(shape=(3, 16, 16, 16), scale=1.2):
 
 class TestPersistentPool:
     def test_get_pool_reuse_and_resize(self):
+        """Grow-only respawn: the pool is reused whenever its size already
+        covers the request (including DOWNSIZE requests — respawning on a
+        downsize would re-pay the multi-second warmup for nothing); it is
+        rebuilt only when the request grows past the current size."""
         from dvfopt.core._pool import get_pool, shutdown_pool
 
         try:
@@ -24,7 +28,13 @@ class TestPersistentPool:
             p2 = get_pool(2)
             assert p1 is p2  # same size -> same pool reused
             p3 = get_pool(3)
-            assert p3 is not p1  # resized -> new pool
+            assert p3 is not p1  # grew -> new pool
+            p4 = get_pool(2)
+            assert p4 is p3  # downsize request -> existing pool reused
+            p5 = get_pool(1)
+            assert p5 is p3  # further downsize -> still reused
+            p6 = get_pool(4)
+            assert p6 is not p3  # grew past current size -> rebuilt
         finally:
             shutdown_pool()
 

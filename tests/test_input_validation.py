@@ -227,8 +227,14 @@ class TestSolverFitGracefulRejection:
         )
 
     def test_constraint_coerce_handles_3channel(self):
-        out = self._solver().fit(np.zeros((3, 8, 8)))
-        assert out.corrected.shape == (2, 8, 8)
+        """A (3, H, W) input is coerced to the canonical (2, H, W) for
+        the strategy, then restored: corrected has the INPUT's shape
+        with the dz channel passed through unchanged."""
+        phi = np.zeros((3, 8, 8))
+        phi[0] = 4.0  # dz sentinel
+        out = self._solver().fit(phi)
+        assert out.corrected.shape == (3, 8, 8)
+        np.testing.assert_array_equal(out.corrected[0], 4.0)
 
     def test_constraint_coerce_rejects_nan(self):
         with pytest.raises(ValueError, match='NaN'):

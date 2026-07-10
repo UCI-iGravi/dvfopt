@@ -63,6 +63,81 @@ class TestSolveCluster2tri2D:
         if info['init_n_neg'] > 0:
             assert info['feasible'] is False
 
+    def test_subthreshold_crop_is_not_feasible_without_solving(self):
+        """Regression: ``feasible`` used to derive from ``T <= 0`` counts
+        while the SLSQP constraint enforces ``lb=threshold`` — a crop with
+        min area in (0, threshold) was early-returned as feasible without
+        ever solving. The gate must count ``T < threshold - err_tol``."""
+        H, W = 6, 6
+        threshold = 0.01
+        # Uniform compression by s: def coords = s * ref, so every
+        # triangle area is 0.5 * s^2. s = 0.1 -> areas = 0.005, squarely
+        # inside (0, threshold).
+        s = 0.1
+        yy = np.arange(H, dtype=np.float64)[:, None] * np.ones((1, W))
+        xx = np.ones((H, 1)) * np.arange(W, dtype=np.float64)[None, :]
+        phi = np.stack([(s - 1.0) * yy, (s - 1.0) * xx])
+        T1, T2 = _triangle_areas_2d(phi[0], phi[1])
+        min_tri = float(min(T1.min(), T2.min()))
+        assert 0 < min_tri < threshold, 'fixture must sit inside (0, threshold)'
+
+        anchor = phi.copy()
+        im = np.zeros((H, W), dtype=bool)
+        im[1:-1, 1:-1] = True
+        _out, info = solve_cluster_2tri_2d(
+            phi,
+            anchor,
+            im,
+            threshold=threshold,
+            l2_max_passes=2,
+            l2_max_iter=20,
+            l1_max_iter=20,
+        )
+        # Sub-threshold input counts as infeasible work to do...
+        assert info['init_n_neg'] > 0
+        # ...so the early return must NOT fire: the solver actually runs.
+        assert info['l2_passes_run'] >= 1
+        # The frozen compressed boundary makes threshold-feasibility
+        # unreachable here; the result must not be reported feasible.
+        assert info['feasible'] is False
+
+    def test_analytical_jacobian_matches_finite_differences(self):
+        """The interior-variable constraint Jacobian (now returned as a
+        preallocated dense buffer) must equal the FD Jacobian of the
+        constraint function — same values as the old CSR container."""
+        from dvfopt.core._cluster_2tri import (
+            _interior_pack_unpack_2d,
+            _make_2tri_jac_2d,
+        )
+
+        H, W = 6, 7
+        phi = _planted_fold(H, W, seed=21)
+        im = np.zeros((H, W), dtype=bool)
+        im[1:-1, 1:-1] = True
+        pack, unpack, n_int = _interior_pack_unpack_2d(phi, im)
+
+        def constr(z):
+            p = unpack(z, phi)
+            T1, T2 = _triangle_areas_2d(p[0], p[1])
+            return np.concatenate([T1.ravel(), T2.ravel()])
+
+        jac = _make_2tri_jac_2d(phi, im)
+        z0 = pack(phi)
+        J = np.asarray(jac(z0))
+        assert isinstance(J, np.ndarray)
+        assert J.shape == (2 * (H - 1) * (W - 1), 2 * n_int)
+        eps = 1e-6
+        J_num = np.zeros_like(J)
+        for i in range(J.shape[1]):
+            zp = z0.copy()
+            zp[i] += eps
+            zm = z0.copy()
+            zm[i] -= eps
+            J_num[:, i] = (constr(zp) - constr(zm)) / (2 * eps)
+        # jac(z0) may be rewritten in place by later calls (constr does
+        # not call jac, so J is still current here).
+        assert float(np.abs(J - J_num).max()) < 1e-6
+
     def test_info_schema(self):
         H, W = 6, 6
         phi = _planted_fold(H, W, seed=3)

@@ -10,7 +10,9 @@ Algorithm
 
 Iterate until ``min(J) > 0`` or ``max_iter`` is reached:
 
-1. Find every pixel ``(y, x)`` with ``J[y, x] < 0`` (a "fold core").
+1. Find every pixel ``(y, x)`` with ``J[y, x] <= 0`` (a "fold core";
+   exactly-zero determinants are degenerate/non-invertible and are
+   treated as folds, consistently with the convergence gate).
 2. For each fold core, look at the 3x3 neighborhood of pixels around
    it (including the core itself and any in-bounds neighbours).
 3. For each neighbourhood pixel ``(py, px)``, replace its displacement
@@ -189,7 +191,11 @@ def nmvf_correct_2d(
     while cur_iter < max_iter and num_neg > 0:
         cur_iter += 1
         iter_t0 = time.time()
-        neg_coords = np.argwhere(J < 0)  # (n_neg, 2) in (y, x)
+        # Work list must match the loop gate (num_neg counts J <= 0):
+        # exactly-zero determinants are folds too. Using ``J < 0`` here
+        # used to leave J == 0 pixels alive in the gate with an EMPTY
+        # work list — max_iter no-op full iterations and converged=False.
+        neg_coords = np.argwhere(J <= 0)  # (n_neg, 2) in (y, x)
 
         # Snapshot before in-place update so each replacement reads from a
         # consistent state. Matches the notebook's deformation_before.

@@ -1,4 +1,10 @@
-"""Tests for dvfopt.core.solver — internal helper functions."""
+"""Tests for solver internals.
+
+Covers the ``dvfopt.core.solver`` helper functions (windowed SLSQP
+plumbing) plus ``dvfopt.solver`` internals: the ``Solver.fit`` input
+coercion / layout-restore contract, the ``SolveInfo`` legacy-history
+stash, and the strategy/constraint registry overwrite guards.
+"""
 
 import numpy as np
 import pytest
@@ -209,3 +215,208 @@ class TestSetupAccumulators:
         assert len(result) == 5
         for i in range(4):
             assert isinstance(result[i], list)
+
+
+# ---------------------------------------------------------------------------
+# Solver.fit input coercion / layout restore (dvfopt.solver)
+# ---------------------------------------------------------------------------
+
+
+def _folded_2d(H=10, W=10, seed=0):
+    rng = np.random.default_rng(seed)
+    return np.stack([rng.normal(0, 0.3, (H, W)), rng.normal(0, 0.3, (H, W))])
+
+
+class TestSolverFitLayoutCoercion:
+    """``Solver.fit`` must coerce loose input layouts to the constraint's
+    canonical form ONCE before the strategy sees them, then restore the
+    original layout on the corrected output (dz passthrough for
+    3-channel 2D inputs).
+
+    Regressions reproduced here (pre-fix probe results):
+
+    * wallbreakers crashed deep inside on a raw ``(3, H, W)`` input;
+    * ``SLPStrategy`` crashed with 'too many values to unpack' on a
+      ``(3, 1, H, W)`` input;
+    * ``BarrierStrategy`` silently returned ``(2, H, W)`` for a
+      ``(3, H, W)`` input, dropping the dz channel.
+    """
+
+    @staticmethod
+    def _phi_3hw(H=10, W=10, dz_value=7.0, seed=0):
+        phi2 = _folded_2d(H, W, seed)
+        dz = np.full((H, W), dz_value)
+        return np.stack([dz, phi2[0], phi2[1]])
+
+    def test_wallbreaker_accepts_3hw_and_preserves_dz(self):
+        from dvfopt import (
+            HarmonicALMRefineRepairStrategy,
+            L1Objective,
+            Solver,
+            TriConstraint2DFullCoverage,
+        )
+
+        phi = self._phi_3hw()
+        res = Solver(
+            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            objective=L1Objective(),
+            strategy=HarmonicALMRefineRepairStrategy(),
+        ).fit(phi)
+        assert res.corrected.shape == (3, 10, 10)
+        np.testing.assert_array_equal(res.corrected[0], 7.0)  # dz untouched
+        # dy/dx must actually have been corrected (not just copied back).
+        assert not np.array_equal(res.corrected[1:], phi[1:])
+
+    def test_slp_accepts_31hw_singleton_d(self):
+        from dvfopt import L1Objective, SLPStrategy, Solver, TriConstraint2DFullCoverage
+
+        phi2 = _folded_2d()
+        phi = np.zeros((3, 1, 10, 10))
+        phi[0, 0] = 3.0  # dz sentinel
+        phi[1, 0] = phi2[0]
+        phi[2, 0] = phi2[1]
+        res = Solver(
+            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            objective=L1Objective(),
+            strategy=SLPStrategy(n_workers=1),
+        ).fit(phi)
+        assert res.corrected.shape == (3, 1, 10, 10)
+        np.testing.assert_array_equal(res.corrected[0], 3.0)  # dz untouched
+
+    def test_barrier_3hw_returns_same_shape_with_dz(self):
+        from dvfopt import BarrierStrategy, L1Objective, Solver, TriConstraint2DFullCoverage
+
+        phi = self._phi_3hw(dz_value=-2.5)
+        res = Solver(
+            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            objective=L1Objective(),
+            strategy=BarrierStrategy(),
+        ).fit(phi)
+        # Pre-fix: barrier silently returned (2, 10, 10), dropping dz.
+        assert res.corrected.shape == phi.shape
+        np.testing.assert_array_equal(res.corrected[0], -2.5)
+
+    def test_canonical_2hw_input_passes_through(self):
+        from dvfopt import BarrierStrategy, L1Objective, Solver, TriConstraint2DFullCoverage
+
+        phi = _folded_2d()
+        res = Solver(
+            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            objective=L1Objective(),
+            strategy=BarrierStrategy(),
+        ).fit(phi)
+        assert res.corrected.shape == (2, 10, 10)
+
+
+# ---------------------------------------------------------------------------
+# SolveInfo legacy-history stash (dvfopt.solver)
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyHistoryStash:
+    """``SolveInfo.from_legacy_history`` must not retain the raw history
+    verbatim in ``extras['_legacy_history']`` when the phases were
+    successfully extracted — that duplicated the data (once as
+    PhaseInfo, once raw) on every slice."""
+
+    def test_no_stash_when_phases_extracted(self):
+        from dvfopt.solver import SolveInfo
+
+        legacy = [
+            dict(phase='penalty', nit=10, n_neg=5, min_T=-0.2, wall_s=0.1),
+            dict(phase='barrier', nit=15, n_neg=0, min_T=0.011, wall_s=0.2),
+        ]
+        info = SolveInfo.from_legacy_history('S', legacy, threshold=0.01)
+        assert len(info.phases) == 2
+        assert '_legacy_history' not in info.extras
+
+    def test_stash_kept_when_extraction_fails(self):
+        from dvfopt.solver import SolveInfo
+
+        legacy = ['not-a-dict', 42]  # nothing extractable
+        info = SolveInfo.from_legacy_history('S', legacy, threshold=0.01)
+        assert info.phases == []
+        assert info.extras['_legacy_history'] == legacy
+
+
+# ---------------------------------------------------------------------------
+# Registry overwrite guards
+# ---------------------------------------------------------------------------
+
+
+class TestStrategyRegistryOverwriteGuard:
+    _LABEL = '__test_registry_guard_strategy__'
+
+    def test_same_class_reregistration_is_silent(self):
+        from dvfopt.strategies.base import _STRATEGY_REGISTRY, Strategy, register_strategy
+
+        class _Dummy(Strategy):
+            def solve(self, phi_in, *, constraint, objective, threshold, **kwargs):
+                return phi_in, {}
+
+        try:
+            register_strategy(self._LABEL)(_Dummy)
+            # Same class object again — idempotent, no raise.
+            register_strategy(self._LABEL)(_Dummy)
+            assert _STRATEGY_REGISTRY[self._LABEL] is _Dummy
+        finally:
+            _STRATEGY_REGISTRY.pop(self._LABEL, None)
+
+    def test_different_class_raises(self):
+        from dvfopt.strategies.base import _STRATEGY_REGISTRY, Strategy, register_strategy
+
+        class _DummyA(Strategy):
+            def solve(self, phi_in, *, constraint, objective, threshold, **kwargs):
+                return phi_in, {}
+
+        class _DummyB(Strategy):
+            def solve(self, phi_in, *, constraint, objective, threshold, **kwargs):
+                return phi_in, {}
+
+        try:
+            register_strategy(self._LABEL)(_DummyA)
+            with pytest.raises(ValueError, match='already registered'):
+                register_strategy(self._LABEL)(_DummyB)
+            # Both class names appear in the message.
+            with pytest.raises(ValueError, match='_DummyA'):
+                register_strategy(self._LABEL)(_DummyB)
+            with pytest.raises(ValueError, match='_DummyB'):
+                register_strategy(self._LABEL)(_DummyB)
+            # Original registration is intact.
+            assert _STRATEGY_REGISTRY[self._LABEL] is _DummyA
+        finally:
+            _STRATEGY_REGISTRY.pop(self._LABEL, None)
+
+
+class TestConstraintRegistryOverwriteGuard:
+    _LABEL = '__test_registry_guard_constraint__'
+
+    def test_same_class_reregistration_is_silent(self):
+        from dvfopt.constraints import (
+            _CONSTRAINT_REGISTRY,
+            TriConstraint2D,
+            register_constraint,
+        )
+
+        try:
+            register_constraint(self._LABEL)(TriConstraint2D)
+            register_constraint(self._LABEL)(TriConstraint2D)  # no raise
+            assert _CONSTRAINT_REGISTRY[self._LABEL] is TriConstraint2D
+        finally:
+            _CONSTRAINT_REGISTRY.pop(self._LABEL, None)
+
+    def test_different_class_raises(self):
+        from dvfopt.constraints import (
+            _CONSTRAINT_REGISTRY,
+            JdetConstraint2D,
+            TriConstraint2D,
+            register_constraint,
+        )
+
+        try:
+            register_constraint(self._LABEL)(TriConstraint2D)
+            with pytest.raises(ValueError, match='TriConstraint2D.*JdetConstraint2D'):
+                register_constraint(self._LABEL)(JdetConstraint2D)
+            assert _CONSTRAINT_REGISTRY[self._LABEL] is TriConstraint2D
+        finally:
+            _CONSTRAINT_REGISTRY.pop(self._LABEL, None)

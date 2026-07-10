@@ -20,9 +20,15 @@ grid vertex — including the two diagonally-opposite corners that the
 standard TR-BL split leaves with only one triangle — is covered by at
 least two constraints. Enable via ``full_coverage=True``.
 
-An analytical sparse CSR Jacobian is supplied to scipy so SLSQP does
+An analytical constraint Jacobian is supplied to scipy so SLSQP does
 not fall back to forward-difference column sweeps (which scaled
 ``O(n_vars * n_iter)`` and dominated the wall-clock on crops ≥ 20×20).
+It is returned as a preallocated DENSE buffer rewritten in place per
+call: scipy's SLSQP path (``new_constraint_to_old.j_ineq`` in
+``scipy/optimize/_constraints.py``) materialises a dense
+``(n_constr, n_vars)`` array every call anyway — calling ``.toarray()``
+on sparse input on top of allocating its own dense zeros + row-copy —
+so a sparse return only added COO-build/CSR-sort/toarray overhead.
 
 The smoothed-L1 anchor ``F = sum sqrt(diff^2 + eps^2) - eps`` is C¹ and
 plays nicely with SLSQP's active-set search. The L2 anchor is also
@@ -43,7 +49,6 @@ from __future__ import annotations
 import time
 
 import numpy as np
-import scipy.sparse as sp
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
@@ -56,8 +61,8 @@ from dvfopt.jacobian.shoelace import _ref_grid
 
 
 def _build_full_grid_tri_jac(H, W, full_coverage):
-    """Build a callable ``jac(z) -> csr_matrix`` for the full-grid
-    2-triangle constraint.
+    """Build a callable ``jac(z) -> (n_constr, n_vars) ndarray`` for the
+    full-grid 2-triangle constraint.
 
     Variable layout: ``[dy.ravel(), dx.ravel()]`` (length ``2*H*W``).
     Constraint layout: ``[T1.ravel(), T2.ravel()]`` (length
@@ -65,7 +70,12 @@ def _build_full_grid_tri_jac(H, W, full_coverage):
 
     The sparsity pattern is constant — only the entries change per call —
     so we precompute the (row, col) index arrays once at build time and
-    just slot in the per-iteration values.
+    scatter the per-iteration values into ONE preallocated dense buffer.
+    The buffer is large — ``(2*(H-1)*(W-1), 2*H*W)`` — but scipy's SLSQP
+    constraint adapter was already materialising exactly that dense array
+    internally on every jac call (``j_ineq`` allocates dense zeros and
+    ``.toarray()``s sparse input, scipy/optimize/_constraints.py), so the
+    reused buffer strictly reduces allocation versus the old CSR return.
     """
     Hc, Wc = H - 1, W - 1
     n_cells = Hc * Wc
@@ -145,6 +155,11 @@ def _build_full_grid_tri_jac(H, W, full_coverage):
 
     ref_y, ref_x = _ref_grid(H, W)
 
+    # Preallocated dense Jacobian, rewritten in place each call. Entries
+    # off the (constant) sparsity pattern stay 0 from this allocation; the
+    # (row, col) pairs are unique so plain fancy-index assignment is exact.
+    J_buf = np.zeros((n_constr, n_vars), dtype=np.float64)
+
     def jac(z):
         dy = z[:HW].reshape(H, W)
         dx = z[HW:].reshape(H, W)
@@ -205,7 +220,8 @@ def _build_full_grid_tri_jac(H, W, full_coverage):
                 np.ravel(arr) if isinstance(arr, np.ndarray) else np.array([arr], dtype=np.float64)
             )
         data_flat = np.concatenate(parts)
-        return sp.csr_matrix((data_flat, (rows_flat, cols_flat)), shape=(n_constr, n_vars))
+        J_buf[rows_flat, cols_flat] = data_flat
+        return J_buf
 
     return jac
 

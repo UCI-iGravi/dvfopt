@@ -173,6 +173,103 @@ class TestFallback:
         assert info['fallback_to_global']
 
 
+class TestTimeBudget2D:
+    """Regression: the 2D Schwarz core had no top-of-loop budget check and
+    granted the global fallback ``max(60, remaining)`` AFTER exhaustion —
+    overrunning the requested budget 4-6x. Now: top-of-loop check mirrors
+    the 3D variant, the fallback receives only the REMAINING budget, and
+    it is skipped entirely when < ~5 s remain (best-so-far is returned)."""
+
+    @staticmethod
+    def _saturated_fold(H=8, W=8, seed=3):
+        rng = np.random.default_rng(seed)
+        phi = np.stack([rng.normal(0, 0.6, (H, W)), rng.normal(0, 0.6, (H, W))])
+        T1, T2 = _triangle_areas_2d(phi[0], phi[1])
+        if int((np.minimum(T1, T2) <= 0).sum()) == 0:
+            pytest.skip('seed produced no folds')
+        return phi
+
+    def test_zero_budget_stops_before_any_inner_solve(self):
+        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+
+        phi = self._saturated_fold()
+        calls = []
+
+        def inner(phi_crop, time_budget_s=None):
+            calls.append(time_budget_s)
+            return phi_crop
+
+        out, info = cluster_schwarz_2d_tri(
+            phi.copy(),
+            inner,
+            threshold=0.01,
+            time_budget_s=0.0,
+            verbose=0,
+            record_history=True,
+        )
+        # Top-of-loop check fires on round 0: no cluster / fallback solves.
+        assert calls == []
+        assert info['fallback_to_global'] is False
+        # Best-so-far == the (untouched) input; infeasible but on-budget.
+        np.testing.assert_array_equal(out, phi)
+        assert info['final']['n_neg'] > 0
+
+    def test_fallback_skipped_when_remaining_below_floor(self):
+        """Budget small enough that < ~5 s remain at fallback time: the
+        global fallback must be SKIPPED, not granted a fresh 60 s floor."""
+        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+
+        phi = self._saturated_fold()
+        calls = []
+
+        def inner(phi_crop, time_budget_s=None):
+            calls.append(time_budget_s)
+            return phi_crop
+
+        # 4 s budget: passes the top-of-loop check (~0 s elapsed), reaches
+        # the single-dominating-cluster fallback branch with ~4 s remaining
+        # (< the 5 s floor) -> skip.
+        out, info = cluster_schwarz_2d_tri(
+            phi.copy(),
+            inner,
+            threshold=0.01,
+            fallback_size_ratio=0.1,
+            time_budget_s=4.0,
+            verbose=0,
+            record_history=True,
+        )
+        assert info['fallback_to_global'] is False
+        assert calls == []
+        np.testing.assert_array_equal(out, phi)
+
+    def test_fallback_budget_never_exceeds_remaining(self):
+        """When the fallback DOES fire, it gets at most the remaining
+        budget — never max(60, remaining)."""
+        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+
+        phi = self._saturated_fold()
+        calls = []
+
+        def inner(phi_crop, time_budget_s=None):
+            calls.append(time_budget_s)
+            return phi_crop
+
+        budget = 30.0
+        _out, info = cluster_schwarz_2d_tri(
+            phi.copy(),
+            inner,
+            threshold=0.01,
+            fallback_size_ratio=0.1,
+            time_budget_s=budget,
+            verbose=0,
+            record_history=True,
+        )
+        assert info['fallback_to_global'] is True
+        assert len(calls) == 1
+        # Old behavior handed out max(60, remaining) == 60 here.
+        assert 0.0 < calls[0] <= budget
+
+
 class TestUnifiedAPI:
     def test_solver_m14_schwarz_routes(self):
         from dvfopt import DVFopt, DVFoptConfig

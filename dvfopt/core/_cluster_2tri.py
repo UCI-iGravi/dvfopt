@@ -24,7 +24,6 @@ import time
 from typing import Optional
 
 import numpy as np
-import scipy.sparse as sp
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
@@ -134,6 +133,13 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
     ref_x = np.arange(W, dtype=np.float64)[None, :]
     phi_base = phi_win.copy()
 
+    # The sparsity pattern is constant — precompute the concatenated
+    # (row, col) fancy index ONCE at build time, and preallocate the dense
+    # Jacobian buffer that every ``jac(z)`` call rewrites in place.
+    rows_concat = np.concatenate([p['rows'] for p in partials])
+    cols_concat = np.concatenate([p['cols'] for p in partials])
+    J_buf = np.zeros((n_constr, n_vars), dtype=np.float64)
+
     def jac(z):
         phi_base[0][iy_local, ix_local] = z[:n_int]
         phi_base[1][iy_local, ix_local] = z[n_int:]
@@ -175,14 +181,20 @@ def _make_2tri_jac_2d(phi_win, interior_mask):
             dT2_BL_y,
             dT2_BL_x,
         ]
-        # Build a CSR Jacobian directly from the (row, col, val) triplets.
-        # Dense (n_constr, n_vars) for a 30x30 crop is ~21 MB with only
-        # ~10K real nonzeros; CSR is ~250x smaller and faster for the
-        # downstream QP solve scipy.optimize.SLSQP does internally.
-        rows_concat = np.concatenate([p['rows'] for p in partials])
-        cols_concat = np.concatenate([p['cols'] for p in partials])
-        data_concat = np.concatenate([v.ravel()[p['valid']] for p, v in zip(partials, vals)])
-        return sp.csr_matrix((data_concat, (rows_concat, cols_concat)), shape=(n_constr, n_vars))
+        # Scatter the per-call values into the PREALLOCATED dense buffer
+        # via the constant fancy index. Returning a sparse matrix here is
+        # counterproductive: scipy's ``new_constraint_to_old.j_ineq``
+        # (scipy/optimize/_constraints.py) calls ``.toarray()`` on it AND
+        # allocates its own dense ``zeros((n_constr, n_vars))`` + row-copy
+        # on EVERY jac call — so the COO build + CSR sort was pure
+        # overhead on top of the dense array scipy materialised anyway.
+        # The (row, col) pairs are unique (3 distinct corners x 2 channels
+        # per triangle row), so plain assignment is exact; entries off the
+        # constant sparsity pattern stay 0 from the initial allocation.
+        J_buf[rows_concat, cols_concat] = np.concatenate(
+            [v.ravel()[p['valid']] for p, v in zip(partials, vals)]
+        )
+        return J_buf
 
     return jac
 
@@ -256,12 +268,30 @@ def solve_cluster_2tri_2d(
         ``after_l2_min``, ``after_l1_n_neg``, ``after_l1_min``,
         ``l2_passes_run``, ``l2_total_nit``, ``l2_total_t``,
         ``l1_polished``, ``l1_nit``, ``l1_t``, ``cluster_t``.
+
+    Notes
+    -----
+    All ``*_n_neg`` counts (and the ``feasible`` flag derived from them)
+    count triangles **below the constraint's lower bound** — i.e.
+    ``T < threshold - err_tol`` with the package-wide ``err_tol = 1e-5``
+    SLSQP slack — NOT merely inverted triangles (``T <= 0``). This keeps
+    the feasibility gate consistent with what SLSQP actually enforces
+    (``lb=threshold``): a crop whose min area lies in ``(0, threshold)``
+    is *not* feasible, is not early-returned unsolved, and cannot be
+    reported ``feasible`` after a failed solve.
     """
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
+    # Feasibility predicate matching the SLSQP constraint lb=threshold,
+    # with the package error tolerance as slack for solver round-off.
+    feas_lb = threshold - DEFAULT_PARAMS['err_tol']
+
+    def _n_below(T1, T2):
+        return int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
+
     t0 = time.time()
     T1, T2 = _triangle_areas_2d(phi_win[0], phi_win[1])
-    init_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+    init_n_neg = _n_below(T1, T2)
     init_min_tri = float(min(T1.min(), T2.min()))
 
     info = {
@@ -333,7 +363,7 @@ def solve_cluster_2tri_2d(
     perturb_seed = 0
     for pass_idx in range(l2_max_passes):
         T1, T2 = _triangle_areas_2d(phi_work[0], phi_work[1])
-        cur_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+        cur_n_neg = _n_below(T1, T2)
         if cur_n_neg == 0:
             break
         z_init = pack(phi_work)
@@ -357,7 +387,7 @@ def solve_cluster_2tri_2d(
         l2_passes_run += 1
         phi_new = unpack(res.x, phi_work)
         T1_new, T2_new = _triangle_areas_2d(phi_new[0], phi_new[1])
-        new_n_neg = int((T1_new <= 0).sum() + (T2_new <= 0).sum())
+        new_n_neg = _n_below(T1_new, T2_new)
         if new_n_neg < cur_n_neg:
             phi_work = phi_new
             l2_total_nit += int(res.nit)
@@ -368,7 +398,7 @@ def solve_cluster_2tri_2d(
                 break
 
     T1_f, T2_f = _triangle_areas_2d(phi_work[0], phi_work[1])
-    after_l2_n_neg = int((T1_f <= 0).sum() + (T2_f <= 0).sum())
+    after_l2_n_neg = _n_below(T1_f, T2_f)
     after_l2_min = float(min(T1_f.min(), T2_f.min()))
 
     # ----- L1 polish (only if L2 reached feasibility) -----
@@ -399,7 +429,9 @@ def solve_cluster_2tri_2d(
         l1_nit = int(res.nit)
         phi_candidate = unpack(res.x, phi_work)
         T1c, T2c = _triangle_areas_2d(phi_candidate[0], phi_candidate[1])
-        n_neg_c = int((T1c <= 0).sum() + (T2c <= 0).sum())
+        # Threshold-consistent gate: the L1 polish may only replace a
+        # threshold-feasible L2 result with another threshold-feasible one.
+        n_neg_c = _n_below(T1c, T2c)
         L1_l2 = float(np.abs(phi_work - phi_anchor_win).sum())
         L1_c = float(np.abs(phi_candidate - phi_anchor_win).sum())
         if n_neg_c == 0 and L1_c < L1_l2 - 1e-9:

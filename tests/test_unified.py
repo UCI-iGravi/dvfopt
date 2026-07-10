@@ -138,6 +138,16 @@ class TestConfigValidation:
         with pytest.raises(ValueError):
             DVFoptConfig(accuracy='nonsense')
 
+    @pytest.mark.parametrize('constraint', ['jdet_3d', '6tet', '6tet_3d'])
+    def test_3d_constraints_rejected_at_construction(self, constraint):
+        """The facade is per-slice 2D. It used to accept 3D constraint
+        labels at validation, only to fail later inside
+        ``_build_constraint`` ('6tet') or run jdet_3d mis-shaped
+        per-slice. Now they're rejected at construction with a pointer
+        to the true-3D APIs."""
+        with pytest.raises(ValueError, match='per-slice 2D'):
+            DVFopt(DVFoptConfig(constraint=constraint))
+
 
 class TestAccuracyPlumbing:
     """DVFoptConfig.accuracy → strategy plumbing."""
@@ -185,6 +195,34 @@ class TestAccuracyPlumbing:
         with pytest.warns(UserWarning, match='ignored'):
             DVFopt(cfg).fit(phi)
 
+    def test_auto_solver_max_accuracy_warns_when_not_slp(self):
+        """accuracy='max' with solver='auto' was a silent no-op:
+        ``auto_strategy`` never resolves to 'slp', so the documented
+        accuracy path did nothing. Now it warns and names the label
+        auto actually selected."""
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver='auto',
+            accuracy='max',
+            constraint='2tri',
+            verbose=0,
+            record_history=False,
+        )
+        with pytest.warns(UserWarning, match="applies only to.*solver='slp'"):
+            DVFopt(cfg).fit(phi)
+
+    def test_auto_solver_fast_accuracy_no_warning(self, recwarn):
+        """The default accuracy='fast' with solver='auto' stays silent."""
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver='auto',
+            constraint='2tri',
+            verbose=0,
+            record_history=False,
+        )
+        DVFopt(cfg).fit(phi)
+        assert not [w for w in recwarn.list if 'slp' in str(w.message)]
+
     def test_instance_strategy_fast_accuracy_no_warning(self, recwarn):
         """The default accuracy='fast' with an instance stays silent."""
         from dvfopt import BarrierStrategy
@@ -222,6 +260,47 @@ class TestInputShapeDispatch:
         res = DVFopt(cfg).fit(phi)
         assert res.feasible
         assert res.slice_results[0].solver_used == "none"
+
+
+class TestSliceResultMemory:
+    """Finding: SliceResult retained a full per-slice copy of the
+    corrected field plus the raw legacy history a second time in
+    ``SolveInfo.extras['_legacy_history']`` (~1.2 GB redundant on a
+    528-slice volume)."""
+
+    def test_slice_corrected_is_readonly_view_matching_volume(self):
+        phi = _planted_fold_2d(H=10, W=10)
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=True, verbose=0)
+        res = DVFopt(cfg).fit(phi)
+        sr = res.slice_results[0]
+        # Values match the assembled volume slice ([dy, dx] channels).
+        np.testing.assert_array_equal(sr.corrected, res.corrected)
+        # It's a read-only view, not an independent writable copy.
+        assert not sr.corrected.flags.writeable
+        assert sr.corrected.base is not None
+
+    def test_3d_volume_slice_views_match_assembled(self):
+        rng = np.random.default_rng(1)
+        phi = rng.normal(0, 0.3, (3, 2, 10, 10))
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=False, verbose=0)
+        res = DVFopt(cfg).fit(phi)
+        assert res.corrected.shape == (3, 2, 10, 10)
+        for sr in res.slice_results:
+            np.testing.assert_array_equal(sr.corrected, res.corrected[1:3, sr.z])
+            assert not sr.corrected.flags.writeable
+
+    def test_no_duplicate_legacy_history_in_extras(self):
+        from dvfopt.solver import SolveInfo
+
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(solver="barrier", constraint="2tri", record_history=True, verbose=0)
+        res = DVFopt(cfg).fit(phi)
+        sr = res.slice_results[0]
+        # History is exposed once (SliceResult.history) ...
+        assert len(sr.history) > 0
+        # ... and NOT stashed a second time inside SolveInfo.extras.
+        if isinstance(sr.info, SolveInfo):
+            assert '_legacy_history' not in sr.info.extras
 
 
 class TestBarrierReducesFolds:
