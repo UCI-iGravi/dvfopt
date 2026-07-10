@@ -98,6 +98,8 @@ ignore = [
 "tests/test_gpu_untangle.py" = ["E402"]
 # importorskip('PyQt5'/'SimpleITK') must run BEFORE importing the module under test.
 "tests/test_gui_io_formats.py" = ["E402"]
+# importorskip('hypothesis') must run BEFORE the hypothesis imports.
+"tests/test_constraint_properties.py" = ["E402"]
 "**/conftest.py" = ["F401"]
 "scripts/**" = ["E402", "F401", "SIM115", "RUF005", "F841"]  # probes are scratch code
 "notebooks/experiments/_run_*.py" = ["E402"]
