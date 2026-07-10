@@ -9,11 +9,16 @@ window and applied at worker construction — no bespoke UI per method.
 from __future__ import annotations
 
 import dataclasses
+import math
 
 from PyQt5 import QtWidgets
 
 # Fields the toolbar already owns, or that make no sense to override here.
-_EXCLUDED_FIELDS = {'time_budget_s'}
+# ``supports_3d`` is a typed dataclass field on every Strategy (used for
+# compatibility checks at Solver construction) but it is not a solver knob:
+# unchecking it in the UI makes an otherwise-valid 3D run raise
+# IncompatibleConstraintError, so it's excluded rather than rendered.
+_EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 # Literal-choice fields (dataclasses can't express Literal defaults cleanly).
 _CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
 
@@ -24,9 +29,9 @@ def strategy_class_for(algo: str):
 
     2D algo tags (e.g. ``'m14'``) and 3D algo tags are ambiguous on their
     own — the 3D classes have different knobs than their 2D namesakes — so
-    the window family-qualifies 3D lookups as ``f'{algo}@tet3d'`` (see
-    ``LiveSolverWindow._current_params_algo``). Plain algo tags resolve
-    against the 2D mapping.
+    the window family-qualifies 3D lookups as ``f'{algo}@tet3d'`` or
+    ``f'{algo}@jdet3d'`` (see ``LiveSolverWindow._current_params_algo``).
+    Plain algo tags resolve against the 2D mapping.
     """
     import dvfopt
 
@@ -36,7 +41,11 @@ def strategy_class_for(algo: str):
         'm14_schwarz': dvfopt.SchwarzHarmonicALMRefineRepairStrategy,
         'm10': dvfopt.HarmonicALMBarrierStrategy,
         'barrier': dvfopt.BarrierStrategy,
-        'slsqp_windowed': dvfopt.SLSQPWindowedStrategy,
+        # 2D windowed-SLSQP never constructs a Strategy (run() routes it to
+        # _run_windowed_slsqp, driven by the toolbar's max_iter spinbox), so
+        # a params tab here would be editable-but-ignored. The 3D variant
+        # ('slsqp_windowed@jdet3d') IS Strategy-constructed and editable.
+        'slsqp_windowed': None,
         'slsqp_fullgrid': dvfopt.SLSQPFullGridStrategy,
         'schwarz': dvfopt.SchwarzStrategy,
         'nmvf': dvfopt.NMVFStrategy,
@@ -57,6 +66,11 @@ def strategy_class_for(algo: str):
         'barrier_torch@tet3d': dvfopt.BarrierTet3DTorchStrategy,
     }
     mapping.update(tet3d)
+    jdet3d = {
+        'barrier@jdet3d': dvfopt.BarrierStrategy,
+        'slsqp_windowed@jdet3d': dvfopt.SLSQPWindowedStrategy,
+    }
+    mapping.update(jdet3d)
     return mapping.get(algo)
 
 
@@ -115,7 +129,14 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 w.setValue(int(value))
             elif kind == 'float':
                 w = QtWidgets.QDoubleSpinBox()
-                w.setDecimals(6)
+                decimals = 6
+                d_abs = abs(float(default)) if isinstance(default, (int, float)) else 0.0
+                if 0.0 < d_abs < 1e-4:
+                    # Tiny defaults (ftol=1e-10 etc.) need enough precision to
+                    # survive the widget round-trip — decimals=6 clamps them
+                    # to 0.0 and corrupts the solver settings.
+                    decimals = min(14, math.ceil(-math.log10(d_abs)) + 2)
+                w.setDecimals(decimals)
                 w.setRange(-1e12, 1e12)
                 w.setValue(float(value))
             elif kind == 'bool':
@@ -150,6 +171,13 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 v = str(w.currentText())
             else:
                 v = str(w.text())
-            if v != self._defaults[name]:
-                out[name] = v
+            if kind == 'float':
+                default = self._defaults[name]
+                if isinstance(default, (int, float)) and math.isclose(
+                    v, float(default), rel_tol=1e-9, abs_tol=1e-300
+                ):
+                    continue
+            elif v == self._defaults[name]:
+                continue
+            out[name] = v
         return out

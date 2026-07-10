@@ -719,6 +719,17 @@ def test_strategy_params_introspection():
     assert 'time_budget_s' not in fields
 
 
+def test_strategy_params_excludes_supports_3d_and_2d_windowed():
+    from dvfopt import SLPStrategy
+    from dvfopt_gui.strategy_params import editable_fields, strategy_class_for
+
+    names = {name for name, _k, _d in editable_fields(SLPStrategy)}
+    assert 'supports_3d' not in names
+    assert strategy_class_for('slsqp_windowed') is None  # 2D: ignored -> honest
+    assert strategy_class_for('slsqp_windowed@jdet3d') is not None
+    assert strategy_class_for('barrier@jdet3d') is not None
+
+
 def test_worker_applies_strategy_overrides():
     from dvfopt import SLPStrategy
 

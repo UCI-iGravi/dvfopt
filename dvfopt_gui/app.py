@@ -564,8 +564,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # retain whatever they were started with.
         self._history_max_size: int = DEFAULT_HISTORY_MAX
         # Per-method Strategy dataclass-field overrides, keyed by the algo
-        # tag (family-qualified as ``f'{algo}@tet3d'`` in 3D mode — see
-        # ``_current_params_algo``). Edited via the Params dialog's
+        # tag (family-qualified as ``f'{algo}@tet3d'`` or ``f'{algo}@jdet3d'``
+        # in 3D mode — see ``_current_params_algo``). Edited via the Params dialog's
         # Strategy tab; merged into the worker's constructed Strategy at
         # ``_build_strategy`` time. Persisted to QSettings as JSON.
         self._strategy_overrides: dict[str, dict] = {}
@@ -1847,9 +1847,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
     def _current_params_algo(self) -> str:
         """Key for strategy-override storage: the algo tag, family-qualified
-        in 3D mode (the 3D classes have different knobs)."""
+        in 3D mode (the 3D strategy classes have different knobs)."""
         algo = self._method_combo.currentData() or ''
-        return f'{algo}@tet3d' if self._is_3d_run else algo
+        if not self._is_3d_run:
+            return algo
+        family = self._constraint_combo.currentData()
+        return f'{algo}@{family}'  # '@tet3d' or '@jdet3d'
 
     def _on_open_params(self):
         """Open the Params dialog. On accept, write the edited values

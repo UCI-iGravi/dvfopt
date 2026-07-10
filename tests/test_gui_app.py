@@ -1095,3 +1095,23 @@ def test_params_dialog_strategy_tab_and_persistence(qapp, tmp_path, monkeypatch)
     win._select_combo_data(win._method_combo, 'slp')
     win._on_run(use_roi=False)
     assert captured['p']['strategy_overrides'] == {'cluster_pixel_threshold': 99}
+
+
+def test_strategy_params_no_spurious_float_overrides(qapp):
+    # Opening the tab and reading values() without touching anything must
+    # be a no-op — even for strategies with sub-1e-6 float defaults.
+    from dvfopt_gui.strategy_params import StrategyParamsTab
+
+    for algo in ('slsqp_fullgrid', 'slsqp_fullgrid@tet3d', 'coupled_kring@tet3d'):
+        tab = StrategyParamsTab()
+        tab.build(algo, {})
+        assert tab.values() == {}, f'{algo}: spurious overrides {tab.values()}'
+
+
+def test_params_algo_key_family_accurate(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'jdet3d')
+    win._select_combo_data(win._method_combo, 'barrier')
+    assert win._current_params_algo() == 'barrier@jdet3d'
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert win._current_params_algo().endswith('@tet3d')
