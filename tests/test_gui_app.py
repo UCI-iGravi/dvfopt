@@ -1017,3 +1017,52 @@ def test_pipeline_report_message_is_final(qapp):
     msg = win.statusBar().currentMessage()
     assert 'Pipeline:' in msg
     assert 'Run finished' not in msg
+
+
+# ---------------------------------------------------------------------------
+# per-slice fold overview strip
+# ---------------------------------------------------------------------------
+
+
+def test_overview_strip_counts_and_click(qapp):
+    from dvfopt_gui.overview import OverviewWorker, SliceOverviewStrip
+    from dvfopt_gui.worker import _metric_counts
+
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, 2, 3, 3] = 1.2  # slice 2 has 2-tri folds
+    vol[2, 2, 3, 4] = -1.2
+
+    # Worker computes per-slice 2-tri fold counts (run synchronously).
+    got = {}
+    w = OverviewWorker(vol)
+    w.chunkReady.connect(lambda start, arr: got.setdefault(start, np.asarray(arr)))
+    w.run()
+    counts = np.concatenate([got[k] for k in sorted(got)])
+    assert counts.shape == (4,)
+    assert counts[2] == _metric_counts(vol[1:, 2], '2tri')[0] > 0
+    assert counts[0] == 0
+
+    strip = SliceOverviewStrip()
+    clicks = []
+    strip.sliceClicked.connect(clicks.append)
+    strip.set_counts(counts)
+    strip.set_current(1)
+    strip._emit_click_at(2.4)  # test hook: x-coordinate -> slice index
+    assert clicks == [2]
+
+
+def test_overview_strip_wired_into_window(qapp):
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, 1, 3, 3] = 1.2
+    vol[2, 1, 3, 4] = -1.2
+    win = LiveSolverWindow(vol)
+    assert win._overview_strip.isVisibleTo(win)
+    win._overview_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+    assert win._overview_counts is not None and win._overview_counts[1] > 0
+    win._overview_strip.sliceClicked.emit(3)
+    assert win._z_slider.value() == 3
+    # 2D single-slice field hides the strip.
+    win._load_array(np.zeros((3, 1, 6, 6)))
+    assert not win._overview_strip.isVisibleTo(win)

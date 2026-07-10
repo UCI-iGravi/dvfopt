@@ -33,6 +33,7 @@ from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from dvfopt_gui.convergence import ConvergencePlot
 from dvfopt_gui.history import HistoryController
+from dvfopt_gui.overview import OverviewWorker, SliceOverviewStrip
 from dvfopt_gui.persistence import (
     LoadedRun,
     build_save_payload,
@@ -890,6 +891,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # curve only when it grows (the cursor still moves every frame).
         self._conv_len = -1
 
+        # Per-slice fold overview (volumes only): computed in the background,
+        # click to jump z.
+        self._overview_strip = SliceOverviewStrip()
+        self._overview_strip.setVisible(False)
+        self._overview_strip.sliceClicked.connect(self._z_slider.setValue)
+        outer.addWidget(self._overview_strip)
+        self._overview_worker: OverviewWorker | None = None
+        self._overview_counts: np.ndarray | None = None
+
         # ---- history scrub row -----------------------------------------
         # Every snapshot the worker emits lands in ``worker._history``
         # (in addition to the bounded live queue). The slider scrubs
@@ -1432,6 +1442,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._history.reset()
             self._history.set_live(True)
             self._refresh_display_from_volume()
+        self._restart_overview()
         return True
 
     @staticmethod
@@ -1455,6 +1466,46 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if self._original_volume is None:
             raise RuntimeError('no DVF loaded')
         return self._original_volume[:, self._z : self._z + 1].copy()
+
+    # ----- per-slice fold overview strip --------------------------------------
+
+    def _restart_overview(self) -> None:
+        """(Re)compute the per-slice fold counts in the background. Called on
+        load and whenever a finished run splices the volume."""
+        if self._overview_worker is not None and self._overview_worker.isRunning():
+            self._overview_worker.cancel()
+            self._overview_worker.wait(2_000)
+        D = self._volume.shape[1] if self._volume is not None else 1
+        if self._volume is None or D <= 1:
+            self._overview_strip.setVisible(False)
+            self._overview_counts = None
+            return
+        self._overview_strip.setVisible(True)
+        self._overview_counts = np.zeros(D, dtype=np.int64)
+        self._overview_strip.set_counts(self._overview_counts)
+        self._overview_strip.set_current(self._z)
+        self._overview_worker = OverviewWorker(self._volume, parent=self)
+        self._overview_worker.chunkReady.connect(self._on_overview_chunk)
+        self._overview_worker.start()
+
+    def _on_overview_chunk(self, start: int, counts) -> None:
+        # Same stale-signal guard as ``_on_finished``: a rapid reload calls
+        # ``_restart_overview`` again before the previous worker's already-
+        # queued ``chunkReady`` emissions have been delivered. Without this
+        # check, one of those late signals lands after ``_overview_counts``
+        # has been reallocated for the NEW (possibly differently-sized)
+        # volume — silently writing another volume's counts into it, or
+        # raising a shape-mismatch ``ValueError`` if the sizes differ.
+        # ``sender()`` is None only for a direct Python call (e.g. tests),
+        # in which case there is no "other" worker to guard against.
+        sender = self.sender()
+        if sender is not None and sender is not self._overview_worker:
+            return
+        if self._overview_counts is None:
+            return
+        counts = np.asarray(counts)
+        self._overview_counts[start : start + len(counts)] = counts
+        self._overview_strip.set_counts(self._overview_counts)
 
     # ----- rendering ---------------------------------------------------------
 
@@ -1752,6 +1803,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self._render_snapshot(self._latest)
             else:
                 self._refresh_display_from_volume()
+            self._overview_strip.set_current(self._z)
             return
         # A run's history belongs to the slice it was solved on. Switching
         # z invalidates it — drop the worker reference and reset the scrub
@@ -1763,6 +1815,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._history.reset()
         self._history.set_live(True)
         self._refresh_display_from_volume()
+        self._overview_strip.set_current(self._z)
 
     def _on_open_params(self):
         """Open the Params dialog. On accept, write the edited values
@@ -2088,6 +2141,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
+            self._restart_overview()
         report = getattr(self._worker, 'pipeline_report', None)
         if report is not None:
             self.statusBar().showMessage(
@@ -2622,6 +2676,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 # Stuck inside an uninterruptible solve — force it down.
                 worker.terminate()
                 worker.wait(2000)
+        # Same reasoning for the background overview-strip worker: a bare
+        # ``cancel()`` only flips a flag checked between per-slice metric
+        # computations, so wait (bounded) for it to actually exit before
+        # the window (its parent) is torn down.
+        overview_worker = self._overview_worker
+        if overview_worker is not None and overview_worker.isRunning():
+            overview_worker.cancel()
+            overview_worker.wait(2_000)
         super().closeEvent(ev)
 
 
