@@ -2105,6 +2105,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if not self._run_all_remaining:
             self._run_all_remaining = None
             self._finalize_run_ui()
+            # The per-slice gate in ``_on_finished`` skipped every restart
+            # during the batch (``_run_all_remaining`` was non-None then) —
+            # this drain branch is the batch's actual end, so it owns the
+            # one restart that reflects the whole batch's splices. The
+            # pipeline chain-trigger branch above needs no equivalent call:
+            # it hands off to the 2.5D marching worker, whose own finish
+            # later runs with ``_run_all_remaining`` already None, so the
+            # gate in ``_on_finished`` fires naturally for it.
+            self._restart_overview()
             self.statusBar().showMessage('Run all z finished.', 10_000)
             return
         z = self._run_all_remaining.pop(0)
@@ -2185,6 +2194,19 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self, 'Pipeline needs a volume', 'The full pipeline needs a (3, D>1, H, W) volume.'
             )
             return
+        if not zero_dz and float(np.abs(self._volume[0]).max()) > 1e-9:
+            ans = QtWidgets.QMessageBox.question(
+                self,
+                'dz is not zero',
+                'The 2.5D stage requires dz == 0, but this volume has a '
+                'nonzero dz channel — the pipeline would fail after the '
+                'per-slice 2D stage.\n\nZero the dz channel first (one '
+                'undoable operation together with the pipeline)?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            )
+            if ans != QtWidgets.QMessageBox.Yes:
+                return
+            zero_dz = True
         if self._is_3d_run:
             # Per-slice stage needs a 2D method; drop back to the 2-tri family.
             self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
@@ -2250,7 +2272,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
-            self._restart_overview()
+            # Skip the (expensive, full-volume) overview recompute for a
+            # per-slice finish mid-batch (Run-all / the pipeline's per-slice
+            # stage) — ``_run_all_remaining`` is a list, not None, for every
+            # finish except a standalone run or the 2.5D marching stage's
+            # own finish. The batch's own end-of-run restarts are triggered
+            # explicitly: see ``_run_all_step``'s drain branch.
+            if self._run_all_remaining is None:
+                self._restart_overview()
         report = getattr(self._worker, 'pipeline_report', None)
         if report is not None:
             self.statusBar().showMessage(

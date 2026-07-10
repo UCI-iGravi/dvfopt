@@ -1154,3 +1154,38 @@ def test_3d_roi_splice_back(qapp):
     win._on_finished(sub, None)
     assert win._volume[1, 2, 5, 5] == pytest.approx(2.0)
     assert win._volume[1, 0, 5, 5] == 0.0  # outside the box untouched
+
+
+# ---------------------------------------------------------------------------
+# final-review fixes: upfront dz check on the direct pipeline path; gated
+# overview restart during Run-all / pipeline batches
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_full_checks_dz_upfront(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5
+    win._original_volume[0, 1, 2, 2] = 0.5
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.No),
+    )
+    started = {}
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: started.setdefault('s', True))
+    win._on_run_pipeline_full()
+    assert not started.get('s'), 'declined dz consent must not start the batch'
+    assert not win._pipeline_active
+
+
+def test_overview_restart_skipped_per_slice(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 3, 6, 6)))
+    calls = {'n': 0}
+    monkeypatch.setattr(win, '_restart_overview', lambda: calls.update(n=calls['n'] + 1))
+    # Mid-batch, ``_on_finished`` chains into ``_run_all_step``, which pops
+    # slice 2 and starts its worker for real -- stub that out too.
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._worker = None
+    win._run_all_remaining = [2]  # mid-batch
+    win._on_finished(np.zeros((2, 6, 6)), None)  # per-slice finish
+    assert calls['n'] == 0, 'no overview restart mid-batch'
