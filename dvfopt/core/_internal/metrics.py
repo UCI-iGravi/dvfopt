@@ -2,6 +2,8 @@
 
 * :func:`_update_metrics` — recompute Jdet / quality and append to accumulator lists.
 * :func:`_patch_jacobian_2d` — recompute Jdet only in the modified sub-region.
+* :func:`_patch_quality_2d` — recompute the combined quality map only in the
+  modified sub-region.
 
 Originally bundled in ``dvfopt/core/solver.py`` — kept re-exported there
 for backward compatibility.
@@ -26,6 +28,7 @@ def _update_metrics(
     patch_center=None,
     patch_size=None,
     enforce_triangles=False,
+    quality_matrix=None,
 ):
     """Recompute Jacobian/quality matrices and append to accumulator lists.
 
@@ -41,6 +44,20 @@ def _update_metrics(
         ``(cy, cx)`` center of the optimised sub-window.
     patch_size : tuple or None
         ``(sy, sx)`` size of the optimised sub-window.
+    quality_matrix : ndarray or None
+        The current quality map (only meaningful when any ``enforce_*``
+        flag is set).  When provided together with *jacobian_matrix*:
+
+        * with *patch_center*/*patch_size* — the quality map is patched
+          window-locally (exact: every quality metric has the same
+          bounded footprint as the Jacobian determinant), avoiding the
+          full-grid recomputation;
+        * with ``patch_center=None`` — the quality map is trusted as
+          already patched externally (e.g. per-window in a parallel
+          batch), mirroring the Jacobian convention.
+
+        When ``None`` (legacy behaviour), the quality map is recomputed
+        over the full grid.
 
     Returns
     -------
@@ -54,17 +71,35 @@ def _update_metrics(
     else:
         jac = jacobian_det2D(phi)
     use_q = enforce_shoelace or enforce_injectivity or enforce_triangles
-    qm = (
-        _quality_map(
+    if not use_q:
+        qm = jac
+    elif (
+        quality_matrix is not None
+        and jacobian_matrix is not None
+        and patch_center is not None
+        and patch_size is not None
+    ):
+        qm = _patch_quality_2d(
+            quality_matrix,
+            phi,
+            jac,
+            patch_center,
+            patch_size,
+            enforce_shoelace,
+            enforce_injectivity,
+            enforce_triangles=enforce_triangles,
+        )
+    elif quality_matrix is not None and jacobian_matrix is not None and patch_center is None:
+        # Quality already patched externally alongside the Jacobian.
+        qm = quality_matrix
+    else:
+        qm = _quality_map(
             phi,
             enforce_shoelace,
             enforce_injectivity,
             enforce_triangles=enforce_triangles,
             jacobian_matrix=jac,
         )
-        if use_q
-        else jac
-    )
     cur_neg = int((jac <= 0).sum())
     cur_min = float(jac.min())
     num_neg_jac.append(cur_neg)
@@ -72,6 +107,31 @@ def _update_metrics(
     if error_list is not None:
         error_list.append(np.sqrt(np.sum((phi - phi_init) ** 2)))
     return jac, qm, cur_neg, cur_min
+
+
+def _patch_regions_2d(center, sub_size, H, W):
+    """Shared window-patch geometry for Jacobian and quality maps.
+
+    Returns ``(wy0, wy1, wx0, wx1, cy0, cy1, cx0, cx1)`` where
+    ``[wy0:wy1, wx0:wx1]`` is the write-back region (sub-window + 1px
+    border, clamped to the grid) and ``[cy0:cy1, cx0:cx1]`` is the
+    computation region (write-back + 1 extra pixel of context).
+    """
+    cy, cx = center
+    sy, sx = _unpack_size(sub_size)
+    hy, hx = sy // 2, sx // 2
+    hy_hi, hx_hi = sy - hy, sx - hx
+
+    wy0 = max(cy - hy - 1, 0)
+    wy1 = min(cy + hy_hi + 1, H)
+    wx0 = max(cx - hx - 1, 0)
+    wx1 = min(cx + hx_hi + 1, W)
+
+    cy0 = max(wy0 - 1, 0)
+    cy1 = min(wy1 + 1, H)
+    cx0 = max(wx0 - 1, 0)
+    cx1 = min(wx1 + 1, W)
+    return wy0, wy1, wx0, wx1, cy0, cy1, cx0, cx1
 
 
 def _patch_jacobian_2d(jacobian_matrix, phi, center, sub_size):
@@ -83,23 +143,8 @@ def _patch_jacobian_2d(jacobian_matrix, phi, center, sub_size):
 
     Mutates *jacobian_matrix* in place and returns it.
     """
-    cy, cx = center
-    sy, sx = _unpack_size(sub_size)
-    hy, hx = sy // 2, sx // 2
-    hy_hi, hx_hi = sy - hy, sx - hx
     H, W = phi.shape[1], phi.shape[2]
-
-    # Write-back region: sub-window + 1px border, clamped to grid
-    wy0 = max(cy - hy - 1, 0)
-    wy1 = min(cy + hy_hi + 1, H)
-    wx0 = max(cx - hx - 1, 0)
-    wx1 = min(cx + hx_hi + 1, W)
-
-    # Computation region: 1 extra pixel for central-difference context
-    cy0 = max(wy0 - 1, 0)
-    cy1 = min(wy1 + 1, H)
-    cx0 = max(wx0 - 1, 0)
-    cx1 = min(wx1 + 1, W)
+    wy0, wy1, wx0, wx1, cy0, cy1, cx0, cx1 = _patch_regions_2d(center, sub_size, H, W)
 
     jdet_comp = _numpy_jdet_2d(phi[0, cy0:cy1, cx0:cx1], phi[1, cy0:cy1, cx0:cx1])
 
@@ -108,3 +153,52 @@ def _patch_jacobian_2d(jacobian_matrix, phi, center, sub_size):
     tx0 = wx0 - cx0
     jacobian_matrix[0, wy0:wy1, wx0:wx1] = jdet_comp[ty0 : ty0 + wy1 - wy0, tx0 : tx0 + wx1 - wx0]
     return jacobian_matrix
+
+
+def _patch_quality_2d(
+    quality_matrix,
+    phi,
+    jacobian_matrix,
+    center,
+    sub_size,
+    enforce_shoelace,
+    enforce_injectivity,
+    enforce_triangles=False,
+):
+    """Recompute the combined quality map only in the modified sub-region.
+
+    Exactness: every metric folded into :func:`_quality_map` has the same
+    bounded footprint as the Jacobian determinant — the value at pixel
+    ``p`` depends only on ``phi`` within the 3x3 neighbourhood of ``p``:
+
+    * *shoelace* / *triangles* — per-cell areas from the cell's 4 corner
+      pixels, spread (via min) to the incident pixels;
+    * *injectivity* — monotonicity gaps between horizontally / vertically
+      / diagonally adjacent pixel pairs, spread to the pair members;
+    * *Jdet* — taken from the (already patched) *jacobian_matrix* slice.
+
+    So recomputing :func:`_quality_map` on the computation region
+    (write-back + 1px of context) and writing back the write-back region
+    reproduces the full-grid values exactly: every cell / pixel pair
+    incident to a write-back pixel lies inside the computation region
+    (or does not exist globally either, at true grid edges).
+
+    Mutates *quality_matrix* in place and returns it.
+    """
+    H, W = phi.shape[1], phi.shape[2]
+    wy0, wy1, wx0, wx1, cy0, cy1, cx0, cx1 = _patch_regions_2d(center, sub_size, H, W)
+
+    q_comp = _quality_map(
+        phi[:, cy0:cy1, cx0:cx1],
+        enforce_shoelace,
+        enforce_injectivity,
+        enforce_triangles=enforce_triangles,
+        jacobian_matrix=jacobian_matrix[:, cy0:cy1, cx0:cx1],
+    )
+
+    ty0 = wy0 - cy0
+    tx0 = wx0 - cx0
+    quality_matrix[0, wy0:wy1, wx0:wx1] = q_comp[
+        0, ty0 : ty0 + wy1 - wy0, tx0 : tx0 + wx1 - wx0
+    ]
+    return quality_matrix

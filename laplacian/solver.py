@@ -14,6 +14,7 @@ Performance optimizations:
 
 import gc
 import inspect
+import warnings
 
 import numpy as np
 
@@ -31,6 +32,7 @@ def solveLaplacianFromCorrespondences(
     log_fn=None,
     axis_labels=None,
     solver_method='cg',
+    return_info=False,
 ):
     """Solve the 3D Laplacian interpolation given pre-computed correspondences.
 
@@ -60,12 +62,25 @@ def solveLaplacianFromCorrespondences(
     solver_method : str, optional
         Linear solver: ``'cg'`` (Conjugate Gradient with Jacobi
         preconditioner, default) or ``'lgmres'`` (restarted LGMRES).
+    return_info : bool, optional
+        If True, additionally return a dict mapping each solved axis label
+        to the scipy solver's ``info`` flag (0 = converged, >0 = hit
+        maxiter without converging, <0 = illegal input). Default False
+        (return just the field, backward compatible).
 
     Returns
     -------
     deformation_field : np.ndarray, shape (3, n0, n1, n2)
         Displacement field. ``deformation_field[d]`` is the displacement
         along axis *d* for every voxel.  Axis order matches *vol_shape*.
+    info : dict, optional
+        Only if ``return_info=True``: ``{axis_label: info_flag}``.
+
+    Warns
+    -----
+    RuntimeWarning
+        If the linear solver fails to converge for any axis
+        (``info != 0``).
     """
     log = log_fn or (lambda msg: None)
 
@@ -74,7 +89,10 @@ def solveLaplacianFromCorrespondences(
 
     if len(source_pts) == 0 or len(target_pts) == 0:
         log("No correspondence points provided — returning zero deformation field.")
-        return np.zeros((nd, n0, n1, n2))
+        zero_field = np.zeros((nd, n0, n1, n2))
+        if return_info:
+            return zero_field, {}
+        return zero_field
 
     from scipy.sparse import diags as sparse_diags
     from scipy.sparse.linalg import cg as sp_cg
@@ -143,6 +161,7 @@ def solveLaplacianFromCorrespondences(
     )
 
     solutions = {}
+    info_flags = {}
     for rhs, label in zip(rhs_arrays, axis_labels):
         iters = [0]
 
@@ -158,13 +177,22 @@ def solveLaplacianFromCorrespondences(
         if info == 0:
             log(f"  {label} converged in {iters[0]} iterations")
         elif info > 0:
-            log(
-                f"[warn]  {label} did NOT converge — hit maxiter={maxiter} "
-                f"after {iters[0]} iters (info={info}); result may be inaccurate"
+            msg = (
+                f"{_solver_label} did NOT converge for '{label}' — hit "
+                f"maxiter={maxiter} (rtol={rtol}, info={info}); "
+                f"result may be inaccurate"
             )
+            log(f"[warn]  {msg}")
+            warnings.warn(msg, RuntimeWarning, stacklevel=2)
         else:
-            log(f"[warn]  {label} solver returned illegal input (info={info})")
+            msg = (
+                f"{_solver_label} solver returned illegal input for "
+                f"'{label}' (info={info}, rtol={rtol}, maxiter={maxiter})"
+            )
+            log(f"[warn]  {msg}")
+            warnings.warn(msg, RuntimeWarning, stacklevel=2)
         solutions[label] = x
+        info_flags[label] = int(info)
 
     del A, M_pre
     gc.collect()
@@ -173,4 +201,6 @@ def solveLaplacianFromCorrespondences(
     for ax, label in zip(axes, axis_labels):
         deformation_field[ax] = solutions[label].reshape(vol_shape)
 
+    if return_info:
+        return deformation_field, info_flags
     return deformation_field

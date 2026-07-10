@@ -316,11 +316,11 @@ def _iterative_3d_barrier_fullgrid(
         elif 'phi_flat' in step:
             l2 = float(np.linalg.norm(step['phi_flat'] - phi_init_flat))
         else:
-            raise RuntimeError(
-                "run_penalty_barrier_lbfgs(record_history=True) did not record "
-                "per-step L2 data or iterates; cannot populate full-grid 3D "
-                "barrier error_list without silently writing incorrect zeros."
-            )
+            # Core history records only {phase, step, lam/mu, n_neg, min_T,
+            # wall_s} — per-step L2 is not available. Mirror the 2D sibling:
+            # append 0.0 so the accumulator lengths stay consistent instead
+            # of failing the whole solve over a diagnostic value.
+            l2 = 0.0
         error_list.append(l2)
     _unpack_phi(phi_flat, grid_size, out=phi)
 

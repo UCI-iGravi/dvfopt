@@ -145,11 +145,24 @@ def register_strategy(label: str):
     External packages can register their own strategies the same way;
     after import they become available via
     :func:`make_strategy('my_solver')`.
+
+    Re-registering the *same* class object under an existing label is a
+    silent no-op (idempotent, e.g. module re-import). Registering a
+    *different* class under an already-taken label raises
+    :class:`ValueError` instead of silently replacing the original.
     """
 
     def deco(cls: type) -> type:
         if not issubclass(cls, Strategy):
             raise TypeError(f'{cls.__name__} is not a Strategy subclass')
+        existing = _STRATEGY_REGISTRY.get(label)
+        if existing is not None and existing is not cls:
+            raise ValueError(
+                f'strategy label {label!r} is already registered to '
+                f'{existing.__module__}.{existing.__qualname__}; refusing to '
+                f'silently overwrite it with {cls.__module__}.{cls.__qualname__}. '
+                f'Pick a different label.'
+            )
         _STRATEGY_REGISTRY[label] = cls
         return cls
 

@@ -50,8 +50,15 @@ from scipy.ndimage import (
     label as cc_label,
 )
 
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+
+# Minimum wall-clock (seconds) that must remain in the budget for the
+# global inner_solve fallback to be worth launching at all. Below this,
+# the fallback is skipped and the best-so-far field is returned — a
+# too-small budget yields an infeasible best-effort result rather than
+# overrunning the requested budget by minutes.
+_FALLBACK_MIN_REMAINING_S = 5.0
 
 # ---------------------------------------------------------------------------
 # 2D — triangle-area cluster detection
@@ -67,11 +74,19 @@ def _stats_2d(phi: np.ndarray) -> tuple[int, float]:
 
 def _fold_clusters_2d(phi: np.ndarray, merge_dilation: int = 2):
     """Connected components of folded 2D cells, dilated for grouping."""
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
     fold_mask = np.minimum(T1, T2) <= 0
     if not fold_mask.any():
         return [], fold_mask
-    grouped = binary_dilation(fold_mask, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(fold_mask, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else fold_mask
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
     bboxes = []
     for comp_id in range(1, n_comp + 1):
@@ -138,7 +153,14 @@ def cluster_schwarz_2d_tri(
         Single cluster covering > this fraction of either axis →
         fall back to ``inner_solve`` on the whole field.
     time_budget_s : float
-        Total wall-clock budget for the sweep + polish.
+        Total wall-clock budget for the sweep + polish. Checked at the
+        top of every outer round, before each cluster, and before the
+        global fallback — the fallback only receives the REMAINING
+        budget (never more), and is skipped entirely when fewer than
+        ~5 s remain. Consequence: a budget too small for the work
+        returns the best-so-far field (possibly still infeasible,
+        i.e. ``feasible=False`` in spirit) instead of overrunning the
+        requested budget several-fold.
     final_polish_fn : callable, optional
         ``(phi) -> phi`` run once post-sweep if ``min_T < threshold + 1e-5``
         or ``n_neg > 0``. ``None`` skips polishing.
@@ -200,6 +222,12 @@ def cluster_schwarz_2d_tri(
     no_progress_rounds = 0
 
     for outer in range(max_outer_iters):
+        # Top-of-loop budget check (mirrors the 3D variant): never start
+        # a new outer round past the requested wall-clock budget.
+        if time.time() - t0 > time_budget_s:
+            if verbose:
+                print('  time budget exhausted; stopping outer loop', flush=True)
+            break
         bboxes, fold_mask = _fold_clusters_2d(phi_out, merge_dilation=merge_dilation)
         if not bboxes:
             break
@@ -221,6 +249,18 @@ def cluster_schwarz_2d_tri(
                 span_y_cells >= fallback_size_ratio * n_cells_y
                 or span_x_cells >= fallback_size_ratio * n_cells_x
             ):
+                # Grant the fallback only what REMAINS of the budget —
+                # never a fresh floor on top of an exhausted one — and
+                # skip it entirely when too little remains to be useful.
+                fallback_budget = time_budget_s - (time.time() - t0)
+                if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
+                    if verbose:
+                        print(
+                            '  budget exhausted; skipping global fallback '
+                            '(returning best-so-far)',
+                            flush=True,
+                        )
+                    break
                 if verbose:
                     print(
                         f'  single cluster spans {span_y_cells}x'
@@ -229,7 +269,6 @@ def cluster_schwarz_2d_tri(
                         flush=True,
                     )
                 history['fallback_to_global'] = True
-                fallback_budget = max(60.0, time_budget_s - (time.time() - t0))
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 break
 
@@ -311,13 +350,24 @@ def cluster_schwarz_2d_tri(
         if post_n_neg >= prev_n_neg:
             no_progress_rounds += 1
             if no_progress_rounds >= 2:
+                # Remaining budget only; skip when effectively exhausted
+                # (returns the best-so-far field rather than blowing the
+                # requested budget on a from-scratch global solve).
+                fallback_budget = time_budget_s - (time.time() - t0)
+                if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
+                    if verbose:
+                        print(
+                            '  budget exhausted; skipping global fallback '
+                            '(returning best-so-far)',
+                            flush=True,
+                        )
+                    break
                 if verbose:
                     print(
                         '  no progress for 2 rounds -> falling back to inner_solve(global)',
                         flush=True,
                     )
                 history['fallback_to_global'] = True
-                fallback_budget = max(60.0, time_budget_s - (time.time() - t0))
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 break
         else:
@@ -360,17 +410,30 @@ def cluster_schwarz_2d_tri(
 
 
 def _stats_3d(phi: np.ndarray) -> tuple[int, float]:
-    V = six_tet_volumes_3d(phi)
-    return int((V <= 0).sum()), float(V.min())
+    # Fused per-cube min kernel — avoids materialising the full
+    # (6, Dc, Hc, Wc) volume array. NOTE: ``n_neg`` therefore counts
+    # folded CUBES (cells whose worst tet is <= 0), not folded tets —
+    # matching the per-cell semantics of :func:`_stats_2d`. All internal
+    # consumers only compare n_neg relatively (== 0, >= previous round),
+    # so the change is behaviour-preserving for control flow.
+    min_V = six_tet_min_volume_3d(phi)
+    return int((min_V <= 0).sum()), float(min_V.min())
 
 
 def _fold_clusters_3d(phi: np.ndarray, threshold: float, merge_dilation: int = 2):
     """Connected components of folded 3D voxel cells, dilated for grouping."""
-    V = six_tet_volumes_3d(phi)
-    fold_cells = V.min(axis=0) < threshold
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    fold_cells = six_tet_min_volume_3d(phi) < threshold
     if not fold_cells.any():
         return [], fold_cells
-    grouped = binary_dilation(fold_cells, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(fold_cells, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else fold_cells
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(3, 3))
     bboxes = []
     for comp_id in range(1, n_comp + 1):
@@ -465,6 +528,18 @@ def cluster_schwarz_3d_tet(
             span_y = (b['cy1'] - b['cy0'] + 1) / max(1, Hc)
             span_x = (b['cx1'] - b['cx0'] + 1) / max(1, Wc)
             if max(span_z, span_y, span_x) > fallback_size_ratio:
+                # Remaining budget only (see the 2D variant): never grant
+                # a fresh floor past exhaustion; skip when ~nothing left.
+                fallback_budget = time_budget_s - (time.time() - t0)
+                if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
+                    if verbose:
+                        print(
+                            '  [schwarz] budget exhausted; skipping global '
+                            'fallback (returning best-so-far)',
+                            flush=True,
+                        )
+                    triggered_fallback = True
+                    break
                 history['fallback_to_global'] = True
                 if verbose:
                     print(
@@ -473,7 +548,6 @@ def cluster_schwarz_3d_tet(
                         f'{fallback_size_ratio} — falling back to inner_solve(global)',
                         flush=True,
                     )
-                fallback_budget = max(60.0, time_budget_s - (time.time() - t0))
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 triggered_fallback = True
                 break
@@ -533,13 +607,21 @@ def cluster_schwarz_3d_tet(
         if cur_n_neg >= last_n_neg:
             last_round_no_progress += 1
             if last_round_no_progress >= 2:
+                fallback_budget = time_budget_s - (time.time() - t0)
+                if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
+                    if verbose:
+                        print(
+                            '  [schwarz] budget exhausted; skipping global '
+                            'fallback (returning best-so-far)',
+                            flush=True,
+                        )
+                    break
                 history['fallback_to_global'] = True
                 if verbose:
                     print(
                         '  [schwarz] no progress for 2 rounds — falling back to inner_solve(global)',
                         flush=True,
                     )
-                fallback_budget = max(60.0, time_budget_s - (time.time() - t0))
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 break
         else:

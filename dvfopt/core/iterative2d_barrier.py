@@ -237,12 +237,13 @@ def iterative_2d_barrier(
     _log(verbose, 1, f"[init] Grid {H}x{W}  threshold={threshold}  margin={margin}  mode={mode}")
     _log(verbose, 1, f"[init] Neg-Jdet: {init_neg}  min Jdet: {init_min:.6f}")
 
-    threshold + margin
     start = time.time()
 
     if windowed:
         structure = np.ones((3, 3))  # 8-connectivity
         converged = False
+        cur_neg = init_neg
+        cur_min = init_min
         for iteration in range(max_iterations):
             phi_flat = _pack_phi_2d(phi)
             j = _jdet_2d_flat(phi_flat, grid_size).reshape(H, W)
@@ -499,6 +500,13 @@ def _optimize_batch_2d_torch(
     if bool(feasible_k.any().item()):
         active_bar = active_cell & feasible_k.view(K, 1, 1)
         active_bar_f = active_bar.to(dtype=dtype)
+        # Mask the shared data term to FEASIBLE patches only. Infeasible
+        # patches are excluded from the barrier term (active_bar), so an
+        # unmasked data term would drag their free DOFs back toward init,
+        # undoing the penalty phase's progress. With both terms masked
+        # their gradient entries are identically zero, so LBFGS leaves
+        # them frozen at their best penalty-phase state.
+        feas_patch_f = feasible_k.view(K, 1, 1, 1).to(dtype=dtype)
         prev_l2 = None
         for mu in mu_schedule:
 
@@ -507,7 +515,7 @@ def _optimize_batch_2d_torch(
                     phi_var.grad.zero_()
                 phi_eff = torch.where(cell_frozen_b, phi_batch_init, phi_var)
                 diff = phi_eff - phi_batch_init
-                data = 0.5 * (diff * diff).sum()
+                data = 0.5 * (diff * diff * feas_patch_f).sum()
                 j = _jdet_2d_torch_batched(phi_eff)
                 slack = j - threshold_f
                 safe_slack = torch.where(active_bar, slack, torch.ones_like(slack))

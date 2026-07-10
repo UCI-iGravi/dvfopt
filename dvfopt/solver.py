@@ -128,12 +128,17 @@ class SolveInfo:
             )
             if feasible_after < 0 and n_neg == 0 and phases[-1].min_T >= threshold - 1e-5:
                 feasible_after = i
+        # Only stash the raw history when phase extraction FAILED (e.g.
+        # history items weren't dicts) — otherwise the same data would be
+        # retained twice (once as PhaseInfo, once verbatim), which adds up
+        # on long per-slice runs.
+        extras = {'_legacy_history': history} if (history and not phases) else {}
         return cls(
             strategy_name=strategy_name,
             phases=phases,
             total_iter=sum(p.n_iter for p in phases),
             feasible_after_phase=feasible_after,
-            extras={'_legacy_history': history} if history else {},
+            extras=extras,
         )
 
 
@@ -253,13 +258,23 @@ class Solver:
     ) -> SolveResult:
         """Run the strategy and return a :class:`SolveResult`.
 
+        The input is coerced ONCE to the constraint's canonical
+        ``(C, *shape)`` layout before it reaches the strategy —
+        strategies are written against the canonical form and must
+        never see loose layouts (e.g. ``(3, H, W)`` with a dz channel,
+        or ``(3, 1, H, W)`` singleton-D). The corrected field is then
+        restored to the *original* input layout, so ``corrected`` has
+        the same shape as ``phi_in``; for a 2D constraint fed a
+        3-channel input the dz channel passes through unchanged.
+
         Extra kwargs are forwarded to the underlying
         :meth:`Strategy.solve` call.
         """
         t0 = time.time()
-        init_n_neg, init_min = self._stats(phi_in)
+        phi_canonical = self.constraint.coerce(phi_in)
+        init_n_neg, init_min = self._stats(phi_canonical)
         phi_out, info = self.strategy.solve(
-            phi_in,
+            phi_canonical,
             constraint=self.constraint,
             objective=self.objective,
             threshold=self.threshold,
@@ -269,6 +284,7 @@ class Solver:
         )
         wall = time.time() - t0
         final_n_neg, final_min = self._stats(phi_out)
+        phi_out = self._restore_layout(phi_in, phi_out)
         feasible = final_n_neg == 0 and final_min >= self.threshold - self.err_tol
 
         # Strategies now build SolveInfo directly via
@@ -332,6 +348,37 @@ class Solver:
         return SolveInfo(strategy_name=strategy_name, extras={'raw': info})
 
     # ----------------------------- helpers -----------------------------
+    def _restore_layout(self, phi_in, corrected: np.ndarray) -> np.ndarray:
+        """Restore the corrected canonical array to the original input layout.
+
+        ``corrected`` is in the constraint's canonical ``(C, *shape)``
+        form (``(2, H, W)`` for the 2D families, ``(3, D, H, W)`` for
+        3D). When the caller passed a looser layout — ``(3, H, W)``,
+        ``(2, 1, H, W)``, ``(3, 1, H, W)`` — the corrected channels are
+        written back into a float64 copy shaped like the input, so the
+        ``SolveResult.corrected`` "same shape as input" contract holds.
+        For 3-channel 2D inputs the dz channel (channel 0) passes
+        through unchanged — the 2D constraint families never touch it.
+        """
+        orig = np.asarray(phi_in, dtype=np.float64)
+        if orig.shape == corrected.shape:
+            return corrected
+        if self.constraint.dim == 2 and corrected.ndim == 3:
+            out = orig.copy()
+            if orig.ndim == 3 and orig.shape[0] in (2, 3):
+                # (2|3, H, W): dy/dx are always the last two channels.
+                out[-2] = corrected[0]
+                out[-1] = corrected[1]
+                return out
+            if orig.ndim == 4 and orig.shape[0] in (2, 3) and orig.shape[1] == 1:
+                # (2|3, 1, H, W) singleton-D layout.
+                out[-2, 0] = corrected[0]
+                out[-1, 0] = corrected[1]
+                return out
+        # Unknown mismatch (coerce() would have rejected it) — return
+        # the canonical result rather than guess.
+        return corrected
+
     def _stats(self, phi: np.ndarray) -> tuple[int, float]:
         """Constraint-aware (n_neg, min_T) for the input field."""
         flat = self.constraint.flatten(phi)
@@ -369,8 +416,15 @@ def correct_dvf(
                           strategy=strategy, shape=shape,
                           threshold=threshold).fit(phi_in)
 
-    With ``strategy='auto'``, picks a strategy based on the initial
-    fold density (see :func:`auto_strategy`).
+    With ``strategy='auto'``, picks a strategy based on the constraint
+    family, objective, and initial fold density (see
+    :func:`auto_strategy`; 2-tri + L1 always routes to ``'slp'``).
+
+    .. note::
+        The default objective here is ``'l1'``, while
+        :class:`dvfopt.DVFoptConfig` defaults to ``'l2'`` (historical
+        facade default) — pass ``objective=`` explicitly when comparing
+        results across the two APIs.
     """
     if shape is None:
         shape = phi_in.shape[1:]  # infer from input
@@ -401,23 +455,36 @@ def auto_strategy(
 ) -> str:
     """Pick a strategy label given initial fold stats and constraint family.
 
-    Tiered for the 2-triangle constraint:
+    For the 2-triangle constraint:
 
-    * **Extreme** (``n_neg > 5000`` or ``init_min < -10``) — wallbreakers.
-      ``m10`` for L2 (its ALM phase is L2-optimal); ``m14_schwarz`` for L1
-      on large slices (>20K corners); ``m14`` for L1 on smaller.
-    * **Moderate-to-dense** (``n_neg > 100`` or ``init_min < -0.25``) —
-      ``barrier`` (dominates SLSQP by 100x at this density).
-    * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
-      certs).
+    * **L1 objective** — ``slp`` at every fold tier. The SLP champion
+      (per-cluster trust-region SLP + m14 seed + HiGHS L1 step) reaches
+      strict feasibility on every benchmarked slice and Pareto-dominates
+      the m14/m10 wallbreakers on wall time at equal-or-better L1; it
+      auto-routes small vs large slices internally via
+      ``cluster_pixel_threshold``, so no fold-density tiering is needed.
+    * **Other objectives (l2, none, …)** — legacy tiering:
 
-    For the Jdet family (no wallbreakers): barrier above
+      * **Extreme** (``n_neg > 5000`` or ``init_min < -10``) —
+        wallbreakers. ``m10`` for L2 (its ALM phase is L2-optimal);
+        ``m14_schwarz`` on large slices (>20K corners); ``m14`` on
+        smaller.
+      * **Moderate-to-dense** (``n_neg > 100`` or ``init_min < -0.25``)
+        — ``barrier`` (dominates SLSQP by 100x at this density).
+      * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
+        certs).
+
+    For the Jdet family (no wallbreakers, no SLP): barrier above
     ``n_neg > 500`` or ``init_min < -1``, slsqp below.
     """
     from dvfopt.constraints import Tet6Constraint3D
 
     is_tri = isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage))
     if is_tri:
+        if objective_label == 'l1':
+            # The SLP champion is the validated L1 regime at every fold
+            # tier; it handles small/large routing itself.
+            return 'slp'
         if init_n_neg > 5000 or init_min < -10.0:
             if objective_label == 'l2':
                 return 'm10'

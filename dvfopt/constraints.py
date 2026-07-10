@@ -247,7 +247,10 @@ class TriConstraint2D(Constraint):
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
         from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
 
-        return _build_full_grid_tri_jac(*self.shape, False)(phi_flat)
+        # The builder returns a reused dense buffer (fastest for scipy's
+        # SLSQP adapter, which densifies anyway); this convenience API
+        # keeps its documented sparse contract.
+        return sp.csr_matrix(_build_full_grid_tri_jac(*self.shape, False)(phi_flat))
 
 
 class TriConstraint2DFullCoverage(Constraint):
@@ -306,7 +309,9 @@ class TriConstraint2DFullCoverage(Constraint):
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
         from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
 
-        return _build_full_grid_tri_jac(*self.shape, True)(phi_flat)
+        # See TriConstraint2D.jacobian — dense buffer wrapped to keep the
+        # documented sparse contract of this convenience API.
+        return sp.csr_matrix(_build_full_grid_tri_jac(*self.shape, True)(phi_flat))
 
 
 # ---------------------------------------------------------------------------
@@ -531,11 +536,24 @@ def register_constraint(label: str):
         class Tet6Constraint3D(Constraint): ...
 
     They become available via :func:`make_constraint('6tet', ...)`.
+
+    Re-registering the *same* class object under an existing label is a
+    silent no-op (idempotent, e.g. module re-import). Registering a
+    *different* class under an already-taken label raises
+    :class:`ValueError` instead of silently replacing the original.
     """
 
     def deco(cls: type) -> type:
         if not issubclass(cls, Constraint):
             raise TypeError(f'{cls.__name__} is not a Constraint subclass')
+        existing = _CONSTRAINT_REGISTRY.get(label)
+        if existing is not None and existing is not cls:
+            raise ValueError(
+                f'constraint label {label!r} is already registered to '
+                f'{existing.__module__}.{existing.__qualname__}; refusing to '
+                f'silently overwrite it with {cls.__module__}.{cls.__qualname__}. '
+                f'Pick a different label.'
+            )
         _CONSTRAINT_REGISTRY[label] = cls
         return cls
 

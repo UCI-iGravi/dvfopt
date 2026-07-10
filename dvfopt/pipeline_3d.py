@@ -126,6 +126,13 @@ def correct_dvf_3d(
     if phi.shape[0] != 3 or phi.ndim != 4:
         raise ValueError(f'phi must have shape (3, D, H, W), got {phi.shape}')
     phi0 = np.asarray(phi, dtype=np.float64)
+    # NaN-aware: the fused 6-tet min-volume kernel initialises at 1e300 and
+    # uses `<` comparisons that NaN always fails, so a non-finite field would
+    # otherwise sail through triage as "feasible" (silent success on
+    # corrupted data).
+    if not np.isfinite(phi0).all():
+        raise ValueError('phi contains non-finite values (NaN/Inf); '
+                         'correct_dvf_3d requires a finite field.')
     rec_thr = recover_threshold if recover_threshold is not None else 1.2 * threshold
 
     # Lazy imports (avoid import cycle; keep top-level import cheap).
@@ -185,7 +192,9 @@ def correct_dvf_3d(
         )
     )
     if n_neg_in == 0 and n_below_in == 0:
-        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
+        # `cur` is unchanged since the triage measurement — reuse it.
+        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
+                              stats=(mv, n_neg_in, n_below_in, min_in))
 
     # ---- Stage 1: bulk reduction ----
     n_fold, span = _fold_sparsity(mv, threshold)
@@ -218,7 +227,8 @@ def correct_dvf_3d(
         cur = _m10tet(cur, rec_thr, gpu=True)
     else:  # global
         cur = _m10tet(cur, rec_thr, gpu=False)
-    mv, n_neg_b, n_below_b, min_b = _stats(cur, threshold)
+    st = _stats(cur, threshold)  # threaded through the stages below
+    mv, n_neg_b, n_below_b, min_b = st
     if verbose:
         print(
             f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} ({time.time() - ts:.1f}s)',
@@ -252,18 +262,24 @@ def correct_dvf_3d(
         stages.append(
             dict(stage='escape:skipped_pathological', n_neg=n_neg_b, best_diag_floor=bd_floor_in)
         )
-        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
+        # `cur` is unchanged since the post-bulk measurement — reuse it.
+        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
+                              stats=st)
 
     # Iterate the coupled k-ring escape; when it stalls, ESCALATE the halo
     # (k=2 -> 3 -> 4). The research showed k=2 plateaus at the shared-corner
     # attractor while k=3 breaks it (Methods B/D, REPORT Part XIV) — a larger
     # halo contains the perturbation the residual cube needs.
-    def _run_escape(cur, tag=''):
-        last_n = int((six_tet_min_volume_3d(cur) <= 0).sum())
+    def _run_escape(cur, st, tag=''):
+        # `st` is the caller's already-measured ``_stats(cur, threshold)``
+        # 4-tuple; it is carried through the loop (each iteration measures
+        # once, after the solve) and the final measurement is returned, so
+        # an unchanged array is never re-measured.
+        last_n = st[1]
         stall = 0
         k = escape_k_ring
         for it in range(max_escape_iters):
-            _, n_now, _, _ = _stats(cur, threshold)
+            n_now = st[1]
             if n_now == 0:
                 break
             ts = time.time()
@@ -284,7 +300,8 @@ def correct_dvf_3d(
                 .fit(cur)
                 .corrected
             )
-            _, n_after, _, min_after = _stats(cur, threshold)
+            st = _stats(cur, threshold)
+            _, n_after, _, min_after = st
             if verbose:
                 print(
                     f'[escape{tag} {it + 1} k={k}] n_neg {n_now}->{n_after} '
@@ -319,15 +336,15 @@ def correct_dvf_3d(
                 stall = 0
                 k = escape_k_ring
             last_n = n_after
-        return cur
+        return cur, st
 
-    cur = _run_escape(cur)
+    cur, st = _run_escape(cur, st)
 
     # Multi-scale stall fallback: if the cheap path plateaued (still folded)
     # and the chunk is downsamplable and not pathological, re-seed via the
     # coarse-to-fine basin-hop (the ingredient that broke the thick dense
     # band's single-scale plateau in the research) and re-escape ONCE.
-    _, n_esc, _, _ = _stats(cur, threshold)
+    n_esc = st[1]  # _run_escape returned the measurement of the final `cur`
     floor_frac = bd_floor_in / max(1, mv.size)
     if (
         thorough
@@ -345,15 +362,19 @@ def correct_dvf_3d(
                 flush=True,
             )
         seeded, _ = multiscale_seed_3d(cur, threshold=rec_thr, verbose=verbose)
-        _, n_seed, _, _ = _stats(seeded, threshold)
+        st_seed = _stats(seeded, threshold)
+        n_seed = st_seed[1]
         # Accept the re-seed only if it didn't make things worse.
         if n_seed <= n_esc:
             cur = seeded
+            st = st_seed
         stages.append(dict(stage='multiscale_fallback', n_neg=n_seed, wall_s=time.time() - ts))
-        cur = _run_escape(cur, tag='2')
+        cur, st = _run_escape(cur, st, tag='2')
 
     # ---- Stage 3: final tighten (n<threshold but feasible) ----
-    _, n_fin, n_below_fin, _ = _stats(cur, threshold)
+    # `st` is the measurement of the current `cur` (from the escape loop, or
+    # from the bulk/re-seed stats if the loop never ran an iteration).
+    _, n_fin, n_below_fin, _ = st
     if n_fin == 0 and n_below_fin > 0:
         ts = time.time()
         # local recovery to lift near-threshold cells above the strict bar
@@ -363,14 +384,24 @@ def correct_dvf_3d(
             n_workers=n_workers,
             verbose=verbose,
         )
-        _, _, n_below_fin, _ = _stats(cur, threshold)
+        st = _stats(cur, threshold)  # cur changed — fresh measurement
+        n_below_fin = st[2]
         stages.append(dict(stage='tighten', n_below=n_below_fin, wall_s=time.time() - ts))
 
-    return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
+    # `st` always holds the measurement of the final `cur` here — reuse it.
+    return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
+                          stats=st)
 
 
-def _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0):
-    mv, n_neg, n_below, min_T = _stats(cur, threshold)
+def _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=None):
+    # `stats` is an optional already-measured ``_stats(cur, threshold)``
+    # 4-tuple ``(mv, n_neg, n_below, min_T)`` — pass it to skip a redundant
+    # full-volume fused-kernel pass when `cur` is provably unchanged since
+    # the measurement (mv is needed here for residual-cube enumeration).
+    if stats is None:
+        mv, n_neg, n_below, min_T = _stats(cur, threshold)
+    else:
+        mv, n_neg, n_below, min_T = stats
     bd_floor = n_neg_best_diagonal(cur, threshold=0.0)
     residual = []
     if n_neg > 0:

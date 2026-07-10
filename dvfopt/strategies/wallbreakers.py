@@ -144,6 +144,11 @@ class HarmonicALMRefineRepairStrategy(Strategy):
     max_grow_iters: int = 8
     polish_mu: tuple[float, ...] = (1e-2, 1e-4, 1e-6)
     polish_maxiter: int = 200
+    # Barrier mu_schedule for the stage-1 m10 seed call. None (default) =
+    # m10's own default schedule (legacy); () = skip m10's internal
+    # log-barrier polish (its slide-toward-input work is redone by
+    # stage 2's l2_refine anyway when m14 runs as a seed stage).
+    stage1_mu_schedule: tuple[float, ...] | None = None
     time_budget_s: float = 600.0
 
     supports_3d: bool = False
@@ -175,6 +180,7 @@ class HarmonicALMRefineRepairStrategy(Strategy):
             max_grow_iters=self.max_grow_iters,
             polish_mu=self.polish_mu,
             polish_maxiter=self.polish_maxiter,
+            stage1_mu_schedule=self.stage1_mu_schedule,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             eps_l1=getattr(objective, 'eps', 1e-4),

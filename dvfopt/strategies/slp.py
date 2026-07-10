@@ -60,7 +60,17 @@ class SLPStrategy(Strategy):
         untangler (:func:`dvfopt.core.slp._gpu_untangle.gpu_untangle_alm_2d`)
         to reach a low-L1, mostly-untangled basin, then feeds that field
         into the SLP solver — reaching strict feasibility at ~2x lower L1
-        on dense slices. Requires PyTorch.
+        on dense slices. Requires PyTorch. If the untangler hits a CUDA
+        out-of-memory error it retries once on the CPU (with a warning).
+
+        Anchoring note: on the small-slice *global* path the LP still
+        anchors its L1 objective to the raw input; on the large-slice
+        *cluster* path the LP anchors to the GPU-untangled field (by
+        design — fold-clustering must run on the near-feasible field).
+        In ``'max'`` mode the solve info therefore reports
+        ``l1_anchor`` (``'input'`` or ``'gpu_seed'``) and
+        ``l1_from_input`` (the true L1 deviation of the output from the
+        raw input) so results remain comparable across paths.
     """
 
     n_workers: int = 16
@@ -76,7 +86,9 @@ class SLPStrategy(Strategy):
 
     def __post_init__(self):
         if self.accuracy not in ('fast', 'max'):
-            raise ValueError(f"accuracy must be 'fast' or 'max', got {self.accuracy!r}")
+            raise ValueError(
+                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
+            )
 
     def solve(
         self,
@@ -100,16 +112,48 @@ class SLPStrategy(Strategy):
         H, W = phi.shape[1:]
 
         # accuracy='max': untangle the whole slice on the GPU first to reach
-        # a low-L1, mostly-untangled basin, then run SLP from it. Keep the
-        # RAW input `phi` intact as the L1 anchor — the untangled field is
-        # only the SLP *starting point*, never the objective anchor.
+        # a low-L1, mostly-untangled basin, then run SLP from it. The two
+        # dispatch paths use the untangled field differently:
+        #   * global path — the untangled field is only the SLP *starting
+        #     point*; the LP's L1 objective stays anchored to the raw input.
+        #   * cluster path — cluster_slp_iter's first argument is BOTH the
+        #     L1 anchor and the cluster-detection field, so there the anchor
+        #     is the GPU seed by design (clustering must run on the
+        #     near-feasible field, not the raw input's dense fold mass).
+        # In 'max' mode we therefore also report `l1_from_input` (true L1
+        # vs the raw input) and `l1_anchor` in the solve info.
+        phi_raw = phi
         gpu_seed = None
         if self.accuracy == 'max':
+            import importlib.util
+
+            # Probe torch explicitly: _gpu_untangle imports torch lazily
+            # INSIDE the function, so importing the module itself would
+            # succeed even without torch and users would get a raw
+            # ModuleNotFoundError from deep inside the call.
+            if importlib.util.find_spec('torch') is None:
+                raise ImportError(
+                    "accuracy='max' requires PyTorch (pip install torch)."
+                )
+            from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
+
             try:
-                from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
+                gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold)
             except Exception as exc:
-                raise ImportError("accuracy='max' requires PyTorch (pip install torch).") from exc
-            gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold)
+                import torch
+
+                cuda_oom = getattr(torch.cuda, 'OutOfMemoryError', ())
+                if not isinstance(exc, cuda_oom):
+                    raise
+                import warnings
+
+                warnings.warn(
+                    "accuracy='max' GPU untangler hit CUDA out-of-memory; "
+                    "retrying once on CPU (slower)."
+                )
+                gpu_seed = gpu_untangle_alm_2d(
+                    phi, threshold=threshold, device='cpu'
+                )
 
         if self.cluster_pixel_threshold >= H * W:
             # Global path: anchor L1 to the raw input `phi`; when max, start
@@ -121,14 +165,18 @@ class SLPStrategy(Strategy):
                 seed=(gpu_seed if gpu_seed is not None else self.global_seed),
             )
             info = {**info, 'slp_dispatch': 'global'}
+            l1_anchor = 'input'
         else:
             # Cluster path: when max, run cluster_slp_iter ON the untangled
             # field so fold-clustering operates on the near-feasible field
             # (few residual clusters) rather than the raw input's dense fold
             # mass. cluster_slp_iter uses its first arg as both the L1 anchor
-            # and the cluster-detection field, so in this path the anchor is
-            # the untangled field by construction — validated to reach ~2x
-            # lower L1 vs the raw input than the 'fast' path on dense slices.
+            # and the cluster-detection field, so in this path the anchor IS
+            # the GPU seed by construction — meaning the L1 numbers cluster
+            # solvers report measure deviation from the GPU seed, NOT the raw
+            # input. This anchoring is the validated design (~2x lower L1 vs
+            # the raw input than the 'fast' path on dense slices); the true
+            # from-input L1 is recorded below as `l1_from_input`.
             phi_out, info = cluster_slp_iter(
                 gpu_seed if gpu_seed is not None else phi,
                 threshold=threshold,
@@ -138,9 +186,14 @@ class SLPStrategy(Strategy):
                 inner_seed=self.cluster_seed,
             )
             info = {**info, 'slp_dispatch': 'cluster'}
+            l1_anchor = 'gpu_seed' if gpu_seed is not None else 'input'
         info = {**info, 'accuracy': self.accuracy}
         if self.accuracy == 'max':
             info['slp_seed'] = 'gpu'
+            info['l1_anchor'] = l1_anchor
+            # TRUE L1 vs the raw input (the anchor-relative numbers inside
+            # `info` are not comparable across paths in 'max' mode).
+            info['l1_from_input'] = float(np.abs(phi_out - phi_raw).sum())
         return phi_out, _build_solve_info('SLPStrategy', info, threshold)
 
 

@@ -219,6 +219,7 @@ def estimate2Dnormals(points, binarySection=None, radius=3, pkdtree=None, progre
     tuple of np.ndarray
         (points, normals) — filtered arrays where normals are defined.
     """
+    points = np.asarray(points)
     normals = np.zeros(points.shape)
     if pkdtree is None:
         pkdtree = scipy.spatial.KDTree(points)
@@ -226,16 +227,22 @@ def estimate2Dnormals(points, binarySection=None, radius=3, pkdtree=None, progre
     # Batch KD-tree query: get all neighbour lists in one call
     neighbour_lists = pkdtree.query_ball_point(points, radius)
 
+    # Track which points have a well-defined normal instead of overwriting
+    # invalid entries with fake (0, 0) coordinates (which both mutated the
+    # caller's array in place and injected phantom points at the origin).
+    valid = np.zeros(len(points), dtype=bool)
     for i, indices in enumerate(neighbour_lists):
         if len(indices) >= 4:
             neighbours = points[indices]
             n = estimate_normal(points[i], neighbours)
             if n is not None:
                 normals[i] = n
-            else:
-                points[i, :] = 0
-        else:
-            points[i, :] = 0
+                valid[i] = True
+
+    # Filter out points without a valid normal (returns copies; the
+    # caller's input array is never modified).
+    points = points[valid]
+    normals = normals[valid]
 
     if binarySection is not None:
         points, normals = orient2Dnormals(points, normals, binarySection)
@@ -295,8 +302,13 @@ def get2DCorrespondences_batch(
     # Dot product of each source normal with its k target normals: (Nf, k)
     sims = np.einsum('ij,ikj->ik', fnormals, target_normals)
 
-    # Build combined mask: finite distance, within 90th percentile, and normal similarity above threshold
-    valid = finite_mask & (dists < p90[:, None]) & (sims >= cos_thresh)
+    # Build combined mask: finite distance, within 90th percentile, and normal
+    # similarity above threshold.  The comparison must be inclusive (<=): with
+    # k=1 (single moving point) p90 equals the only distance, so a strict `<`
+    # would reject every candidate and no match could ever be produced.  The
+    # inclusive form only additionally admits exact ties at the percentile
+    # boundary, which are legitimate candidates.
+    valid = finite_mask & (dists <= p90[:, None]) & (sims >= cos_thresh)
 
     # For each row, pick the first valid column (smallest distance due to KDTree ordering)
     has_match = valid.any(axis=1)
@@ -401,7 +413,10 @@ def sliceToSlice3DLaplacian(
         or a list where sliceMatchList[i] gives the moving slice index
         corresponding to fixed slice i. Default "same".
     axis : int, optional
-        Axis along which slices are taken. Default 0.
+        Axis along which slices are taken (0, 1, or 2). Default 0.
+        In-plane displacements are written to the two output channels
+        != *axis* (e.g. channels 1/2 for axis=0, channels 0/2 for axis=1);
+        the *axis* channel stays zero.
     output_dir : str, optional
         Directory to save boundary condition points. If provided, saves
         fpoints.npy and mpoints.npy to output_dir/boundary_conditions/.
@@ -446,8 +461,17 @@ def sliceToSlice3DLaplacian(
     else:
         raise TypeError(f"movingImage must be a numpy array, got {type(movingImage).__name__}")
 
+    if axis not in (0, 1, 2):
+        raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
+
     n0, n1, n2 = fdata.shape
     nd = len(fdata.shape)
+
+    # The 2D slices extracted via np.take(volume, sno, axis=axis) span the
+    # two volume axes != `axis`, in ascending order.  Correspondence points
+    # are stored as [slice_no, row, col] in slice-local coordinates, so
+    # rows/cols map back to these two volume axes.
+    in_plane_axes = [d for d in range(3) if d != axis]
 
     log(
         f"Laplacian refinement: Processing volume of shape ({n0}, {n1}, {n2}) along axis {axis}",
@@ -509,8 +533,17 @@ def sliceToSlice3DLaplacian(
         np.save(os.path.join(boundary_dir, "mpoints.npy"), mpoints)
         log(f"Saved boundary conditions to {boundary_dir}", 'path')
 
-    # Compute flat indices for boundary points (single array, not 3 copies)
-    fIndices = (fpoints[:, 0] * n1 * n2 + fpoints[:, 1] * n2 + fpoints[:, 2]).astype(int)
+    # Compute flat indices for boundary points (single array, not 3 copies).
+    # Map slice-local [slice_no, row, col] coordinates back to full-volume
+    # (axis-0, axis-1, axis-2) order before flattening — hard-coding axis=0
+    # ordering here would scatter boundary conditions to wrong voxels (or
+    # index out of bounds) for axis=1/2.
+    vol_coords = np.empty((len(fpoints), 3), dtype=np.int64)
+    vol_coords[:, axis] = fpoints[:, 0]
+    vol_coords[:, in_plane_axes[0]] = fpoints[:, 1]
+    vol_coords[:, in_plane_axes[1]] = fpoints[:, 2]
+    fIndices = vol_coords[:, 0] * n1 * n2 + vol_coords[:, 1] * n2 + vol_coords[:, 2]
+    del vol_coords
 
     _dtype = np.float32 if solver_dtype == 'float32' else np.float64
 
@@ -581,19 +614,34 @@ def sliceToSlice3DLaplacian(
         iters = [0]
         rhs_norm = np.linalg.norm(rhs)
         residual_history = []
+        prev_xk = [None]
 
         def _progress(xk):
             iters[0] += 1
             if iters[0] % 10 == 0 or iters[0] == 1:
-                resid = np.linalg.norm(A @ xk - rhs)
-                rel = resid / rhs_norm if rhs_norm > 0 else resid
-                residual_history.append((iters[0], rel))
                 elapsed = time.time() - t0
                 rate = iters[0] / elapsed if elapsed > 0 else 0
+                if return_residuals:
+                    # True relative residual needs a full SpMV (A @ xk) —
+                    # only pay for it when the caller asked for residual
+                    # histories.
+                    resid = np.linalg.norm(A @ xk - rhs)
+                    rel = resid / rhs_norm if rhs_norm > 0 else resid
+                    residual_history.append((iters[0], rel))
+                    metric = f"rel_resid={rel:.2e}"
+                else:
+                    # Cheap convergence proxy: norm of the iterate change
+                    # since the last checkpoint (O(N) vs O(nnz) SpMV).
+                    if prev_xk[0] is None:
+                        metric = "step_norm=n/a"
+                    else:
+                        step = np.linalg.norm(xk - prev_xk[0])
+                        metric = f"step_norm={step:.2e}"
+                    prev_xk[0] = xk.copy()
                 with _print_lock:
                     log(
                         f"{label}: iter {iters[0]}/{maxiter}, "
-                        f"rel_resid={rel:.2e}, {elapsed:.0f}s elapsed "
+                        f"{metric}, {elapsed:.0f}s elapsed "
                         f"({rate:.1f} it/s)",
                         'progress',
                     )
@@ -616,10 +664,15 @@ def sliceToSlice3DLaplacian(
             log(f"{label} done: {iters[0]} iters in {elapsed:.1f} sec", 'success')
         return x, residual_history
 
-    # Solve dy and dx in parallel threads (both CG and LGMRES release GIL during BLAS calls)
+    # Solve the two in-plane fields in parallel threads (both CG and LGMRES
+    # release the GIL during BLAS calls).  Labels reflect the actual volume
+    # axes solved: axis=0 -> ('dy', 'dx'), axis=1 -> ('dz', 'dx'), axis=2 ->
+    # ('dz', 'dy').
+    label_row = f"d{'zyx'[in_plane_axes[0]]}"
+    label_col = f"d{'zyx'[in_plane_axes[1]]}"
     with ThreadPoolExecutor(max_workers=2) as executor:
-        fut_dy = executor.submit(_solve_one, Yd, "dy")
-        fut_dx = executor.submit(_solve_one, Xd, "dx")
+        fut_dy = executor.submit(_solve_one, Yd, label_row)
+        fut_dx = executor.submit(_solve_one, Xd, label_col)
         dy, resid_dy = fut_dy.result()
         dx, resid_dx = fut_dx.result()
     del M
@@ -627,11 +680,15 @@ def sliceToSlice3DLaplacian(
     del A, Yd, Xd
     log(f"Solves completed in {round(time.time() - start)} sec total", 'success')
 
+    # In-plane displacements belong to the two volume axes spanned by the
+    # slices: for axis=0 these are channels (1, 2) = (dy, dx); for axis=1
+    # channels (0, 2); for axis=2 channels (0, 1).  The slice axis channel
+    # stays zero (registration is purely in-plane).
     deformationField = np.zeros((nd, n0, n1, n2), dtype=_dtype)
-    deformationField[1] = dy.reshape((n0, n1, n2))
-    deformationField[2] = dx.reshape((n0, n1, n2))
+    deformationField[in_plane_axes[0]] = dy.reshape((n0, n1, n2))
+    deformationField[in_plane_axes[1]] = dx.reshape((n0, n1, n2))
     del dx, dy
 
     if return_residuals:
-        return deformationField, {'dy': resid_dy, 'dx': resid_dx}
+        return deformationField, {label_row: resid_dy, label_col: resid_dx}
     return deformationField

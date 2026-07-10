@@ -74,8 +74,12 @@ tags for back-compatibility (3D analogues likewise: ``M10TetStrategy``,
 Strategy selection guide
 ------------------------
 
-Inside the 2-triangle constraint family (the canonical case), pick the
-strategy by initial fold density:
+Inside the 2-triangle constraint family (the canonical case): for the
+**L1 objective**, :class:`SLPStrategy` (the sequential-LP champion) is
+the validated pick at every fold density — it auto-routes small vs
+large slices internally and reaches strict feasibility on every
+benchmarked slice, Pareto-dominating the wallbreakers. For other
+objectives, pick the strategy by initial fold density:
 
 * **Mild folds** (``n_neg <= 100``): :class:`SLSQPFullGridStrategy`
   (KKT semantics, smallest L1 with ``L1Objective``).
