@@ -2680,10 +2680,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # ``cancel()`` only flips a flag checked between per-slice metric
         # computations, so wait (bounded) for it to actually exit before
         # the window (its parent) is torn down.
-        overview_worker = self._overview_worker
-        if overview_worker is not None and overview_worker.isRunning():
-            overview_worker.cancel()
-            overview_worker.wait(2_000)
+        ow = getattr(self, '_overview_worker', None)
+        if ow is not None and ow.isRunning():
+            ow.cancel()
+            ow.wait(2_000)
+            if ow.isRunning():
+                # Per-slice cancel checks make this near-impossible, but a
+                # still-running thread at teardown can crash Qt — force it.
+                ow.terminate()
+                ow.wait(1_000)
         super().closeEvent(ev)
 
 
