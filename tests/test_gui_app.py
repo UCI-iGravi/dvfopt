@@ -747,3 +747,39 @@ def test_threshold_spinbox_feeds_params_and_stats(qapp, monkeypatch):
     assert captured['p']['threshold'] == pytest.approx(0.05)
     # Idle stats use the spinbox threshold, not the module constant.
     assert '0.05' in win._format_stats(None)
+
+
+# ---------------------------------------------------------------------------
+# 3D whole-volume metric cache (z-scrub / hover must not re-run the kernel)
+# ---------------------------------------------------------------------------
+
+
+def test_3d_metric_cached_across_zscrub_and_hover(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+    from dvfopt_gui.worker import _metric_field_3d as real_field
+    from dvfopt_gui.worker import _volume_snapshot
+
+    calls = {'n': 0}
+
+    def counting(phi3d, kind):
+        calls['n'] += 1
+        return real_field(phi3d, kind)
+
+    monkeypatch.setattr(A, '_metric_field_3d', counting)
+    vol = np.zeros((3, 5, 8, 8))
+    vol[2, :, 3:5, 3:5] = 1.4
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    snap = _volume_snapshot(vol, n_neg=5, min_T=-0.2, outer_iter=1)
+    win._render_snapshot(snap)
+    baseline = calls['n']
+    assert baseline >= 1
+    # z-scrub + inspector hover on the SAME field: zero new kernel runs.
+    win._z_slider.setValue(2)
+    win._z_slider.setValue(3)
+    win._format_inspector((2, 2))
+    win._format_inspector((3, 3))
+    assert calls['n'] == baseline
+    # A new snapshot invalidates and recomputes.
+    win._render_snapshot(_volume_snapshot(vol * 0.5, n_neg=0, min_T=0.1, outer_iter=2))
+    assert calls['n'] > baseline

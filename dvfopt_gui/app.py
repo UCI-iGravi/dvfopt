@@ -46,9 +46,9 @@ from dvfopt_gui.worker import (
     SolverWorker,
     StateSnapshot,
     _infeasible_count,
-    _infeasible_count_3d,
     _metric_counts,
     _metric_counts_3d,
+    _metric_field_3d,
 )
 
 # Repo root used to anchor the default file-dialog directory. The GUI
@@ -467,6 +467,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # 7×7, but O(H·W) per move otherwise. Invalidated whenever the
         # displayed field changes.
         self._inspector_tri: tuple[np.ndarray, np.ndarray] | None = None
+        # Whole-volume 3D metric field cache: ``kind -> ndarray``, cleared
+        # by ``_invalidate_metric_caches``. See ``_metric3d_field``.
+        self._metric3d_cache: dict = {}
         self._worker: SolverWorker | None = None
         self._picked_yx: tuple[int, int] | None = None
         # Active "Run section" crop bounds ``(y0, y1, x0, x1)`` or None for
@@ -723,6 +726,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'counts. Default 0.01 (package default).'
         )
         method_bar.addWidget(self._thr_spin)
+        # The metric FIELD is threshold-independent (thr only affects the
+        # reductions computed over it), so no cache invalidation is needed
+        # here — just repaint the idle stats panel with the new threshold.
+        self._thr_spin.valueChanged.connect(
+            lambda _v: self._refresh_display_from_volume() if self._worker is None else None
+        )
 
         # Spacer + Params button — opens the tabbed settings dialog for
         # window-level params that don't belong in the per-run toolbar
@@ -1345,7 +1354,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         volume itself and clear overlays."""
         if self._volume is None:
             return
-        self._invalidate_inspector_cache()
+        self._invalidate_metric_caches()
         if self._is_3d_run:
             self._set_view_3d(self._volume, fast=False)
             self._window_rect.setRect(0, 0, 0, 0)
@@ -1430,14 +1439,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """The per-slice 3D fold field for the current z (default 6-tet
         min volume; Jdet3D when that constraint is selected). Padded to
         (H, W) with NaN at the trailing row/col so it lines up with the
-        grid (the tet field is (D-1, H-1, W-1))."""
-        from dvfopt.jacobian.numpy_jdet import jacobian_det3D
-        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+        grid (the tet field is (D-1, H-1, W-1)).
 
+        Reads through ``_metric3d_field`` — the expensive whole-volume
+        kernel runs at most once per displayed field; z only changes
+        which slice of the cached field gets returned."""
         z = min(self._z, phi3d.shape[1] - 1)
         if self._constraint_combo.currentData() == CONSTRAINT_JDET3D:
-            return jacobian_det3D(phi3d)[z]
-        mv = six_tet_min_volume_3d(phi3d)  # (D-1, H-1, W-1)
+            field = self._metric3d_field(phi3d, 'jdet3d')  # (D, H, W)
+            return field[z]
+        mv = self._metric3d_field(phi3d, 'tet3d')  # (D-1, H-1, W-1)
         H, W = phi3d.shape[2:]
         out = np.full((H, W), np.nan)
         zz = min(z, mv.shape[0] - 1)
@@ -1938,10 +1949,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         and dominates render time on large slices). The slider scrub
         path always uses ``fast=False`` for full fidelity.
         """
+        # 3D z-scrub (``_on_z_changed``) re-renders this exact SAME
+        # snapshot object just to re-slice the display at a new z —
+        # comparing identity against the previously-rendered snapshot
+        # (captured *before* ``self._latest`` is overwritten below) lets
+        # that path skip the whole-volume metric invalidation so
+        # ``_heatmap_slice_3d`` hits ``_metric3d_field``'s cache instead
+        # of re-running the 6-tet/Jdet3D kernel on every tick. A genuinely
+        # new snapshot (different object) still invalidates as before.
+        same_field = snap is self._latest
         self._latest = snap
         if snap.phi.ndim == 4:  # 3D volume snapshot
+            if not same_field:
+                self._invalidate_metric_caches()
             self._latest_jacobian = self._heatmap_slice_3d(snap.phi)
-            self._invalidate_inspector_cache()
             self._set_view_3d(snap.phi, fast=fast)
             self._window_rect.setRect(0, 0, 0, 0)
             self._opt_rect.setVisible(False)
@@ -1950,7 +1971,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._refresh_convergence()
             return
         self._latest_jacobian = jacobian_det2D(snap.phi)[0]
-        self._invalidate_inspector_cache()
+        self._invalidate_metric_caches()
         self._set_view(snap.phi, self._latest_jacobian, fast=fast)
         self._window_rect.setRect(
             snap.window_x0,
@@ -2058,7 +2079,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """Return ``(T1, T2)`` for the currently-displayed ``phi``.
 
         The cache is invalidated explicitly whenever the displayed field
-        changes (see ``_invalidate_inspector_cache`` calls in the render
+        changes (see ``_invalidate_metric_caches`` calls in the render
         / refresh paths), so repeated hovers over the same frame reuse
         one computation instead of an O(H·W) triangle-area recompute per
         mouse-move. (The volume-path ``phi`` is a fresh view object each
@@ -2068,10 +2089,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._inspector_tri = _triangle_areas_2d(phi[0], phi[1])
         return self._inspector_tri
 
-    def _invalidate_inspector_cache(self) -> None:
-        """Drop the cached inspector T1/T2 — call whenever the displayed
-        field changes."""
+    def _metric3d_field(self, phi3d: np.ndarray, kind: str) -> np.ndarray:
+        """Whole-volume 3D metric field, cached per kind until the displayed
+        field changes (``_invalidate_metric_caches``). Counts are cheap numpy
+        reductions over this array; only the kernel is expensive."""
+        field = self._metric3d_cache.get(kind)
+        if field is None:
+            field = _metric_field_3d(phi3d, kind)
+            self._metric3d_cache[kind] = field
+        return field
+
+    def _invalidate_metric_caches(self) -> None:
+        """Drop cached per-field metrics (2D T1/T2 and 3D volume metric) —
+        call whenever the displayed field changes."""
         self._inspector_tri = None
+        self._metric3d_cache = {}
 
     # ----- formatters --------------------------------------------------------
 
@@ -2087,9 +2119,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     if self._constraint_combo.currentData() == CONSTRAINT_TET3D
                     else 'jdet3d'
                 )
+                field = self._metric3d_field(self._volume, kind)
+                n_neg = int((field <= 0).sum())
+                min_T = float(field.min())
                 thr = self._display_threshold()
-                n_neg, min_T = _metric_counts_3d(self._volume, kind)
-                infeas = _infeasible_count_3d(self._volume, kind, thr)
+                infeas = int((field < thr).sum())
                 return (
                     '<b>Stats (3D)</b><br>'
                     f'volume . . . . {D}×{H}×{W}<br>'
@@ -2190,11 +2224,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return '<b>Pixel inspector</b><br>(click a pixel)'
         y, x = yx
         if self._latest is not None and self._latest.phi.ndim == 4:
-            from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
-
             phi3d = self._latest.phi
             z = min(self._z, phi3d.shape[1] - 1)
-            mv = six_tet_min_volume_3d(phi3d)
+            mv = self._metric3d_field(phi3d, 'tet3d')
             Dm, Hm, Wm = mv.shape
             if not (0 <= y < Hm and 0 <= x < Wm):
                 return '<b>Pixel inspector</b><br>(out of bounds)'
