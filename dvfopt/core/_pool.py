@@ -19,6 +19,7 @@ exit.
 from __future__ import annotations
 
 import atexit
+import multiprocessing
 import threading
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional
@@ -80,7 +81,21 @@ def get_pool(n_workers: int) -> ProcessPoolExecutor:
         if _POOL is None or _POOL_N is None or n_workers > _POOL_N:
             if _POOL is not None:
                 _POOL.shutdown(wait=False)
-            _POOL = ProcessPoolExecutor(max_workers=n_workers, initializer=_warmup_worker)
+            # spawn, EXPLICITLY: Linux's default is fork, and forking a
+            # process whose OpenMP runtime is live (any prior numba prange
+            # call) is undefined behavior — modern libgomp deliberately
+            # terminates such children ("Terminating: fork() called from a
+            # process already using GNU OpenMP, this is unsafe."), which
+            # broke the pool on CI and silently degraded pool_map to its
+            # serial fallback on strict-libgomp Linux. Spawned workers are
+            # pristine interpreters, and this module's whole design already
+            # amortises the spawn+import+JIT warm-up cost. (forkserver is
+            # NOT safe here: the server itself forks from the live parent.)
+            _POOL = ProcessPoolExecutor(
+                max_workers=n_workers,
+                initializer=_warmup_worker,
+                mp_context=multiprocessing.get_context('spawn'),
+            )
             _POOL_N = n_workers
         return _POOL
 
