@@ -335,6 +335,27 @@ def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:
     return x, y, roi_w, roi_h
 
 
+# Byte budget for the undo stack. Full-volume snapshots are cheap for 2D
+# slices but ~1.8 GB each for a B0039-scale float64 volume — a count cap
+# alone (30) would allow ~55 GB. Oldest entries are evicted past this
+# budget; the most recent entry is always retained so Undo keeps working.
+UNDO_MAX_BYTES = 2 * 1024**3
+
+
+def validate_finite(vol: np.ndarray) -> str | None:
+    """Return an error message if ``vol`` contains NaN/Inf, else None."""
+    bad = ~np.isfinite(vol)
+    n = int(bad.sum())
+    if n == 0:
+        return None
+    first = tuple(int(i) for i in np.argwhere(bad)[0])
+    return (
+        f'The loaded field contains {n} non-finite value(s) (NaN/Inf); '
+        f'first at index {first}. Fix the field before loading — solvers '
+        'and fold metrics are undefined on non-finite data.'
+    )
+
+
 def _toolbar_separator() -> QtWidgets.QFrame:
     """A thin vertical divider for visually grouping toolbar widgets."""
     line = QtWidgets.QFrame()
@@ -1161,6 +1182,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._undo_stack.append(self._volume.copy())
         if len(self._undo_stack) > self._UNDO_MAX:
             self._undo_stack.pop(0)
+        while (
+            len(self._undo_stack) > 1 and sum(v.nbytes for v in self._undo_stack) > UNDO_MAX_BYTES
+        ):
+            self._undo_stack.pop(0)
         self._redo_stack.clear()
         self._update_undo_redo_enabled()
 
@@ -1248,6 +1273,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         run, and the saved constraint/method/objective selections are
         restored to the toolbar.
         """
+        msg = validate_finite(np.asarray(run.volume))
+        if msg is not None:
+            QtWidgets.QMessageBox.critical(self, 'Invalid DVF', msg)
+            return
         self._volume = np.asarray(run.volume, dtype=np.float64)
         # Pristine copy of what was loaded — every Run reads its input
         # from here, never from ``self._volume`` (which is mutated by

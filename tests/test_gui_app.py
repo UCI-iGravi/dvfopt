@@ -783,3 +783,53 @@ def test_3d_metric_cached_across_zscrub_and_hover(qapp, monkeypatch):
     # A new snapshot invalidates and recomputes.
     win._render_snapshot(_volume_snapshot(vol * 0.5, n_neg=0, min_T=0.1, outer_iter=2))
     assert calls['n'] > baseline
+
+
+# ---------------------------------------------------------------------------
+# Undo byte budget + non-finite load rejection
+# ---------------------------------------------------------------------------
+
+
+def test_undo_stack_byte_budget(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 1, 64, 64)))
+    entry_bytes = win._volume.nbytes
+    # Budget that fits exactly two entries.
+    monkeypatch.setattr(A, 'UNDO_MAX_BYTES', int(entry_bytes * 2.5))
+    for _ in range(5):
+        win._push_undo_state()
+    assert len(win._undo_stack) == 2
+    assert sum(v.nbytes for v in win._undo_stack) <= entry_bytes * 2.5
+
+
+def test_undo_budget_keeps_at_least_one(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 1, 64, 64)))
+    monkeypatch.setattr(A, 'UNDO_MAX_BYTES', 1)  # smaller than one entry
+    win._push_undo_state()
+    assert len(win._undo_stack) == 1
+
+
+def test_nonfinite_load_rejected(qapp, monkeypatch):
+    from dvfopt_gui.app import validate_finite
+    from dvfopt_gui.persistence import LoadedRun
+
+    bad = np.zeros((3, 1, 5, 5))
+    bad[2, 0, 2, 2] = np.nan
+    msg = validate_finite(bad)
+    assert msg is not None and 'non-finite' in msg
+    assert validate_finite(np.zeros((3, 1, 4, 4))) is None
+
+    win = LiveSolverWindow()
+    seen = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'critical',
+        staticmethod(lambda *a, **k: seen.setdefault('called', True)),
+    )
+    prev = win._volume
+    win._apply_loaded_run(LoadedRun(volume=bad))
+    assert seen.get('called')
+    assert win._volume is prev  # rejected load leaves state untouched
