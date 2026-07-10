@@ -131,8 +131,9 @@ def test_mop_repairs_subthreshold_cube():
         pytest.skip(f"could not land min_T in (0, 0.01); got {mn}")
 
     phi = field(amp)
-    assert int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0, \
+    assert int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0, (
         "fixture must have NO negatives (sub-threshold only)"
+    )
     phi_out, info = mop_interior_3d(phi)
     assert info["n_below_before"] > 0
     assert info["n_below_after"] < info["n_below_before"]

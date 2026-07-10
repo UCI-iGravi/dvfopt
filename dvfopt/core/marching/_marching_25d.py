@@ -96,7 +96,7 @@ def _repair_cluster(args):
     cols_dx3 = plane_off + ii
     cols_dy3 = n2 + plane_off + ii
     free3 = np.concatenate([cols_dx3, cols_dy3])
-    free2 = np.concatenate([n_pix + ii, ii])     # J2 [dy, dx] -> [dx_f, dy_f]
+    free2 = np.concatenate([n_pix + ii, ii])  # J2 [dy, dx] -> [dx_f, dy_f]
 
     def _geo(c):
         return (frozen_c, c) if cur_is_upper else (c, frozen_c)
@@ -107,16 +107,19 @@ def _repair_cluster(args):
     def _apply(c, v):
         out = c.copy()
         nf = ii.size
-        dx = out[1].ravel(); dx[ii] = v[:nf]; out[1] = dx.reshape(Hc, Wc)
-        dy = out[0].ravel(); dy[ii] = v[nf:]; out[0] = dy.reshape(Hc, Wc)
+        dx = out[1].ravel()
+        dx[ii] = v[:nf]
+        out[1] = dx.reshape(Hc, Wc)
+        dy = out[0].ravel()
+        dy[ii] = v[nf:]
+        out[0] = dy.reshape(Hc, Wc)
         return out
 
     def _exact_viol(c):
         lo, up = _geo(c)
         v3 = tet_volumes_flat(_stack_flat(lo, up), 2, Hc, Wc)
         t2 = tri_areas_flat(np.concatenate([c[0].ravel(), c[1].ravel()]), Hc, Wc)
-        return (float(np.maximum(0, thr3 - v3).sum())
-                + float(np.maximum(0, thr2 - t2).sum()))
+        return float(np.maximum(0, thr3 - v3).sum()) + float(np.maximum(0, thr2 - t2).sum())
 
     def _blocks(c):
         lo, up = _geo(c)
@@ -132,8 +135,15 @@ def _repair_cluster(args):
         return [(J3[a3], T3[a3], thr3), (J2[a2], T2[a2], thr2)]
 
     cur, _ = elastic_trust_solve(
-        _free_vec(cur_c), _free_vec(anchor_c), _blocks, _exact_viol, _apply,
-        state=cur_c.copy(), mu=mu, max_iters=max_lp_iters)
+        _free_vec(cur_c),
+        _free_vec(anchor_c),
+        _blocks,
+        _exact_viol,
+        _apply,
+        state=cur_c.copy(),
+        mu=mu,
+        max_iters=max_lp_iters,
+    )
     return cur
 
 
@@ -181,9 +191,22 @@ def _cluster_boxes(bad, H, W, pad, dil, max_box, phase=0):
     return out
 
 
-def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
-                mu=1000.0, pad=4, dil=2, max_rounds=6, max_box=90,
-                n_workers=1, pool_map=None, max_lp_iters=12):
+def march_slice(
+    frozen_sl,
+    cur_sl,
+    cur_is_upper,
+    *,
+    thr3=0.01 + 1e-4,
+    thr2=0.01,
+    mu=1000.0,
+    pad=4,
+    dil=2,
+    max_rounds=6,
+    max_box=90,
+    n_workers=1,
+    pool_map=None,
+    max_lp_iters=12,
+):
     """Repair ``cur_sl`` against the frozen neighbour. Returns (cur', n_before, n_after).
 
     ``frozen_sl``, ``cur_sl`` are ``(2, H, W)`` ``[dy, dx]`` slices. The
@@ -224,8 +247,7 @@ def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
             break
         # Alternate the tile-grid phase between rounds so seam-locked nodes
         # become tile-interior on the next round (round 0 keeps phase 0).
-        boxes = _cluster_boxes(bad, H, W, pad, dil, max_box,
-                               phase=(rnd % 2) * (max_box // 2))
+        boxes = _cluster_boxes(bad, H, W, pad, dil, max_box, phase=(rnd % 2) * (max_box // 2))
         # greedy non-conflicting batches
         batches = []
         for b in boxes:
@@ -238,11 +260,19 @@ def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
             if not placed:
                 batches.append([b])
         for batch in batches:
-            args = [(frozen_sl[:, y0:y1 + 1, x0:x1 + 1].copy(),
-                     cur[:, y0:y1 + 1, x0:x1 + 1].copy(),
-                     anchor[:, y0:y1 + 1, x0:x1 + 1].copy(),
-                     cur_is_upper, thr3, thr2, mu, max_lp_iters)
-                    for (y0, y1, x0, x1) in batch]
+            args = [
+                (
+                    frozen_sl[:, y0 : y1 + 1, x0 : x1 + 1].copy(),
+                    cur[:, y0 : y1 + 1, x0 : x1 + 1].copy(),
+                    anchor[:, y0 : y1 + 1, x0 : x1 + 1].copy(),
+                    cur_is_upper,
+                    thr3,
+                    thr2,
+                    mu,
+                    max_lp_iters,
+                )
+                for (y0, y1, x0, x1) in batch
+            ]
             if pool_map is None or n_workers == 1 or len(batch) == 1:
                 results = [_repair_cluster(a) for a in args]
             else:
@@ -250,5 +280,5 @@ def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
             for (y0, y1, x0, x1), fixed in zip(batch, results):
                 if fixed is None:
                     continue
-                cur[:, y0 + 1:y1, x0 + 1:x1] = fixed[:, 1:-1, 1:-1]
+                cur[:, y0 + 1 : y1, x0 + 1 : x1] = fixed[:, 1:-1, 1:-1]
     return cur, n_before, int((_mv(cur) < 0).sum())

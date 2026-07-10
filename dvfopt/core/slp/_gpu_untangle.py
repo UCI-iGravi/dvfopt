@@ -47,9 +47,21 @@ def _areas_torch(dy, dx, torch):
     return t1, t2
 
 
-def gpu_untangle_alm_2d(phi_in_2hw, *, threshold=0.01, margin=2e-3,
-                        n_outer=40, n_inner=300, lr=5e-3, mu0=1e3, mu_max=1e8,
-                        mu_grow=3.0, eps_l1=1e-3, device=None, verbose=0):
+def gpu_untangle_alm_2d(
+    phi_in_2hw,
+    *,
+    threshold=0.01,
+    margin=2e-3,
+    n_outer=40,
+    n_inner=300,
+    lr=5e-3,
+    mu0=1e3,
+    mu_max=1e8,
+    mu_grow=3.0,
+    eps_l1=1e-3,
+    device=None,
+    verbose=0,
+):
     """Whole-slice GPU untangler with a PHR augmented Lagrangian.
 
     Per-triangle multipliers escape the quadratic-penalty plateau: the
@@ -62,8 +74,7 @@ def gpu_untangle_alm_2d(phi_in_2hw, *, threshold=0.01, margin=2e-3,
     import torch
 
     dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-    phi0 = torch.tensor(np.asarray(phi_in_2hw, np.float64), device=dev,
-                        dtype=torch.float64)
+    phi0 = torch.tensor(np.asarray(phi_in_2hw, np.float64), device=dev, dtype=torch.float64)
     dy = phi0[0].clone().requires_grad_(True)
     dx = phi0[1].clone().requires_grad_(True)
     tgt = threshold + margin
@@ -79,12 +90,16 @@ def gpu_untangle_alm_2d(phi_in_2hw, *, threshold=0.01, margin=2e-3,
             opt.zero_grad()
             t1, t2 = _areas_torch(dy, dx, torch)
             g1, g2 = t1 - tgt, t2 - tgt
-            p1 = torch.where(g1 <= lam1 / mu, -lam1 * g1 + 0.5 * mu * g1 * g1,
-                             -0.5 * lam1 * lam1 / mu)
-            p2 = torch.where(g2 <= lam2 / mu, -lam2 * g2 + 0.5 * mu * g2 * g2,
-                             -0.5 * lam2 * lam2 / mu)
-            data = torch.sqrt((dy - phi0[0]) ** 2 + eps_l1 ** 2).sum() \
-                + torch.sqrt((dx - phi0[1]) ** 2 + eps_l1 ** 2).sum()
+            p1 = torch.where(
+                g1 <= lam1 / mu, -lam1 * g1 + 0.5 * mu * g1 * g1, -0.5 * lam1 * lam1 / mu
+            )
+            p2 = torch.where(
+                g2 <= lam2 / mu, -lam2 * g2 + 0.5 * mu * g2 * g2, -0.5 * lam2 * lam2 / mu
+            )
+            data = (
+                torch.sqrt((dy - phi0[0]) ** 2 + eps_l1**2).sum()
+                + torch.sqrt((dx - phi0[1]) ** 2 + eps_l1**2).sum()
+            )
             (p1.sum() + p2.sum() + data).backward()
             opt.step()
         with torch.no_grad():
@@ -98,8 +113,10 @@ def gpu_untangle_alm_2d(phi_in_2hw, *, threshold=0.01, margin=2e-3,
             prev_worst = worst
             if verbose:
                 nneg = int((t1 < threshold).sum() + (t2 < threshold).sum())
-                print(f'    [alm outer {outer + 1}] worst_g={worst:+.5f} '
-                      f'folds~{nneg} mu={mu:.0e}', flush=True)
+                print(
+                    f'    [alm outer {outer + 1}] worst_g={worst:+.5f} folds~{nneg} mu={mu:.0e}',
+                    flush=True,
+                )
             if worst >= 0.0:
                 break
     with torch.no_grad():

@@ -76,9 +76,7 @@ class SLPStrategy(Strategy):
 
     def __post_init__(self):
         if self.accuracy not in ('fast', 'max'):
-            raise ValueError(
-                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
-            )
+            raise ValueError(f"accuracy must be 'fast' or 'max', got {self.accuracy!r}")
 
     def solve(
         self,
@@ -110,9 +108,7 @@ class SLPStrategy(Strategy):
             try:
                 from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
             except Exception as exc:
-                raise ImportError(
-                    "accuracy='max' requires PyTorch (pip install torch)."
-                ) from exc
+                raise ImportError("accuracy='max' requires PyTorch (pip install torch).") from exc
             gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold)
 
         if self.cluster_pixel_threshold >= H * W:

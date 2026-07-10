@@ -16,8 +16,9 @@ def require_25d_input(phi, dz_tol=1e-12):
     invisible to every fold predicate and to the dz check itself).
     """
     if not np.isfinite(phi).all():
-        raise ValueError('phi contains non-finite values (NaN/Inf); '
-                         '2.5D marching requires a finite field.')
+        raise ValueError(
+            'phi contains non-finite values (NaN/Inf); 2.5D marching requires a finite field.'
+        )
     if phi[0].size and float(np.abs(phi[0]).max()) > dz_tol:
         raise ValueError(
             'the 2.5D marching pipeline requires the through-plane channel '

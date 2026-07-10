@@ -193,8 +193,7 @@ def correct_dvf_25d(
         counts = (mv < 0).sum(axis=(1, 2)) if verbose else None
 
     if verbose:
-        adj = [int(counts[i]) for i in (origin_idx - 1, origin_idx)
-               if 0 <= i < counts.shape[0]]
+        adj = [int(counts[i]) for i in (origin_idx - 1, origin_idx) if 0 <= i < counts.shape[0]]
         print(f'[25d origin] z={origin_idx} (folds={max(adj)})', flush=True)
 
     # Nothing to do only when the field already meets the sweep's own target
@@ -204,8 +203,16 @@ def correct_dvf_25d(
         if verbose:
             print('[25d] already strictly feasible; no-op', flush=True)
         stages.append(dict(stage='noop', n_neg=0, min_T=min_T_in, wall_s=0.0))
-        return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages,
-                              t0, stats=(n_neg_in, n_below_in, min_T_in))
+        return out, _finalize(
+            out,
+            phi,
+            threshold,
+            n_neg_in,
+            origin_idx,
+            stages,
+            t0,
+            stats=(n_neg_in, n_below_in, min_T_in),
+        )
 
     # Parallelism seam: inject the shared pool only when actually parallel.
     pool_map = None
@@ -265,9 +272,7 @@ def correct_dvf_25d(
             print(f'[25d dn z={z}] folds {n_before}->{n_after}', flush=True)
 
     _, n_neg_sweep, n_below_sweep, min_sweep = _stats(out, threshold)
-    stages.append(
-        dict(stage='sweep', n_neg=n_neg_sweep, min_T=min_sweep, wall_s=time.time() - ts)
-    )
+    stages.append(dict(stage='sweep', n_neg=n_neg_sweep, min_T=min_sweep, wall_s=time.time() - ts))
     if verbose:
         print(f'[25d sweep] n_neg={n_neg_sweep} min_T={min_sweep:+.5f}', flush=True)
 
@@ -279,12 +284,12 @@ def correct_dvf_25d(
 
         ts = time.time()
         # copy=False: the pipeline owns `out`; thr2/mu match the sweep's.
-        out, info = mop_interior_3d(out, threshold=threshold, thr2=thr2, mu=mu,
-                                    copy=False, verbose=verbose)
+        out, info = mop_interior_3d(
+            out, threshold=threshold, thr2=thr2, mu=mu, copy=False, verbose=verbose
+        )
         n_neg_mop = info['n_neg_after']
         stages.append(
-            dict(stage='mop', n_neg=n_neg_mop, min_T=info['min_T_after'],
-                 wall_s=time.time() - ts)
+            dict(stage='mop', n_neg=n_neg_mop, min_T=info['min_T_after'], wall_s=time.time() - ts)
         )
         _emit_progress('mop', 1, 1, n_neg_mop)
         if verbose:
@@ -293,12 +298,26 @@ def correct_dvf_25d(
         # n_below semantics — mv < threshold - 1e-5 — come from
         # `n_below_report_after`, measured exactly that way by the mop).
         return out, _finalize(
-            out, phi, threshold, n_neg_in, origin_idx, stages, t0,
+            out,
+            phi,
+            threshold,
+            n_neg_in,
+            origin_idx,
+            stages,
+            t0,
             stats=(n_neg_mop, info['n_below_report_after'], info['min_T_after']),
         )
 
-    return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0,
-                          stats=(n_neg_sweep, n_below_sweep, min_sweep))
+    return out, _finalize(
+        out,
+        phi,
+        threshold,
+        n_neg_in,
+        origin_idx,
+        stages,
+        t0,
+        stats=(n_neg_sweep, n_below_sweep, min_sweep),
+    )
 
 
 __all__ = ['Correct25DReport', 'correct_dvf_25d']

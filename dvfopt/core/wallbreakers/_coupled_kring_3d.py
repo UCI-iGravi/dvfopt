@@ -797,9 +797,7 @@ def active_band_alm_recovery_3d(
                     continue
                 z0, z1, y0, y1, x0, x1 = pboxes[i]
                 orig = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
-                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
-                    orig, crop_out
-                )
+                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(orig, crop_out)
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
                 print(
@@ -843,9 +841,7 @@ def active_band_alm_recovery_3d(
                     print(f'  active-band cluster solve failed: {exc}', flush=True)
                 break
             trial = cur.copy()
-            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
-                crop, crop_out
-            )
+            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(crop, crop_out)
             n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
             if verbose:
                 print(
