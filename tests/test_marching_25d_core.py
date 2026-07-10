@@ -89,13 +89,15 @@ def test_boxes_conflict():
     assert _boxes_conflict(far_y, far_x) is False
 
 
-def test_cluster_boxes_tiles_oversized():
+@pytest.mark.parametrize('phase', [0, 16])  # 16 == max_box // 2
+def test_cluster_boxes_tiles_oversized(phase):
     H = W = 200
     bad = np.zeros((H - 1, W - 1), dtype=bool)
     bad[2:190, 2:190] = True  # spans most of the grid
 
     pad, dil, max_box = 4, 2, 32
-    boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box)
+    boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box,
+                           phase=phase)
     assert boxes, 'no boxes produced'
 
     slack = pad + 2  # dilation + rounding leeway
@@ -109,3 +111,58 @@ def test_cluster_boxes_tiles_oversized():
         covered[y0:yy1 + 1, x0:xx1 + 1] = True
 
     assert covered[bad].all(), 'boxes do not cover all bad cells'
+
+
+def test_cluster_boxes_phase_shifts_seams():
+    # A node on a tile seam at phase 0 must be tile-interior at
+    # phase = max_box // 2 (the deterministic seam shift between rounds).
+    H = W = 200
+    bad = np.zeros((H - 1, W - 1), dtype=bool)
+    bad[2:190, 2:190] = True
+    pad, dil, max_box = 4, 2, 32
+
+    def seam_ys(phase):
+        boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box,
+                               phase=phase)
+        edges = set()
+        for (y0, y1, x0, x1) in boxes:
+            edges.add(y0)
+            edges.add(y1)
+        return edges
+
+    e0 = seam_ys(0)
+    e1 = seam_ys(max_box // 2)
+    assert e0 != e1, 'phase shift did not move the tile seams'
+
+
+def test_cluster_boxes_dil0_no_dilation():
+    # dil=0 must mean NO dilation — scipy's iterations=0 would instead
+    # dilate until convergence and balloon a lone bad cell to the whole grid.
+    H = W = 200
+    bad = np.zeros((H - 1, W - 1), dtype=bool)
+    bad[100, 100] = True  # single bad cell
+
+    pad, max_box = 4, 32
+    boxes = _cluster_boxes(bad, H, W, pad=pad, dil=0, max_box=max_box)
+    assert len(boxes) == 1
+    (y0, y1, x0, x1) = boxes[0]
+    assert y1 - y0 <= 2 * pad + 1, 'dil=0 produced an oversized cluster'
+    assert x1 - x0 <= 2 * pad + 1, 'dil=0 produced an oversized cluster'
+
+
+def test_cluster_boxes_negative_dil_raises():
+    bad = np.zeros((9, 9), dtype=bool)
+    bad[4, 4] = True
+    with pytest.raises(ValueError, match='dil'):
+        _cluster_boxes(bad, 10, 10, pad=2, dil=-1, max_box=32)
+
+
+def test_march_slice_dil0_reduces_folds():
+    lower, upper = _planted_pair()
+    if not (layer_min_v(lower, upper).min() < 0):
+        pytest.skip('no fold planted')
+    cur, n_before, n_after = march_slice(
+        lower, upper, cur_is_upper=True, dil=0, n_workers=1, pool_map=None,
+    )
+    assert n_before > 0
+    assert n_after < n_before

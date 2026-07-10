@@ -14,22 +14,32 @@ Data conventions
 - The 2-tri primitives use the opposite (DY_FIRST) pack:
   ``[:HW] = dy, [HW:] = dx``. ``_repair_cluster`` bridges the two packs.
 
-Windows spawn note: this module's top level is imports only, and
-``_repair_cluster`` is a module-top-level function taking a single
-picklable ``args`` tuple, so it is a valid ``ProcessPoolExecutor`` worker
-(workers re-import this module). Solver-specific thresholds are carried
-INSIDE the args tuple rather than read from module globals.
+Windows spawn note: ``_repair_cluster`` is a module-top-level function taking
+a single picklable ``args`` tuple, so it is a valid ``ProcessPoolExecutor``
+worker. Spawned workers re-import this module — which also executes every
+ancestor package ``__init__`` (``dvfopt``, ``dvfopt.core``,
+``dvfopt.core.marching``) — so the real requirement is that this module's top
+level AND those package ``__init__``s stay side-effect-safe and import-light.
+Solver-specific thresholds are carried INSIDE the args tuple rather than read
+from module globals.
 """
 
+import functools
+
 import numpy as np
-import scipy.sparse as sp
 from scipy.ndimage import binary_dilation, find_objects
 from scipy.ndimage import label as cc_label
-from scipy.optimize import linprog
 
+from dvfopt.core.marching._elastic_engine import ACTIVE_WINDOW, elastic_trust_solve
 from dvfopt.core.slp.tri_linearize import build_sparse_jacobian_T
 from dvfopt.core.tri_primitives import tri_areas_flat
 from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac, tet_volumes_flat
+
+
+@functools.lru_cache(maxsize=8)
+def _get_jac(D, H, W):
+    """Cached ``build_tet_sparse_jac`` (per-process; pool workers build their own)."""
+    return build_tet_sparse_jac(D, H, W)
 
 
 def _stack_flat(lower, upper):
@@ -63,12 +73,20 @@ def _repair_cluster(args):
     the free columns are plane 1 if ``cur_is_upper`` else plane 0.
 
     Must remain a module-top-level function taking a single picklable
-    tuple so it is usable as a ``ProcessPoolExecutor`` worker.
+    tuple so it is usable as a ``ProcessPoolExecutor`` worker (the pool
+    pickles the function reference by name plus the args tuple, so the
+    closures defined inside are fine).
+
+    The elastic trust-region SLP loop itself lives in
+    ``_elastic_engine.elastic_trust_solve``; this worker owns the free-column
+    selection, the two linearized constraint blocks (inter-layer 6-tet rows
+    FIRST, then per-slice 2-tri — the slack layout depends on this order) and
+    the exact-violation acceptance oracle (both families).
     """
     frozen_c, cur_c, anchor_c, cur_is_upper, thr3, thr2, mu, max_lp_iters = args
     Hc, Wc = cur_c.shape[1:]
     n_pix = Hc * Wc
-    jac3 = build_tet_sparse_jac(2, Hc, Wc)
+    jac3 = _get_jac(2, Hc, Wc)
 
     inner = np.zeros((Hc, Wc), dtype=bool)
     inner[1:-1, 1:-1] = True
@@ -100,54 +118,22 @@ def _repair_cluster(args):
         return (float(np.maximum(0, thr3 - v3).sum())
                 + float(np.maximum(0, thr2 - t2).sum()))
 
-    anchor_f = _free_vec(anchor_c)
-    cur = cur_c.copy()
-    viol = _exact_viol(cur)
-    trust = 0.5
-    for _ in range(max_lp_iters):
-        if viol <= 1e-12:
-            break
-        lo, up = _geo(cur)
+    def _blocks(c):
+        lo, up = _geo(c)
         pf = _stack_flat(lo, up)
         T3 = tet_volumes_flat(pf, 2, Hc, Wc)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
-        p2 = np.concatenate([cur[0].ravel(), cur[1].ravel()])
+        p2 = np.concatenate([c[0].ravel(), c[1].ravel()])
         T2 = tri_areas_flat(p2, Hc, Wc)
         J2 = build_sparse_jacobian_T(p2, Hc, Wc).tocsc()[:, free2].tocsr()
-        xf = _free_vec(cur)
-        nf = xf.size
-        a3 = np.where(T3 < thr3 + 0.5)[0]
-        a2 = np.where(T2 < thr2 + 0.5)[0]
-        J3a, J2a = J3[a3], J2[a2]
-        Ka = a3.size + a2.size
-        c_obj = np.concatenate([np.zeros(nf), np.ones(nf), mu * np.ones(Ka)])
-        A1 = sp.hstack([sp.eye(nf), -sp.eye(nf), sp.csr_matrix((nf, Ka))])
-        A2 = sp.hstack([-sp.eye(nf), -sp.eye(nf), sp.csr_matrix((nf, Ka))])
-        E3 = sp.hstack([-J3a, sp.csr_matrix((a3.size, nf)),
-                        -sp.eye(a3.size), sp.csr_matrix((a3.size, a2.size))])
-        E2 = sp.hstack([-J2a, sp.csr_matrix((a2.size, nf)),
-                        sp.csr_matrix((a2.size, a3.size)), -sp.eye(a2.size)])
-        A_ub = sp.vstack([A1, A2, E3, E2]).tocsr()
-        b_ub = np.concatenate([anchor_f, -anchor_f,
-                               -thr3 + T3[a3] - J3a @ xf,
-                               -thr2 + T2[a2] - J2a @ xf])
-        bounds = ([(float(xf[i] - trust), float(xf[i] + trust)) for i in range(nf)]
-                  + [(0.0, None)] * nf + [(0.0, None)] * Ka)
-        res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
-        if not res.success:
-            trust *= 0.5
-            if trust < 1e-3:
-                break
-            continue
-        cand = _apply(cur, res.x[:nf])
-        v_new = _exact_viol(cand)
-        if v_new < viol * (1 - 1e-9):
-            cur, viol = cand, v_new
-            trust = min(trust * 2, 0.5)
-        else:
-            trust *= 0.5
-            if trust < 1e-3:
-                break
+        a3 = np.where(T3 < thr3 + ACTIVE_WINDOW)[0]
+        a2 = np.where(T2 < thr2 + ACTIVE_WINDOW)[0]
+        # Block order matters: 6-tet rows first, then 2-tri (slack layout).
+        return [(J3[a3], T3[a3], thr3), (J2[a2], T2[a2], thr2)]
+
+    cur, _ = elastic_trust_solve(
+        _free_vec(cur_c), _free_vec(anchor_c), _blocks, _exact_viol, _apply,
+        state=cur_c.copy(), mu=mu, max_iters=max_lp_iters)
     return cur
 
 
@@ -156,15 +142,20 @@ def _boxes_conflict(a, b):
     return not (a[1] < b[0] or b[1] < a[0] or a[3] < b[2] or b[3] < a[2])
 
 
-def _cluster_boxes(bad, H, W, pad, dil, max_box):
+def _cluster_boxes(bad, H, W, pad, dil, max_box, phase=0):
     """Padded, size-capped boxes ``(y0, y1, x0, x1)`` (inclusive corners).
 
-    Dilates ``bad`` by ``dil`` to merge nearby violations, labels connected
+    Dilates ``bad`` by ``dil`` to merge nearby violations (``dil == 0`` means
+    NO dilation — never scipy's repeat-until-convergence), labels connected
     components, pads each bbox by ``pad`` (clipped to the grid), then tiles
-    boxes larger than ``max_box`` on either axis (overlapping seams are
-    healed by later rounds).
+    boxes larger than ``max_box`` on either axis. ``phase`` shifts the tile
+    grid backwards by that many cells: a node sitting on a tile seam at one
+    phase is tile-interior at another, so alternating the phase across rounds
+    deterministically heals seam-locked residuals.
     """
-    merged = binary_dilation(bad, iterations=dil)
+    if dil < 0:
+        raise ValueError(f'dil must be >= 0, got {dil}')
+    merged = binary_dilation(bad, iterations=dil) if dil >= 1 else bad
     labels, _ = cc_label(merged)
     out = []
     for bbox in find_objects(labels):
@@ -174,12 +165,19 @@ def _cluster_boxes(bad, H, W, pad, dil, max_box):
         y1 = min(H - 1, bbox[0].stop + pad)
         x0 = max(0, bbox[1].start - pad)
         x1 = min(W - 1, bbox[1].stop + pad)
-        # tile oversized boxes (overlapping seams get later rounds)
-        ys = list(range(y0, y1, max_box)) or [y0]
-        xs = list(range(x0, x1, max_box)) or [x0]
+        # tile oversized boxes on a phase-shifted grid, clipping each tile
+        # back to the padded bbox and skipping tiles emptied by the clip
+        ys = list(range(y0 - phase, y1, max_box)) or [y0]
+        xs = list(range(x0 - phase, x1, max_box)) or [x0]
         for ty in ys:
+            ty0, ty1 = max(y0, ty), min(y1, ty + max_box)
+            if ty0 > ty1:
+                continue
             for tx in xs:
-                out.append((ty, min(y1, ty + max_box), tx, min(x1, tx + max_box)))
+                tx0, tx1 = max(x0, tx), min(x1, tx + max_box)
+                if tx0 > tx1:
+                    continue
+                out.append((ty0, ty1, tx0, tx1))
     return out
 
 
@@ -197,26 +195,37 @@ def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
     (``int((layer_min_v(lo, up) < 0).sum())`` with the correct geometric
     order per ``cur_is_upper``).
 
-    Parallelism seam: if ``pool_map`` is None, ``n_workers == 1``, or a
+    Parallelism seam: if ``pool_map`` is None with ``n_workers == 1``, or a
     batch has a single box, clusters run serially via ``_repair_cluster``;
-    otherwise ``pool_map(_repair_cluster, args_list, min(n_workers, len(batch)))``
-    dispatches the batch. The caller injects ``pool_map`` (this module never
-    imports the process pool, keeping it import-light and unit-testable).
+    otherwise ``pool_map(_repair_cluster, args_list, n_workers)`` dispatches
+    the batch (always the full ``n_workers`` — the shared pool is sized once
+    and torn down/rebuilt whenever a different size is requested, so passing
+    a per-batch size would thrash the warm pool; idle workers are free).
+    When ``pool_map`` is None but ``n_workers > 1``, the shared
+    ``dvfopt.core._pool.pool_map`` is imported lazily; an explicitly provided
+    ``pool_map`` always wins (keeping the module import-light and
+    unit-testable).
     """
     H, W = cur_sl.shape[1:]
     cur = cur_sl.copy()
     anchor = cur_sl.copy()
+
+    if pool_map is None and n_workers > 1:
+        from dvfopt.core._pool import pool_map
 
     def _mv(c):
         lo, up = (frozen_sl, c) if cur_is_upper else (c, frozen_sl)
         return layer_min_v(lo, up)
 
     n_before = int((_mv(cur) < 0).sum())
-    for _ in range(max_rounds):
+    for rnd in range(max_rounds):
         bad = _mv(cur) < thr3 - 1e-9
         if not bad.any():
             break
-        boxes = _cluster_boxes(bad, H, W, pad, dil, max_box)
+        # Alternate the tile-grid phase between rounds so seam-locked nodes
+        # become tile-interior on the next round (round 0 keeps phase 0).
+        boxes = _cluster_boxes(bad, H, W, pad, dil, max_box,
+                               phase=(rnd % 2) * (max_box // 2))
         # greedy non-conflicting batches
         batches = []
         for b in boxes:
@@ -237,7 +246,7 @@ def march_slice(frozen_sl, cur_sl, cur_is_upper, *, thr3=0.01 + 1e-4, thr2=0.01,
             if pool_map is None or n_workers == 1 or len(batch) == 1:
                 results = [_repair_cluster(a) for a in args]
             else:
-                results = pool_map(_repair_cluster, args, min(n_workers, len(batch)))
+                results = pool_map(_repair_cluster, args, n_workers)
             for (y0, y1, x0, x1), fixed in zip(batch, results):
                 if fixed is None:
                     continue

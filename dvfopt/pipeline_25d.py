@@ -19,11 +19,15 @@ The algorithm
 Field layout ``(3, D, H, W)`` = ``[dz, dy, dx]``. A marching "slice" is
 ``phi[1:3, z]`` -> a ``(2, H, W)`` array ``[dy, dx]``.
 
-1. Precondition check: ``dz`` must be zero (raise otherwise).
+1. Precondition check: the field must be finite and ``dz`` must be zero
+   (raise otherwise).
 2. Origin auto-selection: pick the inter-layer with the FEWEST folds as the
    frozen seed, so no slice is ever cold-started against raw data.
 3. Bidirectional sweep outward from the origin: each slice is repaired
-   against its already-repaired neighbour with ``march_slice``.
+   against its already-repaired neighbour with ``march_slice``. The origin
+   slice itself is repaired in the down sweep against its already-repaired
+   upper neighbour, matching the validated research sweep (an origin at the
+   very top of the volume has no upper neighbour and stays frozen).
 4. Optional final mop (:func:`mop_interior_3d`): the sweep freezes a whole
    slice so it cannot fix folds needing BOTH slices of a pair to move; the
    mop frees both and cleans up the residual.
@@ -64,10 +68,15 @@ def _stats(phi, threshold):
     return mv, n_neg, n_below, float(mv.min())
 
 
-def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0):
+def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0, stats=None):
     # `phi_in` is the caller's (never-mutated) array — used directly as the L1
     # reference rather than keeping a second full-volume copy around.
-    _, n_neg, n_below, min_T = _stats(cur, threshold)
+    # `stats` is an optional already-measured `(n_neg, n_below, min_T)` tuple
+    # for the final state — pass it to skip a redundant full-volume measure.
+    if stats is None:
+        _, n_neg, n_below, min_T = _stats(cur, threshold)
+    else:
+        n_neg, n_below, min_T = stats
     return Correct25DReport(
         feasible=(n_neg == 0 and n_below == 0),
         n_neg_in=n_neg_in,
@@ -109,8 +118,12 @@ def correct_dvf_25d(
         Strict per-tet feasibility threshold. ``march_slice`` targets
         ``thr3 = threshold + 1e-4`` (strict with margin) and ``thr2 = threshold``.
     origin : {'auto'} or int, default 'auto'
-        The frozen seed slice, never itself repaired. ``'auto'`` picks the
-        slice bordering the mildest (fewest-fold) inter-layer.
+        The seed slice. It anchors the up sweep frozen, then is itself
+        repaired at the start of the down sweep against its already-repaired
+        upper neighbour (matching the validated research sweep). An origin at
+        the very top of the volume has no upper neighbour and stays frozen.
+        ``'auto'`` picks the slice bordering the mildest (fewest-fold)
+        inter-layer.
     mop : bool, default True
         Run the frozen-rim 3D-interior mop after the sweep to clean up folds
         that need BOTH slices of a pair to move.
@@ -137,16 +150,10 @@ def correct_dvf_25d(
     if D < 2 or H < 3 or W < 3:
         raise ValueError(f'phi must have D>=2, H>=3, W>=3, got {phi.shape}')
 
-    # ---- 2.5D precondition: dz must be identically zero ----
-    if np.abs(phi[0]).max() > dz_tol:
-        raise ValueError(
-            'correct_dvf_25d requires the through-plane channel dz (phi[0]) '
-            'to be identically zero: the 2.5D inter-layer 6-tet math depends '
-            'only on adjacent slices\' in-plane displacement (dy/dx). '
-            f'Found max|dz|={float(np.abs(phi[0]).max()):.3e} > dz_tol={dz_tol:.1e}. '
-            'Run per-slice 2D correction first (which yields dz == 0) before '
-            'calling this pipeline.'
-        )
+    # ---- 2.5D precondition: finite field, dz identically zero ----
+    from dvfopt.core.marching._precondition import require_25d_input
+
+    require_25d_input(phi, dz_tol)
 
     # Operate on a float64 copy — never mutate the caller's array; never write
     # dz. `phi` itself serves as the L1 reference, so no second copy is kept
@@ -154,7 +161,7 @@ def correct_dvf_25d(
     out = np.array(phi, dtype=np.float64, copy=True)
 
     # Lazy imports of solver deps (keep top-level import cheap).
-    from dvfopt.core.marching._marching_25d import layer_min_v, march_slice
+    from dvfopt.core.marching._marching_25d import march_slice
 
     thr3 = threshold + 1e-4
     thr2 = threshold
@@ -163,32 +170,35 @@ def correct_dvf_25d(
     stages = []
 
     # ---- Stats + origin selection ----
-    _, n_neg_in, n_below_in, min_T_in = _stats(out, threshold)
+    # `mv` is the per-cube min 6-tet volume of the whole volume; with dz == 0
+    # its z-slab `mv[z]` equals the (z, z+1) inter-layer min-volume, so the
+    # per-inter-layer fold counts come from this single measurement.
+    mv, n_neg_in, n_below_in, min_T_in = _stats(out, threshold)
 
-    # Per-inter-layer fold counts (D-1 of them).
-    counts = [
-        int((layer_min_v(out[1:3, z], out[1:3, z + 1]) < 0).sum())
-        for z in range(D - 1)
-    ]
     if origin == 'auto':
-        origin_idx = int(np.argmin(counts)) if counts else 0
+        counts = (mv < 0).sum(axis=(1, 2))  # per-inter-layer folds (D-1,)
+        origin_idx = int(np.argmin(counts))
     else:
         origin_idx = int(origin)
         if not (0 <= origin_idx < D):
             raise ValueError(f'origin {origin_idx} out of range [0, {D})')
+        # counts are only needed for the verbose origin line here.
+        counts = (mv < 0).sum(axis=(1, 2)) if verbose else None
 
     if verbose:
-        seed_folds = counts[min(origin_idx, len(counts) - 1)] if counts else 0
-        print(f'[25d origin] z={origin_idx} (folds={seed_folds})', flush=True)
+        adj = [int(counts[i]) for i in (origin_idx - 1, origin_idx)
+               if 0 <= i < counts.shape[0]]
+        print(f'[25d origin] z={origin_idx} (folds={max(adj)})', flush=True)
 
-    # Nothing to do only when there are no folds AND nothing sits below the
-    # threshold — the sweep targets thr3 > threshold, so a fold-free field with
-    # sub-threshold cubes still has work to do (and `feasible` requires both).
-    if n_neg_in == 0 and n_below_in == 0:
+    # Nothing to do only when the field already meets the sweep's own target
+    # (min vol >= thr3): the sweep targets thr3 > threshold, so a fold-free
+    # field with cubes in [threshold, thr3) still has work to do.
+    if n_neg_in == 0 and n_below_in == 0 and min_T_in >= thr3 - 1e-9:
         if verbose:
             print('[25d] already strictly feasible; no-op', flush=True)
         stages.append(dict(stage='noop', n_neg=0, min_T=min_T_in, wall_s=0.0))
-        return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0)
+        return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages,
+                              t0, stats=(n_neg_in, n_below_in, min_T_in))
 
     # Parallelism seam: inject the shared pool only when actually parallel.
     pool_map = None
@@ -222,7 +232,12 @@ def correct_dvf_25d(
             print(f'[25d up z={z}] folds {n_before}->{n_after}', flush=True)
 
     # Down: repair slice z against frozen slice z+1 (cur is the lower layer).
-    for z in range(origin_idx - 1, -1, -1):
+    # The down sweep starts AT the origin: the origin slice is repaired
+    # against its already-repaired upper neighbour, matching the validated
+    # research sweep. An origin at the top of the volume has no upper
+    # neighbour and cannot be repaired — it stays frozen then.
+    down_start = origin_idx if origin_idx + 1 < D else origin_idx - 1
+    for z in range(down_start, -1, -1):
         frozen_sl = out[1:3, z + 1]
         cur_sl = out[1:3, z]
         cur, n_before, n_after = march_slice(frozen_sl, cur_sl, False, **march_kw)
@@ -230,7 +245,7 @@ def correct_dvf_25d(
         if verbose:
             print(f'[25d dn z={z}] folds {n_before}->{n_after}', flush=True)
 
-    _, n_neg_sweep, _, min_sweep = _stats(out, threshold)
+    _, n_neg_sweep, n_below_sweep, min_sweep = _stats(out, threshold)
     stages.append(
         dict(stage='sweep', n_neg=n_neg_sweep, min_T=min_sweep, wall_s=time.time() - ts)
     )
@@ -238,19 +253,32 @@ def correct_dvf_25d(
         print(f'[25d sweep] n_neg={n_neg_sweep} min_T={min_sweep:+.5f}', flush=True)
 
     # ---- Optional final mop ----
-    if mop and 0 < n_neg_sweep <= mop_max_folds:
+    # Gate on the below-threshold count (which strictly contains the
+    # negatives): the mop now repairs sub-threshold cubes too, not just folds.
+    if mop and 0 < n_below_sweep <= mop_max_folds:
         from dvfopt.core.marching._mop_interior_3d import mop_interior_3d
 
         ts = time.time()
-        out, info = mop_interior_3d(out, threshold=threshold, verbose=verbose)
-        _, n_neg_mop, _, min_mop = _stats(out, threshold)
+        # copy=False: the pipeline owns `out`; thr2/mu match the sweep's.
+        out, info = mop_interior_3d(out, threshold=threshold, thr2=thr2, mu=mu,
+                                    copy=False, verbose=verbose)
+        n_neg_mop = info['n_neg_after']
         stages.append(
-            dict(stage='mop', n_neg=n_neg_mop, min_T=min_mop, wall_s=time.time() - ts)
+            dict(stage='mop', n_neg=n_neg_mop, min_T=info['min_T_after'],
+                 wall_s=time.time() - ts)
         )
         if verbose:
             print(f'[25d mop] n_neg {n_neg_sweep}->{n_neg_mop}', flush=True)
+        # The mop already measured its final state; reuse it (the report's
+        # n_below semantics — mv < threshold - 1e-5 — come from
+        # `n_below_report_after`, measured exactly that way by the mop).
+        return out, _finalize(
+            out, phi, threshold, n_neg_in, origin_idx, stages, t0,
+            stats=(n_neg_mop, info['n_below_report_after'], info['min_T_after']),
+        )
 
-    return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0)
+    return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0,
+                          stats=(n_neg_sweep, n_below_sweep, min_sweep))
 
 
 __all__ = ['Correct25DReport', 'correct_dvf_25d']

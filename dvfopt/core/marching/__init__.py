@@ -10,10 +10,12 @@ The core primitives live in :mod:`dvfopt.core.marching._marching_25d` and
 :mod:`dvfopt.core.marching._mop_interior_3d`; the public pipeline that wires
 them together is :func:`dvfopt.correct_dvf_25d`.
 
-Re-exporting the primitives here is safe for Windows spawn: ``ProcessPoolExecutor``
-children import the worker module ``_marching_25d`` DIRECTLY (they never import
-this package ``__init__``), so these re-exports add no import side effects to
-spawned workers.
+Windows spawn note: ``ProcessPoolExecutor`` children unpickling the worker
+``_marching_25d._repair_cluster`` import its module, which DOES execute every
+ancestor package ``__init__`` — including this one and the ``dvfopt`` facade.
+The requirement is therefore not that this ``__init__`` is skipped (it is
+not), but that it and all ancestor ``__init__``s stay side-effect-safe and
+import-light, which these plain re-exports are.
 """
 
 from dvfopt.core.marching._marching_25d import layer_min_v, march_slice

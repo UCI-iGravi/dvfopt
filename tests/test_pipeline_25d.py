@@ -57,6 +57,38 @@ def test_rejects_nonzero_dz():
         correct_dvf_25d(phi, n_workers=1)
 
 
+def test_rejects_nan_in_dy():
+    phi = _planted_25d_fold()
+    phi[1, 2, 5, 5] = np.nan
+    with pytest.raises(ValueError, match='non-finite'):
+        correct_dvf_25d(phi, n_workers=1)
+
+
+def test_rejects_nan_in_dz():
+    # NaN in dz would be invisible to the |dz| > tol comparison itself,
+    # so the finite check must catch it first.
+    phi = _planted_25d_fold()
+    phi[0, 2, 5, 5] = np.nan
+    with pytest.raises(ValueError, match='non-finite'):
+        correct_dvf_25d(phi, n_workers=1)
+
+
+def test_down_sweep_repairs_origin_slice():
+    # Fold planted between slices 2 and 3. With origin=2 the up sweep repairs
+    # z=3 against the frozen (still-folded) z=2 and cannot fully clear the
+    # inter-layer; the down sweep must then repair the ORIGIN slice itself
+    # against its already-repaired upper neighbour. The pre-fix code skipped
+    # the origin in the down sweep and left residual folds here (verified: 8
+    # residual negatives with the origin slice untouched).
+    phi = _planted_25d_fold()
+    if int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0:
+        pytest.skip('no fold planted')
+    phi_out, report = correct_dvf_25d(phi, origin=2, mop=False, n_workers=1)
+    assert not np.array_equal(phi_out[1:3, 2], phi[1:3, 2]), \
+        'origin slice was not repaired by the down sweep'
+    assert report.n_neg_out == 0
+
+
 def test_noop_when_already_feasible():
     rng = np.random.default_rng(1)
     phi = rng.normal(0, 0.001, (3, 6, 20, 20)).astype(np.float64)
