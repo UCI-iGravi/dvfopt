@@ -76,7 +76,6 @@ from dvfopt.jacobian.tetrahedron_sign import (
     _TET_SIGN,
     _TET_VERTICES,
     six_tet_min_volume_3d,
-    six_tet_volumes_3d,
 )
 
 _TET_VERTICES_ARR = np.array(_TET_VERTICES, dtype=np.int64)
@@ -432,7 +431,10 @@ def local_alm_recovery_3d(
     phi_out : ndarray
     info : dict
         ``crop_bbox``, ``crop_shape``, ``wall_s``, ``n_neg_before``,
-        ``n_neg_after``, ``widen_used``, ``accepted``.
+        ``n_neg_after``, ``widen_used``, ``accepted``. The fold counts are
+        per-CUBE (a cube with any of its six tets folded counts once), via
+        the fused ``six_tet_min_volume_3d`` kernel — not per-TET as the
+        old materialised ``six_tet_volumes_3d`` count was.
     """
     if phi.shape[0] != 3 or phi.ndim != 4:
         raise ValueError(f'phi must have shape (3, D, H, W), got {phi.shape}')
@@ -441,12 +443,14 @@ def local_alm_recovery_3d(
     if inner_solve is None:
         inner_solve = _default_m10tet_inner(threshold)
 
-    V0 = six_tet_volumes_3d(phi)
-    n_neg_before = int((V0 <= 0).sum())
+    # Fused per-cube min kernel: never materialises the (6, D-1, H-1, W-1)
+    # volume array. Counts are per-cube; before/after share the semantics.
+    min0 = six_tet_min_volume_3d(phi)
+    n_neg_before = int((min0 <= 0).sum())
 
     # Determine the cube bounding box of the region to recover.
     if center is None:
-        fold_mask = V0.min(axis=0) <= 0
+        fold_mask = min0 <= 0
         if not fold_mask.any():
             return phi.copy(), {
                 'crop_bbox': None,
@@ -495,8 +499,8 @@ def local_alm_recovery_3d(
             break
         trial = phi.copy()
         trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
-        V_trial = six_tet_volumes_3d(trial)
-        n_trial = int((V_trial <= 0).sum())
+        # Fused per-cube count (same semantics as n_neg_before above).
+        n_trial = int((six_tet_min_volume_3d(trial) <= 0).sum())
         if verbose:
             print(
                 f'  local recovery widen={widen} pad={p} crop='
@@ -604,7 +608,13 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
     fold = min_per_cube < threshold
     if not fold.any():
         return []
-    grouped = binary_dilation(fold, iterations=merge_dilation)
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    # scipy treats iterations < 1 as "repeat until convergence", which would
+    # dilate the mask to the whole grid — only dilate for a positive count.
+    grouped = (
+        binary_dilation(fold, iterations=merge_dilation) if merge_dilation >= 1 else fold
+    )
     labels, n = cc_label(grouped, structure=generate_binary_structure(3, 3))
     bboxes = []
     for cid in range(1, n + 1):
@@ -634,13 +644,17 @@ def _tile_bbox(bbox, max_box):
     generalising the 2D per-slice ``range(start, stop, MAX_BOX)`` tiling in
     ``research/strict_feasibility_3d/runners/_marching_full_volume.py``.
     A box already within ``max_box`` on every axis yields itself unchanged.
-    Tiles abut (share one corner plane); the padded crops overlap, and the
-    global verify after each paste keeps the seams honest.
+    Tiles are disjoint on cube indices and abut exactly (each tile starts
+    one cube after its predecessor's inclusive end, so no cube is solved
+    twice); the padded crops still overlap at the seams, and the verify
+    after each paste keeps the seams honest.
     """
     cz0, cz1, cy0, cy1, cx0, cx1 = bbox
-    zs = list(range(cz0, cz1, max_box)) or [cz0]
-    ys = list(range(cy0, cy1, max_box)) or [cy0]
-    xs = list(range(cx0, cx1, max_box)) or [cx0]
+    # Inclusive bounds: a tile starting at t covers cubes [t, t+max_box-1],
+    # i.e. exactly max_box cubes, and the next tile starts at t+max_box.
+    zs = list(range(cz0, cz1 + 1, max_box)) or [cz0]
+    ys = list(range(cy0, cy1 + 1, max_box)) or [cy0]
+    xs = list(range(cx0, cx1 + 1, max_box)) or [cx0]
     tiles = []
     for tz in zs:
         for ty in ys:
@@ -648,11 +662,11 @@ def _tile_bbox(bbox, max_box):
                 tiles.append(
                     (
                         tz,
-                        min(cz1, tz + max_box),
+                        min(cz1, tz + max_box - 1),
                         ty,
-                        min(cy1, ty + max_box),
+                        min(cy1, ty + max_box - 1),
                         tx,
-                        min(cx1, tx + max_box),
+                        min(cx1, tx + max_box - 1),
                     )
                 )
     return tiles
@@ -772,6 +786,7 @@ def active_band_alm_recovery_3d(
         if n_workers is None:
             n_workers = max(1, os.cpu_count() or 1)
         pboxes = [_padded_box(bb, pad, (D, H, W)) for bb in bboxes]
+        retry_bboxes = []  # per-crop-rejected tiles -> sequential pad-widen path
         for batch in _batch_nonoverlapping_boxes(pboxes):
             crops = [
                 cur[
@@ -785,31 +800,47 @@ def active_band_alm_recovery_3d(
             if len(batch) == 1:
                 results = [_solve_band_crop((crops[0], threshold))]
             else:
+                # Constant pool size: get_pool() tears down and respawns the
+                # whole warm pool whenever the requested size changes
+                # (~5-10 s/worker), and batch sizes vary between iterations.
+                # pool_map only dispatches len(args) tasks, so idle workers
+                # are free — always ask for the same n_workers.
                 results = pool_map(
                     _solve_band_crop,
                     [(c, threshold) for c in crops],
-                    min(n_workers, len(batch)),
+                    n_workers,
                 )
+            # Frozen-rim candidates + CROP-LOCAL fold recounts. _freeze_rim
+            # restores all six crop faces, so only cubes strictly inside a
+            # crop's own cube range can change; cubes straddling the crop
+            # boundary depend only on rim + outside nodes (both unchanged).
+            # Counting on the crop arrays is therefore EXACT — no full-volume
+            # trial copy or full-volume recount is needed per batch.
             n_before = int((six_tet_min_volume_3d(cur) <= 0).sum())
-            trial = cur.copy()
-            for i, crop_out in zip(batch, results):
+            cands = []  # aligned with batch: (candidate, local_before, local_after) | None
+            for crop, crop_out in zip(crops, results):
                 if crop_out is None:
+                    cands.append(None)
                     continue
-                z0, z1, y0, y1, x0, x1 = pboxes[i]
-                orig = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
-                trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
-                    orig, crop_out
-                )
-            n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
+                cand = _freeze_rim(crop, crop_out)
+                local_before = int((six_tet_min_volume_3d(crop) <= 0).sum())
+                local_after = int((six_tet_min_volume_3d(cand) <= 0).sum())
+                cands.append((cand, local_before, local_after))
+            batch_delta = sum(c[2] - c[1] for c in cands if c is not None)
+            n_after = n_before + batch_delta
             if verbose:
                 print(
                     f'  active-band parallel batch ({len(batch)} crops): '
                     f'n_neg {n_before}->{n_after}',
                     flush=True,
                 )
-            if n_after <= n_before:
-                cur = trial
-                for i in batch:
+            if batch_delta <= 0:
+                # Batch-global accept: paste every solved crop.
+                for i, c in zip(batch, cands):
+                    if c is None:
+                        continue
+                    z0, z1, y0, y1, x0, x1 = pboxes[i]
+                    cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = c[0]
                     pb = pboxes[i]
                     per_cluster.append(
                         dict(
@@ -820,10 +851,53 @@ def active_band_alm_recovery_3d(
                             parallel=True,
                         )
                     )
-        # All boxes were solved in the parallel batches above.
-        bboxes = []
+            else:
+                # Batch regressed: fall back to pasting crops ONE AT A TIME
+                # with per-crop verify, so a single bad crop cannot discard
+                # its siblings' fixes. Individually rejected crops are handed
+                # to the sequential path below for the pad-widen retries.
+                n_run = n_before
+                for i, c in zip(batch, cands):
+                    if c is None:
+                        continue
+                    cand, local_before, local_after = c
+                    pb = pboxes[i]
+                    if local_after <= local_before:
+                        z0, z1, y0, y1, x0, x1 = pb
+                        cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = cand
+                        per_cluster.append(
+                            dict(
+                                bbox=pb,
+                                crop_shape=(
+                                    pb[1] - pb[0] + 1,
+                                    pb[3] - pb[2] + 1,
+                                    pb[5] - pb[4] + 1,
+                                ),
+                                n_before=n_run,
+                                n_after=n_run + (local_after - local_before),
+                                parallel=True,
+                                per_crop=True,
+                            )
+                        )
+                        n_run += local_after - local_before
+                    else:
+                        if verbose:
+                            print(
+                                f'  active-band per-crop reject bbox={pb} '
+                                f'local n_neg {local_before}->{local_after}; '
+                                f'queued for sequential retry',
+                                flush=True,
+                            )
+                        retry_bboxes.append(bboxes[i])
+        # Accepted boxes were solved above; individually rejected ones fall
+        # through to the sequential path (with its pad-widen retries).
+        bboxes = retry_bboxes
 
     for cz0, cz1, cy0, cy1, cx0, cx1 in bboxes:
+        # ``cur`` is unchanged across the pad-widen retries (a paste only
+        # happens on accept, which exits the loop), so the global count is
+        # computed ONCE per cluster, not once per attempt.
+        n_before = int((six_tet_min_volume_3d(cur) <= 0).sum())
         for widen in range(max_widen + 1):
             p = pad + widen * pad
             z0 = max(0, cz0 - p)
@@ -835,26 +909,32 @@ def active_band_alm_recovery_3d(
             if z1 - z0 < 2 or y1 - y0 < 2 or x1 - x0 < 2:
                 break
             crop = cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1].copy()
-            n_before = int((six_tet_min_volume_3d(cur) <= 0).sum())
             try:
                 crop_out = inner_solve(crop)
             except Exception as exc:
                 if verbose:
                     print(f'  active-band cluster solve failed: {exc}', flush=True)
                 break
-            trial = cur.copy()
-            trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = _freeze_rim(
-                crop, crop_out
-            )
-            n_after = int((six_tet_min_volume_3d(trial) <= 0).sum())
+            # CROP-LOCAL verify: _freeze_rim restores all six crop faces, so
+            # only cubes strictly inside the crop's cube range [z0, z1-1] x
+            # [y0, y1-1] x [x0, x1-1] can change. Cubes straddling the crop
+            # boundary depend only on rim + outside nodes (both unchanged),
+            # so recounting on the crop arrays is EXACT — no full-volume
+            # copy or full-volume recount per attempt.
+            candidate = _freeze_rim(crop, crop_out)
+            local_before = int((six_tet_min_volume_3d(crop) <= 0).sum())
+            local_after = int((six_tet_min_volume_3d(candidate) <= 0).sum())
+            n_after = n_before - local_before + local_after
             if verbose:
                 print(
                     f'  active-band bbox z[{z0}:{z1}] y[{y0}:{y1}] x[{x0}:{x1}] '
                     f'crop={crop.shape[1:]} n_neg {n_before}->{n_after}',
                     flush=True,
                 )
-            if n_after <= n_before:
-                cur = trial
+            if local_after <= local_before:
+                # Paste directly into cur only after the local check passes;
+                # cur was untouched until now, so no rollback is ever needed.
+                cur[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = candidate
                 per_cluster.append(
                     dict(
                         bbox=(z0, z1, y0, y1, x0, x1),
@@ -864,6 +944,8 @@ def active_band_alm_recovery_3d(
                     )
                 )
                 break
+    # Final full-volume verify — the single safety net for the crop-local
+    # accounting above.
     min_f = six_tet_min_volume_3d(cur)
     n_neg_after = int((min_f <= 0).sum())
     info = {
@@ -874,6 +956,13 @@ def active_band_alm_recovery_3d(
         'wall_s': float(time.time() - t0),
         'per_cluster': per_cluster,
     }
+    if n_neg_after > n_neg_before:
+        info['warning'] = (
+            f'final full-volume verify found n_neg {n_neg_after} > initial '
+            f'{n_neg_before} despite per-crop accepts; no rollback attempted'
+        )
+        if verbose:
+            print(f'  active-band WARNING: {info["warning"]}', flush=True)
     return cur, info
 
 
@@ -1212,7 +1301,10 @@ def coupled_kring_slsqp_3d_parallel(
             (cur, c[0], c[1], c[2], k_ring, feasibility_thr, maxiter, ftol, use_analytical_jacobian)
             for c in batch
         ]
-        results = pool_map(_run_one_cluster, args, min(n_workers, len(batch)))
+        # Constant pool size: get_pool() respawns the warm pool whenever the
+        # requested size changes, and batch sizes vary — pool_map only
+        # dispatches len(args) tasks, so idle workers are free.
+        results = pool_map(_run_one_cluster, args, n_workers)
         for deltas, info in results:
             infos.append(info)
             trial = cur.copy()
@@ -1259,11 +1351,16 @@ def _partition_non_overlapping(centres, k_ring):
 
 def _accept_or_reject(cur, trial):
     """Accept `trial` only if it doesn't increase global n_neg more than
-    the local SLSQP can plausibly fix. Otherwise keep `cur`."""
-    V_cur = six_tet_volumes_3d(cur)
-    V_trial = six_tet_volumes_3d(trial)
-    n_cur = int((V_cur <= 0).sum())
-    n_trial = int((V_trial <= 0).sum())
+    the local SLSQP can plausibly fix. Otherwise keep `cur`.
+
+    Counts use the fused per-CUBE ``six_tet_min_volume_3d`` kernel (a cube
+    with any of its six tets folded counts once) instead of materialising
+    the (6, D-1, H-1, W-1) volume array and counting per-TET. Both sides of
+    the comparison changed semantics consistently; the +5 slack is a
+    heuristic and is kept as-is.
+    """
+    n_cur = int((six_tet_min_volume_3d(cur) <= 0).sum())
+    n_trial = int((six_tet_min_volume_3d(trial) <= 0).sum())
     # Allow small regressions (SLSQP can introduce small boundary leaks
     # that subsequent recovery cleans up); reject only large ones.
     if n_trial <= n_cur + 5:

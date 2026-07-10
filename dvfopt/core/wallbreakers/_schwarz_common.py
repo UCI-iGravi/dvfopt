@@ -50,7 +50,7 @@ from scipy.ndimage import (
     label as cc_label,
 )
 
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 # ---------------------------------------------------------------------------
@@ -67,11 +67,19 @@ def _stats_2d(phi: np.ndarray) -> tuple[int, float]:
 
 def _fold_clusters_2d(phi: np.ndarray, merge_dilation: int = 2):
     """Connected components of folded 2D cells, dilated for grouping."""
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
     fold_mask = np.minimum(T1, T2) <= 0
     if not fold_mask.any():
         return [], fold_mask
-    grouped = binary_dilation(fold_mask, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(fold_mask, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else fold_mask
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
     bboxes = []
     for comp_id in range(1, n_comp + 1):
@@ -360,17 +368,30 @@ def cluster_schwarz_2d_tri(
 
 
 def _stats_3d(phi: np.ndarray) -> tuple[int, float]:
-    V = six_tet_volumes_3d(phi)
-    return int((V <= 0).sum()), float(V.min())
+    # Fused per-cube min kernel — avoids materialising the full
+    # (6, Dc, Hc, Wc) volume array. NOTE: ``n_neg`` therefore counts
+    # folded CUBES (cells whose worst tet is <= 0), not folded tets —
+    # matching the per-cell semantics of :func:`_stats_2d`. All internal
+    # consumers only compare n_neg relatively (== 0, >= previous round),
+    # so the change is behaviour-preserving for control flow.
+    min_V = six_tet_min_volume_3d(phi)
+    return int((min_V <= 0).sum()), float(min_V.min())
 
 
 def _fold_clusters_3d(phi: np.ndarray, threshold: float, merge_dilation: int = 2):
     """Connected components of folded 3D voxel cells, dilated for grouping."""
-    V = six_tet_volumes_3d(phi)
-    fold_cells = V.min(axis=0) < threshold
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    fold_cells = six_tet_min_volume_3d(phi) < threshold
     if not fold_cells.any():
         return [], fold_cells
-    grouped = binary_dilation(fold_cells, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(fold_cells, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else fold_cells
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(3, 3))
     bboxes = []
     for comp_id in range(1, n_comp + 1):

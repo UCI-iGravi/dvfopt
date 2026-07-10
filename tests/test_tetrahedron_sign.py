@@ -98,6 +98,23 @@ class TestFoldedField:
         assert (n == 0).all() or n.max() < 6
 
 
+class TestFusedMinVolumeEquivalence:
+    """The wallbreaker hot paths (_harmonic_3d, _schwarz_common,
+    _refine_repair_3d) replaced ``six_tet_volumes_3d(phi).min(axis=0)``
+    with the fused :func:`six_tet_min_volume_3d` kernel. Pin the exact
+    equivalence those swaps rely on."""
+
+    def test_fused_matches_materialised_min(self):
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        rng = np.random.default_rng(42)
+        phi = rng.normal(0, 0.4, (3, 6, 7, 8))
+        ref = six_tet_volumes_3d(phi).min(axis=0)
+        fused = six_tet_min_volume_3d(phi)
+        assert fused.shape == ref.shape
+        np.testing.assert_allclose(fused, ref, rtol=0, atol=1e-12)
+
+
 class TestTorchBackend:
     """Verify the torch forward matches the numpy forward and that
     autograd through it agrees with the analytical adjoint.
@@ -598,6 +615,49 @@ class TestHarmonic3DWallbreaker:
         phi_out, info = harmonic_extension_3d(phi, record_history=True)
         assert info['reason'] == 'already-feasible'
         np.testing.assert_array_equal(phi_out, phi)
+
+    def test_merge_dilation_zero_keeps_patches_separate(self):
+        """merge_dilation=0 must mean "no grouping dilation" — NOT scipy's
+        binary_dilation(iterations=0) repeat-until-convergence, which
+        fills the volume and collapses everything into one whole-volume
+        patch."""
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+
+        phi = np.zeros((3, 5, 16, 16))
+        phi[1, 2, 3, 3] = 1.5
+        phi[2, 2, 3, 3] = 1.5
+        phi[1, 2, 12, 12] = 1.5
+        phi[2, 2, 12, 12] = 1.5
+        assert (six_tet_volumes_3d(phi) <= 0).any()
+
+        _phi_out, info = harmonic_extension_3d(phi, merge_dilation=0, record_history=True)
+        assert info['patches'] == 2
+        # Each patch is local, never the whole cell grid.
+        n_cells_total = 4 * 15 * 15
+        for rec in info['records']:
+            assert rec['n_cells'] < n_cells_total
+
+    def test_ring_pad_zero_stays_local(self):
+        """ring_pad=0 with grow=0 used to call binary_dilation(iterations=0),
+        which fills the whole volume (near-full-volume spsolve). The
+        correct semantic is "no dilation this round" — far-away corners
+        must be untouched."""
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+
+        phi = np.zeros((3, 5, 16, 16))
+        phi[1, 2, 3, 3] = 1.5
+        phi[2, 2, 3, 3] = 1.5
+        phi_out = harmonic_extension_3d(phi, ring_pad=0, max_grow_iters=2)
+        np.testing.assert_array_equal(phi_out[:, :, 10:, 10:], phi[:, :, 10:, 10:])
+
+    def test_negative_dilation_params_raise(self):
+        from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
+
+        phi = np.zeros((3, 4, 4, 4))
+        with pytest.raises(ValueError, match='merge_dilation'):
+            harmonic_extension_3d(phi, merge_dilation=-1)
+        with pytest.raises(ValueError, match='ring_pad'):
+            harmonic_extension_3d(phi, ring_pad=-1)
 
     def test_strategy_polish_off(self):
         """``Harmonic3DStrategy(polish=False)`` should reach feasibility

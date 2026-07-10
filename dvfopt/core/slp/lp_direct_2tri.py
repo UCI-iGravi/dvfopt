@@ -20,6 +20,27 @@ import numpy as np
 from dvfopt.core.slp.highs_solver import solve_l1_lp_step
 from dvfopt.core.slp.tri_linearize import linearize_T_2tri
 
+# Stage-1 (m10) internal barrier mu_schedule used when M14 runs as an SLP
+# seed (``_m14_seed`` / ``_m14_fast_seed`` / ``_m14_quick_seed``).
+#   None -> m10's own default schedule (1e-1 .. 1e-5) — legacy behavior.
+#   ()   -> skip m10's internal log-barrier polish. Rationale: that polish
+#           only slides the already-feasible m10 seed toward phi_in — work
+#           m14's stage 2 (l2_refine_2d, anchored to the same phi_in)
+#           immediately redoes and the outer SLP L1-polishes again. This
+#           mirrors the polish_mu=() trick already applied to m14's own
+#           stage 4 in ``_m14_fast_seed``.
+# Measured 2026-07-09 (cluster_slp_iter, threshold=0.01, max_outer_iters=6,
+# n_workers=1, scheduler='continuous', B0039 laplacian DVF, per-slice totals,
+# (a) = None vs (b) = ()):
+#   z=300: wall 91.8s -> 73.8s (-19.6%)  L1 2079.80 -> 2112.78 (+1.586%)
+#   z=450: wall 66.4s -> 48.5s (-27.1%)  L1 2369.93 -> 2375.41 (+0.231%)
+#   z=200: wall 44.5s -> 40.5s ( -8.9%)  L1 1077.72 -> 1078.02 (+0.028%)
+# Feasible (min_T >= threshold - 1e-5, no global polish fired) on all slices
+# under both settings. (b) faster on every slice with L1 within +2% ->
+# adopted () as the seed-path default. Set to None to restore the legacy
+# m10-internal polish.
+M14_SEED_STAGE1_MU_SCHEDULE: tuple | None = ()
+
 
 def _exact_min_T(phi_2hw: np.ndarray) -> float:
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
@@ -93,7 +114,9 @@ def _m14_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     solver = Solver(
         constraint=TriConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMRefineRepairStrategy(),
+        strategy=HarmonicALMRefineRepairStrategy(
+            stage1_mu_schedule=M14_SEED_STAGE1_MU_SCHEDULE,
+        ),
         threshold=threshold,
     )
     return solver.fit(phi_in_2hw).corrected
@@ -119,7 +142,10 @@ def _m14_fast_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     solver = Solver(
         constraint=TriConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMRefineRepairStrategy(polish_mu=()),
+        strategy=HarmonicALMRefineRepairStrategy(
+            polish_mu=(),
+            stage1_mu_schedule=M14_SEED_STAGE1_MU_SCHEDULE,
+        ),
         threshold=threshold,
     )
     return solver.fit(phi_in_2hw).corrected
@@ -156,6 +182,7 @@ def _m14_quick_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
             polish_mu=(),
             lam_schedule=(1e4, 1e8),
             inner_maxiter=100,
+            stage1_mu_schedule=M14_SEED_STAGE1_MU_SCHEDULE,
         ),
         threshold=threshold,
     )
@@ -172,7 +199,9 @@ def _build_seed(phi_in_2hw: np.ndarray, threshold: float, seed) -> np.ndarray:
     if isinstance(seed, np.ndarray):
         if seed.shape != phi_in_2hw.shape:
             raise ValueError(f'seed ndarray shape {seed.shape} != phi_in shape {phi_in_2hw.shape}')
-        return seed.astype(np.float64).copy()
+        # astype(copy=True) is the default: this is already a fresh array
+        # even when seed is float64, so no extra .copy() is needed.
+        return seed.astype(np.float64)
     if seed == 'harmonic':
         return _harmonic_seed(phi_in_2hw, threshold)
     if seed == 'm10':
@@ -281,9 +310,23 @@ def slp_iter(
     converged = False
     statuses = []
 
+    # Linearisation state is hoisted out of the loop body: on a rejected
+    # step (LP failure or exact-T infeasibility) phi_cur_flat is unchanged,
+    # so the next iteration's linearize_T_2tri would recompute the exact
+    # same (T_lin, J) — only the trust radius differs in the LP. Re-linearise
+    # only on the first iteration and after an accepted step.
+    need_relin = True
+    T_lin = None
+    J = None
+
     for it in range(max_iter):
         iters = it + 1
-        T_lin, J = linearize_T_2tri(phi_cur_flat, H, W)
+        if need_relin:
+            T_lin, J = linearize_T_2tri(phi_cur_flat, H, W)
+            # Convert once here; solve_l1_lp_step would otherwise redo
+            # COO->CSR on every (possibly rejected) iteration.
+            J = J.tocsr()
+            need_relin = False
         phi_new_flat, status = solve_l1_lp_step(
             phi_in_flat=phi_in_flat,
             phi_lin_flat=phi_cur_flat,
@@ -314,6 +357,7 @@ def slp_iter(
         step_inf = float(np.max(np.abs(phi_new_flat - phi_cur_flat)))
         at_boundary = step_inf >= 0.99 * trust_radius
         phi_cur_flat = phi_new_flat
+        need_relin = True  # linearisation point moved
         if new_L1 <= best_L1 + 1e-12:
             best_phi_flat = phi_cur_flat.copy()
             best_L1 = new_L1

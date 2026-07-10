@@ -132,6 +132,73 @@ class TestConfigValidation:
         with pytest.raises(ValueError):
             DVFopt(DVFoptConfig(objective='bogus'))
 
+    def test_invalid_accuracy(self):
+        """Bad accuracy fails fast at config construction (post_init),
+        regardless of which solver path would eventually consume it."""
+        with pytest.raises(ValueError):
+            DVFoptConfig(accuracy='nonsense')
+
+
+class TestAccuracyPlumbing:
+    """DVFoptConfig.accuracy → strategy plumbing."""
+
+    def test_strategy_kwargs_accuracy_takes_precedence(self, monkeypatch):
+        """A user-supplied strategy_kwargs['accuracy'] must win over the
+        config-level c.accuracy shorthand (setdefault, not overwrite)."""
+        import dvfopt.unified as unified_mod
+
+        captured = {}
+        real_make = unified_mod.make_strategy
+
+        def spy(label, **kw):
+            captured['label'] = label
+            captured['kwargs'] = dict(kw)
+            return real_make(label, **kw)
+
+        monkeypatch.setattr(unified_mod, 'make_strategy', spy)
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver='slp',
+            accuracy='max',
+            strategy_kwargs={'accuracy': 'fast', 'n_workers': 1},
+            verbose=0,
+            record_history=False,
+        )
+        DVFopt(cfg).fit(phi)
+        assert captured['label'] == 'slp'
+        # 'fast' from strategy_kwargs wins; c.accuracy='max' must not clobber it.
+        assert captured['kwargs']['accuracy'] == 'fast'
+
+    def test_instance_strategy_accuracy_warns(self):
+        """accuracy != 'fast' with a Strategy INSTANCE cannot be applied
+        (instances are used as-is) — warn instead of silently dropping."""
+        from dvfopt import BarrierStrategy
+
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver=BarrierStrategy(),
+            accuracy='max',
+            constraint='2tri',
+            verbose=0,
+            record_history=False,
+        )
+        with pytest.warns(UserWarning, match='ignored'):
+            DVFopt(cfg).fit(phi)
+
+    def test_instance_strategy_fast_accuracy_no_warning(self, recwarn):
+        """The default accuracy='fast' with an instance stays silent."""
+        from dvfopt import BarrierStrategy
+
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(
+            solver=BarrierStrategy(),
+            constraint='2tri',
+            verbose=0,
+            record_history=False,
+        )
+        DVFopt(cfg).fit(phi)
+        assert not [w for w in recwarn.list if 'ignored' in str(w.message)]
+
 
 class TestInputShapeDispatch:
     def test_2hw_input_returns_2hw_output(self):

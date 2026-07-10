@@ -175,6 +175,10 @@ def harmonic_extension_2d(
 
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    if ring_pad < 0:
+        raise ValueError(f'ring_pad must be >= 0, got {ring_pad}')
     H, W = phi_in.shape[1], phi_in.shape[2]
     accept_thr = threshold + margin
 
@@ -184,7 +188,13 @@ def harmonic_extension_2d(
         phi_out = phi_in.copy()
         return (phi_out, info) if record_history else phi_out
 
-    grouped = binary_dilation(cell_fold, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(cell_fold, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else cell_fold
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
 
     phi_out = phi_in.copy()
@@ -197,7 +207,13 @@ def harmonic_extension_2d(
         cur_cells = comp_cells.copy()
         last_min = -np.inf
         for grow in range(max_grow_iters + 1):
-            patch_cells = binary_dilation(cur_cells, iterations=ring_pad + grow)
+            # binary_dilation(iterations=0) would "iterate to convergence"
+            # (fill the grid); ring_pad=0 with grow=0 must mean "no
+            # dilation this round".
+            iters = ring_pad + grow
+            patch_cells = (
+                binary_dilation(cur_cells, iterations=iters) if iters >= 1 else cur_cells
+            )
             interior_cells = binary_erosion(patch_cells, iterations=1)
             free_mask = _cells_to_corner_mask(interior_cells, H, W)
 

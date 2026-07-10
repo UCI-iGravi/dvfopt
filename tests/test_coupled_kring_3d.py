@@ -554,6 +554,80 @@ class TestActiveBandRecovery:
             assert shp[3] <= bound, f'crop x-extent {shp[3]} exceeds {bound}'
 
 
+class TestTileBbox:
+    """_tile_bbox must cover every cube exactly once (no overlap) and cap
+    each tile at max_box cubes per axis."""
+
+    @staticmethod
+    def _cubes(tile):
+        z0, z1, y0, y1, x0, x1 = tile
+        return {
+            (z, y, x)
+            for z in range(z0, z1 + 1)
+            for y in range(y0, y1 + 1)
+            for x in range(x0, x1 + 1)
+        }
+
+    @pytest.mark.parametrize(
+        'bbox',
+        [
+            (0, 9, 0, 9, 0, 9),  # span < max_box: single tile, unchanged
+            (0, 15, 0, 15, 0, 15),  # span == max_box exactly: single tile
+            (0, 16, 0, 16, 0, 16),  # span == max_box + 1: two tiles per axis
+            (2, 40, 5, 21, 7, 7),  # mixed multi-tile, offset origin
+        ],
+    )
+    def test_no_overlap_full_coverage(self, bbox):
+        from dvfopt.core.wallbreakers._coupled_kring_3d import _tile_bbox
+
+        max_box = 16
+        tiles = _tile_bbox(bbox, max_box)
+        cube_sets = [self._cubes(t) for t in tiles]
+        union = set().union(*cube_sets)
+        # Coverage is complete...
+        assert union == self._cubes(bbox)
+        # ...and no cube index appears in two tiles.
+        assert sum(len(s) for s in cube_sets) == len(union)
+        # Every tile spans at most max_box cubes per axis.
+        for z0, z1, y0, y1, x0, x1 in tiles:
+            assert z1 - z0 + 1 <= max_box
+            assert y1 - y0 + 1 <= max_box
+            assert x1 - x0 + 1 <= max_box
+
+    def test_single_cube_degenerate(self):
+        from dvfopt.core.wallbreakers._coupled_kring_3d import _tile_bbox
+
+        assert _tile_bbox((3, 3, 4, 4, 5, 5), 16) == [(3, 3, 4, 4, 5, 5)]
+
+
+class TestFoldClusterBboxesDilationGuard:
+    """merge_dilation < 1 must not hit scipy's repeat-until-convergence
+    (iterations < 1 dilates the mask to the whole grid)."""
+
+    def test_negative_merge_dilation_raises(self):
+        from dvfopt.core.wallbreakers._coupled_kring_3d import (
+            _fold_cluster_bboxes,
+        )
+
+        mv = np.full((4, 4, 4), -1.0)
+        with pytest.raises(ValueError, match='merge_dilation'):
+            _fold_cluster_bboxes(mv, 0.0, merge_dilation=-1)
+
+    def test_zero_merge_dilation_keeps_clusters_separate(self):
+        from dvfopt.core.wallbreakers._coupled_kring_3d import (
+            _fold_cluster_bboxes,
+        )
+
+        mv = np.full((6, 6, 6), 1.0)
+        mv[1, 1, 1] = -1.0
+        mv[4, 4, 4] = -1.0
+        # iterations=0 used to fill the grid -> one bbox spanning everything.
+        bb = _fold_cluster_bboxes(mv, 0.0, merge_dilation=0)
+        assert len(bb) == 2
+        assert (1, 1, 1, 1, 1, 1) in bb
+        assert (4, 4, 4, 4, 4, 4) in bb
+
+
 class TestActiveBandParallelBatching:
     """Non-overlap batching logic for the parallel active-band path
     (pure logic — no process spawn, so fast and deterministic)."""
@@ -592,6 +666,73 @@ class TestActiveBandParallelBatching:
         pb = _padded_box((0, 1, 0, 1, 0, 1), pad=4, shape=(8, 8, 8))
         assert pb[0] == 0 and pb[2] == 0 and pb[4] == 0
         assert pb[1] <= 7 and pb[3] <= 7 and pb[5] <= 7
+
+
+class TestActiveBandParallelPerCropFallback:
+    """When one crop of a parallel batch regresses, the OTHER crops' fixes
+    must be retained (per-crop paste+verify fallback), and the rejected
+    crop's bbox must be handed to the sequential pad-widen path — not
+    silently dropped (the old all-or-nothing bug discarded everything)."""
+
+    def test_batch_regression_keeps_good_crops(self, monkeypatch):
+        import dvfopt.core._pool as pool_mod
+        from dvfopt.core.wallbreakers import _coupled_kring_3d as mod
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+        phi = np.zeros((3, 8, 30, 30), dtype=np.float64)
+        # Cluster A (fake worker will FIX it): spike magnitude 1.5.
+        phi[0, 3, 4:6, 4:6] = 1.5
+        phi[0, 4, 4:6, 4:6] = -1.5
+        # Cluster B (fake worker will WRECK it): spike magnitude 1.9,
+        # the marker the fake worker keys on.
+        phi[0, 3, 22:24, 22:24] = 1.9
+        phi[0, 4, 22:24, 22:24] = -1.9
+
+        mv0 = six_tet_min_volume_3d(phi)
+        n0 = int((mv0 <= 0).sum())
+        assert n0 > 0, 'test setup planted no folds'
+        # Fold counts per cluster (split at cube y=15, well between them).
+        n_a = int((mv0[:, :15, :] <= 0).sum())
+        n_b = int((mv0[:, 15:, :] <= 0).sum())
+        assert n_a > 0 and n_b > 0
+
+        def fake_worker(args):
+            crop, _threshold = args
+            if crop.max() > 1.7:  # cluster B's crop -> wreck it
+                rng = np.random.default_rng(99)
+                return crop + rng.normal(0, 3.0, crop.shape)
+            return np.zeros_like(crop)  # cluster A's crop -> perfect fix
+
+        # In-process pool + fake worker: no process spawn, deterministic.
+        monkeypatch.setattr(mod, '_solve_band_crop', fake_worker)
+        monkeypatch.setattr(
+            pool_mod, 'pool_map', lambda worker, args, n_workers: [worker(a) for a in args]
+        )
+
+        def identity_inner(crop, time_budget_s=600.0):
+            return crop  # sequential retry of the rejected crop: no-op
+
+        out, info = mod.active_band_alm_recovery_3d(
+            phi,
+            threshold=0.012,
+            pad=3,
+            n_workers=2,
+            inner_solve=identity_inner,
+        )
+        mv1 = six_tet_min_volume_3d(out)
+        # Cluster A's fix was retained despite cluster B wrecking the batch.
+        assert int((mv1[:, :15, :] <= 0).sum()) == 0
+        # Cluster B's wreck was rejected: its region is bit-identical input.
+        assert np.array_equal(out[:, :, 15:, :], phi[:, :, 15:, :])
+        assert int((mv1 <= 0).sum()) == n_b
+        assert info['n_neg_after'] == n_b
+        assert info['n_neg_after'] < info['n_neg_before']
+        # Diagnostics: a per-crop parallel accept was recorded for A...
+        per_crop = [pc for pc in info['per_cluster'] if pc.get('per_crop')]
+        assert len(per_crop) == 1
+        assert per_crop[0]['n_after'] == per_crop[0]['n_before'] - n_a
+        # ...and the rejected crop went through the sequential retry path.
+        assert any('parallel' not in pc for pc in info['per_cluster'])
 
 
 class TestActiveBandStrategy:

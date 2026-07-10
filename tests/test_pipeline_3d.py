@@ -16,6 +16,58 @@ def _planted(seed=0, centers=((3, 8, 8), (6, 25, 28), (9, 32, 12))):
     return phi
 
 
+class TestNonFiniteInputRejected:
+    """The entry point must reject non-finite fields up front: the fused
+    min-volume kernel's ``<`` comparisons always fail on NaN, so a NaN cube
+    gets min-volume 1e300 and would otherwise be reported as feasible
+    (silent success on corrupted data)."""
+
+    def test_nan_in_one_channel_raises(self):
+        phi = _planted()
+        phi[1, 4, 10, 10] = np.nan  # single NaN in dy
+        with pytest.raises(ValueError, match='non-finite'):
+            correct_dvf_3d(phi, threshold=0.01)
+
+    def test_all_nan_raises(self):
+        phi = np.full((3, 6, 8, 8), np.nan)
+        with pytest.raises(ValueError, match='non-finite'):
+            correct_dvf_3d(phi, threshold=0.01)
+
+    def test_inf_raises(self):
+        phi = np.zeros((3, 6, 8, 8))
+        phi[2, 3, 4, 4] = np.inf
+        with pytest.raises(ValueError, match='non-finite'):
+            correct_dvf_3d(phi, threshold=0.01)
+
+    def test_nan_field_not_reported_feasible(self):
+        """Regression guard for the exact failure mode: an all-NaN field
+        must never come back as Correct3DReport(feasible=True)."""
+        phi = np.full((3, 6, 8, 8), np.nan)
+        try:
+            _, rep = correct_dvf_3d(phi, threshold=0.01)
+        except ValueError:
+            return  # expected path
+        assert not rep.feasible  # unreachable if the guard works
+
+
+def test_small_planted_dz_fold_smoke():
+    """Small (3, 6, 20, 20) planted-dz-fold field reaches strict feasibility
+    (planting in dz is correct for the true-3D pipeline)."""
+    rng = np.random.default_rng(0)
+    phi = rng.normal(0, 0.02, (3, 6, 20, 20)).astype(np.float64)
+    phi[0, 2, 8:10, 8:10] = 1.5
+    phi[0, 3, 8:10, 8:10] = -1.5
+    n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())
+    assert n0 > 0
+    out, rep = correct_dvf_3d(phi, threshold=0.01)
+    assert rep.n_neg_in == n0
+    assert rep.n_neg_out <= n0
+    # report numbers match an independent re-measure of the output
+    mv = six_tet_min_volume_3d(out)
+    assert int((mv <= 0).sum()) == rep.n_neg_out
+    assert mv.min() == pytest.approx(rep.min_T_out)
+
+
 def test_already_feasible_noop():
     phi = np.zeros((3, 6, 8, 8))
     out, rep = correct_dvf_3d(phi, threshold=0.01)

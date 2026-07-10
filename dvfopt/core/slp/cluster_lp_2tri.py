@@ -18,7 +18,6 @@ Triggers spec fallback row 5 (``cluster_lp``).
 from __future__ import annotations
 
 import time
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from scipy.ndimage import binary_dilation, find_objects
@@ -34,12 +33,12 @@ DEFAULT_PARALLEL_WORKERS = 1  # sequential by default; user can opt in to proces
 
 
 def _solve_cluster_worker(args):
-    """Top-level (picklable) worker for ProcessPoolExecutor parallelism.
+    """Top-level (picklable) worker for process-pool parallelism.
 
     Threads aren't safe (scipy linprog isn't thread-safe in our build);
-    processes work but pay Windows-spawn cost on each pool startup.
-    Tradeoff: worth it only on dense slices where each cluster solve
-    is multiple seconds.
+    processes run on the package-shared pre-warmed pool
+    (``dvfopt.core._pool``), so the Windows-spawn cost is paid once per
+    session instead of once per slice.
     """
     phi_crop, inner_threshold, inner_trust_radius_0, inner_max_iter, inner_seed = args
     phi_corr, _ = slp_iter(
@@ -86,10 +85,17 @@ def _boxes_conflict(a, b):
     return not (a['y1'] < b['y0'] or b['y1'] < a['y0'] or a['x1'] < b['x0'] or b['x1'] < a['x0'])
 
 
+def _cell_min_T(phi_2hw: np.ndarray) -> np.ndarray:
+    """Per-cell ``min(T1, T2)`` array for a ``(2, H, W)`` slice."""
+    T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
+    return np.minimum(T1, T2)
+
+
 def _fold_clusters(
     phi_2hw: np.ndarray,
     merge_dilation: int = MERGE_DILATION_BASE,
     target_threshold: float = 0.0,
+    cell_min: np.ndarray | None = None,
 ):
     """Return list of cluster dicts for every connected component of
     cells where ``min(T1, T2) < target_threshold``.
@@ -98,9 +104,13 @@ def _fold_clusters(
     least one flipped triangle). Setting it to the user threshold
     (e.g. 0.01) also catches barely-infeasible cells from splice noise
     in later outer rounds, so the cluster loop can sweep them up
-    without falling back to the expensive global polish step."""
-    T1, T2 = _triangle_areas_2d(phi_2hw[0], phi_2hw[1])
-    cell_min = np.minimum(T1, T2)
+    without falling back to the expensive global polish step.
+
+    ``cell_min`` optionally provides a precomputed ``min(T1, T2)`` array
+    for ``phi_2hw`` (from :func:`_cell_min_T`), skipping the full-slice
+    triangle evaluation."""
+    if cell_min is None:
+        cell_min = _cell_min_T(phi_2hw)
     fold_mask = cell_min < target_threshold
     if not fold_mask.any():
         return []
@@ -194,19 +204,26 @@ def cluster_slp_iter(
     info : dict with per-round + per-cluster bookkeeping.
     """
     t0 = time.time()
-    phi_out = phi_in_2hw.astype(np.float64).copy()
+    # astype(copy=True) is the default: already a fresh, mutation-safe
+    # array even when the input is float64 — no extra .copy() needed.
+    phi_out = phi_in_2hw.astype(np.float64)
     info = {
         'rounds': [],
         'inner_seed': inner_seed,
         'total_cluster_solves': 0,
     }
-    # Single shared worker pool across ALL outer rounds and sub-rounds.
-    # The earlier per-sub-round pool re-spawned ~1-2 s of Windows
-    # process-startup cost on every sub-round (50-100+ times per slice),
-    # erasing the parallelism benefit. With one pool lifetime-spanning
-    # the entire call, spawn cost amortises once across all 200-300
-    # cluster solves.
-    pool = ProcessPoolExecutor(max_workers=n_workers) if n_workers > 1 else None
+    # Parallel rounds use the package-shared, pre-warmed process pool
+    # (dvfopt.core._pool). A per-call ProcessPoolExecutor paid the
+    # Windows-spawn cost (~1-2 s/worker) on EVERY slice — 10-25 min of
+    # pure spawn overhead over a 528-slice volume. The shared pool is
+    # created once per session and owned by the pool module (atexit
+    # teardown); it must NEVER be shut down here.
+
+    # Cell-min triangle-area array valid for the CURRENT phi_out, or None
+    # if phi_out changed since it was computed. Threading it through the
+    # loop avoids re-evaluating the full-slice triangle areas 2-3x per
+    # round (cluster enumeration, pre_n_neg, polish trigger, final stats).
+    cur_cell_min = None
 
     for outer_it in range(max_outer_iters):
         # First outer iter: target only actual folds (min_T <= 0). On
@@ -214,13 +231,19 @@ def cluster_slp_iter(
         # threshold), so splice-noise cells get swept up by the cluster
         # loop instead of triggering the expensive global polish step.
         target = 0.0 if outer_it == 0 else (threshold - 1e-5)
-        clusters = _fold_clusters(phi_out, merge_dilation=merge_dilation, target_threshold=target)
+        if cur_cell_min is None:
+            cur_cell_min = _cell_min_T(phi_out)
+        clusters = _fold_clusters(
+            phi_out,
+            merge_dilation=merge_dilation,
+            target_threshold=target,
+            cell_min=cur_cell_min,
+        )
         if not clusters:
             info['rounds'].append({'outer': outer_it, 'n_clusters': 0, 'reason': 'feasible'})
             break
 
-        T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
-        pre_n_neg = int((np.minimum(T1, T2) <= 0).sum())
+        pre_n_neg = int((cur_cell_min <= 0).sum())
         round_runs = []
 
         # Inner threshold has a slight margin (threshold + 1e-4) so
@@ -243,48 +266,91 @@ def cluster_slp_iter(
             # the ~16% serial fraction measured on B0039 slices).
             from concurrent.futures import FIRST_COMPLETED
             from concurrent.futures import wait as _wait
+            from concurrent.futures.process import BrokenProcessPool
 
+            from dvfopt.core._pool import _shutdown_if_current, get_pool
+
+            pool = get_pool(n_workers)  # shared pre-warmed pool (module-owned)
             pending = list(clusters)  # largest-first
             inflight = {}  # future -> cluster
-            while pending or inflight:
-                # Greedily admit non-conflicting clusters.
-                while len(inflight) < n_workers:
-                    pick = None
-                    for i, c in enumerate(pending):
-                        if not any(_boxes_conflict(c, c2) for c2 in inflight.values()):
-                            pick = i
+            try:
+                while pending or inflight:
+                    # Greedily admit non-conflicting clusters.
+                    while len(inflight) < n_workers:
+                        pick = None
+                        for i, c in enumerate(pending):
+                            if not any(_boxes_conflict(c, c2) for c2 in inflight.values()):
+                                pick = i
+                                break
+                        if pick is None:
                             break
-                    if pick is None:
-                        break
-                    c = pending.pop(pick)
+                        c = pending.pop(pick)
+                        y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
+                        phi_crop = phi_out[:, y0 : y1 + 1, x0 : x1 + 1].copy()
+                        try:
+                            fut = pool.submit(
+                                _solve_cluster_worker,
+                                (
+                                    phi_crop,
+                                    inner_threshold,
+                                    inner_trust_radius_0,
+                                    inner_max_iter,
+                                    inner_seed,
+                                ),
+                            )
+                        except BrokenProcessPool:
+                            # submit() can raise if the shared pool broke after
+                            # admission started; push the popped cluster back so
+                            # the outer handler's serial fallback re-solves it
+                            # (otherwise it would be lost from both queues).
+                            pending.append(c)
+                            raise
+                        inflight[fut] = c
+                    if not inflight:
+                        break  # nothing admittable and nothing running
+                    done, _ = _wait(list(inflight), return_when=FIRST_COMPLETED)
+                    for fut in done:
+                        # Pop only AFTER fut.result() succeeds: if the pool
+                        # broke, result() raises and the cluster must stay
+                        # in `inflight` so the serial fallback re-solves it.
+                        result = fut.result()
+                        c = inflight.pop(fut)
+                        _splice_interior(phi_out, c, result)
+                        info['total_cluster_solves'] += 1
+                        round_runs.append({**c})
+            except BrokenProcessPool:
+                # A worker died mid-round. Tear the broken shared pool down
+                # (only if it is still the module's current pool, so the
+                # next parallel call rebuilds a fresh one) and finish the
+                # remaining clusters serially in-process — a dead worker
+                # must never crash the caller.
+                _shutdown_if_current(pool)
+                remaining = list(inflight.values()) + pending
+                inflight.clear()
+                pending = []
+                for c in remaining:
                     y0, y1, x0, x1 = c['y0'], c['y1'], c['x0'], c['x1']
                     phi_crop = phi_out[:, y0 : y1 + 1, x0 : x1 + 1].copy()
-                    fut = pool.submit(
-                        _solve_cluster_worker,
+                    phi_corr = _solve_cluster_worker(
                         (
                             phi_crop,
                             inner_threshold,
                             inner_trust_radius_0,
                             inner_max_iter,
                             inner_seed,
-                        ),
+                        )
                     )
-                    inflight[fut] = c
-                if not inflight:
-                    break  # nothing admittable and nothing running
-                done, _ = _wait(list(inflight), return_when=FIRST_COMPLETED)
-                for fut in done:
-                    c = inflight.pop(fut)
-                    _splice_interior(phi_out, c, fut.result())
+                    _splice_interior(phi_out, c, phi_corr)
                     info['total_cluster_solves'] += 1
                     round_runs.append({**c})
         elif n_workers > 1:
-            # Parallel via processes (Windows-spawn cost ~1s/worker —
-            # only worth it on dense slices with multi-second per-cluster
-            # solves). Threads were ruled out (scipy linprog not
-            # thread-safe in this build, segfaulted at >=2 workers).
-            # Partition into non-overlapping rounds so concurrent
-            # splices don't race.
+            # Parallel via the shared pre-warmed pool. Threads were ruled
+            # out (scipy linprog not thread-safe in this build, segfaulted
+            # at >=2 workers). Partition into non-overlapping rounds so
+            # concurrent splices don't race. pool_map falls back to a
+            # serial in-process map if the pool breaks.
+            from dvfopt.core._pool import pool_map
+
             sub_rounds = _partition_clusters_nonoverlapping(clusters)
             for sub_round in sub_rounds:
                 arg_list = []
@@ -302,7 +368,7 @@ def cluster_slp_iter(
                     )
                 t_c = time.time()
                 if len(sub_round) > 1:
-                    results = list(pool.map(_solve_cluster_worker, arg_list))
+                    results = pool_map(_solve_cluster_worker, arg_list, n_workers)
                 else:
                     results = [_solve_cluster_worker(arg_list[0])]
                 wall_round = time.time() - t_c
@@ -330,8 +396,9 @@ def cluster_slp_iter(
                 info['total_cluster_solves'] += 1
                 round_runs.append({**c, 'wall': time.time() - t_c})
 
-        T1, T2 = _triangle_areas_2d(phi_out[0], phi_out[1])
-        T_min = np.minimum(T1, T2)
+        # phi_out changed (splices) — refresh the threaded cell-min array.
+        cur_cell_min = _cell_min_T(phi_out)
+        T_min = cur_cell_min
         post_n_neg = int((T_min <= 0).sum())
         post_n_below_threshold = int((T_min < threshold - 1e-5).sum())
         info['rounds'].append(
@@ -370,8 +437,12 @@ def cluster_slp_iter(
     # anchor — so the total L1 vs the original input stays near the
     # cluster_slp L1 (which is much lower than global M14 on hard
     # cases), plus a small fix-up term.
-    T1f, T2f = _triangle_areas_2d(phi_out[0], phi_out[1])
-    cluster_t_min = np.minimum(T1f, T2f)
+    # Reuse the threaded cell-min array when it is still valid for the
+    # current phi_out (it always is on every loop-exit path; the None
+    # check covers the max_outer_iters == 0 edge case).
+    if cur_cell_min is None:
+        cur_cell_min = _cell_min_T(phi_out)
+    cluster_t_min = cur_cell_min
     cluster_min_T = float(cluster_t_min.min())
     cluster_n_neg = int((cluster_t_min <= 0).sum())
     # Trigger polish only when there are still folded cells OR the
@@ -408,13 +479,13 @@ def cluster_slp_iter(
         phi_out = solver.fit(phi_out).corrected
         info['polish_wall'] = time.time() - t_p
         info['polish_fired'] = True
+        # Polish changed phi_out — the final min_T must be re-evaluated.
+        final_t_min = _cell_min_T(phi_out)
     else:
         info['polish_fired'] = False
+        final_t_min = cluster_t_min
 
-    if pool is not None:
-        pool.shutdown(wait=True)
-
-    info['final_min_T_exact'] = float(np.minimum(*_triangle_areas_2d(phi_out[0], phi_out[1])).min())
+    info['final_min_T_exact'] = float(final_t_min.min())
     info['L1_dev'] = float(np.abs(phi_out - phi_in_2hw).sum())
     info['wall_s'] = time.time() - t0
     return phi_out, info

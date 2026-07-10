@@ -58,3 +58,29 @@ def test_untangle_reduces_folds():
     out = gpu_untangle_alm_2d(phi, threshold=0.01, n_outer=40)
     assert out.shape == (2, H, W)
     assert _n_neg(out) < n_in
+
+
+@pytest.mark.parametrize('shape', [(2, 1, 64), (2, 64, 1), (2, 1, 1)])
+def test_degenerate_slice_returns_input_unchanged(shape):
+    """H<2 or W<2 means zero triangles (trivially feasible): the untangler
+    must return the input unchanged, not crash on empty area tensors."""
+    rng = np.random.default_rng(2)
+    phi = rng.normal(0, 0.5, shape)
+    out = gpu_untangle_alm_2d(phi, threshold=0.01)
+    assert out.shape == shape
+    assert out.dtype == np.float64
+    np.testing.assert_allclose(out, phi)
+
+
+def test_already_feasible_returns_input_unchanged():
+    """A field already feasible at `threshold` (even without the extra
+    seed margin) is a no-op: the upfront check returns the input before
+    any Adam steps, so the output is bit-identical to the input."""
+    rng = np.random.default_rng(3)
+    H, W = 16, 16
+    phi = rng.normal(0, 0.001, (2, H, W))
+    a = tri_areas_flat(np.concatenate([phi[0].ravel(), phi[1].ravel()]), H, W)
+    assert a.min() >= 0.01, 'test setup: field must be feasible at threshold'
+    out = gpu_untangle_alm_2d(phi, threshold=0.01)
+    assert out.shape == (2, H, W)
+    np.testing.assert_allclose(out, phi)

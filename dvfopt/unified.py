@@ -113,6 +113,14 @@ class DVFoptConfig:
     # Anyone wanting deeper control should pass a Strategy instance.
     strategy_kwargs: dict = field(default_factory=dict)
 
+    def __post_init__(self):
+        # Fail fast on a bad accuracy mode regardless of which solver /
+        # dispatch path would eventually consume it.
+        if self.accuracy not in ('fast', 'max'):
+            raise ValueError(
+                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
+            )
+
 
 # ============================================================
 # Result
@@ -471,19 +479,31 @@ class DVFopt:
         if isinstance(c.solver, Strategy):
             strategy = c.solver
             strategy_label = type(strategy).__name__
+            if c.accuracy != 'fast':
+                import warnings
+
+                warnings.warn(
+                    f"DVFoptConfig.accuracy={c.accuracy!r} is ignored when "
+                    f"solver is a Strategy instance; set it on the instance "
+                    f"instead (e.g. SLPStrategy(accuracy={c.accuracy!r}))."
+                )
         elif c.solver == 'auto':
             strategy_label = auto_strategy(
                 constraint, init_n_neg, init_min, objective_label=c.objective
             )
             kw = dict(c.strategy_kwargs)
             if strategy_label == 'slp' and c.accuracy != 'fast':
-                kw['accuracy'] = c.accuracy
+                # User-supplied strategy_kwargs['accuracy'] wins over
+                # the config-level shorthand.
+                kw.setdefault('accuracy', c.accuracy)
             strategy = make_strategy(strategy_label, **kw)
         else:
             strategy_label = c.solver
             kw = dict(c.strategy_kwargs)
             if strategy_label == 'slp' and c.accuracy != 'fast':
-                kw['accuracy'] = c.accuracy
+                # User-supplied strategy_kwargs['accuracy'] wins over
+                # the config-level shorthand.
+                kw.setdefault('accuracy', c.accuracy)
             strategy = make_strategy(strategy_label, **kw)
         objective = make_objective(c.objective, eps_l1=c.eps_l1)
 

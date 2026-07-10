@@ -53,6 +53,38 @@ class TestHarmonicExtension2D:
         assert isinstance(out, np.ndarray)
         assert out.shape == phi.shape
 
+    def test_merge_dilation_zero_keeps_patches_separate(self):
+        """merge_dilation=0 must mean "no grouping dilation" — NOT scipy's
+        binary_dilation(iterations=0) repeat-until-convergence, which
+        fills the grid and collapses everything into one whole-grid
+        component."""
+        phi = np.zeros((2, 24, 24))
+        phi[1, 5, 5] = 1.5  # fold core A
+        phi[1, 17, 17] = 1.5  # fold core B, far from A
+        assert _fold_count(phi) > 0
+        _phi_out, info = harmonic_extension_2d(phi, merge_dilation=0, record_history=True)
+        assert info['n_components'] == 2
+        assert info['patches'] == 2
+        # Each patch is local, never the whole grid.
+        for rec in info['records_first5']:
+            assert rec['n_cells'] < 23 * 23
+
+    def test_ring_pad_zero_stays_local(self):
+        """ring_pad=0 with grow=0 used to call binary_dilation(iterations=0),
+        which fills the whole grid (near-full-grid Laplacian solve). The
+        correct semantic is "no dilation this round" — far-away corners
+        must be untouched."""
+        phi = np.zeros((2, 24, 24))
+        phi[1, 5, 5] = 1.5
+        phi_out = harmonic_extension_2d(phi, ring_pad=0, max_grow_iters=2)
+        np.testing.assert_array_equal(phi_out[:, 15:, 15:], phi[:, 15:, 15:])
+
+    @pytest.mark.parametrize('kwargs', [{'merge_dilation': -1}, {'ring_pad': -1}])
+    def test_negative_dilation_params_raise(self, kwargs):
+        phi = _planted_fold(8, 8, seed=1)
+        with pytest.raises(ValueError):
+            harmonic_extension_2d(phi, **kwargs)
+
 
 # ---------------------------------------------------------------------------
 # m03 — augmented Lagrangian

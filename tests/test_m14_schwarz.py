@@ -62,6 +62,51 @@ class TestFoldClusters:
         bboxes_hi, _ = _fold_clusters(phi, merge_dilation=4)
         assert len(bboxes_lo) >= len(bboxes_hi)
 
+    def test_merge_dilation_zero_keeps_clusters_separate(self):
+        """merge_dilation=0 means "no grouping dilation" — NOT scipy's
+        binary_dilation(iterations=0) repeat-until-convergence, which
+        would fill the grid and collapse everything into one whole-grid
+        cluster."""
+        H, W = 30, 30
+        dy = np.zeros((H, W))
+        dx = np.zeros((H, W))
+        _plant_fold(dx, 5, 5)
+        _plant_fold(dx, 22, 22)
+        phi = np.stack([dy, dx])
+        bboxes, _fold_mask = _fold_clusters(phi, merge_dilation=0)
+        assert len(bboxes) == 2
+        # Each cluster bbox stays local to its planted core.
+        for b in bboxes:
+            assert b['cy1'] - b['cy0'] < 10
+            assert b['cx1'] - b['cx0'] < 10
+
+    def test_negative_merge_dilation_raises(self):
+        phi = np.zeros((2, 8, 8))
+        with pytest.raises(ValueError, match='merge_dilation'):
+            _fold_clusters(phi, merge_dilation=-1)
+
+
+class TestFoldClusters3D:
+    """The 3D twin in _schwarz_common gets the same dilation guards."""
+
+    def test_merge_dilation_zero_keeps_clusters_separate(self):
+        from dvfopt.core.wallbreakers._schwarz_common import _fold_clusters_3d
+
+        phi = np.zeros((3, 5, 20, 20))
+        phi[1, 2, 4, 4] = 1.5
+        phi[2, 2, 4, 4] = 1.5
+        phi[1, 2, 15, 15] = 1.5
+        phi[2, 2, 15, 15] = 1.5
+        bboxes, fold_cells = _fold_clusters_3d(phi, threshold=0.0, merge_dilation=0)
+        assert fold_cells.any(), 'test setup planted no folds'
+        assert len(bboxes) == 2
+
+    def test_negative_merge_dilation_raises(self):
+        from dvfopt.core.wallbreakers._schwarz_common import _fold_clusters_3d
+
+        with pytest.raises(ValueError, match='merge_dilation'):
+            _fold_clusters_3d(np.zeros((3, 4, 4, 4)), threshold=0.0, merge_dilation=-1)
+
 
 class TestSmoke:
     def test_identity_field_passes_through(self):
