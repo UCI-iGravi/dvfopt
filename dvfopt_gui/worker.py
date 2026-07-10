@@ -323,6 +323,43 @@ class ReplayHistory:
         return False
 
 
+class LoadWorker(QtCore.QThread):
+    """Load a DVF file off the GUI thread.
+
+    Dispatches by extension: ``.npy``/``.npz`` through
+    :func:`dvfopt_gui.persistence.parse_loaded` (full saved-run support),
+    SimpleITK formats through :func:`dvfopt_gui.io_formats.load_dvf_sitk`.
+    Emits ``loadedRun`` with a ``LoadedRun`` on success, else ``failed``
+    with a message. GB-scale ``np.load`` + float64 conversion no longer
+    freeze the window.
+    """
+
+    loadedRun = QtCore.pyqtSignal(object)
+    failed = QtCore.pyqtSignal(str)
+
+    def __init__(self, path: str, parent=None):
+        super().__init__(parent)
+        self._path = str(path)
+
+    def run(self):
+        try:
+            from dvfopt_gui.io_formats import is_sitk_path, load_dvf_sitk
+            from dvfopt_gui.persistence import LoadedRun, parse_loaded
+
+            if is_sitk_path(self._path):
+                run = LoadedRun(volume=load_dvf_sitk(self._path))
+            else:
+                loaded = np.load(self._path, allow_pickle=False)
+                try:
+                    run = parse_loaded(loaded)
+                finally:
+                    if isinstance(loaded, np.lib.npyio.NpzFile):
+                        loaded.close()
+            self.loadedRun.emit(run)
+        except Exception as exc:
+            self.failed.emit(f'{type(exc).__name__}: {exc}')
+
+
 class SolverWorker(QtCore.QThread):
     """Run the solver in a worker thread.
 
@@ -375,6 +412,14 @@ class SolverWorker(QtCore.QThread):
         # Atomic counter for callback fires; the GUI reads this for its
         # FPS / callbacks-per-second display.
         self._callback_count = 0
+        # Set by the 'auto' dispatch: the registry label auto_strategy
+        # resolved to (e.g. 'm14_schwarz'); None for explicit methods.
+        self.resolved_strategy_label: str | None = None
+        # Set by the pipeline runners (_run_marching_25d / _run_pipeline_3d):
+        # the Correct25DReport / Correct3DReport for status display, and the
+        # last 2.5D progress event for the progress bar.
+        self.pipeline_report = None
+        self.marching_progress: tuple | None = None
 
     def request_stop(self):
         self._stop_requested = True
@@ -523,6 +568,8 @@ class SolverWorker(QtCore.QThread):
             kwargs['max_per_index_iter'] = int(self._params['max_per_index_iter'])
         if self._params.get('method_name'):
             kwargs['method_name'] = str(self._params['method_name'])
+        if self._params.get('threshold') is not None:
+            kwargs['threshold'] = float(self._params['threshold'])
         phi_out = iterative_serial(
             self._deformation_i.copy(),
             step_callback=self._callback,
@@ -585,7 +632,12 @@ class SolverWorker(QtCore.QThread):
         else:
             raise ValueError(f'unknown constraint_kind={constraint_kind!r}')
         objective = self._build_objective()
-        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+        solver = Solver(
+            constraint=constraint,
+            objective=objective,
+            strategy=strategy,
+            threshold=self._params.get('threshold'),
+        )
 
         # Per-stage callback adapter: convert {'phi', 'stage'} dicts from
         # the strategy into ``StateSnapshot`` records on the worker's
@@ -655,7 +707,12 @@ class SolverWorker(QtCore.QThread):
         else:
             raise ValueError(f'unknown 3D constraint_kind={constraint_kind!r}')
         objective = self._build_objective()
-        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+        solver = Solver(
+            constraint=constraint,
+            objective=objective,
+            strategy=strategy,
+            threshold=self._params.get('threshold'),
+        )
 
         # Memory guard: keep mid stages only if the full deque fits the budget.
         est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
@@ -688,6 +745,76 @@ class SolverWorker(QtCore.QThread):
         nf, mf = _metric_counts_3d(corrected, metric_kind)
         self._record(_volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
         return corrected
+
+    def _run_marching_25d(self):
+        """Whole-volume 2.5D marching (fold PREVENTION): sweep + mop via
+        ``correct_dvf_25d``. Input is the CURRENT (per-slice-corrected)
+        volume the window handed us — the pipeline's precondition is
+        dz == 0, which per-slice 2D correction guarantees."""
+        from dvfopt import correct_dvf_25d
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'2.5D marching needs (3, D, H, W); got {vol.shape}')
+        _, D, H, W = vol.shape
+        thr = self._params.get('threshold')
+        thr = float(thr) if thr is not None else 0.01
+
+        n0, m0 = _metric_counts_3d(vol, 'tet3d')
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+
+        est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
+        keep_stages = est <= MAX_3D_HISTORY_BYTES
+        stride = max(1, D // 6)
+        outer = [0]
+
+        def _cb(event):
+            if self._stop_requested:
+                raise KeyboardInterrupt('user requested stop')
+            self.marching_progress = (
+                event['phase'],
+                event['index'],
+                event['total'],
+                event['n_neg'],
+            )
+            if not keep_stages:
+                return
+            if event['phase'] == 'sweep' and event['index'] % stride != 0:
+                return
+            outer[0] += 1
+            n, m = _metric_counts_3d(event['phi'], 'tet3d')
+            self._record(_volume_snapshot(event['phi'], n_neg=n, min_T=m, outer_iter=outer[0]))
+
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        phi_out, report = correct_dvf_25d(vol, threshold=thr, verbose=0, progress_callback=_cb)
+        self.pipeline_report = report
+        nf, mf = _metric_counts_3d(phi_out, 'tet3d')
+        self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
+        return np.asarray(phi_out, dtype=np.float64)
+
+    def _run_pipeline_3d(self):
+        """One-shot end-to-end 3D orchestrator (``correct_dvf_3d``): bulk
+        recovery + k-ring escape. No progress hook exists — init + final
+        snapshots only; Stop is best-effort (checked before launch)."""
+        import dvfopt
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'3D pipeline needs (3, D, H, W); got {vol.shape}')
+        thr = self._params.get('threshold')
+        thr = float(thr) if thr is not None else 0.01
+
+        n0, m0 = _metric_counts_3d(vol, 'tet3d')
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        phi_out, report = dvfopt.correct_dvf_3d(vol, threshold=thr, verbose=0)
+        self.pipeline_report = report
+        phi_out = np.asarray(phi_out, dtype=np.float64)
+        nf, mf = _metric_counts_3d(phi_out, 'tet3d')
+        self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=1))
+        return phi_out
 
     def _build_strategy(self):
         """Build a configured Strategy instance for the chosen method.
@@ -754,6 +881,47 @@ class SolverWorker(QtCore.QThread):
             from dvfopt import SLSQPWindowedStrategy
 
             return SLSQPWindowedStrategy()
+        if mid in ('auto_2tri', 'auto_jdet'):
+            from dvfopt import (
+                JdetConstraint2D,
+                TriConstraint2DFullCoverage,
+                make_strategy,
+            )
+            from dvfopt.solver import auto_strategy
+
+            phi_2hw = np.stack(
+                [
+                    self._deformation_i[1, 0].astype(np.float64),
+                    self._deformation_i[2, 0].astype(np.float64),
+                ]
+            )
+            H, W = phi_2hw.shape[1:]
+            kind = '2tri' if mid.endswith('_2tri') else 'jdet'
+            n_neg, min_T = _metric_counts(phi_2hw, kind)
+            constraint = (
+                TriConstraint2DFullCoverage(shape=(H, W))
+                if kind == '2tri'
+                else JdetConstraint2D(shape=(H, W))
+            )
+            label = auto_strategy(
+                constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1'))
+            )
+            try:
+                strategy = make_strategy(label)
+            except Exception:
+                # Registry label unavailable — fall back to the family default.
+                label = 'm14' if kind == '2tri' else 'barrier'
+                strategy = make_strategy(label)
+            self.resolved_strategy_label = label
+            return strategy
+        if mid == 'slp_2tri':
+            from dvfopt import SLPStrategy
+
+            return SLPStrategy()
+        if mid == 'barrier_torch_tet3d':
+            from dvfopt import BarrierTet3DTorchStrategy
+
+            return BarrierTet3DTorchStrategy()
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:
@@ -794,6 +962,10 @@ class SolverWorker(QtCore.QThread):
                 phi_out = self._run_windowed_slsqp(enforce_triangles=False)
             elif mid == 'slsqp_windowed_2tri':
                 phi_out = self._run_windowed_slsqp(enforce_triangles=True)
+            elif mid == 'marching25d_tet3d':
+                phi_out = self._run_marching_25d()
+            elif mid == 'pipeline3d_tet3d':
+                phi_out = self._run_pipeline_3d()
             else:
                 # Method-id always ends in either ``_2tri``, ``_jdet``,
                 # ``_tet3d``, or ``_jdet3d``; split on the LAST underscore

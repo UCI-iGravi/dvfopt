@@ -33,22 +33,23 @@ from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from dvfopt_gui.convergence import ConvergencePlot
 from dvfopt_gui.history import HistoryController
+from dvfopt_gui.overview import OverviewWorker, SliceOverviewStrip
 from dvfopt_gui.persistence import (
     LoadedRun,
     build_save_payload,
     normalise_to_volume,
-    parse_loaded,
 )
 from dvfopt_gui.worker import (
     DEFAULT_HISTORY_MAX,
     FEASIBILITY_THRESHOLD,
+    LoadWorker,
     ReplayHistory,
     SolverWorker,
     StateSnapshot,
     _infeasible_count,
-    _infeasible_count_3d,
     _metric_counts,
     _metric_counts_3d,
+    _metric_field_3d,
 )
 
 # Repo root used to anchor the default file-dialog directory. The GUI
@@ -254,6 +255,7 @@ DEFAULT_CONSTRAINT = CONSTRAINT_2TRI
 # adjoint). Jdet gets the legacy windowed-SLSQP, the penalty→barrier
 # path, and the NMVF heuristic smoother.
 _METHOD_SPECS_2TRI = [
+    ('slp', 'SLP (champion: cluster trust-region SLP + HiGHS L1)'),
     ('m14', 'M14 (Harmonic + ALM + L2 refine + repair + polish)'),
     ('m14_schwarz', 'M14-Schwarz (cluster decomposition + global polish)'),
     ('m10', 'M10 (Harmonic + ALM + barrier polish)'),
@@ -261,11 +263,13 @@ _METHOD_SPECS_2TRI = [
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('slsqp_fullgrid', 'SLSQP full-grid (2-tri; KKT, smallest L1 on mild folds)'),
     ('schwarz', 'Schwarz (2-tri; overlapping-tile decomposition)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_JDET = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('nmvf', 'NMVF (heuristic neighborhood-mean smoother)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_TET3D = [
     ('m14', 'M14Tet (harmonic + ALM + L2 refine + repair + polish)'),
@@ -274,6 +278,8 @@ _METHOD_SPECS_TET3D = [
     ('slsqp_fullgrid', 'SLSQP full-grid 3D (KKT)'),
     ('active_band', 'ActiveBandALM3D (banded M10Tet recovery; research)'),
     ('coupled_kring', 'CoupledKRing3D (k-ring SLSQP attractor escape; research)'),
+    ('pipeline3d', 'Full 3D pipeline (bulk auto + k-ring escape)'),
+    ('barrier_torch', 'Barrier GPU (torch; CPU fallback)'),
 ]
 _METHOD_SPECS_JDET3D = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
@@ -286,7 +292,7 @@ _METHOD_SPECS_BY_CONSTRAINT = {
     CONSTRAINT_JDET3D: _METHOD_SPECS_JDET3D,
 }
 DEFAULT_METHOD_BY_CONSTRAINT = {
-    CONSTRAINT_2TRI: 'm14',
+    CONSTRAINT_2TRI: 'slp',
     CONSTRAINT_JDET: 'slsqp_windowed',
     CONSTRAINT_TET3D: 'm14',
     CONSTRAINT_JDET3D: 'barrier',
@@ -312,6 +318,13 @@ def _compose_method_id(algo: str, constraint: str) -> str:
     return f'{algo}_{constraint}'
 
 
+def _torch_available() -> bool:
+    """True when PyTorch is importable (gates the GPU-barrier menu item)."""
+    import importlib.util
+
+    return importlib.util.find_spec('torch') is not None
+
+
 def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:
     """Return ``(x, y, w, h)`` for the initial section ROI on an ``H×W``
     field — a centred rectangle ~¼ the field, but **clamped to the field
@@ -330,6 +343,27 @@ def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:
     x = max(0, (W - roi_w) // 2)
     y = max(0, (H - roi_h) // 2)
     return x, y, roi_w, roi_h
+
+
+# Byte budget for the undo stack. Full-volume snapshots are cheap for 2D
+# slices but ~1.8 GB each for a B0039-scale float64 volume — a count cap
+# alone (30) would allow ~55 GB. Oldest entries are evicted past this
+# budget; the most recent entry is always retained so Undo keeps working.
+UNDO_MAX_BYTES = 2 * 1024**3
+
+
+def validate_finite(vol: np.ndarray) -> str | None:
+    """Return an error message if ``vol`` contains NaN/Inf, else None."""
+    bad = ~np.isfinite(vol)
+    n = int(bad.sum())
+    if n == 0:
+        return None
+    first = tuple(int(i) for i in np.argwhere(bad)[0])
+    return (
+        f'The loaded field contains {n} non-finite value(s) (NaN/Inf); '
+        f'first at index {first}. Fix the field before loading — solvers '
+        'and fold metrics are undefined on non-finite data.'
+    )
 
 
 def _toolbar_separator() -> QtWidgets.QFrame:
@@ -464,6 +498,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # 7×7, but O(H·W) per move otherwise. Invalidated whenever the
         # displayed field changes.
         self._inspector_tri: tuple[np.ndarray, np.ndarray] | None = None
+        # Whole-volume 3D metric field cache: ``kind -> ndarray``, cleared
+        # by ``_invalidate_metric_caches``. See ``_metric3d_field``.
+        self._metric3d_cache: dict = {}
         self._worker: SolverWorker | None = None
         self._picked_yx: tuple[int, int] | None = None
         # Active "Run section" crop bounds ``(y0, y1, x0, x1)`` or None for
@@ -478,9 +515,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # z-slice indices still to be solved (current one already popped
         # and running). Drives the sequential chain in ``_on_finished``.
         self._run_all_remaining: list[int] | None = None
+        # Full-pipeline (per-slice 2D -> 2.5D marching) state. `_pipeline_active`
+        # suppresses the per-run undo push (ONE entry covers the whole
+        # pipeline); `_pipeline_after_run_all` arms the 2.5D stage to start
+        # when the Run-all batch drains.
+        self._pipeline_active = False
+        self._pipeline_after_run_all = False
         # Active run bookkeeping for the progress bar / ETA and the
         # before→after stats delta.
         self._active_method_id: str | None = None
+        # True once this run's "Auto → <label>" status-bar note has been
+        # shown (or there's nothing to show yet). Starts True so the
+        # getattr default in ``_on_render_tick`` never fires mid-run
+        # before the first ``_start_worker`` call; reset to False there.
+        self._auto_label_shown: bool = True
         self._run_elapsed = QtCore.QElapsedTimer()
         self._input_n_neg: int | None = None
         # Undo/redo of corrections: each entry is a full ``(3, D, H, W)``
@@ -506,11 +554,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         bar = QtWidgets.QHBoxLayout()
         outer.addLayout(bar)
 
-        load_btn = QtWidgets.QPushButton('Load DVF…')
-        load_btn.setShortcut('Ctrl+O')
-        load_btn.setToolTip('Load a .npy DVF or a saved .npz run (Ctrl+O).')
-        load_btn.clicked.connect(self._on_load)
-        bar.addWidget(load_btn)
+        self._load_btn = QtWidgets.QPushButton('Load DVF…')
+        self._load_btn.setShortcut('Ctrl+O')
+        self._load_btn.setToolTip('Load a .npy DVF or a saved .npz run (Ctrl+O).')
+        self._load_btn.clicked.connect(self._on_load)
+        bar.addWidget(self._load_btn)
 
         self._save_btn = QtWidgets.QPushButton('Save…')
         self._save_btn.setShortcut('Ctrl+S')
@@ -624,6 +672,22 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._run_all_btn.setEnabled(False)
         self._run_all_btn.clicked.connect(self._on_run_all)
         bar.addWidget(self._run_all_btn)
+        self._pipeline_btn = QtWidgets.QToolButton()
+        self._pipeline_btn.setText('Pipeline ▾')
+        self._pipeline_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self._pipeline_btn.setToolTip(
+            'Volume workflows: 2.5D marching (fold prevention; needs dz == 0, '
+            'i.e. per-slice-corrected input) or the full pipeline (per-slice '
+            '2D with the selected method, then 2.5D marching).'
+        )
+        pipe_menu = QtWidgets.QMenu(self._pipeline_btn)
+        self._act_run_25d = pipe_menu.addAction('Run 2.5D marching', self._on_run_25d)
+        self._act_run_pipeline = pipe_menu.addAction(
+            'Full pipeline (2D + 2.5D)', self._on_run_pipeline_full
+        )
+        self._pipeline_btn.setMenu(pipe_menu)
+        self._pipeline_btn.setEnabled(False)
+        bar.addWidget(self._pipeline_btn)
         self._stop_btn = QtWidgets.QPushButton('Stop')
         self._stop_btn.setShortcut('Esc')
         self._stop_btn.setToolTip(
@@ -702,6 +766,25 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'wallbreaker methods (they use time_budget_s instead).'
         )
         method_bar.addWidget(self._max_iter_spin)
+
+        method_bar.addWidget(QtWidgets.QLabel('thr:'))
+        self._thr_spin = QtWidgets.QDoubleSpinBox()
+        self._thr_spin.setDecimals(4)
+        self._thr_spin.setRange(0.0, 1.0)
+        self._thr_spin.setSingleStep(0.005)
+        self._thr_spin.setValue(FEASIBILITY_THRESHOLD)
+        self._thr_spin.setToolTip(
+            'Solver feasibility threshold: every constraint is enforced as '
+            'C(phi) >= thr. Also drives the stats panel\'s infeasible(<thr) '
+            'counts. Default 0.01 (package default).'
+        )
+        method_bar.addWidget(self._thr_spin)
+        # The metric FIELD is threshold-independent (thr only affects the
+        # reductions computed over it), so no cache invalidation is needed
+        # here — just repaint the idle stats panel with the new threshold.
+        self._thr_spin.valueChanged.connect(
+            lambda _v: self._refresh_display_from_volume() if self._worker is None else None
+        )
 
         # Spacer + Params button — opens the tabbed settings dialog for
         # window-level params that don't belong in the per-run toolbar
@@ -807,6 +890,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Number of history entries last plotted — lets us rebuild the
         # curve only when it grows (the cursor still moves every frame).
         self._conv_len = -1
+
+        # Per-slice fold overview (volumes only): computed in the background,
+        # click to jump z.
+        self._overview_strip = SliceOverviewStrip()
+        self._overview_strip.setVisible(False)
+        self._overview_strip.sliceClicked.connect(self._z_slider.setValue)
+        outer.addWidget(self._overview_strip)
+        self._overview_worker: OverviewWorker | None = None
+        self._overview_counts: np.ndarray | None = None
 
         # ---- history scrub row -----------------------------------------
         # Every snapshot the worker emits lands in ``worker._history``
@@ -960,6 +1052,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         file_menu = menubar.addMenu('&File')
         file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
         file_menu.addAction('Save…\tCtrl+S', self._on_save)
+        file_menu.addAction('Export corrected DVF…', self._on_export)
         file_menu.addAction('Revert', self._on_revert)
         file_menu.addSeparator()
         # Quit owns its own shortcut (no toolbar button competes for it).
@@ -976,6 +1069,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         run_menu.addAction('Run full\tF5', lambda: self._on_run(use_roi=False))
         run_menu.addAction('Run section\tCtrl+R', lambda: self._on_run(use_roi=True))
         run_menu.addAction('Run all z', self._on_run_all)
+        run_menu.addAction('Run 2.5D marching', self._on_run_25d)
+        run_menu.addAction('Full pipeline (2D + 2.5D)', self._on_run_pipeline_full)
         run_menu.addAction('Stop\tEsc', self._on_stop)
 
         help_menu = menubar.addMenu('&Help')
@@ -1027,36 +1122,46 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     # ----- DVF loading -------------------------------------------------------
 
     def _on_load(self):
+        flt = 'DVF files (*.npy *.npz'
+        from dvfopt_gui.io_formats import SITK_EXTENSIONS, sitk_available
+
+        if sitk_available():
+            flt += ' ' + ' '.join(f'*{e}' for e in SITK_EXTENSIONS)
+        flt += ');;NumPy arrays (*.npy);;NumPy compressed (*.npz)'
+        if sitk_available():
+            flt += ';;Medical images (' + ' '.join(f'*{e}' for e in SITK_EXTENSIONS) + ')'
+        flt += ';;All files (*)'
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             'Load DVF (.npy or .npz)',
             self._last_dir,
-            'DVF files (*.npy *.npz);;NumPy arrays (*.npy);;NumPy compressed (*.npz);;All files (*)',
+            flt,
         )
         if not path:
             return
         self._last_dir = str(Path(path).parent)
-        try:
-            loaded = np.load(path, allow_pickle=False)
-            try:
-                # ``parse_loaded`` handles both a bare ``.npy`` DVF and a
-                # full saved run (``phi_full_volume`` + ``history_*`` keys),
-                # reconstructing the per-step snapshots so a saved run can
-                # be re-scrubbed in the history slider.
-                run = parse_loaded(loaded)
-            finally:
-                if isinstance(loaded, np.lib.npyio.NpzFile):
-                    loaded.close()
-        except ValueError as exc:
-            QtWidgets.QMessageBox.critical(self, 'Bad shape', str(exc))
+        # Loading dispatches to a QThread (LoadWorker): GB-scale np.load +
+        # float64 conversion + sitk decode no longer block the GUI thread.
+        self._load_btn.setEnabled(False)
+        self.statusBar().showMessage(f'Loading {Path(path).name}…', 0)
+        self._load_worker = LoadWorker(path, parent=self)
+        self._load_worker.loadedRun.connect(lambda run: self._on_load_finished(path, run))
+        self._load_worker.failed.connect(self._on_load_failed)
+        self._load_worker.start()
+
+    def _on_load_finished(self, path: str, run) -> None:
+        self._load_btn.setEnabled(True)
+        if not self._apply_loaded_run(run):
+            self.statusBar().clearMessage()
             return
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, 'Load failed', f'{type(exc).__name__}: {exc}')
-            return
-        self._apply_loaded_run(run)
         n_hist = len(run.snapshots)
         suffix = f'  ({n_hist} history step(s))' if n_hist else ''
         self.statusBar().showMessage(f'Loaded {path}{suffix}', 5_000)
+
+    def _on_load_failed(self, msg: str) -> None:
+        self._load_btn.setEnabled(True)
+        self.statusBar().clearMessage()
+        QtWidgets.QMessageBox.critical(self, 'Load failed', msg)
 
     def _on_save(self):
         """Open a save dialog and write the current DVF + run history
@@ -1094,6 +1199,40 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'Saved {Path(path).name}  ({n_steps} history step(s))', 10_000
         )
 
+    def _on_export(self):
+        """Write just the corrected volume (no run history) as .npy or, when
+        SimpleITK is available, .nii.gz — for interop with the rest of the
+        registration pipeline."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(
+                self, 'Nothing to export', 'Load a DVF first via "Load DVF…".'
+            )
+            return
+        from dvfopt_gui.io_formats import save_dvf_sitk, sitk_available
+
+        filters = 'NumPy array (*.npy)'
+        if sitk_available():
+            filters += ';;NIfTI (*.nii.gz)'
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Export corrected DVF', str(Path(self._last_dir) / 'corrected_dvf.npy'), filters
+        )
+        if not path:
+            return
+        self._last_dir = str(Path(path).parent)
+        try:
+            if 'NIfTI' in chosen or path.lower().endswith(('.nii', '.nii.gz')):
+                if not path.lower().endswith(('.nii', '.nii.gz')):
+                    path += '.nii.gz'
+                save_dvf_sitk(path, self._volume)
+            else:
+                if not path.lower().endswith('.npy'):
+                    path += '.npy'
+                np.save(path, self._volume)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, 'Export failed', f'{type(exc).__name__}: {exc}')
+            return
+        self.statusBar().showMessage(f'Exported {path}', 8_000)
+
     def _on_revert(self):
         """Discard all corrections: restore the originally-loaded volume
         and clear the run history. No-op (with a hint) if a solve is
@@ -1130,6 +1269,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return
         self._undo_stack.append(self._volume.copy())
         if len(self._undo_stack) > self._UNDO_MAX:
+            self._undo_stack.pop(0)
+        while (
+            len(self._undo_stack) > 1 and sum(v.nbytes for v in self._undo_stack) > UNDO_MAX_BYTES
+        ):
             self._undo_stack.pop(0)
         self._redo_stack.clear()
         self._update_undo_redo_enabled()
@@ -1181,12 +1324,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         else:
             snaps = []
             history_total = 0
+        method = self._method_combo.currentData() or ''
+        if method == 'auto' and getattr(worker, 'resolved_strategy_label', None):
+            method = f'auto:{worker.resolved_strategy_label}'
         return build_save_payload(
             phi_active=self._volume[1:, self._z],
             full_volume=self._volume,
             z=self._z,
             constraint=self._constraint_combo.currentData() or '',
-            method=self._method_combo.currentData() or '',
+            method=method,
             objective=self._objective_combo.currentData() or '',
             time_budget_s=self._budget_spin.value(),
             max_iterations=self._max_iter_spin.value(),
@@ -1206,8 +1352,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """
         self._apply_loaded_run(LoadedRun(volume=normalise_to_volume(arr)))
 
-    def _apply_loaded_run(self, run: LoadedRun) -> None:
-        """Install a parsed :class:`LoadedRun` into the window.
+    def _apply_loaded_run(self, run: LoadedRun) -> bool:
+        """Install a parsed :class:`LoadedRun` into the window. Returns
+        False (state left untouched) if ``run.volume`` is rejected for
+        non-finite values, else True on success.
 
         Handles both a bare DVF (``run.snapshots`` empty) and a full
         saved run — in the latter case the per-step snapshots are loaded
@@ -1215,6 +1363,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         run, and the saved constraint/method/objective selections are
         restored to the toolbar.
         """
+        msg = validate_finite(np.asarray(run.volume))
+        if msg is not None:
+            QtWidgets.QMessageBox.critical(self, 'Invalid DVF', msg)
+            return False
         self._volume = np.asarray(run.volume, dtype=np.float64)
         # Pristine copy of what was loaded — every Run reads its input
         # from here, never from ``self._volume`` (which is mutated by
@@ -1290,6 +1442,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._history.reset()
             self._history.set_live(True)
             self._refresh_display_from_volume()
+        self._restart_overview()
+        return True
 
     @staticmethod
     def _select_combo_data(combo: QtWidgets.QComboBox, data) -> None:
@@ -1313,6 +1467,46 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             raise RuntimeError('no DVF loaded')
         return self._original_volume[:, self._z : self._z + 1].copy()
 
+    # ----- per-slice fold overview strip --------------------------------------
+
+    def _restart_overview(self) -> None:
+        """(Re)compute the per-slice fold counts in the background. Called on
+        load and whenever a finished run splices the volume."""
+        if self._overview_worker is not None and self._overview_worker.isRunning():
+            self._overview_worker.cancel()
+            self._overview_worker.wait(2_000)
+        D = self._volume.shape[1] if self._volume is not None else 1
+        if self._volume is None or D <= 1:
+            self._overview_strip.setVisible(False)
+            self._overview_counts = None
+            return
+        self._overview_strip.setVisible(True)
+        self._overview_counts = np.zeros(D, dtype=np.int64)
+        self._overview_strip.set_counts(self._overview_counts)
+        self._overview_strip.set_current(self._z)
+        self._overview_worker = OverviewWorker(self._volume, parent=self)
+        self._overview_worker.chunkReady.connect(self._on_overview_chunk)
+        self._overview_worker.start()
+
+    def _on_overview_chunk(self, start: int, counts) -> None:
+        # Same stale-signal guard as ``_on_finished``: a rapid reload calls
+        # ``_restart_overview`` again before the previous worker's already-
+        # queued ``chunkReady`` emissions have been delivered. Without this
+        # check, one of those late signals lands after ``_overview_counts``
+        # has been reallocated for the NEW (possibly differently-sized)
+        # volume — silently writing another volume's counts into it, or
+        # raising a shape-mismatch ``ValueError`` if the sizes differ.
+        # ``sender()`` is None only for a direct Python call (e.g. tests),
+        # in which case there is no "other" worker to guard against.
+        sender = self.sender()
+        if sender is not None and sender is not self._overview_worker:
+            return
+        if self._overview_counts is None:
+            return
+        counts = np.asarray(counts)
+        self._overview_counts[start : start + len(counts)] = counts
+        self._overview_strip.set_counts(self._overview_counts)
+
     # ----- rendering ---------------------------------------------------------
 
     def _refresh_display_from_volume(self):
@@ -1321,7 +1515,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         volume itself and clear overlays."""
         if self._volume is None:
             return
-        self._invalidate_inspector_cache()
+        self._invalidate_metric_caches()
         if self._is_3d_run:
             self._set_view_3d(self._volume, fast=False)
             self._window_rect.setRect(0, 0, 0, 0)
@@ -1406,14 +1600,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """The per-slice 3D fold field for the current z (default 6-tet
         min volume; Jdet3D when that constraint is selected). Padded to
         (H, W) with NaN at the trailing row/col so it lines up with the
-        grid (the tet field is (D-1, H-1, W-1))."""
-        from dvfopt.jacobian.numpy_jdet import jacobian_det3D
-        from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+        grid (the tet field is (D-1, H-1, W-1)).
 
+        Reads through ``_metric3d_field`` — the expensive whole-volume
+        kernel runs at most once per displayed field; z only changes
+        which slice of the cached field gets returned."""
         z = min(self._z, phi3d.shape[1] - 1)
         if self._constraint_combo.currentData() == CONSTRAINT_JDET3D:
-            return jacobian_det3D(phi3d)[z]
-        mv = six_tet_min_volume_3d(phi3d)  # (D-1, H-1, W-1)
+            field = self._metric3d_field(phi3d, 'jdet3d')  # (D, H, W)
+            return field[z]
+        mv = self._metric3d_field(phi3d, 'tet3d')  # (D-1, H-1, W-1)
         H, W = phi3d.shape[2:]
         out = np.full((H, W), np.nan)
         zz = min(z, mv.shape[0] - 1)
@@ -1553,6 +1749,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._method_combo.clear()
         for algo, label in _METHOD_SPECS_BY_CONSTRAINT[constraint]:
             self._method_combo.addItem(label, algo)
+        # GPU barrier needs torch; keep it visible but disabled when absent.
+        idx = self._method_combo.findData('barrier_torch')
+        if idx >= 0 and not _torch_available():
+            self._method_combo.model().item(idx).setEnabled(False)
         # Keep the prior algo selected if the new constraint also supports
         # it (e.g. switching constraint while "barrier" is selected keeps
         # barrier); otherwise fall back to the per-constraint default.
@@ -1583,6 +1783,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         D = self._volume.shape[1] if self._volume is not None else 1
         self._run_roi_btn.setEnabled(not self._is_3d_run)
         self._run_all_btn.setEnabled((not self._is_3d_run) and D > 1)
+        self._pipeline_btn.setEnabled(D > 1)
         self._section_roi.setVisible((not self._is_3d_run) and self._volume is not None)
 
     def _on_constraint_changed(self, idx: int):
@@ -1602,6 +1803,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self._render_snapshot(self._latest)
             else:
                 self._refresh_display_from_volume()
+            self._overview_strip.set_current(self._z)
             return
         # A run's history belongs to the slice it was solved on. Switching
         # z invalidates it — drop the worker reference and reset the scrub
@@ -1613,6 +1815,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._history.reset()
         self._history.set_live(True)
         self._refresh_display_from_volume()
+        self._overview_strip.set_current(self._z)
 
     def _on_open_params(self):
         """Open the Params dialog. On accept, write the edited values
@@ -1676,11 +1879,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._section_bounds = None
             self._start_worker(deformation_i)
 
-    def _start_worker(self, deformation_i: np.ndarray):
-        algo = self._method_combo.currentData()
-        constraint = self._constraint_combo.currentData()
+    def _start_worker(self, deformation_i: np.ndarray, method_id: str | None = None):
         objective_id = self._objective_combo.currentData()
-        method_id = _compose_method_id(algo, constraint)
+        if method_id is None:
+            algo = self._method_combo.currentData()
+            constraint = self._constraint_combo.currentData()
+            method_id = _compose_method_id(algo, constraint)
+        else:
+            constraint = self._constraint_combo.currentData()
 
         # Baseline fold count of *this run's* input (full slice or ROI),
         # counted with the SAME metric the run's trajectory uses (Jdet for
@@ -1696,10 +1902,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             metric_kind = 'jdet' if method_id.startswith('slsqp_windowed') else constraint
             self._input_n_neg, _ = _metric_counts(phi_in, metric_kind)
         self._active_method_id = method_id
+        self._auto_label_shown = False
         self._run_elapsed.restart()
         params = {
             'time_budget_s': float(self._budget_spin.value()),
             'max_iterations': int(self._max_iter_spin.value()),
+            'threshold': self._display_threshold(),
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
         }
@@ -1718,6 +1926,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._run_full_btn.setEnabled(False)
         self._run_roi_btn.setEnabled(False)
         self._run_all_btn.setEnabled(False)
+        self._pipeline_btn.setEnabled(False)
         self._undo_btn.setEnabled(False)
         self._redo_btn.setEnabled(False)
         # Freeze the z-slider during a run: switching slices mid-solve
@@ -1772,12 +1981,25 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # so a single Ctrl+Z reverts the entire Run-all (not just its last
         # slice).
         self._push_undo_state()
+        self._begin_run_all_batch()
+
+    def _begin_run_all_batch(self) -> None:
+        """Start the per-slice batch WITHOUT pushing an undo entry (callers
+        own the undo semantics: Run-all pushes one; the full pipeline pushes
+        one covering both stages)."""
+        D = self._volume.shape[1]
         self._run_all_remaining = list(range(D))
         self._run_all_step()
 
     def _run_all_step(self):
         """Start the next queued slice in a Run-all batch, or finish the
         batch if the queue is empty."""
+        if not self._run_all_remaining and self._pipeline_after_run_all:
+            self._run_all_remaining = None
+            self._pipeline_after_run_all = False
+            self.statusBar().showMessage('Pipeline: 2.5D marching…', 0)
+            self._start_marching_25d()
+            return
         if not self._run_all_remaining:
             self._run_all_remaining = None
             self._finalize_run_ui()
@@ -1793,12 +2015,106 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Solve from the pristine input for this slice.
         self._start_worker(self._original_volume[:, z : z + 1].copy())
 
+    def _on_run_25d(self):
+        """Run 2.5D marching on the CURRENT volume (which must be per-slice
+        corrected: dz == 0)."""
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Already running', 'Stop the current run first.'
+            )
+            return
+        if self._volume.shape[1] <= 1:
+            QtWidgets.QMessageBox.information(
+                self, '2.5D needs a volume', '2.5D marching needs a (3, D>1, H, W) volume.'
+            )
+            return
+        max_dz = float(np.abs(self._volume[0]).max())
+        if max_dz > 1e-9:
+            ans = QtWidgets.QMessageBox.question(
+                self,
+                'dz is not zero',
+                '2.5D marching requires dz == 0 (its input is per-slice '
+                f'2D-corrected data). This volume has max |dz| = {max_dz:.3g}.\n\n'
+                'Zero the dz channel and run the full pipeline (per-slice 2D, '
+                'then 2.5D)? The change is one undoable operation.',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            )
+            if ans == QtWidgets.QMessageBox.Yes:
+                self._on_run_pipeline_full(zero_dz=True)
+            return
+        self._start_marching_25d()
+
+    def _start_marching_25d(self) -> None:
+        """Launch the 2.5D worker on the CURRENT volume (the deliberate
+        exception to the runs-read-the-pristine-original rule — the 2.5D
+        input IS the per-slice-corrected state)."""
+        self._select_combo_data(self._constraint_combo, CONSTRAINT_TET3D)
+        self._section_bounds = None
+        self.statusBar().showMessage('2.5D marching…', 0)
+        self._start_worker(self._volume.copy(), method_id='marching25d_tet3d')
+
+    def _on_run_pipeline_full(self, *, zero_dz: bool = False):
+        """One-click production workflow: per-slice 2D (selected method) →
+        2.5D marching, as a single undoable operation.
+
+        ``zero_dz`` is the explicit-consent path from ``_on_run_25d``'s
+        dz-violation dialog (the user agreed to zero dz so the 2.5D
+        stage's ``dz == 0`` precondition holds). Keyword-only: this slot
+        is wired directly to ``QAction.triggered`` (Pipeline ▾ menu and
+        the Run menu below), which passes a positional ``checked: bool`` —
+        a positional ``zero_dz`` would silently receive that bool instead
+        of its default.
+        """
+        if self._volume is None:
+            QtWidgets.QMessageBox.information(self, 'No DVF', 'Load a DVF first via "Load DVF…".')
+            return
+        if self._worker is not None and self._worker.isRunning():
+            QtWidgets.QMessageBox.information(
+                self, 'Already running', 'Stop the current run first.'
+            )
+            return
+        if self._volume.shape[1] <= 1:
+            QtWidgets.QMessageBox.information(
+                self, 'Pipeline needs a volume', 'The full pipeline needs a (3, D>1, H, W) volume.'
+            )
+            return
+        if self._is_3d_run:
+            # Per-slice stage needs a 2D method; drop back to the 2-tri family.
+            self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
+        self._push_undo_state()
+        if zero_dz:
+            # Zero BOTH: the per-slice 2D stage below reads
+            # ``_original_volume`` per slice (see ``_run_all_step``) and
+            # the 2.5D stage reads ``self._volume`` (see
+            # ``_start_marching_25d``). ``_original_volume`` is
+            # intentionally zeroed too -- the pipeline's semantic input is
+            # the dz-stripped field, not the as-loaded one. The undo entry
+            # just pushed above snapshotted the pre-zero ``self._volume``,
+            # so Ctrl+Z after this restores the displayed volume's dz;
+            # ``_original_volume`` isn't on the undo stack and stays
+            # zeroed, matching the dialog's "one undoable operation".
+            self._volume[0] = 0.0
+            self._original_volume[0] = 0.0
+        self._pipeline_active = True
+        self._pipeline_after_run_all = True
+        self.statusBar().showMessage('Pipeline: per-slice 2D…', 0)
+        self._begin_run_all_batch()
+
     def _on_finished(self, phi_out, info):
         # Ignore late signals from a worker we've already replaced /
-        # discarded (e.g. user loaded a new DVF mid-run). Without this
-        # guard the old worker's phi_out would get spliced into the
-        # *new* volume.
-        if self.sender() is not self._worker:
+        # discarded (e.g. user loaded a new DVF mid-run). ``sender()`` is
+        # only non-None inside a slot invoked via an actual signal
+        # emission — a direct Python call (e.g. from a test) always sees
+        # None, in which case there is no "other" worker to guard against
+        # and we trust ``self._worker`` as given. A real, stale signal
+        # (sender() is some past worker, no longer ``self._worker``) is
+        # still rejected: without that, the old worker's phi_out would
+        # get spliced into the *new* volume.
+        sender = self.sender()
+        if sender is not None and sender is not self._worker:
             return
         # Splice the result back into the volume so subsequent runs /
         # view toggles see the corrected state.
@@ -1806,8 +2122,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             # Snapshot the pre-splice volume for Undo — but only for a
             # standalone run. A Run-all batch pushes one undo entry up
             # front (see ``_on_run_all``) so the whole batch undoes as a
-            # unit rather than one slice at a time.
-            if self._run_all_remaining is None:
+            # unit rather than one slice at a time; the full pipeline
+            # (``_on_run_pipeline_full``) likewise pushes ONE entry
+            # covering both the per-slice batch and the 2.5D stage, so
+            # every worker finish along the way must skip this too.
+            if self._run_all_remaining is None and not self._pipeline_active:
                 self._push_undo_state()
             phi_out = np.asarray(phi_out)
             if phi_out.ndim == 4:  # full-volume 3D result [dz,dy,dx]
@@ -1822,6 +2141,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
+            self._restart_overview()
+        report = getattr(self._worker, 'pipeline_report', None)
+        if report is not None:
+            self.statusBar().showMessage(
+                f'Pipeline: {report.n_neg_in} → {report.n_neg_out} folds, '
+                f'feasible={report.feasible}, {report.wall_s:.0f}s',
+                15_000,
+            )
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
 
@@ -1830,6 +2157,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if self._run_all_remaining is not None:
             if info is not None:
                 self._run_all_remaining = None
+                self._pipeline_active = False
+                self._pipeline_after_run_all = False
                 self._finalize_run_ui()
                 self.statusBar().showMessage(f'Run all z stopped: {info}.', 10_000)
             else:
@@ -1837,13 +2166,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return
 
         self._finalize_run_ui()
-        msg = 'Run finished.' if info is None else f'Run stopped: {info}.'
-        self.statusBar().showMessage(msg, 10_000)
+        if info is not None:
+            self.statusBar().showMessage(f'Run stopped: {info}.', 10_000)
+        elif report is None:
+            # When a pipeline_report was surfaced above, that message IS
+            # the finish message for this run — don't clobber it with the
+            # generic one.
+            self.statusBar().showMessage('Run finished.', 10_000)
 
     def _on_error(self, err: str):
-        if self.sender() is not self._worker:
+        sender = self.sender()
+        if sender is not None and sender is not self._worker:
             return
         self._run_all_remaining = None
+        self._pipeline_active = False
+        self._pipeline_after_run_all = False
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
         self._finalize_run_ui()
@@ -1868,6 +2205,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._progress.setRange(0, 100)
             self._progress.setValue(0)
             self._progress.setFormat('')
+            # The pipeline (if any) is over once its last worker finalizes
+            # with no batch left to run. ``_pipeline_after_run_all`` is
+            # cleared separately, right where the chain either fires (see
+            # ``_run_all_step``) or the run/batch is aborted (see above
+            # and ``_on_error``) — by the time we get here it only needs
+            # to have lived long enough for THIS call's undo-suppression
+            # check above, which already ran.
+            self._pipeline_active = False
 
     def _update_progress(self) -> None:
         """Repaint the progress bar for the active run. Wallbreakers show
@@ -1878,6 +2223,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if mid is None or worker is None or not worker.isRunning():
             return
         elapsed = self._run_elapsed.elapsed() / 1000.0
+        if mid == 'marching25d_tet3d':
+            prog = getattr(worker, 'marching_progress', None)
+            if prog is not None:
+                phase, index, total, n_neg = prog
+                self._progress.setRange(0, max(1, int(total)))
+                self._progress.setValue(int(index))
+                self._progress.setFormat(f'{phase} {index}/{total} · n_neg {n_neg}')
+            else:
+                self._progress.setRange(0, 0)
+                self._progress.setFormat(f'{elapsed:.0f}s')
+            return
+        if mid == 'pipeline3d_tet3d':
+            self._progress.setRange(0, 0)
+            self._progress.setFormat(f'{elapsed:.0f}s')
+            return
         if mid.startswith(('m10', 'm14')):
             budget = float(self._budget_spin.value())
             frac = min(1.0, elapsed / budget) if budget > 0 else 0.0
@@ -1912,10 +2272,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         and dominates render time on large slices). The slider scrub
         path always uses ``fast=False`` for full fidelity.
         """
+        # 3D z-scrub (``_on_z_changed``) re-renders this exact SAME
+        # snapshot object just to re-slice the display at a new z —
+        # comparing identity against the previously-rendered snapshot
+        # (captured *before* ``self._latest`` is overwritten below) lets
+        # that path skip the whole-volume metric invalidation so
+        # ``_heatmap_slice_3d`` hits ``_metric3d_field``'s cache instead
+        # of re-running the 6-tet/Jdet3D kernel on every tick. A genuinely
+        # new snapshot (different object) still invalidates as before.
+        same_field = snap is self._latest
         self._latest = snap
         if snap.phi.ndim == 4:  # 3D volume snapshot
+            if not same_field:
+                self._invalidate_metric_caches()
             self._latest_jacobian = self._heatmap_slice_3d(snap.phi)
-            self._invalidate_inspector_cache()
             self._set_view_3d(snap.phi, fast=fast)
             self._window_rect.setRect(0, 0, 0, 0)
             self._opt_rect.setVisible(False)
@@ -1924,7 +2294,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._refresh_convergence()
             return
         self._latest_jacobian = jacobian_det2D(snap.phi)[0]
-        self._invalidate_inspector_cache()
+        self._invalidate_metric_caches()
         self._set_view(snap.phi, self._latest_jacobian, fast=fast)
         self._window_rect.setRect(
             snap.window_x0,
@@ -1973,6 +2343,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
         # Live progress bar / ETA for the active run.
         self._update_progress()
+
+        # One-time "Auto → <label>" note once the worker resolves it.
+        if (
+            not getattr(self, '_auto_label_shown', True)
+            and self._worker is not None
+            and getattr(self._worker, 'resolved_strategy_label', None)
+        ):
+            self._auto_label_shown = True
+            self.statusBar().showMessage(f'Auto → {self._worker.resolved_strategy_label}', 8_000)
 
         # cb-rate once per second — only while a solve is actually
         # running. A loaded run is backed by a non-running ReplayHistory
@@ -2023,7 +2402,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """Return ``(T1, T2)`` for the currently-displayed ``phi``.
 
         The cache is invalidated explicitly whenever the displayed field
-        changes (see ``_invalidate_inspector_cache`` calls in the render
+        changes (see ``_invalidate_metric_caches`` calls in the render
         / refresh paths), so repeated hovers over the same frame reuse
         one computation instead of an O(H·W) triangle-area recompute per
         mouse-move. (The volume-path ``phi`` is a fresh view object each
@@ -2033,10 +2412,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._inspector_tri = _triangle_areas_2d(phi[0], phi[1])
         return self._inspector_tri
 
-    def _invalidate_inspector_cache(self) -> None:
-        """Drop the cached inspector T1/T2 — call whenever the displayed
-        field changes."""
+    def _metric3d_field(self, phi3d: np.ndarray, kind: str) -> np.ndarray:
+        """Whole-volume 3D metric field, cached per kind until the displayed
+        field changes (``_invalidate_metric_caches``). Counts are cheap numpy
+        reductions over this array; only the kernel is expensive."""
+        field = self._metric3d_cache.get(kind)
+        if field is None:
+            field = _metric_field_3d(phi3d, kind)
+            self._metric3d_cache[kind] = field
+        return field
+
+    def _invalidate_metric_caches(self) -> None:
+        """Drop cached per-field metrics (2D T1/T2 and 3D volume metric) —
+        call whenever the displayed field changes."""
         self._inspector_tri = None
+        self._metric3d_cache = {}
 
     # ----- formatters --------------------------------------------------------
 
@@ -2052,9 +2442,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     if self._constraint_combo.currentData() == CONSTRAINT_TET3D
                     else 'jdet3d'
                 )
-                n_neg, min_T = _metric_counts_3d(self._volume, kind)
-                infeas = _infeasible_count_3d(self._volume, kind)
-                thr = FEASIBILITY_THRESHOLD
+                field = self._metric3d_field(self._volume, kind)
+                n_neg = int((field <= 0).sum())
+                min_T = float(field.min())
+                thr = self._display_threshold()
+                infeas = int((field < thr).sum())
                 return (
                     '<b>Stats (3D)</b><br>'
                     f'volume . . . . {D}×{H}×{W}<br>'
@@ -2075,15 +2467,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             min_tri = _min_tri_from_phi(phi_2hw)
             # Fold counts (metric <= 0) share the worker's convention so
             # the idle panel matches the running n_neg readout. The
-            # solver, however, targets ``>= threshold`` (0.01) — surface
-            # the stricter "still infeasible" counts too, so a field with
-            # 0 folds but min in (0, 0.01) doesn't read as "done".
+            # solver, however, targets ``>= threshold`` (user-editable via
+            # the thr: spinbox, default 0.01) — surface the stricter
+            # "still infeasible" counts too, so a field with 0 folds but
+            # min in (0, thr) doesn't read as "done".
+            thr = self._display_threshold()
             n_neg_jdet, _ = _metric_counts(phi_2hw, 'jdet')
             n_neg_tri, _ = _metric_counts(phi_2hw, '2tri')
-            infeas_jdet = _infeasible_count(phi_2hw, 'jdet')
-            infeas_tri = _infeasible_count(phi_2hw, '2tri')
+            infeas_jdet = _infeasible_count(phi_2hw, 'jdet', thr)
+            infeas_tri = _infeasible_count(phi_2hw, '2tri', thr)
             interior = max(1, (H - 1) * (W - 1))
-            thr = FEASIBILITY_THRESHOLD
             # ``_min_tri_from_phi`` returns NaN at the boundary (no
             # cell-anchor exists past H-1, W-1). Use nanmin so the
             # idle readout shows the real interior minimum.
@@ -2101,9 +2494,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             )
         if snap.phi.ndim == 4:  # 3D volume snapshot
             _, D, H, W = snap.phi.shape
-            feas_flag = (
-                '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
-            )
+            thr = self._display_threshold()
+            feas_flag = '' if snap.min_T >= thr else f'  (&lt;{thr:g})'
             delta = ''
             if self._input_n_neg is not None:
                 delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
@@ -2122,9 +2514,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
         # Flag when the worst cell is positive but still inside the
         # solver's feasibility margin — folds==0 yet not solver-feasible.
-        feas_flag = (
-            '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
-        )
+        thr = self._display_threshold()
+        feas_flag = '' if snap.min_T >= thr else f'  (&lt;{thr:g})'
         return (
             '<b>Stats</b><br>'
             f'outer iter . . {snap.outer_iter}<br>'
@@ -2141,6 +2532,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'grid . . . . . {H}×{W}'
         )
 
+    def _display_threshold(self) -> float:
+        """The user-selected feasibility threshold (spinbox), used for both
+        solving and the stats panel's infeasible counts."""
+        return float(self._thr_spin.value())
+
     @staticmethod
     def _max_abs_disp(phi_2hw: np.ndarray) -> float:
         """Largest per-pixel displacement magnitude ``√(dy²+dx²)``."""
@@ -2151,11 +2547,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return '<b>Pixel inspector</b><br>(click a pixel)'
         y, x = yx
         if self._latest is not None and self._latest.phi.ndim == 4:
-            from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
-
             phi3d = self._latest.phi
             z = min(self._z, phi3d.shape[1] - 1)
-            mv = six_tet_min_volume_3d(phi3d)
+            mv = self._metric3d_field(phi3d, 'tet3d')
             Dm, Hm, Wm = mv.shape
             if not (0 <= y < Hm and 0 <= x < Wm):
                 return '<b>Pixel inspector</b><br>(out of bounds)'
@@ -2236,6 +2630,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             mi = s.value('max_iter', 0, type=int)
             if mi:
                 self._max_iter_spin.setValue(mi)
+        thr = s.value('threshold', 0.0, type=float)
+        if thr:
+            self._thr_spin.setValue(thr)
         hms = s.value('history_max_size', 0, type=int)
         if hms:
             self._history_max_size = hms
@@ -2252,6 +2649,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         s.setValue('auto_levels', self._autolevel_check.isChecked())
         s.setValue('time_budget_s', float(self._budget_spin.value()))
         s.setValue('max_iter', int(self._max_iter_spin.value()))
+        s.setValue('threshold', self._display_threshold())
         s.setValue('history_max_size', int(self._history_max_size))
 
     # ----- lifecycle ---------------------------------------------------------
@@ -2278,6 +2676,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 # Stuck inside an uninterruptible solve — force it down.
                 worker.terminate()
                 worker.wait(2000)
+        # Same reasoning for the background overview-strip worker: a bare
+        # ``cancel()`` only flips a flag checked between per-slice metric
+        # computations, so wait (bounded) for it to actually exit before
+        # the window (its parent) is torn down.
+        overview_worker = self._overview_worker
+        if overview_worker is not None and overview_worker.isRunning():
+            overview_worker.cancel()
+            overview_worker.wait(2_000)
         super().closeEvent(ev)
 
 

@@ -94,6 +94,10 @@ ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["F401", "F811"]      # test fixtures often look unused
+# importorskip('torch') must run BEFORE importing the module under test.
+"tests/test_gpu_untangle.py" = ["E402"]
+# importorskip('PyQt5'/'SimpleITK') must run BEFORE importing the module under test.
+"tests/test_gui_io_formats.py" = ["E402"]
 "**/conftest.py" = ["F401"]
 "scripts/**" = ["E402", "F401", "SIM115", "RUF005", "F841"]  # probes are scratch code
 "notebooks/experiments/_run_*.py" = ["E402"]

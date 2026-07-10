@@ -54,9 +54,7 @@ def _viol(box, D, H, W, thr3, thr2):
     tot = float(np.maximum(0.0, thr3 - v3).sum())
     for s in range(D):
         # tri_areas_flat takes the DY_FIRST pack ([dy, dx]) -> concat order correct.
-        t2 = tri_areas_flat(
-            np.concatenate([box[0, s].ravel(), box[1, s].ravel()]), H, W
-        )
+        t2 = tri_areas_flat(np.concatenate([box[0, s].ravel(), box[1, s].ravel()]), H, W)
         tot += float(np.maximum(0.0, thr2 - t2).sum())
     return tot
 
@@ -88,16 +86,14 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
     free3 = np.concatenate([nodes, N + nodes])  # dx cols, dy cols
 
     def anchor_vec(b):
-        return np.concatenate(
-            [b[1].reshape(-1)[nodes], b[0].reshape(-1)[nodes]]
-        )
+        return np.concatenate([b[1].reshape(-1)[nodes], b[0].reshape(-1)[nodes]])
 
     def apply(b, v):
         out = b.copy()
         dx = out[1].reshape(-1)
         dx[nodes] = v[: nodes.size]
         dy = out[0].reshape(-1)
-        dy[nodes] = v[nodes.size:]
+        dy[nodes] = v[nodes.size :]
         out[1] = dx.reshape(D, H, W)
         out[0] = dy.reshape(D, H, W)
         return out
@@ -108,15 +104,22 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         pf = _stack(b)
         T3 = tet_volumes_flat(pf, D, H, W)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
-        a3 = np.where(T3 < thr3 + ACTIVE_WINDOW)[0]
+        a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
         return [(J3[a3], T3[a3], thr3)]
 
     def viol_fn(b):
         return _viol(b, D, H, W, thr3, thr2)
 
     return elastic_trust_solve(
-        anchor_vec(box), anchor_vec(box), blocks, viol_fn, apply,
-        state=box.copy(), mu=mu, max_iters=max_iters)
+        anchor_vec(box),
+        anchor_vec(box),
+        blocks,
+        viol_fn,
+        apply,
+        state=box.copy(),
+        mu=mu,
+        max_iters=max_iters,
+    )
 
 
 def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
@@ -144,7 +147,7 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
         y1 = min(full.shape[2], bb[1].stop + pad + 1)
         x0 = max(0, bb[2].start - pad)
         x1 = min(full.shape[3], bb[2].stop + pad + 1)
-        box = dyx[:, z0:z1 + 1, y0:y1, x0:x1].copy()
+        box = dyx[:, z0 : z1 + 1, y0:y1, x0:x1].copy()
         D, H, W = box.shape[1:]
         if D < 3 or H < 3 or W < 3:
             continue
@@ -153,14 +156,25 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
             continue
         box2, v_after = _repair_box(box, thr3, thr2, mu, max_iters)
         if v_after < v_before:
-            dyx[:, z0:z1 + 1, y0:y1, x0:x1] = box2
+            dyx[:, z0 : z1 + 1, y0:y1, x0:x1] = box2
             fixed += 1
     return fixed
 
 
-def mop_interior_3d(phi, *, threshold=0.01, thr3=None, thr2=0.01, mu=1000.0,
-                    pass_pads=((2, 4), (3, 6)), dil=1, max_iters=40,
-                    dz_tol=1e-12, copy=True, verbose=0):
+def mop_interior_3d(
+    phi,
+    *,
+    threshold=0.01,
+    thr3=None,
+    thr2=0.01,
+    mu=1000.0,
+    pass_pads=((2, 4), (3, 6)),
+    dil=1,
+    max_iters=40,
+    dz_tol=1e-12,
+    copy=True,
+    verbose=0,
+):
     """Frozen-rim 3D-interior elastic-SLP mop of residual 6-tet folds.
 
     Crops a small box around each residual below-threshold cluster (the
@@ -249,17 +263,19 @@ def mop_interior_3d(phi, *, threshold=0.01, thr3=None, thr2=0.01, mu=1000.0,
         after_neg = int((mv <= 0).sum())
         after_below = int((mv < thr3 - 1e-9).sum())
         mn = float(mv.min())
-        passes.append({
-            "pass": i,
-            "zpad": zpad,
-            "pad": pad,
-            "n_neg_before": before_neg,
-            "n_neg_after": after_neg,
-            "n_below_before": before_below,
-            "n_below_after": after_below,
-            "min_T": mn,
-            "n_fixed": fixed,
-        })
+        passes.append(
+            {
+                "pass": i,
+                "zpad": zpad,
+                "pad": pad,
+                "n_neg_before": before_neg,
+                "n_neg_after": after_neg,
+                "n_below_before": before_below,
+                "n_below_after": after_below,
+                "min_T": mn,
+                "n_fixed": fixed,
+            }
+        )
         if verbose >= 1:
             print(
                 f"  [mop pass {i} zpad={zpad} pad={pad}] "

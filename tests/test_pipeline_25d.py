@@ -17,9 +17,9 @@ def _planted_25d_fold():
     """Small dz==0 field with an inter-layer 6-tet fold between z=2 and z=3."""
     rng = np.random.default_rng(0)
     phi = rng.normal(0, 0.02, (3, 6, 20, 20)).astype(np.float64)
-    phi[0] = 0.0                      # dz == 0 (2.5D precondition)
-    phi[1, 2, 8:11, 8:11] = +1.5      # dy on slice z=2
-    phi[1, 3, 8:11, 8:11] = -1.5      # dy on slice z=3 -> inter-layer fold
+    phi[0] = 0.0  # dz == 0 (2.5D precondition)
+    phi[1, 2, 8:11, 8:11] = +1.5  # dy on slice z=2
+    phi[1, 3, 8:11, 8:11] = -1.5  # dy on slice z=3 -> inter-layer fold
     return phi
 
 
@@ -84,8 +84,9 @@ def test_down_sweep_repairs_origin_slice():
     if int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0:
         pytest.skip('no fold planted')
     phi_out, report = correct_dvf_25d(phi, origin=2, mop=False, n_workers=1)
-    assert not np.array_equal(phi_out[1:3, 2], phi[1:3, 2]), \
+    assert not np.array_equal(phi_out[1:3, 2], phi[1:3, 2]), (
         'origin slice was not repaired by the down sweep'
+    )
     assert report.n_neg_out == 0
 
 

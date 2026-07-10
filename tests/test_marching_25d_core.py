@@ -21,10 +21,10 @@ from dvfopt.core.marching._marching_25d import (
 def _planted_pair(seed=0, H=20, W=20, amp=1.5):
     """A (lower, upper) slice pair with a planted inter-layer dy fold."""
     rng = np.random.default_rng(seed)
-    lower = rng.normal(0, 0.02, (2, H, W))   # [dy, dx]
+    lower = rng.normal(0, 0.02, (2, H, W))  # [dy, dx]
     upper = rng.normal(0, 0.02, (2, H, W))
-    lower[0, 8:11, 8:11] = +amp   # dy on lower slice
-    upper[0, 8:11, 8:11] = -amp   # dy on upper slice -> inter-layer 6-tet fold
+    lower[0, 8:11, 8:11] = +amp  # dy on lower slice
+    upper[0, 8:11, 8:11] = -amp  # dy on upper slice -> inter-layer 6-tet fold
     return lower, upper
 
 
@@ -51,7 +51,11 @@ def test_march_slice_removes_folds_serial():
     upper_before = upper.copy()
 
     cur, n_before, n_after = march_slice(
-        lower, upper, cur_is_upper=True, n_workers=1, pool_map=None,
+        lower,
+        upper,
+        cur_is_upper=True,
+        n_workers=1,
+        pool_map=None,
     )
 
     assert n_before > 0
@@ -77,11 +81,11 @@ def test_march_slice_removes_folds_serial():
 
 
 def test_boxes_conflict():
-    a = (0, 5, 0, 5)          # inclusive (y0, y1, x0, x1)
-    overlap = (3, 8, 3, 8)    # overlaps a
-    touch = (5, 9, 5, 9)      # shares the corner (inclusive -> conflict)
-    far_y = (10, 15, 0, 5)    # separated on y
-    far_x = (0, 5, 10, 15)    # separated on x
+    a = (0, 5, 0, 5)  # inclusive (y0, y1, x0, x1)
+    overlap = (3, 8, 3, 8)  # overlaps a
+    touch = (5, 9, 5, 9)  # shares the corner (inclusive -> conflict)
+    far_y = (10, 15, 0, 5)  # separated on y
+    far_x = (0, 5, 10, 15)  # separated on x
     assert _boxes_conflict(a, overlap) is True
     assert _boxes_conflict(a, touch) is True
     assert _boxes_conflict(a, far_y) is False
@@ -96,19 +100,18 @@ def test_cluster_boxes_tiles_oversized(phase):
     bad[2:190, 2:190] = True  # spans most of the grid
 
     pad, dil, max_box = 4, 2, 32
-    boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box,
-                           phase=phase)
+    boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box, phase=phase)
     assert boxes, 'no boxes produced'
 
     slack = pad + 2  # dilation + rounding leeway
     covered = np.zeros_like(bad)
-    for (y0, y1, x0, x1) in boxes:
+    for y0, y1, x0, x1 in boxes:
         assert y1 - y0 <= max_box + slack, f'box too tall: {(y0, y1, x0, x1)}'
         assert x1 - x0 <= max_box + slack, f'box too wide: {(y0, y1, x0, x1)}'
         # Mark covered cells (boxes are grid coords; clip to mask extent).
         yy1 = min(y1, bad.shape[0] - 1)
         xx1 = min(x1, bad.shape[1] - 1)
-        covered[y0:yy1 + 1, x0:xx1 + 1] = True
+        covered[y0 : yy1 + 1, x0 : xx1 + 1] = True
 
     assert covered[bad].all(), 'boxes do not cover all bad cells'
 
@@ -122,10 +125,9 @@ def test_cluster_boxes_phase_shifts_seams():
     pad, dil, max_box = 4, 2, 32
 
     def seam_ys(phase):
-        boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box,
-                               phase=phase)
+        boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box, phase=phase)
         edges = set()
-        for (y0, y1, x0, x1) in boxes:
+        for y0, y1, _x0, _x1 in boxes:
             edges.add(y0)
             edges.add(y1)
         return edges
@@ -162,7 +164,12 @@ def test_march_slice_dil0_reduces_folds():
     if not (layer_min_v(lower, upper).min() < 0):
         pytest.skip('no fold planted')
     cur, n_before, n_after = march_slice(
-        lower, upper, cur_is_upper=True, dil=0, n_workers=1, pool_map=None,
+        lower,
+        upper,
+        cur_is_upper=True,
+        dil=0,
+        n_workers=1,
+        pool_map=None,
     )
     assert n_before > 0
     assert n_after < n_before

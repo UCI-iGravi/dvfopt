@@ -705,3 +705,364 @@ def test_input_n_neg_uses_3d_metric_in_3d_mode(qapp, monkeypatch):
     expected, _ = _metric_counts_3d(vol, 'tet3d')
     assert win._input_n_neg == expected
     assert expected > 0  # the field really does have 3D folds
+
+
+# ---------------------------------------------------------------------------
+# SLP default + Auto strategy picker (menu wiring)
+# ---------------------------------------------------------------------------
+
+
+def test_slp_is_first_and_default_2tri(qapp, tmp_path, monkeypatch):
+    ini = str(tmp_path / 'fresh.ini')
+    monkeypatch.setattr(
+        LiveSolverWindow,
+        '_settings',
+        staticmethod(lambda: QtCore.QSettings(ini, QtCore.QSettings.IniFormat)),
+    )
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))  # fresh settings -> defaults
+    win._select_combo_data(win._constraint_combo, '2tri')
+    assert win._method_combo.itemData(0) == 'slp'
+    assert win._method_combo.currentData() == 'slp'
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'auto' in algos
+    win._select_combo_data(win._constraint_combo, 'jdet')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'auto' in algos
+
+
+# ---------------------------------------------------------------------------
+# user-editable feasibility threshold
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_spinbox_feeds_params_and_stats(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
+    assert win._thr_spin.value() == pytest.approx(0.01)
+    win._thr_spin.setValue(0.05)
+    captured = {}
+    monkeypatch.setattr(
+        'dvfopt_gui.worker.SolverWorker.start', lambda self: captured.setdefault('p', self._params)
+    )
+    win._on_run(use_roi=False)
+    assert captured['p']['threshold'] == pytest.approx(0.05)
+    # Idle stats use the spinbox threshold, not the module constant.
+    assert '0.05' in win._format_stats(None)
+
+
+# ---------------------------------------------------------------------------
+# 3D whole-volume metric cache (z-scrub / hover must not re-run the kernel)
+# ---------------------------------------------------------------------------
+
+
+def test_3d_metric_cached_across_zscrub_and_hover(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+    from dvfopt_gui.worker import _metric_field_3d as real_field
+    from dvfopt_gui.worker import _volume_snapshot
+
+    calls = {'n': 0}
+
+    def counting(phi3d, kind):
+        calls['n'] += 1
+        return real_field(phi3d, kind)
+
+    monkeypatch.setattr(A, '_metric_field_3d', counting)
+    vol = np.zeros((3, 5, 8, 8))
+    vol[2, :, 3:5, 3:5] = 1.4
+    win = LiveSolverWindow(vol)
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    snap = _volume_snapshot(vol, n_neg=5, min_T=-0.2, outer_iter=1)
+    win._render_snapshot(snap)
+    baseline = calls['n']
+    assert baseline >= 1
+    # z-scrub + inspector hover on the SAME field: zero new kernel runs.
+    win._z_slider.setValue(2)
+    win._z_slider.setValue(3)
+    win._format_inspector((2, 2))
+    win._format_inspector((3, 3))
+    assert calls['n'] == baseline
+    # A new snapshot invalidates and recomputes.
+    win._render_snapshot(_volume_snapshot(vol * 0.5, n_neg=0, min_T=0.1, outer_iter=2))
+    assert calls['n'] > baseline
+
+
+# ---------------------------------------------------------------------------
+# Undo byte budget + non-finite load rejection
+# ---------------------------------------------------------------------------
+
+
+def test_undo_stack_byte_budget(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 1, 64, 64)))
+    entry_bytes = win._volume.nbytes
+    # Budget that fits exactly two entries.
+    monkeypatch.setattr(A, 'UNDO_MAX_BYTES', int(entry_bytes * 2.5))
+    for _ in range(5):
+        win._push_undo_state()
+    assert len(win._undo_stack) == 2
+    assert sum(v.nbytes for v in win._undo_stack) <= entry_bytes * 2.5
+
+
+def test_undo_budget_keeps_at_least_one(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 1, 64, 64)))
+    monkeypatch.setattr(A, 'UNDO_MAX_BYTES', 1)  # smaller than one entry
+    win._push_undo_state()
+    assert len(win._undo_stack) == 1
+
+
+def test_nonfinite_load_rejected(qapp, monkeypatch):
+    from dvfopt_gui.app import validate_finite
+    from dvfopt_gui.persistence import LoadedRun
+
+    bad = np.zeros((3, 1, 5, 5))
+    bad[2, 0, 2, 2] = np.nan
+    msg = validate_finite(bad)
+    assert msg is not None and 'non-finite' in msg
+    assert validate_finite(np.zeros((3, 1, 4, 4))) is None
+
+    win = LiveSolverWindow()
+    seen = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'critical',
+        staticmethod(lambda *a, **k: seen.setdefault('called', True)),
+    )
+    prev = win._volume
+    win._apply_loaded_run(LoadedRun(volume=bad))
+    assert seen.get('called')
+    assert win._volume is prev  # rejected load leaves state untouched
+
+
+def test_rejected_load_shows_no_success_message(qapp, tmp_path, monkeypatch):
+    bad = np.zeros((3, 1, 5, 5))
+    bad[1, 0, 1, 1] = np.inf
+    npy = tmp_path / 'bad.npy'
+    np.save(npy, bad)
+    win = LiveSolverWindow()
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog, 'getOpenFileName', staticmethod(lambda *a, **k: (str(npy), ''))
+    )
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'critical', staticmethod(lambda *a, **k: None))
+    win._on_load()
+    # Load now runs on a QThread; the result is delivered asynchronously
+    # via a queued signal, so wait for the worker then pump the event loop.
+    win._load_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+    assert win._volume is None  # rejected: nothing loaded
+    assert 'Loaded' not in win.statusBar().currentMessage()
+
+
+def test_export_writes_npy(qapp, tmp_path, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 2, 5, 5)))
+    out = tmp_path / 'corr.npy'
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        'getSaveFileName',
+        staticmethod(lambda *a, **k: (str(out), 'NumPy array (*.npy)')),
+    )
+    win._on_export()
+    assert out.exists() and np.load(out).shape == (3, 2, 5, 5)
+
+
+def test_load_worker_path_used_by_on_load(qapp, tmp_path, monkeypatch):
+    # _on_load must go through LoadWorker (GUI thread does no np.load).
+    npy = tmp_path / 'f.npy'
+    np.save(npy, np.zeros((3, 1, 6, 6)))
+    win = LiveSolverWindow()
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        'getOpenFileName',
+        staticmethod(lambda *a, **k: (str(npy), '')),
+    )
+    win._on_load()
+    win._load_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+    assert win._volume is not None and win._volume.shape == (3, 1, 6, 6)
+    assert win._load_btn.isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# tet3d menu: full-3D pipeline entry + torch-barrier gating
+# ---------------------------------------------------------------------------
+
+
+def test_tet3d_menu_pipeline_and_torch_gating(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'pipeline3d' in algos
+    assert 'barrier_torch' in algos
+    # Torch missing -> the item is disabled (greyed), still listed.
+    monkeypatch.setattr(A, '_torch_available', lambda: False)
+    win._repopulate_method_combo('tet3d')
+    idx = win._method_combo.findData('barrier_torch')
+    assert idx >= 0
+    assert not win._method_combo.model().item(idx).isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# Pipeline ▾: 2.5D marching + one-click full pipeline (2D + 2.5D)
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_button_exists_and_gates(qapp):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))  # 2D: disabled
+    assert hasattr(win, '_pipeline_btn')
+    assert not win._pipeline_btn.isEnabled()
+    win._load_array(np.zeros((3, 4, 6, 6)))  # volume: enabled
+    assert win._pipeline_btn.isEnabled()
+
+
+def test_run_25d_rejects_nonzero_dz(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5  # nonzero dz
+    asked = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: asked.setdefault('q', True) and QtWidgets.QMessageBox.No),
+    )
+    started = {}
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: started.setdefault('s', True))
+    win._on_run_25d()
+    assert asked.get('q'), 'dz violation must prompt'
+    assert not started.get('s'), 'declined prompt must not start a run'
+
+
+def test_run_25d_zero_dz_consent_runs_pipeline(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5  # nonzero dz
+    win._original_volume[0, 1, 2, 2] = 0.5
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.Yes),
+    )
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._on_run_25d()
+    # Consent -> dz zeroed on BOTH volumes, inside one undo entry, pipeline armed.
+    assert float(np.abs(win._volume[0]).max()) == 0.0
+    assert float(np.abs(win._original_volume[0]).max()) == 0.0
+    assert win._pipeline_active and win._pipeline_after_run_all
+    assert len(win._undo_stack) == 1
+    # Undo restores the pre-zero dz.
+    win._pipeline_active = False  # simulate pipeline over
+    win._run_all_remaining = None
+    win._on_undo()
+    assert win._volume[0, 1, 2, 2] == pytest.approx(0.5)
+
+
+def test_run_25d_starts_marching_on_current_volume(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[2, 1, 2, 2] = 0.3  # differs from _original_volume
+    captured = {}
+
+    def fake_start(def_i, method_id=None):
+        captured['shape'] = def_i.shape
+        captured['mid'] = method_id
+        captured['val'] = float(def_i[2, 1, 2, 2])
+
+    monkeypatch.setattr(win, '_start_worker', fake_start)
+    win._on_run_25d()
+    assert captured['mid'] == 'marching25d_tet3d'
+    assert captured['shape'] == (3, 4, 6, 6)
+    assert captured['val'] == pytest.approx(0.3)  # CURRENT volume, not original
+
+
+def test_full_pipeline_chains_25d_after_batch(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 3, 6, 6)))
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._on_run_pipeline_full()
+    assert win._pipeline_active and win._pipeline_after_run_all
+    assert len(win._undo_stack) == 1  # exactly one entry for the whole pipeline
+    # Simulate the batch draining to completion.
+    started = {}
+    monkeypatch.setattr(win, '_start_marching_25d', lambda: started.setdefault('m', True))
+    win._run_all_remaining = []
+    win._run_all_step()
+    assert started.get('m'), '2.5D stage must start after the batch'
+    assert not win._pipeline_after_run_all
+
+
+def test_pipeline_report_message_is_final(qapp):
+    # _on_finished must leave a pipeline run's report summary as the LAST
+    # status-bar message, not overwrite it with the generic 'Run finished.'
+    # Uses a plain fake worker + a direct call (not a real signal emission)
+    # -- see the ``sender()`` note on ``_on_finished``: a direct call always
+    # has ``sender() is None``, so the guard trusts ``self._worker`` as given
+    # rather than requiring it to equal the (nonexistent) signal sender.
+    win = LiveSolverWindow(np.zeros((3, 2, 4, 4)))
+
+    class _FakeReport:
+        n_neg_in = 5
+        n_neg_out = 0
+        feasible = True
+        wall_s = 1.23
+
+    class _FakeWorker:
+        pipeline_report = _FakeReport()
+
+        def history_len(self):
+            return 0
+
+    win._worker = _FakeWorker()
+    vol4d = np.zeros((3, 2, 4, 4))
+    win._on_finished(vol4d, None)
+    msg = win.statusBar().currentMessage()
+    assert 'Pipeline:' in msg
+    assert 'Run finished' not in msg
+
+
+# ---------------------------------------------------------------------------
+# per-slice fold overview strip
+# ---------------------------------------------------------------------------
+
+
+def test_overview_strip_counts_and_click(qapp):
+    from dvfopt_gui.overview import OverviewWorker, SliceOverviewStrip
+    from dvfopt_gui.worker import _metric_counts
+
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, 2, 3, 3] = 1.2  # slice 2 has 2-tri folds
+    vol[2, 2, 3, 4] = -1.2
+
+    # Worker computes per-slice 2-tri fold counts (run synchronously).
+    got = {}
+    w = OverviewWorker(vol)
+    w.chunkReady.connect(lambda start, arr: got.setdefault(start, np.asarray(arr)))
+    w.run()
+    counts = np.concatenate([got[k] for k in sorted(got)])
+    assert counts.shape == (4,)
+    assert counts[2] == _metric_counts(vol[1:, 2], '2tri')[0] > 0
+    assert counts[0] == 0
+
+    strip = SliceOverviewStrip()
+    clicks = []
+    strip.sliceClicked.connect(clicks.append)
+    strip.set_counts(counts)
+    strip.set_current(1)
+    strip._emit_click_at(2.4)  # test hook: x-coordinate -> slice index
+    assert clicks == [2]
+
+
+def test_overview_strip_wired_into_window(qapp):
+    vol = np.zeros((3, 4, 8, 8))
+    vol[2, 1, 3, 3] = 1.2
+    vol[2, 1, 3, 4] = -1.2
+    win = LiveSolverWindow(vol)
+    assert win._overview_strip.isVisibleTo(win)
+    win._overview_worker.wait(10_000)
+    for _ in range(50):
+        QtWidgets.QApplication.processEvents()
+    assert win._overview_counts is not None and win._overview_counts[1] > 0
+    win._overview_strip.sliceClicked.emit(3)
+    assert win._z_slider.value() == 3
+    # 2D single-slice field hides the strip.
+    win._load_array(np.zeros((3, 1, 6, 6)))
+    assert not win._overview_strip.isVisibleTo(win)

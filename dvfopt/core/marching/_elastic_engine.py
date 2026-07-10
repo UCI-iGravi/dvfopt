@@ -24,9 +24,22 @@ from scipy.optimize import linprog
 ACTIVE_WINDOW = 0.5
 
 
-def elastic_trust_solve(x0, anchor, blocks_fn, viol_fn, apply_fn, *, state,
-                        mu, max_iters, trust0=0.5, trust_cap=0.5,
-                        trust_floor=1e-3, accept_rtol=1e-9, stop_viol=1e-12):
+def elastic_trust_solve(
+    x0,
+    anchor,
+    blocks_fn,
+    viol_fn,
+    apply_fn,
+    *,
+    state,
+    mu,
+    max_iters,
+    trust0=0.5,
+    trust_cap=0.5,
+    trust_floor=1e-3,
+    accept_rtol=1e-9,
+    stop_viol=1e-12,
+):
     """Shared elastic trust-region SLP engine.
 
     x0 : (nf,) initial free vector.  anchor : (nf,) L1 anchor.
@@ -84,8 +97,11 @@ def elastic_trust_solve(x0, anchor, blocks_fn, viol_fn, apply_fn, *, state,
             off += m
         A_ub = sp.vstack(rows).tocsr()
         b_ub = np.concatenate(rhs)
-        bounds = ([(float(x[i] - trust), float(x[i] + trust)) for i in range(nf)]
-                  + [(0.0, None)] * nf + [(0.0, None)] * Ka)
+        bounds = (
+            [(float(x[i] - trust), float(x[i] + trust)) for i in range(nf)]
+            + [(0.0, None)] * nf
+            + [(0.0, None)] * Ka
+        )
         res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
         if not res.success:
             trust *= 0.5

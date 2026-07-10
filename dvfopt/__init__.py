@@ -168,8 +168,8 @@ from dvfopt.objectives import (
     SumObjective,
     make_objective,
 )
-from dvfopt.pipeline_25d import Correct25DReport, correct_dvf_25d
 from dvfopt.pipeline_3d import Correct3DReport, correct_dvf_3d
+from dvfopt.pipeline_25d import Correct25DReport, correct_dvf_25d
 from dvfopt.solver import (
     PhaseInfo,
     SolveInfo,
@@ -241,8 +241,8 @@ __all__ = [
     'BarrierTet3DTorchStrategy',
     'BudgetExhaustedError',
     'Constraint',
-    'Correct25DReport',
     'Correct3DReport',
+    'Correct25DReport',
     'CoupledKRing3DStrategy',
     'DVFopt',
     'DVFoptConfig',
@@ -292,8 +292,8 @@ __all__ = [
     'auto_strategy',
     'coerce_to_ndarray',
     'correct_dvf',
-    'correct_dvf_25d',
     'correct_dvf_3d',
+    'correct_dvf_25d',
     'enable_default_handler',
     'generate_random_dvf',
     'generate_random_dvf_3d',
