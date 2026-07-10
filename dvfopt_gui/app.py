@@ -1104,7 +1104,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, 'Load failed', f'{type(exc).__name__}: {exc}')
             return
-        self._apply_loaded_run(run)
+        if not self._apply_loaded_run(run):
+            self.statusBar().clearMessage()
+            return
         n_hist = len(run.snapshots)
         suffix = f'  ({n_hist} history step(s))' if n_hist else ''
         self.statusBar().showMessage(f'Loaded {path}{suffix}', 5_000)
@@ -1264,8 +1266,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         """
         self._apply_loaded_run(LoadedRun(volume=normalise_to_volume(arr)))
 
-    def _apply_loaded_run(self, run: LoadedRun) -> None:
-        """Install a parsed :class:`LoadedRun` into the window.
+    def _apply_loaded_run(self, run: LoadedRun) -> bool:
+        """Install a parsed :class:`LoadedRun` into the window. Returns
+        False (state left untouched) if ``run.volume`` is rejected for
+        non-finite values, else True on success.
 
         Handles both a bare DVF (``run.snapshots`` empty) and a full
         saved run — in the latter case the per-step snapshots are loaded
@@ -1276,7 +1280,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         msg = validate_finite(np.asarray(run.volume))
         if msg is not None:
             QtWidgets.QMessageBox.critical(self, 'Invalid DVF', msg)
-            return
+            return False
         self._volume = np.asarray(run.volume, dtype=np.float64)
         # Pristine copy of what was loaded — every Run reads its input
         # from here, never from ``self._volume`` (which is mutated by
@@ -1352,6 +1356,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._history.reset()
             self._history.set_live(True)
             self._refresh_display_from_volume()
+        return True
 
     @staticmethod
     def _select_combo_data(combo: QtWidgets.QComboBox, data) -> None:

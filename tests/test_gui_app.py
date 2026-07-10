@@ -833,3 +833,18 @@ def test_nonfinite_load_rejected(qapp, monkeypatch):
     win._apply_loaded_run(LoadedRun(volume=bad))
     assert seen.get('called')
     assert win._volume is prev  # rejected load leaves state untouched
+
+
+def test_rejected_load_shows_no_success_message(qapp, tmp_path, monkeypatch):
+    bad = np.zeros((3, 1, 5, 5))
+    bad[1, 0, 1, 1] = np.inf
+    npy = tmp_path / 'bad.npy'
+    np.save(npy, bad)
+    win = LiveSolverWindow()
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog, 'getOpenFileName', staticmethod(lambda *a, **k: (str(npy), ''))
+    )
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'critical', staticmethod(lambda *a, **k: None))
+    win._on_load()
+    assert win._volume is None  # rejected: nothing loaded
+    assert 'Loaded' not in win.statusBar().currentMessage()
