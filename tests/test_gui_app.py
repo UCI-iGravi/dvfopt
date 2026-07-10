@@ -522,7 +522,7 @@ def test_demo_3d_loaders_and_initial_constraint(qapp):
     win._select_combo_data(win._constraint_combo, 'tet3d')  # what launch() does
     assert win._is_3d_run
     assert win._constraint_combo.currentData() == 'tet3d'
-    assert not win._run_roi_btn.isEnabled()  # 3D gating applied
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
 
 
 def test_3d_end_to_end_run_through_window(qapp):
@@ -600,7 +600,7 @@ def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
     win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
     win._select_combo_data(win._constraint_combo, 'tet3d')
     assert win._is_3d_run
-    assert not win._run_roi_btn.isEnabled()
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
     assert not win._run_all_btn.isEnabled()
     algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
     assert (
@@ -622,7 +622,7 @@ def test_run_all_stays_disabled_in_3d_after_run_finishes(qapp):
     assert not win._run_all_btn.isEnabled()  # gated on entering 3D mode
     win._finalize_run_ui()  # simulate a run completing
     assert not win._run_all_btn.isEnabled()  # must stay disabled in 3D mode
-    assert not win._run_roi_btn.isEnabled()
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
 
 
 def test_run_all_in_3d_routes_to_full_volume_run(qapp, monkeypatch):
@@ -1115,3 +1115,42 @@ def test_params_algo_key_family_accurate(qapp):
     assert win._current_params_algo() == 'barrier@jdet3d'
     win._select_combo_data(win._constraint_combo, 'tet3d')
     assert win._current_params_algo().endswith('@tet3d')
+
+
+# ---------------------------------------------------------------------------
+# 3D sub-volume ROI (Rect ROI for y/x + z-range spinboxes)
+# ---------------------------------------------------------------------------
+
+
+def test_3d_roi_spinboxes_and_run_section(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 6, 20, 20)))
+    assert not win._z0_spin.isVisibleTo(win)  # hidden in 2D mode
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert win._z0_spin.isVisibleTo(win) and win._z1_spin.isVisibleTo(win)
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
+    assert (win._z0_spin.value(), win._z1_spin.value()) == (0, 5)
+
+    win._section_roi.setPos(4, 4)
+    win._section_roi.setSize([10, 10])
+    win._z0_spin.setValue(1)
+    win._z1_spin.setValue(4)
+    captured = {}
+    monkeypatch.setattr(
+        win,
+        '_start_worker',
+        lambda def_i, method_id=None: captured.setdefault('shape', def_i.shape),
+    )
+    win._on_run(use_roi=True)
+    assert captured['shape'] == (3, 4, 10, 10)
+    assert win._section_bounds_3d == (1, 5, 4, 14, 4, 14)
+
+
+def test_3d_roi_splice_back(qapp):
+    win = LiveSolverWindow(np.zeros((3, 6, 20, 20)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    win._worker = None  # sender() is None -> guard passes
+    win._section_bounds_3d = (1, 5, 4, 14, 4, 14)
+    sub = np.full((3, 4, 10, 10), 2.0)
+    win._on_finished(sub, None)
+    assert win._volume[1, 2, 5, 5] == pytest.approx(2.0)
+    assert win._volume[1, 0, 5, 5] == 0.0  # outside the box untouched

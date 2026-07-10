@@ -529,9 +529,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # a full-slice run. Set per-run; initialised here so any read
         # (e.g. ``_on_finished``) before the first run is well-defined.
         self._section_bounds: tuple[int, int, int, int] | None = None
+        # Active 3D "Run section" crop bounds ``(z0, z1ex, y0, y1, x0, x1)``
+        # (``z1ex`` exclusive) or None for a full-volume 3D run. Mirrors
+        # ``_section_bounds`` for the 3D ROI path; set per-run.
+        self._section_bounds_3d: tuple | None = None
         # True when the selected constraint is a whole-volume 3D family
-        # (tet3d / jdet3d). In 3D mode: Run-section and Run-all z are
-        # disabled; Run-full passes the entire (3, D, H, W) volume.
+        # (tet3d / jdet3d). In 3D mode: Run-all z is disabled; Run-full
+        # passes the entire (3, D, H, W) volume; Run-section solves a
+        # (z0:z1, y0:y1, x0:x1) sub-volume (see ``_section_bounds_3d``).
         self._is_3d_run = False
         # When non-None, a "Run all z" batch is in flight; holds the
         # z-slice indices still to be solved (current one already popped
@@ -681,6 +686,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z_label = QtWidgets.QLabel('—')
         bar.addWidget(self._z_label)
 
+        # 3D-mode sub-volume z-range (hidden in 2D). Pairs with the Rect ROI
+        # (which supplies y/x) for "Run section" on a sub-volume.
+        self._z0_label = QtWidgets.QLabel('z0:')
+        self._z0_spin = QtWidgets.QSpinBox()
+        self._z1_label = QtWidgets.QLabel('z1:')
+        self._z1_spin = QtWidgets.QSpinBox()
+        for wdg in (self._z0_label, self._z0_spin, self._z1_label, self._z1_spin):
+            bar.addWidget(wdg)
+            wdg.setVisible(False)
+
         bar.addWidget(_toolbar_separator())
         self._run_full_btn = QtWidgets.QPushButton('Run full')
         self._run_full_btn.setShortcut('F5')
@@ -689,7 +704,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         bar.addWidget(self._run_full_btn)
         self._run_roi_btn = QtWidgets.QPushButton('Run section')
         self._run_roi_btn.setShortcut('Ctrl+R')
-        self._run_roi_btn.setToolTip('Solve only inside the ROI rectangle (Ctrl+R).')
+        self._run_roi_btn.setToolTip(
+            'Solve only inside the ROI rectangle (Ctrl+R). In 3D mode also '
+            'uses the z0/z1 spinboxes to crop a sub-volume.'
+        )
         self._run_roi_btn.clicked.connect(lambda: self._on_run(use_roi=True))
         bar.addWidget(self._run_roi_btn)
         self._run_all_btn = QtWidgets.QPushButton('Run all z')
@@ -1809,10 +1827,18 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     def _apply_mode_gating(self) -> None:
         """Reflect 2D/3D mode in the run controls."""
         D = self._volume.shape[1] if self._volume is not None else 1
-        self._run_roi_btn.setEnabled(not self._is_3d_run)
+        self._run_roi_btn.setEnabled(self._volume is not None)
         self._run_all_btn.setEnabled((not self._is_3d_run) and D > 1)
         self._pipeline_btn.setEnabled(D > 1)
-        self._section_roi.setVisible((not self._is_3d_run) and self._volume is not None)
+        self._section_roi.setVisible(self._volume is not None)
+        show_z = self._is_3d_run and D > 1
+        for wdg in (self._z0_label, self._z0_spin, self._z1_label, self._z1_spin):
+            wdg.setVisible(show_z)
+        if show_z:
+            self._z0_spin.setRange(0, D - 1)
+            self._z1_spin.setRange(0, D - 1)
+            if self._z1_spin.value() == 0:
+                self._z1_spin.setValue(D - 1)
 
     def _on_constraint_changed(self, idx: int):
         constraint = self._constraint_combo.itemData(idx)
@@ -1892,6 +1918,31 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return
 
         if self._is_3d_run:
+            if use_roi:
+                D, H, W = self._volume.shape[1:]
+                x, y = self._section_roi.pos()
+                w, h = self._section_roi.size()
+                y0, x0 = max(0, round(y)), max(0, round(x))
+                y1, x1 = min(H, round(y + h)), min(W, round(x + w))
+                z0, z1 = int(self._z0_spin.value()), int(self._z1_spin.value())
+                if z1 < z0:
+                    z0, z1 = z1, z0
+                z1ex = z1 + 1
+                if (z1ex - z0) < 3 or (y1 - y0) < 3 or (x1 - x0) < 3:
+                    QtWidgets.QMessageBox.warning(
+                        self, 'Section too small', 'The 3D section must be at least 3×3×3.'
+                    )
+                    return
+                self._section_bounds_3d = (z0, z1ex, y0, y1, x0, x1)
+                self.statusBar().showMessage(
+                    'Run section (3D): solving the sub-volume — check the box '
+                    'boundary for seam folds after it completes.',
+                    6_000,
+                )
+                sub = self._original_volume[:, z0:z1ex, y0:y1, x0:x1].copy()
+                self._start_worker(sub)
+                return
+            self._section_bounds_3d = None
             self._section_bounds = None
             self._start_worker(self._original_volume.copy())
             return
@@ -1911,6 +1962,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 )
                 return
             self._section_bounds = (y0, y1, x0, x1)
+            self._section_bounds_3d = None
             sub = deformation_i[:, :, y0:y1, x0:x1].copy()
             # The ROI is solved in isolation (frozen edges) then spliced
             # back, so new folds can appear at the seam where the patched
@@ -1925,6 +1977,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._start_worker(sub)
         else:
             self._section_bounds = None
+            self._section_bounds_3d = None
             self._start_worker(deformation_i)
 
     def _start_worker(self, deformation_i: np.ndarray, method_id: str | None = None):
@@ -2102,6 +2155,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         input IS the per-slice-corrected state)."""
         self._select_combo_data(self._constraint_combo, CONSTRAINT_TET3D)
         self._section_bounds = None
+        self._section_bounds_3d = None
         self.statusBar().showMessage('2.5D marching…', 0)
         self._start_worker(self._volume.copy(), method_id='marching25d_tet3d')
 
@@ -2178,8 +2232,13 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if self._run_all_remaining is None and not self._pipeline_active:
                 self._push_undo_state()
             phi_out = np.asarray(phi_out)
-            if phi_out.ndim == 4:  # full-volume 3D result [dz,dy,dx]
-                self._volume[...] = phi_out
+            if phi_out.ndim == 4:  # full-volume or 3D-ROI result [dz,dy,dx]
+                sb3 = self._section_bounds_3d
+                if sb3 is not None:
+                    z0, z1ex, y0, y1, x0, x1 = sb3
+                    self._volume[:, z0:z1ex, y0:y1, x0:x1] = phi_out
+                else:
+                    self._volume[...] = phi_out
             else:
                 sb = self._section_bounds
                 if sb is not None:
