@@ -143,13 +143,21 @@ def _optimize_single_window_3d(
     threshold,
     max_minimize_iter,
     method_name,
+    window_reached_max=False,
 ):
-    """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``."""
+    """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``.
+
+    When *window_reached_max* is ``True``, the frozen-edge equality
+    constraints are released and the Jdet constraint covers the rim
+    voxels too (mirrors the 2D max-window semantics — the window cannot
+    grow further, so pinning a negative rim would be infeasible).
+    """
     constraints = _build_constraints_3d(
         phi_sub_flat,
         subvolume_size,
         freeze_mask,
         threshold,
+        window_reached_max=window_reached_max,
     )
 
     t0 = time.time()
@@ -332,6 +340,7 @@ def _serial_fix_voxel(
             threshold,
             _eff_max_iter,
             method_name,
+            window_reached_max=window_reached_max,
         )
         iter_times.append(elapsed)
         if not opt_success:
@@ -340,6 +349,24 @@ def _serial_fix_voxel(
                 1,
                 f"  [warn] SLSQP did not converge at win {sz}x{sy}x{sx} centre ({cz},{cy},{cx})",
             )
+
+        # Compare-and-rollback guard: snapshot the write region and the
+        # local Jdet patch region (window + 1-voxel border — exactly what
+        # _patch_jacobian_3d rewrites) so a failed/worse SLSQP result is
+        # rejected instead of applied unconditionally.
+        _D, _H, _W = volume_shape
+        _wz0, _wz1 = max(cz - hz - 1, 0), min(cz + hz_hi + 1, _D)
+        _wy0, _wy1 = max(cy - hy - 1, 0), min(cy + hy_hi + 1, _H)
+        _wx0, _wx1 = max(cx - hx - 1, 0), min(cx + hx_hi + 1, _W)
+        _win = (
+            slice(cz - hz, cz + hz_hi),
+            slice(cy - hy, cy + hy_hi),
+            slice(cx - hx, cx + hx_hi),
+        )
+        _phi_snap = phi[(slice(None),) + _win].copy()
+        _jac_snap = jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1].copy()
+        _old_n = int((_jac_snap <= threshold - err_tol).sum())
+        _old_min = float(_jac_snap.min())
 
         _apply_result_3d(phi, result_x, cz, cy, cx, subvolume_size)
 
@@ -353,6 +380,27 @@ def _serial_fix_voxel(
             patch_center=(cz, cy, cx),
             patch_size=subvolume_size,
         )
+
+        # Roll back if the sub-solve made the window locally *strictly*
+        # worse ((n_neg_local, -min_local) lexicographic).
+        _new_loc = jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1]
+        _new_n = int((_new_loc <= threshold - err_tol).sum())
+        _new_min = float(_new_loc.min())
+        if _new_n > _old_n or (_new_n == _old_n and _new_min < _old_min):
+            phi[(slice(None),) + _win] = _phi_snap
+            jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1] = _jac_snap
+            _cur_neg = int((jacobian_matrix <= 0).sum())
+            _cur_min = float(jacobian_matrix.min())
+            num_neg_jac[-1] = _cur_neg
+            min_jdet_list[-1] = _cur_min
+            if error_list:
+                error_list[-1] = float(np.sqrt(np.sum((phi - phi_init) ** 2)))
+            _log(
+                verbose,
+                1,
+                f"  [rollback] sub-solve left window locally worse "
+                f"(neg {_old_n}->{_new_n}, min {_old_min:+.4f}->{_new_min:+.4f}) — reverted",
+            )
 
         _log(verbose, 2, f"  [sub-Jdet] centre ({cz},{cy},{cx}) window {sz}x{sy}x{sx}")
 

@@ -111,7 +111,8 @@ def _optimize_patch_3d_tet_torch(
     outermost layer of corners within the patch is FROZEN to the
     *current* ``phi_full`` state (matching the existing 3D Jdet windowed
     solver: subsequent outer rounds don't have to fight each other's
-    boundary choices); interior corners are free.
+    boundary choices), except for faces coinciding with the volume
+    boundary, which stay free; interior corners are free.
 
     Mutates ``phi_full`` in place (overwrites the patch range with the
     optimized result). Other regions of ``phi_full`` are untouched.
@@ -137,16 +138,26 @@ def _optimize_patch_3d_tet_torch(
     )
     phi_init_patch = phi_patch_var.detach().clone()
 
-    # Build the frozen-corner mask. The outermost layer in each axis is
-    # the "Dirichlet ring": its values are pinned to phi_init_patch
-    # during optimization.
+    # Build the frozen-corner mask. Patch faces that have exterior context
+    # form the "Dirichlet ring": their values are pinned to phi_init_patch
+    # during optimization. Faces coinciding with the volume boundary stay
+    # FREE — they have no exterior context to stay consistent with (same
+    # convention as ``_patch_frozen_mask`` in iterative3d_barrier.py and
+    # every other windowed mask in the package).
+    D_full, H_full, W_full = phi_full.shape[1], phi_full.shape[2], phi_full.shape[3]
     frozen = torch.zeros((Dp, Hp, Wp), dtype=torch.bool, device=device)
-    frozen[0, :, :] = True
-    frozen[-1, :, :] = True
-    frozen[:, 0, :] = True
-    frozen[:, -1, :] = True
-    frozen[:, :, 0] = True
-    frozen[:, :, -1] = True
+    if z0 > 0:
+        frozen[0, :, :] = True
+    if z1 < D_full - 1:
+        frozen[-1, :, :] = True
+    if y0 > 0:
+        frozen[:, 0, :] = True
+    if y1 < H_full - 1:
+        frozen[:, -1, :] = True
+    if x0 > 0:
+        frozen[:, :, 0] = True
+    if x1 < W_full - 1:
+        frozen[:, :, -1] = True
     frozen_b = frozen.unsqueeze(0).expand(3, Dp, Hp, Wp)  # broadcast over channel
 
     def _anchor_v(phi_eff):
@@ -468,7 +479,13 @@ def iterative_3d_tet_barrier_torch(
     # -----------------------------------------------------------------
     # Phase 1: exterior quadratic penalty.
     # -----------------------------------------------------------------
-    feasible = init_neg == 0
+    # Gate on the barrier's actual requirement (min volume clearing the
+    # threshold+margin target), not merely "no non-positive tets": a field
+    # with 0 < min V < threshold must still run the graduated lam schedule,
+    # otherwise the barrier phase immediately falls into the emergency
+    # 1e8*viol^2 branch. Matches the windowed mode and the other barrier
+    # solvers, which all gate on init_min >= target.
+    feasible = init_min >= target_f
     for step, lam in enumerate(lam_schedule):
         if feasible:
             break

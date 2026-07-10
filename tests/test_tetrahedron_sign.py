@@ -816,6 +816,57 @@ class TestTetBarrierTorch:
         assert (V_w <= 0).sum() == 0, 'windowed should be feasible'
         assert (V_f <= 0).sum() == 0, 'full-grid should be feasible'
 
+    def test_fullgrid_subthreshold_positive_runs_penalty_schedule(self):
+        """F5 regression: full-grid mode used to gate Phase 1 on
+        ``init_neg == 0`` (V <= 0 count) while the barrier needs
+        V > threshold. A field with 0 < min V < threshold skipped the
+        graduated lam schedule and fell straight into the emergency
+        1e8*viol^2 barrier branch. Post-fix it must run penalty steps."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        # Uniform x-shrink: every tet volume = 0.05/6 ~ 0.0083, strictly
+        # positive but below the default threshold 0.01.
+        phi = np.zeros((3, 4, 4, 4))
+        phi[2] = -0.95 * np.arange(4, dtype=np.float64)[None, None, :]
+        V0 = six_tet_volumes_3d(phi)
+        assert int((V0 <= 0).sum()) == 0
+        assert 0.0 < float(V0.min()) < 0.01
+
+        phi_out, history = iterative_3d_tet_barrier_torch(
+            phi, windowed=False, verbose=0, device='cpu', record_history=True
+        )
+        assert any(h['phase'] == 'penalty' for h in history), (
+            'sub-threshold-positive field must go through the graduated '
+            f'lam schedule; phases seen: {[h["phase"] for h in history]}'
+        )
+        Vf = six_tet_volumes_3d(phi_out)
+        assert float(Vf.min()) >= 0.01 - 1e-4
+
+    def test_windowed_grid_boundary_faces_stay_free(self):
+        """F6 regression: the windowed patch used to freeze ALL six faces,
+        including faces on the volume boundary; every other windowed mask
+        in the package leaves grid-edge faces free. A fold planted at the
+        volume corner (whose padded patch covers the whole 4^3 grid) was
+        unfixable — all its corners sat on frozen faces. Post-fix the
+        boundary corners are free, the fold source moves, and the run
+        reaches feasibility."""
+        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+
+        phi = np.zeros((3, 4, 4, 4))
+        phi[1, 0, 0, 0] = 1.5
+        phi[2, 0, 0, 0] = 1.5
+        assert float(six_tet_volumes_3d(phi).min()) < 0
+
+        phi_w = iterative_3d_tet_barrier_torch(phi, windowed=True, pad=2, verbose=0, device='cpu')
+        V_w = six_tet_volumes_3d(phi_w)
+        assert int((V_w <= 0).sum()) == 0, 'corner fold not cleared'
+        assert float(V_w.min()) >= 0.01 - 1e-4
+        # Pre-fix the fold-source corner was pinned to init (frozen face).
+        moved = float(np.abs(phi_w[:, 0, 0, 0] - phi[:, 0, 0, 0]).max())
+        assert moved > 1e-6, 'grid-boundary corner never moved (still frozen)'
+
     def test_no_torch_raises_clear_error(self):
         """If torch is unavailable, the public entry should raise
         ImportError with a clear message. Simulate via a temporary

@@ -8,6 +8,7 @@ import numpy as np
 from scipy.ndimage import label as _scipy_label
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _resolve_params, _unpack_size
+from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
 from dvfopt.core.slsqp.spatial import (
     _edge_flags,
     _select_non_overlapping,
@@ -75,6 +76,16 @@ def iterative_parallel(
     -------
     phi : ndarray, shape ``(2, H, W)``
     """
+    # NaN-aware entry guard: the outer-loop gate `(quality <= thr).any()`
+    # is NaN-blind while `np.argmin` / `np.argsort` are NaN-attracted, so
+    # a single NaN pixel would livelock the solver on failed SLSQP calls
+    # targeting the NaN window while real folds go untouched.
+    if not np.isfinite(deformation_i).all():
+        raise ValueError(
+            'phi contains non-finite values (NaN/Inf); '
+            'iterative_parallel requires a finite field.'
+        )
+
     # Resolve parameters
     p = _resolve_params(
         threshold=threshold,
@@ -279,6 +290,7 @@ def iterative_parallel(
                         enforce_triangles=enforce_triangles,
                         min_window=global_min_window,
                         labeled=_labeled_neg,
+                        quality_matrix=quality_matrix,
                     )
                 )
 
@@ -385,7 +397,7 @@ def iterative_parallel(
                     futures[fut] = (neg_idx, cz, cy, cx, sub_size, is_padded, opt_size)
 
                 batch_time = 0.0
-                completed_windows = []
+                completed = []
                 for fut in as_completed(futures):
                     neg_idx, cz, cy, cx, sub_size, is_padded, opt_size = futures[fut]
                     result_x, elapsed, opt_success = fut.result()
@@ -397,18 +409,68 @@ def iterative_parallel(
                             f"at ({cy},{cx}) size {_unpack_size(opt_size)}",
                         )
                     batch_time = max(batch_time, elapsed)
-                    _apply_result(
-                        phi, result_x, cy, cx, opt_size, write_size=sub_size if is_padded else None
-                    )
-                    completed_windows.append(((cy, cx), sub_size))
+                    completed.append((cy, cx, sub_size, is_padded, opt_size, result_x))
 
                 iter_times.append(batch_time)
 
-                # Patch Jacobian for each modified window
-                from dvfopt.core.solver import _patch_jacobian_2d
+                # Apply each window with a compare-and-rollback guard:
+                # patch the Jacobian (and quality map) window-locally and
+                # reject any result that leaves its window locally
+                # *strictly* worse ((n_neg_local, -min_local)
+                # lexicographic) instead of applying failed SLSQP
+                # results unconditionally.
+                use_q = enforce_shoelace or enforce_injectivity or enforce_triangles
+                for cy, cx, sub_size, is_padded, opt_size, result_x in completed:
+                    w_sy, w_sx = _unpack_size(sub_size)
+                    w_hy, w_hx = w_sy // 2, w_sx // 2
+                    w_hy_hi, w_hx_hi = w_sy - w_hy, w_sx - w_hx
+                    _wy0, _wy1 = max(cy - w_hy - 1, 0), min(cy + w_hy_hi + 1, H)
+                    _wx0, _wx1 = max(cx - w_hx - 1, 0), min(cx + w_hx_hi + 1, W)
+                    _phi_snap = phi[:, cy - w_hy : cy + w_hy_hi, cx - w_hx : cx + w_hx_hi].copy()
+                    _jac_snap = jacobian_matrix[:, _wy0:_wy1, _wx0:_wx1].copy()
+                    _qual_snap = (
+                        quality_matrix[:, _wy0:_wy1, _wx0:_wx1].copy() if use_q else None
+                    )
+                    _old_loc = quality_matrix[0, _wy0:_wy1, _wx0:_wx1]
+                    _old_n = int((_old_loc <= threshold - err_tol).sum())
+                    _old_min = float(_old_loc.min())
 
-                for patch_center, patch_size in completed_windows:
-                    _patch_jacobian_2d(jacobian_matrix, phi, patch_center, patch_size)
+                    _apply_result(
+                        phi,
+                        result_x,
+                        cy,
+                        cx,
+                        opt_size,
+                        write_size=sub_size if is_padded else None,
+                    )
+                    _patch_jacobian_2d(jacobian_matrix, phi, (cy, cx), sub_size)
+                    if use_q:
+                        _patch_quality_2d(
+                            quality_matrix,
+                            phi,
+                            jacobian_matrix,
+                            (cy, cx),
+                            sub_size,
+                            enforce_shoelace,
+                            enforce_injectivity,
+                            enforce_triangles=enforce_triangles,
+                        )
+
+                    _new_loc = quality_matrix[0, _wy0:_wy1, _wx0:_wx1]
+                    _new_n = int((_new_loc <= threshold - err_tol).sum())
+                    _new_min = float(_new_loc.min())
+                    if _new_n > _old_n or (_new_n == _old_n and _new_min < _old_min):
+                        phi[:, cy - w_hy : cy + w_hy_hi, cx - w_hx : cx + w_hx_hi] = _phi_snap
+                        jacobian_matrix[:, _wy0:_wy1, _wx0:_wx1] = _jac_snap
+                        if use_q:
+                            quality_matrix[:, _wy0:_wy1, _wx0:_wx1] = _qual_snap
+                        _log(
+                            verbose,
+                            1,
+                            f"  [rollback] window at ({cy},{cx}) locally worse "
+                            f"(neg {_old_n}->{_new_n}, "
+                            f"min {_old_min:+.4f}->{_new_min:+.4f}) — reverted",
+                        )
 
                 jacobian_matrix, quality_matrix, cur_neg, cur_min = _update_metrics(
                     phi,
@@ -420,6 +482,7 @@ def iterative_parallel(
                     error_list,
                     jacobian_matrix=jacobian_matrix,
                     enforce_triangles=enforce_triangles,
+                    quality_matrix=quality_matrix if use_q else None,
                 )
 
                 cur_err = error_list[-1]

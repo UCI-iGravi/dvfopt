@@ -27,13 +27,25 @@ def jacobian_constraint_3d(phi_flat, subvolume_size, freeze_mask=None):
     return jdet.flatten()
 
 
-def _build_constraints_3d(phi_sub_flat, subvolume_size, freeze_mask, threshold):
+def _build_constraints_3d(
+    phi_sub_flat, subvolume_size, freeze_mask, threshold, window_reached_max=False
+):
     """Build SLSQP constraints for a 3D sub-volume optimisation.
 
     The Jacobian constraint excludes only frozen boundary voxels.
     Grid-edge boundary voxels are NOT frozen and ARE constrained.
+
+    When *window_reached_max* is ``True`` the window cannot grow any
+    further, so no frozen edges apply (mirroring the 2D
+    ``exclude_bounds = not is_at_edge and not window_reached_max``
+    semantics in :func:`dvfopt.core.slsqp.constraints._build_constraints`):
+    the boundary equality constraints are dropped and the Jacobian
+    constraint covers **all** voxels, including the rim.  Without this
+    release, a fold component larger than the maximum window keeps its
+    negative rim pinned by equality constraints — an infeasible SLSQP
+    problem that can never make progress.
     """
-    fm = freeze_mask
+    fm = None if window_reached_max else freeze_mask
     nlc = NonlinearConstraint(
         lambda phi1: jacobian_constraint_3d(phi1, subvolume_size, fm),
         threshold,
@@ -42,7 +54,7 @@ def _build_constraints_3d(phi_sub_flat, subvolume_size, freeze_mask, threshold):
     )
     constraints = [nlc]
 
-    if freeze_mask.any():
+    if fm is not None and fm.any():
         sz, sy, sx = _unpack_size_3d(subvolume_size)
         voxels = sz * sy * sx
         edge_indices = np.argwhere(freeze_mask)
