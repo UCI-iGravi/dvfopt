@@ -72,3 +72,35 @@ def test_slp_iter_terminates_within_max_iter():
     _, info = slp_iter(phi_in, threshold=0.01, max_iter=20)
     assert info['iters'] <= 20
     assert info['converged'] or info['iters'] == 20
+
+
+def test_slp_iter_pinned_reference_no_drift():
+    """Determinism guard: slp_iter on a fixed seeded planted crop must
+    reach strict feasibility with an L1 that matches a pinned reference.
+
+    The reference L1 was computed once with the canonical implementation
+    (seed='m14', threshold=0.01, all other knobs default) and inlined.
+    Every stage of the pipeline is deterministic (no RNG in the solver),
+    so any change to this value signals silent numerical drift in the
+    linearisation / LP-step / seed path — investigate before repinning.
+    """
+    from dvfopt.core.tri_primitives import tri_areas_flat
+
+    rng = np.random.default_rng(42)
+    H, W = 12, 12
+    phi_in = rng.normal(scale=0.05, size=(2, H, W))
+    phi_in[0, 5, 5] = 1.3
+    phi_in[0, 5, 6] = -1.3
+
+    phi_out, info = slp_iter(phi_in, threshold=0.01, seed='m14')
+
+    areas = tri_areas_flat(
+        np.concatenate([phi_out[0].ravel(), phi_out[1].ravel()]), H, W
+    )
+    assert int((areas <= 0).sum()) == 0
+    assert info['final_min_T_exact'] >= 0.01 - 1e-5
+
+    L1_REF = 0.60869235592814497  # pinned 2026-07-09
+    assert abs(info['L1_dev'] - L1_REF) <= 1e-9, (
+        f"L1_dev {info['L1_dev']!r} drifted from pinned reference {L1_REF!r}"
+    )

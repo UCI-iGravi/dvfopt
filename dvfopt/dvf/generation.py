@@ -25,8 +25,15 @@ def generate_random_dvf(shape, max_magnitude=5.0, seed=None):
     Returns
     -------
     ndarray of shape ``(3, 1, H, W)``
+        The ``dz`` channel (index 0) is zero, per the 2D convention that
+        ``(3, 1, H, W)`` fields carry only in-plane displacement.
     """
-    return _generate_random_dvf(shape, max_magnitude, seed)
+    dvf = _generate_random_dvf(shape, max_magnitude, seed)
+    # 2D convention: dz must be identically zero.  The dz channel is drawn
+    # from the RNG (to keep dy/dx values identical to previous releases for
+    # a given seed) and then zeroed.
+    dvf[0] = 0.0
+    return dvf
 
 
 def generate_random_dvf_3d(shape, max_magnitude=5.0, seed=None):

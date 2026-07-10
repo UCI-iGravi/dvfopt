@@ -12,8 +12,13 @@ Algorithm
     is a diffeomorphism. The dilated ring is rarely convex, so step 5.
 5.  If any cell in the patch still has ``min(T1, T2) < threshold``, dilate
     the patch by one cell and retry, up to ``max_grow_iters``.
-6.  Stop when feasibility is reached or growth fails. Either way, return
-    the best-effort patch substituted into ``phi_in``.
+6.  Stop when feasibility is reached. If growth exhausts without reaching
+    feasibility, install the BEST trial seen across all grow rounds (by
+    ``patch_T_min``) — and only if it actually improves on the input
+    field's min over those same cells; otherwise the input region is kept
+    untouched. (Growing is not monotone: a later, larger patch can be
+    WORSE than an earlier one, so "install the last trial" could
+    actively degrade the field.)
 
 Why it works
 ------------
@@ -175,6 +180,10 @@ def harmonic_extension_2d(
 
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    if ring_pad < 0:
+        raise ValueError(f'ring_pad must be >= 0, got {ring_pad}')
     H, W = phi_in.shape[1], phi_in.shape[2]
     accept_thr = threshold + margin
 
@@ -184,7 +193,13 @@ def harmonic_extension_2d(
         phi_out = phi_in.copy()
         return (phi_out, info) if record_history else phi_out
 
-    grouped = binary_dilation(cell_fold, iterations=merge_dilation)
+    # scipy treats iterations < 1 as "repeat until convergence" (fills
+    # the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(cell_fold, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else cell_fold
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
 
     phi_out = phi_in.copy()
@@ -195,9 +210,17 @@ def harmonic_extension_2d(
         if not comp_cells.any():
             continue
         cur_cells = comp_cells.copy()
-        last_min = -np.inf
+        best_min = -np.inf
+        best_trial = None
+        best_patch_cells = None
         for grow in range(max_grow_iters + 1):
-            patch_cells = binary_dilation(cur_cells, iterations=ring_pad + grow)
+            # binary_dilation(iterations=0) would "iterate to convergence"
+            # (fill the grid); ring_pad=0 with grow=0 must mean "no
+            # dilation this round".
+            iters = ring_pad + grow
+            patch_cells = (
+                binary_dilation(cur_cells, iterations=iters) if iters >= 1 else cur_cells
+            )
             interior_cells = binary_erosion(patch_cells, iterations=1)
             free_mask = _cells_to_corner_mask(interior_cells, H, W)
 
@@ -220,17 +243,32 @@ def harmonic_extension_2d(
                 )
                 break
 
-            last_min = patch_T_min
+            # Track the best infeasible trial across grow rounds — growing
+            # the patch is NOT monotone, so the last trial may be the worst.
+            if patch_T_min > best_min:
+                best_min = float(patch_T_min)
+                best_trial = phi_trial
+                best_patch_cells = patch_cells
             cur_cells = binary_dilation(cur_cells, iterations=1)
         else:
-            phi_out = phi_trial
+            # Growth exhausted without reaching feasibility. Install the
+            # BEST trial — and only if it improves on the input field's
+            # min over the same cells; otherwise keep the input region.
+            T1_in, T2_in = _triangle_areas_2d(phi_out[0], phi_out[1])
+            input_min = float(np.minimum(T1_in, T2_in)[best_patch_cells].min())
+            installed = best_trial is not None and best_min > input_min
+            if installed:
+                phi_out = best_trial
             patch_records.append(
                 {
                     'comp_id': comp_id,
                     'grow': max_grow_iters,
                     'failed': True,
-                    'patch_T_min': float(last_min),
-                    'n_cells': int(patch_cells.sum()),
+                    'patch_T_min': float(best_min if installed else input_min),
+                    'best_trial_T_min': float(best_min),
+                    'input_T_min': input_min,
+                    'installed': installed,
+                    'n_cells': int(best_patch_cells.sum()),
                 }
             )
 

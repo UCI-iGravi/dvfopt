@@ -20,12 +20,18 @@ def create_checkerboard(num_squares=(8, 8), resolution=(400, 400)):
     Returns
     -------
     ndarray, shape ``(height, width)``
-        Values are 0 or 1.
+        Values are 0 or 1.  The output always has exactly the requested
+        resolution; when the resolution is not divisible by the number of
+        squares, squares are ceil-sized and the board is cropped (the last
+        row/column of squares is slightly narrower).
     """
     rows, cols = num_squares
     height, width = resolution
-    sq_h = height // rows
-    sq_w = width // cols
+    # Ceil-sized squares guarantee the kron product covers the requested
+    # resolution; cropping then returns exactly (height, width) instead of
+    # a silently truncated board.
+    sq_h = -(-height // rows)
+    sq_w = -(-width // cols)
     base = np.indices((rows, cols)).sum(axis=0) % 2
     board = np.kron(base, np.ones((sq_h, sq_w)))
     return board[:height, :width]

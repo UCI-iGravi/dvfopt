@@ -60,10 +60,15 @@ def _barrier_anchored_objective_3d(
 
 
 def _min_V(phi):
-    """Convenience: minimum per-tet signed volume over the whole field."""
-    from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+    """Convenience: minimum per-tet signed volume over the whole field.
 
-    return float(six_tet_volumes_3d(phi).min())
+    Uses the fused per-cube min kernel — ``min(min over tets per cube)``
+    equals the global per-tet minimum, without materialising the full
+    ``(6, Dc, Hc, Wc)`` volume array.
+    """
+    from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+
+    return float(six_tet_min_volume_3d(phi).min())
 
 
 def iterative_3d_tet_refine_repair(

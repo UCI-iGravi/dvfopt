@@ -169,6 +169,36 @@ class TestNMVFStrategy:
         ).fit(phi)
         np.testing.assert_array_equal(result.corrected, phi)
 
+    def test_exact_zero_jdet_does_not_spin(self):
+        """Regression: the loop gate counts ``J <= 0`` but the work list
+        used ``J < 0`` — an exactly-zero determinant kept the loop alive
+        with an EMPTY work list, burning ``max_iter`` no-op full-slice
+        iterations and reporting converged=False. The work list must
+        treat J == 0 cells as folds so the smoother can act on them."""
+        from dvfopt.core._nmvf import nmvf_correct_2d
+
+        H, W = 9, 9
+        cy, cx = 4, 4
+        phi = np.zeros((2, H, W), dtype=np.float64)
+        # Central-difference stencil: ddy_dy(cy,cx) = (dy[cy+1]-dy[cy-1])/2
+        # = -1 exactly -> J(cy,cx) = (1-1)*(1+0) - 0 = 0, no negative J.
+        phi[0, cy - 1, cx] = +1.0
+        phi[0, cy + 1, cx] = -1.0
+        J0 = jacobian_det2D(phi)[0]
+        assert (J0 == 0).any(), 'fixture must plant an exactly-zero Jdet'
+        assert not (J0 < 0).any(), 'fixture must have no strictly-negative Jdet'
+
+        max_iter = 100
+        _out, info = nmvf_correct_2d(phi, max_iter=max_iter, record_history=True)
+        # No spin: the zero cell is on the work list, the smoother resolves
+        # it in a handful of iterations instead of exhausting max_iter.
+        assert info['n_iter'] < max_iter, (
+            f'NMVF spun for all {max_iter} iterations on a J == 0 cell'
+        )
+        assert info['n_iter'] <= 10
+        assert info['converged'] is True
+        assert info['final_min_J'] > 0
+
     def test_rejects_3d_constraint(self):
         """NMVF is 2D-only; pairing with a 3D constraint must surface
         as a clear error at Solver construction."""

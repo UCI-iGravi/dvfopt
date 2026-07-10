@@ -47,14 +47,19 @@ from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 # ---------------------------------------------------------------------------
 
 
-def _fold_components(phi, merge_dilation=1):
+def _fold_components(phi, feas_lb, merge_dilation=1):
     """Connected components of the cell-fold mask.
+
+    A cell is "folded" when ``min(T1, T2) < feas_lb`` — the same
+    threshold-consistent predicate :func:`solve_cluster_2tri_2d` gates
+    feasibility on (``feas_lb = threshold - err_tol``), so sub-threshold
+    cells cannot survive as "converged".
 
     Returns a list of cell-coord bboxes ``(cy0, cy1, cx0, cx1)`` in the
     ``find_objects`` half-open convention (``cy1`` is exclusive).
     """
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-    fold = np.minimum(T1, T2) <= 0
+    fold = np.minimum(T1, T2) < feas_lb
     if not fold.any():
         return []
     mask = binary_dilation(fold, iterations=merge_dilation) if merge_dilation > 0 else fold
@@ -112,7 +117,9 @@ def _solve_crop(phi, phi_anchor, y0, y1, x0, x1, *, threshold, eps_l1, l2_passes
     return info
 
 
-def _solve_region_schwarz(phi, phi_anchor, bbox, *, threshold, eps_l1, tile, overlap, max_sweeps):
+def _solve_region_schwarz(
+    phi, phi_anchor, bbox, *, threshold, feas_lb, eps_l1, tile, overlap, max_sweeps
+):
     """Overlapping-tile multiplicative Schwarz on one large component's bbox.
 
     Light per-tile budget — Schwarz relies on repeated sweeps to
@@ -122,7 +129,7 @@ def _solve_region_schwarz(phi, phi_anchor, bbox, *, threshold, eps_l1, tile, ove
     cy0, cy1, cx0, cx1 = bbox
     for sweep in range(max_sweeps):
         T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-        fold = np.minimum(T1, T2) <= 0
+        fold = np.minimum(T1, T2) < feas_lb
         sub = np.zeros_like(fold)
         sub[cy0:cy1, cx0:cx1] = fold[cy0:cy1, cx0:cx1]
         if not sub.any():
@@ -135,7 +142,7 @@ def _solve_region_schwarz(phi, phi_anchor, bbox, *, threshold, eps_l1, tile, ove
         for y0, y1, x0, x1 in tiles:
             phi_win = phi[:, y0 : y1 + 1, x0 : x1 + 1]
             t1w, t2w = _triangle_areas_2d(phi_win[0], phi_win[1])
-            if not (np.minimum(t1w, t2w) <= 0).any():
+            if not (np.minimum(t1w, t2w) < feas_lb).any():
                 continue
             _solve_crop(
                 phi,
@@ -220,6 +227,12 @@ def iterative_2d_tri_schwarz(
     """
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
+    # Fold-detection predicate consistent with the per-cluster solver's
+    # feasibility gate (and the SLSQP constraint lb=threshold): a cell
+    # with min area in (0, threshold) is still a fold. Without this, the
+    # splice-on-feasible logic and the ``<= 0`` re-detection disagreed and
+    # sub-threshold cells survived as "converged".
+    feas_lb = threshold - DEFAULT_PARAMS['err_tol']
 
     if deformation_2hw.ndim == 4:
         if deformation_2hw.shape[0] == 3:
@@ -238,7 +251,7 @@ def iterative_2d_tri_schwarz(
     history = []
 
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-    init_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+    init_n_neg = int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
     init_min = float(min(T1.min(), T2.min()))
     if verbose >= 1:
         print(
@@ -252,7 +265,7 @@ def iterative_2d_tri_schwarz(
     final_min = init_min
 
     for outer in range(1, max_outer + 1):
-        comps = _fold_components(phi, merge_dilation=merge_dilation)
+        comps = _fold_components(phi, feas_lb, merge_dilation=merge_dilation)
         if not comps:
             converged = True
             break
@@ -267,6 +280,7 @@ def iterative_2d_tri_schwarz(
                     phi_anchor,
                     (cy0, cy1, cx0, cx1),
                     threshold=threshold,
+                    feas_lb=feas_lb,
                     eps_l1=eps_l1,
                     tile=tile,
                     overlap=overlap,
@@ -300,7 +314,7 @@ def iterative_2d_tri_schwarz(
                 n_small += 1
 
         T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-        final_n_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())
+        final_n_neg = int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
         final_min = float(min(T1.min(), T2.min()))
         elapsed = time.time() - t_outer
         if record_history:

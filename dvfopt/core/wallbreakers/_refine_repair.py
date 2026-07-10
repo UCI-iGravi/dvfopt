@@ -70,6 +70,7 @@ def iterative_2d_tri_refine_repair(
     max_grow_iters: int = 8,
     polish_mu: tuple = (1e-2, 1e-4, 1e-6),
     polish_maxiter: int = 200,
+    stage1_mu_schedule: Optional[tuple] = None,
     time_budget_s: float = 600.0,
     verbose: int = 1,
     eps_l1: float = 1e-4,
@@ -90,6 +91,14 @@ def iterative_2d_tri_refine_repair(
         Pre-computed m10 seed (skips stage 1 if provided).
     lam_schedule, polish_mu : sequences
         Continuation schedules for stages 2 and 4.
+    stage1_mu_schedule : tuple or None
+        Barrier ``mu_schedule`` forwarded to the stage-1 m10 call
+        (:func:`iterative_2d_tri_harmonic_polished`). ``None`` (default)
+        keeps m10's own default schedule (legacy behavior). ``()`` skips
+        m10's internal log-barrier polish entirely — useful when m14
+        runs as a seed stage whose stage-2 ``l2_refine_2d`` (anchored to
+        the same ``phi_in``) immediately redoes that slide-toward-input
+        work. Ignored when ``seed`` is provided.
     eps_l1 : float
         Smoothing constant for the L1 anchor.
 
@@ -132,6 +141,11 @@ def iterative_2d_tri_refine_repair(
 
     # Stage 1: m10 seed.
     if seed is None:
+        # Only override m10's mu_schedule when explicitly requested so
+        # the default path stays byte-identical to the legacy behavior.
+        _m10_kwargs = {}
+        if stage1_mu_schedule is not None:
+            _m10_kwargs['mu_schedule'] = tuple(stage1_mu_schedule)
         seed = iterative_2d_tri_harmonic_polished(
             phi_in,
             threshold=threshold,
@@ -141,6 +155,7 @@ def iterative_2d_tri_refine_repair(
             max_grow_iters=max_grow_iters,
             time_budget_s=time_budget_s * 0.4,
             verbose=verbose,
+            **_m10_kwargs,
         )
     seed_L2 = float(np.linalg.norm((seed - phi_in).ravel()))
     seed_min = _min_tri(seed)

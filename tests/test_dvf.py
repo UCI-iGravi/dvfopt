@@ -36,6 +36,21 @@ class TestGenerateRandomDvf:
         with pytest.raises(AssertionError):
             generate_random_dvf((2, 1, 10, 10))
 
+    def test_dz_channel_is_zero(self):
+        """2D (3, 1, H, W) convention requires dz == 0 (like make_deformation)."""
+        dvf = generate_random_dvf((3, 1, 10, 12), max_magnitude=4.0, seed=7)
+        np.testing.assert_array_equal(dvf[0], 0.0)
+
+    def test_dy_dx_channels_nonzero(self):
+        dvf = generate_random_dvf((3, 1, 10, 12), max_magnitude=4.0, seed=7)
+        assert np.abs(dvf[1]).max() > 0
+        assert np.abs(dvf[2]).max() > 0
+
+    def test_3d_dz_channel_not_zeroed(self):
+        """The 3D generator must keep a genuine dz channel."""
+        dvf = generate_random_dvf_3d((3, 4, 6, 8), seed=7)
+        assert np.abs(dvf[0]).max() > 0
+
 
 class TestGenerateRandomDvf3D:
     def test_shape(self):

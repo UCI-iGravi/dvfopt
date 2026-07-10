@@ -11,8 +11,9 @@ initializer once at startup (importing the kernels and JIT-compiling them
 on a tiny field). Subsequent tasks hit warm, imported workers — so the
 spawn + import + recompile tax is amortised across every band/cluster of
 a run (and across runs in the same session). Callers get the pool via
-:func:`get_pool`; it is reused while the requested worker count is
-unchanged and torn down at interpreter exit.
+:func:`get_pool`; it is reused while the existing pool already covers the
+requested worker count (grow-only respawn) and torn down at interpreter
+exit.
 """
 
 from __future__ import annotations
@@ -64,15 +65,19 @@ def _warmup_worker():  # pragma: no cover - runs in subprocess
 
 
 def get_pool(n_workers: int) -> ProcessPoolExecutor:
-    """Return the shared pre-warmed pool sized to ``n_workers``.
+    """Return the shared pre-warmed pool with capacity for ``n_workers``.
 
-    Creates it (with the warmup initializer) on first use; reuses it while
-    ``n_workers`` is unchanged; rebuilds it if a different size is asked
-    for. Thread-safe.
+    Creates it (with the warmup initializer) on first use. The existing
+    pool is REUSED whenever its size already covers the request
+    (``current size >= n_workers``) — a downsize request does not
+    respawn the pool, since respawning re-pays the spawn + import + JIT
+    warmup tax (~5-10 s/worker) and no caller depends on an exact pool
+    size (extra workers simply idle). The pool is rebuilt only when the
+    request GROWS past the current size. Thread-safe.
     """
     global _POOL, _POOL_N
     with _LOCK:
-        if _POOL is None or n_workers != _POOL_N:
+        if _POOL is None or _POOL_N is None or n_workers > _POOL_N:
             if _POOL is not None:
                 _POOL.shutdown(wait=False)
             _POOL = ProcessPoolExecutor(max_workers=n_workers, initializer=_warmup_worker)

@@ -16,7 +16,9 @@ Configuration axes (every combination valid; sensible defaults):
 
     constraint : '2tri' (default, full-coverage), '2tri_standard'
         (TR-BL only — for benchmark reproducibility), 'jdet'
-        (== 'jdet_2d'), 'jdet_3d', '6tet' (3D 6-tet)
+        (== 'jdet_2d'). The facade is per-slice 2D; for true-3D
+        constraints ('6tet', 'jdet_3d') use correct_dvf_3d /
+        correct_dvf_25d or the Solver API.
     solver     : 'nmvf', 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz',
                  'harmonic_alm_barrier' (alias 'm10'),
                  'harmonic_alm_refine_repair' (alias 'm14'),
@@ -48,7 +50,6 @@ import numpy as np
 from dvfopt.constraints import (
     Constraint,
     JdetConstraint2D,
-    JdetConstraint3D,
     TriConstraint2D,
     TriConstraint2DFullCoverage,
 )
@@ -82,7 +83,10 @@ class DVFoptConfig:
     """
 
     # ---- problem ----
-    constraint: str = '2tri'  # '2tri'(=full-coverage, default) | '2tri_standard' | 'jdet' | 'jdet_2d' | 'jdet_3d' | '6tet'
+    # '2tri' (=full-coverage, default) | '2tri_standard' | 'jdet' | 'jdet_2d'.
+    # 3D constraints ('6tet', 'jdet_3d') are rejected — the facade is
+    # per-slice 2D; use correct_dvf_3d / correct_dvf_25d or Solver for 3D.
+    constraint: str = '2tri'
     threshold: float = 0.01
     err_tol: float = 1e-5
 
@@ -95,6 +99,9 @@ class DVFoptConfig:
     # A Strategy instance is also accepted — use that when you need
     # non-default knobs.
     solver: object = 'auto'
+    # NOTE: defaults to 'l2' (historical facade default) while
+    # dvfopt.solver.correct_dvf defaults to 'l1' — pass objective
+    # explicitly when comparing results across the two APIs.
     objective: str = 'l2'  # 'l2', 'l1', 'none'
     eps_l1: float = 1e-4
 
@@ -113,6 +120,14 @@ class DVFoptConfig:
     # Anyone wanting deeper control should pass a Strategy instance.
     strategy_kwargs: dict = field(default_factory=dict)
 
+    def __post_init__(self):
+        # Fail fast on a bad accuracy mode regardless of which solver /
+        # dispatch path would eventually consume it.
+        if self.accuracy not in ('fast', 'max'):
+            raise ValueError(
+                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
+            )
+
 
 # ============================================================
 # Result
@@ -124,6 +139,10 @@ class SliceResult(SolveResult):
     """Per-slice DVFopt result — extends :class:`SolveResult` with the
     facade-level metadata (slice index, chosen strategy, history,
     snapshots) the per-volume orchestrator tracks.
+
+    ``corrected`` is a read-only ``(2, H, W)`` [dy, dx] *view* into the
+    assembled ``Result.corrected`` volume (not an independent copy) —
+    copy it before mutating.
 
     Aliases ``init_min``/``final_min`` are provided as properties so the
     existing dataframe + plot code (which reads ``s.init_min``) continues
@@ -328,14 +347,18 @@ class DVFopt:
         from dvfopt.exceptions import SolverConfigError
 
         c = self.config
+        if c.constraint in ('jdet_3d', '6tet', '6tet_3d'):
+            raise SolverConfigError(
+                f'constraint {c.constraint!r} is not supported: the DVFopt '
+                f'facade is per-slice 2D; for true-3D correction use '
+                f'correct_dvf_3d / correct_dvf_25d or the Solver API '
+                f"(e.g. Solver.from_spec(constraint='6tet', ...))."
+            )
         if c.constraint not in (
             '2tri',
             '2tri_standard',
             'jdet',
             'jdet_2d',
-            'jdet_3d',
-            '6tet',
-            '6tet_3d',
         ):
             raise SolverConfigError(f'bad constraint: {c.constraint!r}')
         # solver: 'auto', a registered label, or a Strategy instance.
@@ -407,8 +430,15 @@ class DVFopt:
         for z in slices:
             phi2 = _extract_2d_slice(corrected, z)
             sr = self._run_slice(phi2, z)
-            slice_results.append(sr)
             self._put_2d_slice(corrected, z, phi2)
+            # Store a read-only (2, H, W) [dy, dx] VIEW into the assembled
+            # volume rather than a per-slice copy — Result.corrected already
+            # holds the assembled data, and duplicating every slice costs
+            # ~1.2 GB on a 528-slice volume.
+            view = corrected[1:3, z]
+            view.flags.writeable = False
+            sr.corrected = view
+            slice_results.append(sr)
 
         # Restore the original layout on the return value.
         ndim, shape = original_layout
@@ -449,8 +479,10 @@ class DVFopt:
         if c.verbose >= 1:
             print(f'[z={z}] init n_neg={init_n_neg}  min={init_min:+.4f}', flush=True)
         if init_n_neg == 0 and init_min >= c.threshold - c.err_tol:
+            # ``corrected`` is replaced by fit() with a read-only view
+            # into the assembled volume; no per-slice copy is retained.
             return SliceResult(
-                corrected=phi2.copy(),
+                corrected=phi2,
                 init_n_neg=0,
                 init_min_T=init_min,
                 final_n_neg=0,
@@ -471,19 +503,42 @@ class DVFopt:
         if isinstance(c.solver, Strategy):
             strategy = c.solver
             strategy_label = type(strategy).__name__
+            if c.accuracy != 'fast':
+                import warnings
+
+                warnings.warn(
+                    f"DVFoptConfig.accuracy={c.accuracy!r} is ignored when "
+                    f"solver is a Strategy instance; set it on the instance "
+                    f"instead (e.g. SLPStrategy(accuracy={c.accuracy!r}))."
+                )
         elif c.solver == 'auto':
             strategy_label = auto_strategy(
                 constraint, init_n_neg, init_min, objective_label=c.objective
             )
             kw = dict(c.strategy_kwargs)
-            if strategy_label == 'slp' and c.accuracy != 'fast':
-                kw['accuracy'] = c.accuracy
+            if c.accuracy != 'fast':
+                if strategy_label == 'slp':
+                    # User-supplied strategy_kwargs['accuracy'] wins over
+                    # the config-level shorthand.
+                    kw.setdefault('accuracy', c.accuracy)
+                else:
+                    # auto_strategy currently never resolves to 'slp', so
+                    # accuracy would silently do nothing — say so.
+                    import warnings
+
+                    warnings.warn(
+                        f"accuracy={c.accuracy!r} currently applies only to "
+                        f"solver='slp'; auto selected {strategy_label!r} — "
+                        f"set solver='slp' to use the GPU-seeded mode."
+                    )
             strategy = make_strategy(strategy_label, **kw)
         else:
             strategy_label = c.solver
             kw = dict(c.strategy_kwargs)
             if strategy_label == 'slp' and c.accuracy != 'fast':
-                kw['accuracy'] = c.accuracy
+                # User-supplied strategy_kwargs['accuracy'] wins over
+                # the config-level shorthand.
+                kw.setdefault('accuracy', c.accuracy)
             strategy = make_strategy(strategy_label, **kw)
         objective = make_objective(c.objective, eps_l1=c.eps_l1)
 
@@ -548,8 +603,10 @@ class DVFopt:
                 f'({time.time() - t0:.1f}s)',
                 flush=True,
             )
+        # ``corrected`` is replaced by fit() with a read-only view into
+        # the assembled volume; no per-slice copy is retained.
         return SliceResult(
-            corrected=phi2.copy(),
+            corrected=phi2,
             init_n_neg=init_n_neg,
             init_min_T=init_min,
             final_n_neg=res.final_n_neg,
@@ -575,7 +632,8 @@ def _build_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
     """Map a DVFoptConfig.constraint string to a Constraint instance.
 
     Aliases the legacy ``'jdet'`` to ``'jdet_2d'`` since DVFopt's
-    per-slice loop always operates on 2D slices.
+    per-slice loop always operates on 2D slices. 3D constraint labels
+    are rejected earlier, at :meth:`DVFopt._validate`.
     """
     if name == 'jdet':
         name = 'jdet_2d'
@@ -589,8 +647,6 @@ def _build_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
         return TriConstraint2D(shape)
     if name in ('jdet_2d',):
         return JdetConstraint2D(shape)
-    if name == 'jdet_3d':
-        return JdetConstraint3D(shape)
     raise ValueError(f'unknown constraint {name!r}')
 
 

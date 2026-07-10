@@ -43,13 +43,15 @@ import scipy.sparse.linalg as spla
 from scipy.ndimage import binary_dilation, binary_erosion, generate_binary_structure
 from scipy.ndimage import label as cc_label
 
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
 def _fold_cell_mask_3d(phi: np.ndarray, threshold: float) -> np.ndarray:
     """``(D-1, H-1, W-1)`` boolean mask of cells with any tet below ``threshold``."""
-    V = six_tet_volumes_3d(phi)  # (6, Dc, Hc, Wc)
-    return V.min(axis=0) < threshold
+    # Fused per-cube min kernel — identical to
+    # ``six_tet_volumes_3d(phi).min(axis=0)`` without materialising the
+    # full (6, Dc, Hc, Wc) array.
+    return six_tet_min_volume_3d(phi) < threshold
 
 
 def _cells_to_corner_mask_3d(cell_mask: np.ndarray, D: int, H: int, W: int) -> np.ndarray:
@@ -186,6 +188,10 @@ def harmonic_extension_3d(
 
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
+    if merge_dilation < 0:
+        raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
+    if ring_pad < 0:
+        raise ValueError(f'ring_pad must be >= 0, got {ring_pad}')
     _, D, H, W = phi_in.shape
     accept_thr = threshold + margin
 
@@ -197,7 +203,13 @@ def harmonic_extension_3d(
 
     # Group nearby fold cells into components (3D 26-connectivity for
     # `merge_dilation` so diagonally-adjacent voxels join the same patch).
-    grouped = binary_dilation(cell_fold, iterations=merge_dilation)
+    # NOTE: scipy treats iterations < 1 as "repeat until convergence"
+    # (fills the grid), so only dilate for merge_dilation >= 1.
+    grouped = (
+        binary_dilation(cell_fold, iterations=merge_dilation)
+        if merge_dilation >= 1
+        else cell_fold
+    )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(3, 3))
 
     phi_out = phi_in.copy()
@@ -209,7 +221,14 @@ def harmonic_extension_3d(
             continue
         cur_cells = comp_cells.copy()
         for grow in range(max_grow_iters + 1):
-            patch_cells = binary_dilation(cur_cells, iterations=ring_pad + grow)
+            # scipy's binary_dilation(iterations=0) means "iterate to
+            # convergence" (fills the whole volume -> near-full-volume
+            # spsolve), so ring_pad=0 with grow=0 must mean "no dilation
+            # this round", not "dilate forever".
+            iters = ring_pad + grow
+            patch_cells = (
+                binary_dilation(cur_cells, iterations=iters) if iters >= 1 else cur_cells
+            )
             interior_cells = binary_erosion(patch_cells, iterations=1)
             free_mask = _cells_to_corner_mask_3d(interior_cells, D, H, W)
 
@@ -219,8 +238,10 @@ def harmonic_extension_3d(
             new_dx = _solve_laplace_patch_3d(phi_out[2], free_mask)
             phi_trial = np.stack([new_dz, new_dy, new_dx])
 
-            V_trial = six_tet_volumes_3d(phi_trial)
-            patch_min = V_trial.min(axis=0)[patch_cells].min() if patch_cells.any() else np.inf
+            # Fused per-cube min kernel — avoids materialising the full
+            # (6, Dc, Hc, Wc) volume array per grow attempt per component.
+            min_V_trial = six_tet_min_volume_3d(phi_trial)
+            patch_min = min_V_trial[patch_cells].min() if patch_cells.any() else np.inf
 
             if patch_min >= accept_thr:
                 phi_out = phi_trial

@@ -59,16 +59,36 @@ def gpu_untangle_alm_2d(phi_in_2hw, *, threshold=0.01, margin=2e-3,
     grown only when the worst violation stalls. Data term = smooth-L1 to
     input. Returns feasible-or-closest phi (2, H, W).
     """
+    phi_np = np.asarray(phi_in_2hw, np.float64)
+    H, W = phi_np.shape[1], phi_np.shape[2]
+    if H < 2 or W < 2:
+        # Degenerate slice: no 2x2 cell exists, so there are ZERO triangles
+        # and the field is trivially feasible. Return the input unchanged
+        # before any torch work — otherwise _areas_torch yields empty
+        # tensors and g.min() raises RuntimeError after burning a full
+        # inner loop of Adam steps.
+        return phi_np.copy()
+
     import torch
 
     dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-    phi0 = torch.tensor(np.asarray(phi_in_2hw, np.float64), device=dev,
-                        dtype=torch.float64)
+    phi0 = torch.tensor(phi_np, device=dev, dtype=torch.float64)
     dy = phi0[0].clone().requires_grad_(True)
     dx = phi0[1].clone().requires_grad_(True)
     tgt = threshold + margin
 
     t1, t2 = _areas_torch(dy, dx, torch)
+    # Upfront no-op check at plain `threshold` (NOT tgt = threshold+margin):
+    # the downstream SLP only needs min area >= threshold, and returning the
+    # input unchanged is exactly L1-optimal, so an already-feasible slice
+    # must not burn n_inner Adam steps chasing the extra `margin`. The
+    # margin only matters once the field has to MOVE (it buys the SLP's
+    # linearisation some slack), which is why the in-loop exit below keeps
+    # the stricter `worst >= 0` (i.e. min area >= tgt) condition: exiting
+    # mid-run at plain threshold would hand SLP a moved field without the
+    # margin the seed intends.
+    if float(min(t1.min().item(), t2.min().item())) >= threshold:
+        return phi_np.copy()
     lam1 = torch.zeros_like(t1)
     lam2 = torch.zeros_like(t2)
     mu = mu0
