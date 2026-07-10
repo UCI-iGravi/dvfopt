@@ -711,6 +711,19 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         )
         method_bar.addWidget(self._max_iter_spin)
 
+        method_bar.addWidget(QtWidgets.QLabel('thr:'))
+        self._thr_spin = QtWidgets.QDoubleSpinBox()
+        self._thr_spin.setDecimals(4)
+        self._thr_spin.setRange(0.0, 1.0)
+        self._thr_spin.setSingleStep(0.005)
+        self._thr_spin.setValue(FEASIBILITY_THRESHOLD)
+        self._thr_spin.setToolTip(
+            'Solver feasibility threshold: every constraint is enforced as '
+            'C(phi) >= thr. Also drives the stats panel\'s infeasible(<thr) '
+            'counts. Default 0.01 (package default).'
+        )
+        method_bar.addWidget(self._thr_spin)
+
         # Spacer + Params button — opens the tabbed settings dialog for
         # window-level params that don't belong in the per-run toolbar
         # (e.g. ``history_max_size``).
@@ -1712,6 +1725,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         params = {
             'time_budget_s': float(self._budget_spin.value()),
             'max_iterations': int(self._max_iter_spin.value()),
+            'threshold': self._display_threshold(),
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
         }
@@ -2073,9 +2087,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     if self._constraint_combo.currentData() == CONSTRAINT_TET3D
                     else 'jdet3d'
                 )
+                thr = self._display_threshold()
                 n_neg, min_T = _metric_counts_3d(self._volume, kind)
-                infeas = _infeasible_count_3d(self._volume, kind)
-                thr = FEASIBILITY_THRESHOLD
+                infeas = _infeasible_count_3d(self._volume, kind, thr)
                 return (
                     '<b>Stats (3D)</b><br>'
                     f'volume . . . . {D}×{H}×{W}<br>'
@@ -2096,15 +2110,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             min_tri = _min_tri_from_phi(phi_2hw)
             # Fold counts (metric <= 0) share the worker's convention so
             # the idle panel matches the running n_neg readout. The
-            # solver, however, targets ``>= threshold`` (0.01) — surface
-            # the stricter "still infeasible" counts too, so a field with
-            # 0 folds but min in (0, 0.01) doesn't read as "done".
+            # solver, however, targets ``>= threshold`` (user-editable via
+            # the thr: spinbox, default 0.01) — surface the stricter
+            # "still infeasible" counts too, so a field with 0 folds but
+            # min in (0, thr) doesn't read as "done".
+            thr = self._display_threshold()
             n_neg_jdet, _ = _metric_counts(phi_2hw, 'jdet')
             n_neg_tri, _ = _metric_counts(phi_2hw, '2tri')
-            infeas_jdet = _infeasible_count(phi_2hw, 'jdet')
-            infeas_tri = _infeasible_count(phi_2hw, '2tri')
+            infeas_jdet = _infeasible_count(phi_2hw, 'jdet', thr)
+            infeas_tri = _infeasible_count(phi_2hw, '2tri', thr)
             interior = max(1, (H - 1) * (W - 1))
-            thr = FEASIBILITY_THRESHOLD
             # ``_min_tri_from_phi`` returns NaN at the boundary (no
             # cell-anchor exists past H-1, W-1). Use nanmin so the
             # idle readout shows the real interior minimum.
@@ -2122,9 +2137,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             )
         if snap.phi.ndim == 4:  # 3D volume snapshot
             _, D, H, W = snap.phi.shape
-            feas_flag = (
-                '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
-            )
+            thr = self._display_threshold()
+            feas_flag = '' if snap.min_T >= thr else f'  (&lt;{thr:g})'
             delta = ''
             if self._input_n_neg is not None:
                 delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
@@ -2143,9 +2157,8 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             delta = f'vs input . . . {self._input_n_neg} → {snap.n_neg}<br>'
         # Flag when the worst cell is positive but still inside the
         # solver's feasibility margin — folds==0 yet not solver-feasible.
-        feas_flag = (
-            '' if snap.min_T >= FEASIBILITY_THRESHOLD else f'  (&lt;{FEASIBILITY_THRESHOLD:g})'
-        )
+        thr = self._display_threshold()
+        feas_flag = '' if snap.min_T >= thr else f'  (&lt;{thr:g})'
         return (
             '<b>Stats</b><br>'
             f'outer iter . . {snap.outer_iter}<br>'
@@ -2161,6 +2174,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             f'target pixel . (y={snap.neg_y}, x={snap.neg_x})<br>'
             f'grid . . . . . {H}×{W}'
         )
+
+    def _display_threshold(self) -> float:
+        """The user-selected feasibility threshold (spinbox), used for both
+        solving and the stats panel's infeasible counts."""
+        return float(self._thr_spin.value())
 
     @staticmethod
     def _max_abs_disp(phi_2hw: np.ndarray) -> float:
@@ -2257,6 +2275,9 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             mi = s.value('max_iter', 0, type=int)
             if mi:
                 self._max_iter_spin.setValue(mi)
+        thr = s.value('threshold', 0.0, type=float)
+        if thr:
+            self._thr_spin.setValue(thr)
         hms = s.value('history_max_size', 0, type=int)
         if hms:
             self._history_max_size = hms
@@ -2273,6 +2294,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         s.setValue('auto_levels', self._autolevel_check.isChecked())
         s.setValue('time_budget_s', float(self._budget_spin.value()))
         s.setValue('max_iter', int(self._max_iter_spin.value()))
+        s.setValue('threshold', self._display_threshold())
         s.setValue('history_max_size', int(self._history_max_size))
 
     # ----- lifecycle ---------------------------------------------------------

@@ -607,3 +607,33 @@ def test_slp_and_auto_dispatch():
     wj = SolverWorker(deformation_i=phi, method_id='auto_jdet', params={'objective_id': 'l1'})
     wj._build_strategy()
     assert wj.resolved_strategy_label in ('barrier', 'slsqp_windowed')
+
+
+# ---------------------------------------------------------------------------
+# user-editable feasibility threshold
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_param_reaches_solver(monkeypatch):
+    import dvfopt
+
+    captured = {}
+
+    class _FakeSolver:
+        def __init__(self, *, constraint, objective, strategy, threshold=None):
+            captured['threshold'] = threshold
+
+        def fit(self, phi, **kw):
+            class R:
+                corrected = np.zeros((2, 6, 6))
+
+            return R()
+
+    monkeypatch.setattr(dvfopt, 'Solver', _FakeSolver)
+    w = SolverWorker(
+        deformation_i=np.zeros((3, 1, 6, 6)),
+        method_id='m14_2tri',
+        params={'threshold': 0.02, 'objective_id': 'l1'},
+    )
+    w._run_via_solver(w._build_strategy(), '2tri', metric_kind='2tri')
+    assert captured['threshold'] == pytest.approx(0.02)

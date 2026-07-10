@@ -728,3 +728,22 @@ def test_slp_is_first_and_default_2tri(qapp, tmp_path, monkeypatch):
     win._select_combo_data(win._constraint_combo, 'jdet')
     algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
     assert 'auto' in algos
+
+
+# ---------------------------------------------------------------------------
+# user-editable feasibility threshold
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_spinbox_feeds_params_and_stats(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
+    assert win._thr_spin.value() == pytest.approx(0.01)
+    win._thr_spin.setValue(0.05)
+    captured = {}
+    monkeypatch.setattr(
+        'dvfopt_gui.worker.SolverWorker.start', lambda self: captured.setdefault('p', self._params)
+    )
+    win._on_run(use_roi=False)
+    assert captured['p']['threshold'] == pytest.approx(0.05)
+    # Idle stats use the spinbox threshold, not the module constant.
+    assert '0.05' in win._format_stats(None)

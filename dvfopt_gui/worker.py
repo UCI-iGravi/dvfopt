@@ -526,6 +526,8 @@ class SolverWorker(QtCore.QThread):
             kwargs['max_per_index_iter'] = int(self._params['max_per_index_iter'])
         if self._params.get('method_name'):
             kwargs['method_name'] = str(self._params['method_name'])
+        if self._params.get('threshold') is not None:
+            kwargs['threshold'] = float(self._params['threshold'])
         phi_out = iterative_serial(
             self._deformation_i.copy(),
             step_callback=self._callback,
@@ -588,7 +590,12 @@ class SolverWorker(QtCore.QThread):
         else:
             raise ValueError(f'unknown constraint_kind={constraint_kind!r}')
         objective = self._build_objective()
-        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+        solver = Solver(
+            constraint=constraint,
+            objective=objective,
+            strategy=strategy,
+            threshold=self._params.get('threshold'),
+        )
 
         # Per-stage callback adapter: convert {'phi', 'stage'} dicts from
         # the strategy into ``StateSnapshot`` records on the worker's
@@ -658,7 +665,12 @@ class SolverWorker(QtCore.QThread):
         else:
             raise ValueError(f'unknown 3D constraint_kind={constraint_kind!r}')
         objective = self._build_objective()
-        solver = Solver(constraint=constraint, objective=objective, strategy=strategy)
+        solver = Solver(
+            constraint=constraint,
+            objective=objective,
+            strategy=strategy,
+            threshold=self._params.get('threshold'),
+        )
 
         # Memory guard: keep mid stages only if the full deque fits the budget.
         est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
