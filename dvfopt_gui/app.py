@@ -277,6 +277,8 @@ _METHOD_SPECS_TET3D = [
     ('slsqp_fullgrid', 'SLSQP full-grid 3D (KKT)'),
     ('active_band', 'ActiveBandALM3D (banded M10Tet recovery; research)'),
     ('coupled_kring', 'CoupledKRing3D (k-ring SLSQP attractor escape; research)'),
+    ('pipeline3d', 'Full 3D pipeline (bulk auto + k-ring escape)'),
+    ('barrier_torch', 'Barrier GPU (torch; CPU fallback)'),
 ]
 _METHOD_SPECS_JDET3D = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
@@ -313,6 +315,13 @@ DEFAULT_OBJECTIVE = OBJECTIVE_L1
 def _compose_method_id(algo: str, constraint: str) -> str:
     """Combine ``algo`` + ``constraint`` into the worker dispatch key."""
     return f'{algo}_{constraint}'
+
+
+def _torch_available() -> bool:
+    """True when PyTorch is importable (gates the GPU-barrier menu item)."""
+    import importlib.util
+
+    return importlib.util.find_spec('torch') is not None
 
 
 def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:
@@ -1665,6 +1674,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._method_combo.clear()
         for algo, label in _METHOD_SPECS_BY_CONSTRAINT[constraint]:
             self._method_combo.addItem(label, algo)
+        # GPU barrier needs torch; keep it visible but disabled when absent.
+        idx = self._method_combo.findData('barrier_torch')
+        if idx >= 0 and not _torch_available():
+            self._method_combo.model().item(idx).setEnabled(False)
         # Keep the prior algo selected if the new constraint also supports
         # it (e.g. switching constraint while "barrier" is selected keeps
         # barrier); otherwise fall back to the per-constraint default.
@@ -1936,6 +1949,13 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
+        report = getattr(self.sender(), 'pipeline_report', None)
+        if report is not None:
+            self.statusBar().showMessage(
+                f'Pipeline: {report.n_neg_in} → {report.n_neg_out} folds, '
+                f'feasible={report.feasible}, {report.wall_s:.0f}s',
+                15_000,
+            )
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText('Stop')
 
@@ -1992,6 +2012,21 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if mid is None or worker is None or not worker.isRunning():
             return
         elapsed = self._run_elapsed.elapsed() / 1000.0
+        if mid == 'marching25d_tet3d':
+            prog = getattr(worker, 'marching_progress', None)
+            if prog is not None:
+                phase, index, total, n_neg = prog
+                self._progress.setRange(0, max(1, int(total)))
+                self._progress.setValue(int(index))
+                self._progress.setFormat(f'{phase} {index}/{total} · n_neg {n_neg}')
+            else:
+                self._progress.setRange(0, 0)
+                self._progress.setFormat(f'{elapsed:.0f}s')
+            return
+        if mid == 'pipeline3d_tet3d':
+            self._progress.setRange(0, 0)
+            self._progress.setFormat(f'{elapsed:.0f}s')
+            return
         if mid.startswith(('m10', 'm14')):
             budget = float(self._budget_spin.value())
             frac = min(1.0, elapsed / budget) if budget > 0 else 0.0

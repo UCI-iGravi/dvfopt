@@ -637,3 +637,67 @@ def test_threshold_param_reaches_solver(monkeypatch):
     )
     w._run_via_solver(w._build_strategy(), '2tri', metric_kind='2tri')
     assert captured['threshold'] == pytest.approx(0.02)
+
+
+# ---------------------------------------------------------------------------
+# 2.5D marching + full-3D pipeline runners, torch barrier
+# ---------------------------------------------------------------------------
+
+
+def test_marching_and_pipeline3d_dispatch(monkeypatch):
+    vol = np.zeros((3, 4, 8, 8))
+    called = {}
+    monkeypatch.setattr(
+        SolverWorker, '_run_marching_25d', lambda self: called.setdefault('m', True) or vol
+    )
+    w = SolverWorker(deformation_i=vol, method_id='marching25d_tet3d')
+    w.run()
+    assert called.get('m'), 'marching runner not dispatched'
+    assert w._trajectory_metric_kind() == 'tet3d'
+
+    monkeypatch.setattr(
+        SolverWorker, '_run_pipeline_3d', lambda self: called.setdefault('p', True) or vol
+    )
+    w2 = SolverWorker(deformation_i=vol, method_id='pipeline3d_tet3d')
+    w2.run()
+    assert called.get('p'), 'pipeline3d runner not dispatched'
+
+
+def test_marching_25d_end_to_end():
+    # Per-slice-feasible, inter-layer-folded fixture (same as the library test).
+    vol = np.zeros((3, 4, 8, 8))
+    for k in range(4):
+        vol[2, k, :, 4] = 1.5 if k % 2 == 0 else -1.5
+    from dvfopt_gui.worker import _metric_counts_3d
+
+    n0, _ = _metric_counts_3d(vol, 'tet3d')
+    assert n0 > 0
+    w = SolverWorker(deformation_i=vol, method_id='marching25d_tet3d', params={'threshold': 0.01})
+    out = w._run_marching_25d()
+    n1, _ = _metric_counts_3d(out, 'tet3d')
+    assert n1 < n0
+    assert w.pipeline_report is not None and w.pipeline_report.n_neg_out == n1
+    assert w.history_len() >= 2 and w.history_get(0).phi.ndim == 4
+
+
+def test_pipeline3d_dispatch_uses_stub(monkeypatch):
+    import dvfopt
+
+    vol = np.zeros((3, 4, 8, 8))
+
+    class _R:
+        n_neg_in, n_neg_out, feasible, wall_s = 3, 0, True, 0.1
+
+    monkeypatch.setattr(dvfopt, 'correct_dvf_3d', lambda v, **kw: (v.copy(), _R()))
+    w = SolverWorker(deformation_i=vol, method_id='pipeline3d_tet3d', params={'threshold': 0.02})
+    out = w._run_pipeline_3d()
+    assert out.shape == vol.shape
+    assert w.pipeline_report is not None
+
+
+def test_barrier_torch_dispatch():
+    pytest.importorskip('torch', reason='torch barrier needs torch')
+    from dvfopt import BarrierTet3DTorchStrategy
+
+    w = SolverWorker(deformation_i=np.zeros((3, 4, 8, 8)), method_id='barrier_torch_tet3d')
+    assert isinstance(w._build_strategy(), BarrierTet3DTorchStrategy)

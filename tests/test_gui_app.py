@@ -883,3 +883,24 @@ def test_load_worker_path_used_by_on_load(qapp, tmp_path, monkeypatch):
         QtWidgets.QApplication.processEvents()
     assert win._volume is not None and win._volume.shape == (3, 1, 6, 6)
     assert win._load_btn.isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# tet3d menu: full-3D pipeline entry + torch-barrier gating
+# ---------------------------------------------------------------------------
+
+
+def test_tet3d_menu_pipeline_and_torch_gating(qapp, monkeypatch):
+    import dvfopt_gui.app as A
+
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'pipeline3d' in algos
+    assert 'barrier_torch' in algos
+    # Torch missing -> the item is disabled (greyed), still listed.
+    monkeypatch.setattr(A, '_torch_available', lambda: False)
+    win._repopulate_method_combo('tet3d')
+    idx = win._method_combo.findData('barrier_torch')
+    assert idx >= 0
+    assert not win._method_combo.model().item(idx).isEnabled()

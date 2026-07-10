@@ -415,6 +415,11 @@ class SolverWorker(QtCore.QThread):
         # Set by the 'auto' dispatch: the registry label auto_strategy
         # resolved to (e.g. 'm14_schwarz'); None for explicit methods.
         self.resolved_strategy_label: str | None = None
+        # Set by the pipeline runners (_run_marching_25d / _run_pipeline_3d):
+        # the Correct25DReport / Correct3DReport for status display, and the
+        # last 2.5D progress event for the progress bar.
+        self.pipeline_report = None
+        self.marching_progress: tuple | None = None
 
     def request_stop(self):
         self._stop_requested = True
@@ -741,6 +746,76 @@ class SolverWorker(QtCore.QThread):
         self._record(_volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
         return corrected
 
+    def _run_marching_25d(self):
+        """Whole-volume 2.5D marching (fold PREVENTION): sweep + mop via
+        ``correct_dvf_25d``. Input is the CURRENT (per-slice-corrected)
+        volume the window handed us — the pipeline's precondition is
+        dz == 0, which per-slice 2D correction guarantees."""
+        from dvfopt import correct_dvf_25d
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'2.5D marching needs (3, D, H, W); got {vol.shape}')
+        _, D, H, W = vol.shape
+        thr = self._params.get('threshold')
+        thr = float(thr) if thr is not None else 0.01
+
+        n0, m0 = _metric_counts_3d(vol, 'tet3d')
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+
+        est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
+        keep_stages = est <= MAX_3D_HISTORY_BYTES
+        stride = max(1, D // 6)
+        outer = [0]
+
+        def _cb(event):
+            if self._stop_requested:
+                raise KeyboardInterrupt('user requested stop')
+            self.marching_progress = (
+                event['phase'],
+                event['index'],
+                event['total'],
+                event['n_neg'],
+            )
+            if not keep_stages:
+                return
+            if event['phase'] == 'sweep' and event['index'] % stride != 0:
+                return
+            outer[0] += 1
+            n, m = _metric_counts_3d(event['phi'], 'tet3d')
+            self._record(_volume_snapshot(event['phi'], n_neg=n, min_T=m, outer_iter=outer[0]))
+
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        phi_out, report = correct_dvf_25d(vol, threshold=thr, verbose=0, progress_callback=_cb)
+        self.pipeline_report = report
+        nf, mf = _metric_counts_3d(phi_out, 'tet3d')
+        self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
+        return np.asarray(phi_out, dtype=np.float64)
+
+    def _run_pipeline_3d(self):
+        """One-shot end-to-end 3D orchestrator (``correct_dvf_3d``): bulk
+        recovery + k-ring escape. No progress hook exists — init + final
+        snapshots only; Stop is best-effort (checked before launch)."""
+        import dvfopt
+
+        vol = np.asarray(self._deformation_i, dtype=np.float64)
+        if vol.ndim != 4 or vol.shape[0] != 3:
+            raise ValueError(f'3D pipeline needs (3, D, H, W); got {vol.shape}')
+        thr = self._params.get('threshold')
+        thr = float(thr) if thr is not None else 0.01
+
+        n0, m0 = _metric_counts_3d(vol, 'tet3d')
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+        if self._stop_requested:
+            raise KeyboardInterrupt()
+        phi_out, report = dvfopt.correct_dvf_3d(vol, threshold=thr, verbose=0)
+        self.pipeline_report = report
+        phi_out = np.asarray(phi_out, dtype=np.float64)
+        nf, mf = _metric_counts_3d(phi_out, 'tet3d')
+        self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=1))
+        return phi_out
+
     def _build_strategy(self):
         """Build a configured Strategy instance for the chosen method.
 
@@ -843,6 +918,10 @@ class SolverWorker(QtCore.QThread):
             from dvfopt import SLPStrategy
 
             return SLPStrategy()
+        if mid == 'barrier_torch_tet3d':
+            from dvfopt import BarrierTet3DTorchStrategy
+
+            return BarrierTet3DTorchStrategy()
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:
@@ -883,6 +962,10 @@ class SolverWorker(QtCore.QThread):
                 phi_out = self._run_windowed_slsqp(enforce_triangles=False)
             elif mid == 'slsqp_windowed_2tri':
                 phi_out = self._run_windowed_slsqp(enforce_triangles=True)
+            elif mid == 'marching25d_tet3d':
+                phi_out = self._run_marching_25d()
+            elif mid == 'pipeline3d_tet3d':
+                phi_out = self._run_pipeline_3d()
             else:
                 # Method-id always ends in either ``_2tri``, ``_jdet``,
                 # ``_tet3d``, or ``_jdet3d``; split on the LAST underscore
