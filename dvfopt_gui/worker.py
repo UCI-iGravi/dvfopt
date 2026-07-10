@@ -787,7 +787,12 @@ class SolverWorker(QtCore.QThread):
 
         if self._stop_requested:
             raise KeyboardInterrupt()
-        phi_out, report = correct_dvf_25d(vol, threshold=thr, verbose=0, progress_callback=_cb)
+        # callback_copies=False: zero-copy events are safe here — _cb never
+        # retains event['phi']; _volume_snapshot() copies before recording.
+        phi_out, report = correct_dvf_25d(
+            vol, threshold=thr, verbose=0, progress_callback=_cb,
+            callback_copies=False,
+        )
         self.pipeline_report = report
         nf, mf = _metric_counts_3d(phi_out, 'tet3d')
         self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))

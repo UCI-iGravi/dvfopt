@@ -44,6 +44,50 @@ def test_progress_callback_fires_with_contract_keys():
     assert all(e['total'] == vol.shape[1] for e in sweep)
 
 
+def test_progress_callback_events_are_independent_snapshots():
+    """Default callback_copies=True: each event's 'phi' is an independent
+    snapshot of the output buffer at emit time — retained events must not
+    alias each other or the live buffer."""
+    vol = _interlayer_folded_volume()
+    events = []
+    out, _ = correct_dvf_25d(
+        vol, verbose=0, progress_callback=lambda e: events.append(dict(e))
+    )
+    assert len(events) >= 2, 'need >= 2 events to check snapshot independence'
+    # No event carries the live output buffer, and no two events share storage.
+    for e in events:
+        assert e['phi'] is not out
+    for a, b in zip(events, events[1:]):
+        assert a['phi'] is not b['phi']
+        assert not np.shares_memory(a['phi'], b['phi'])
+    # The snapshots capture *different* pipeline states: at least one earlier
+    # event differs from a later one (repairs kept mutating the buffer).
+    assert any(
+        not np.array_equal(events[0]['phi'], e['phi']) for e in events[1:]
+    ), 'per-event snapshots are identical — aliasing regression?'
+    # Mutation independence: writing into one snapshot leaves the rest intact.
+    ref = events[-1]['phi'].copy()
+    events[0]['phi'][:] = 12345.0
+    assert np.array_equal(events[-1]['phi'], ref)
+
+
+def test_progress_callback_zero_copy_mode_aliases_live_buffer():
+    """callback_copies=False restores the zero-copy contract: every event's
+    'phi' IS the live mutable output buffer (the same object the pipeline
+    returns), so consumers must copy if they retain it."""
+    vol = _interlayer_folded_volume()
+    events = []
+    out, _ = correct_dvf_25d(
+        vol,
+        verbose=0,
+        progress_callback=lambda e: events.append(dict(e)),
+        callback_copies=False,
+    )
+    assert events, 'no progress events fired'
+    for e in events:
+        assert e['phi'] is out, 'zero-copy mode must pass the live buffer'
+
+
 def test_progress_callback_keyboardinterrupt_propagates():
     vol = _interlayer_folded_volume()
 

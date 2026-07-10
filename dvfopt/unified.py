@@ -99,10 +99,11 @@ class DVFoptConfig:
     # A Strategy instance is also accepted — use that when you need
     # non-default knobs.
     solver: object = 'auto'
-    # NOTE: defaults to 'l2' (historical facade default) while
-    # dvfopt.solver.correct_dvf defaults to 'l1' — pass objective
-    # explicitly when comparing results across the two APIs.
-    objective: str = 'l2'  # 'l2', 'l1', 'none'
+    # NOTE: defaults to 'l1', matching dvfopt.solver.correct_dvf — the two
+    # APIs now share the same default objective. (Before v0.2.x this facade
+    # historically defaulted to 'l2'.) With solver='auto', 2-tri + l1 routes
+    # to the SLP champion strategy.
+    objective: str = 'l1'  # 'l1', 'l2', 'none'
     eps_l1: float = 1e-4
 
     # SLP accuracy mode. 'fast' (default) runs SLP directly; 'max' prepends

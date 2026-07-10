@@ -49,12 +49,23 @@ def _stack(box):
 
 
 def _viol(box, D, H, W, thr3, thr2):
-    """Exact hinge violation: inter-layer 6-tet term + intra-slice 2-tri term."""
-    v3 = tet_volumes_flat(_stack(box), D, H, W)
+    """Exact hinge violation: inter-layer 6-tet term + intra-slice 2-tri term.
+
+    Bridges the two phi-pack conventions (CLAUDE.md): the 6-tet term consumes
+    the DX_FIRST pack ``[dx | dy | dz]`` built by ``_stack``; the 2-tri term
+    consumes the DY_FIRST pack ``[dy | dx]``. The length asserts guard a
+    channel-order regression (a swapped/dropped channel changes the pack
+    length); they are O(1) size comparisons — no per-iteration cost.
+    """
+    flat = _stack(box)
+    assert flat.size == 3 * D * H * W, 'DX_FIRST tet pack must be [dx|dy|dz] of length 3*DHW'
+    v3 = tet_volumes_flat(flat, D, H, W)
     tot = float(np.maximum(0.0, thr3 - v3).sum())
     for s in range(D):
         # tri_areas_flat takes the DY_FIRST pack ([dy, dx]) -> concat order correct.
-        t2 = tri_areas_flat(np.concatenate([box[0, s].ravel(), box[1, s].ravel()]), H, W)
+        p2 = np.concatenate([box[0, s].ravel(), box[1, s].ravel()])
+        assert p2.size == 2 * H * W, 'DY_FIRST 2-tri pack must be [dy|dx] of length 2*HW'
+        t2 = tri_areas_flat(p2, H, W)
         tot += float(np.maximum(0.0, thr2 - t2).sum())
     return tot
 

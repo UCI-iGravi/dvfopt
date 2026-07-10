@@ -254,11 +254,12 @@ class TestAccuracyPlumbing:
 
     def test_auto_solver_max_accuracy_warns_when_not_slp(self):
         """accuracy='max' with solver='auto' warns when auto resolves to a
-        non-SLP label. With 2tri + the facade's default objective='l2',
-        auto keeps the legacy (non-slp) routing, so accuracy would
-        silently do nothing — the facade warns and names the label auto
-        actually selected. (2tri + objective='l1' auto-resolves to 'slp'
-        and must NOT warn — see the companion test below.)"""
+        non-SLP label. With 2tri + an explicit objective='l2' (the facade
+        default is now 'l1'), auto keeps the legacy (non-slp) routing, so
+        accuracy would silently do nothing — the facade warns and names
+        the label auto actually selected. (2tri + objective='l1' — now
+        also the default — auto-resolves to 'slp' and must NOT warn — see
+        the companion test below.)"""
         phi = _planted_fold_2d()
         cfg = DVFoptConfig(
             solver='auto',

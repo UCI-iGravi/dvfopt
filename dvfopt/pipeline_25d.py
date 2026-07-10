@@ -106,6 +106,7 @@ def correct_dvf_25d(
     dz_tol: float = 1e-12,
     verbose: int = 0,
     progress_callback=None,
+    callback_copies: bool = True,
 ):
     """Drive a folded, in-plane-only 3D DVF toward strict 6-tet feasibility.
 
@@ -141,9 +142,17 @@ def correct_dvf_25d(
     progress_callback : callable or None
         When supplied, called after each sweep-slice repair and after the
         mop with ``{'phase': 'sweep'|'mop', 'index', 'total', 'n_neg',
-        'phi'}`` (``phi`` is the live output buffer — copy if you keep it).
-        Exceptions — notably ``KeyboardInterrupt`` — propagate, so a GUI
-        can use it to stop between slices. ``None`` (default) is a no-op.
+        'phi'}``. Exceptions — notably ``KeyboardInterrupt`` — propagate,
+        so a GUI can use it to stop between slices. ``None`` (default) is
+        a no-op.
+    callback_copies : bool, default True
+        When True, each progress event carries an independent snapshot
+        (``'phi'`` is a copy of the output buffer at emit time), so
+        events kept across calls do not alias each other. Set False to
+        restore the zero-copy behaviour: ``'phi'`` is then the live
+        mutable output buffer — cheaper (no per-event ``(3,D,H,W)``
+        copy), but every retained event sees later mutations, so copy
+        inside the callback if you keep it.
 
     Returns
     -------
@@ -240,8 +249,12 @@ def correct_dvf_25d(
 
     def _emit_progress(phase, index, total, n_neg):
         if progress_callback is not None:
+            # callback_copies=True: snapshot so retained events don't alias
+            # the live buffer; False: zero-copy (see docstring caveat).
+            phi_evt = out.copy() if callback_copies else out
             progress_callback(
-                {'phase': phase, 'index': index, 'total': total, 'n_neg': int(n_neg), 'phi': out}
+                {'phase': phase, 'index': index, 'total': total, 'n_neg': int(n_neg),
+                 'phi': phi_evt}
             )
 
     # Up: repair slice z against frozen slice z-1 (cur is the upper layer).
