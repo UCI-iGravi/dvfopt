@@ -105,6 +105,7 @@ def correct_dvf_25d(
     mu: float = 1000.0,
     dz_tol: float = 1e-12,
     verbose: int = 0,
+    progress_callback=None,
 ):
     """Drive a folded, in-plane-only 3D DVF toward strict 6-tet feasibility.
 
@@ -137,6 +138,12 @@ def correct_dvf_25d(
         Tolerance for the ``dz == 0`` precondition check.
     verbose : int, default 0
         ``>= 1`` prints bracketed progress lines.
+    progress_callback : callable or None
+        When supplied, called after each sweep-slice repair and after the
+        mop with ``{'phase': 'sweep'|'mop', 'index', 'total', 'n_neg',
+        'phi'}`` (``phi`` is the live output buffer — copy if you keep it).
+        Exceptions — notably ``KeyboardInterrupt`` — propagate, so a GUI
+        can use it to stop between slices. ``None`` (default) is a no-op.
 
     Returns
     -------
@@ -222,12 +229,22 @@ def correct_dvf_25d(
     # ---- Bidirectional sweep outward from the origin ----
     ts = time.time()
 
+    _sweep_done = 0
+
+    def _emit_progress(phase, index, total, n_neg):
+        if progress_callback is not None:
+            progress_callback(
+                {'phase': phase, 'index': index, 'total': total, 'n_neg': int(n_neg), 'phi': out}
+            )
+
     # Up: repair slice z against frozen slice z-1 (cur is the upper layer).
     for z in range(origin_idx + 1, D):
         frozen_sl = out[1:3, z - 1]
         cur_sl = out[1:3, z]
         cur, n_before, n_after = march_slice(frozen_sl, cur_sl, True, **march_kw)
         out[1:3, z] = cur
+        _sweep_done += 1
+        _emit_progress('sweep', _sweep_done, D, n_after)
         if verbose:
             print(f'[25d up z={z}] folds {n_before}->{n_after}', flush=True)
 
@@ -242,6 +259,8 @@ def correct_dvf_25d(
         cur_sl = out[1:3, z]
         cur, n_before, n_after = march_slice(frozen_sl, cur_sl, False, **march_kw)
         out[1:3, z] = cur
+        _sweep_done += 1
+        _emit_progress('sweep', _sweep_done, D, n_after)
         if verbose:
             print(f'[25d dn z={z}] folds {n_before}->{n_after}', flush=True)
 
@@ -267,6 +286,7 @@ def correct_dvf_25d(
             dict(stage='mop', n_neg=n_neg_mop, min_T=info['min_T_after'],
                  wall_s=time.time() - ts)
         )
+        _emit_progress('mop', 1, 1, n_neg_mop)
         if verbose:
             print(f'[25d mop] n_neg {n_neg_sweep}->{n_neg_mop}', flush=True)
         # The mop already measured its final state; reuse it (the report's
