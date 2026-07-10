@@ -421,10 +421,10 @@ def correct_dvf(
     :func:`auto_strategy`; 2-tri + L1 always routes to ``'slp'``).
 
     .. note::
-        The default objective here is ``'l1'``, while
-        :class:`dvfopt.DVFoptConfig` defaults to ``'l2'`` (historical
-        facade default) — pass ``objective=`` explicitly when comparing
-        results across the two APIs.
+        The default objective here is ``'l1'``, matching
+        :class:`dvfopt.DVFoptConfig` — the two APIs share the same
+        default, so results are comparable without passing
+        ``objective=`` explicitly.
     """
     if shape is None:
         shape = phi_in.shape[1:]  # infer from input

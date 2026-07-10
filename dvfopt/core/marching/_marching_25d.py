@@ -101,6 +101,22 @@ def _repair_cluster(args):
     def _geo(c):
         return (frozen_c, c) if cur_is_upper else (c, frozen_c)
 
+    # ---- Pack-layout guards (CLAUDE.md: never bridge DX_FIRST/DY_FIRST
+    # silently). The 6-tet side is the DX_FIRST flat pack [dx | dy | dz] of
+    # length 3*(2*n_pix) whose dz third is identically zero (2.5D
+    # precondition); the 2-tri side is the DY_FIRST pack [dy | dx] of length
+    # 2*n_pix. free3/free2 must index only inside those layouts — a
+    # channel-order regression shifts these offsets/lengths and trips the
+    # asserts once per cluster, before any LP work.
+    _pf0 = _stack_flat(*_geo(cur_c))
+    assert _pf0.size == 3 * n2, 'DX_FIRST tet pack must be [dx|dy|dz] of length 3*(2*HW)'
+    assert not _pf0[2 * n2:].any(), 'dz third of the DX_FIRST tet pack must be zero (2.5D)'
+    assert np.concatenate([cur_c[0].ravel(), cur_c[1].ravel()]).size == 2 * n_pix, \
+        'DY_FIRST 2-tri pack must be [dy|dx] of length 2*HW'
+    if ii.size:
+        assert free3.max() < 2 * n2, 'free3 must stay inside the dx/dy thirds (never dz)'
+        assert free2.max() < 2 * n_pix, 'free2 out of DY_FIRST pack range'
+
     def _free_vec(c):
         return np.concatenate([c[1].ravel()[ii], c[0].ravel()[ii]])
 

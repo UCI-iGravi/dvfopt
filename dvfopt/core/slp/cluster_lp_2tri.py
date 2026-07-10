@@ -470,10 +470,24 @@ def cluster_slp_iter(
         # Polish uses M14-fast (skip stage 4 barrier polish) since
         # the cluster output is already L1-good — we only need
         # feasibility-restoration here, not L1 minimisation.
+        # stage1_mu_schedule=() also skips m10's internal stage-3
+        # log-barrier polish, matching the M14_SEED_STAGE1_MU_SCHEDULE
+        # convention of the lp_direct_2tri seeds. Benched 2026-07 on
+        # B0039 polish-fire cases (z=0 + z=12 with default knobs,
+        # z=360 with weakened knobs): outputs byte-identical to the
+        # legacy m10 default schedule (same n_neg/n_below/min_T,
+        # dL1 = 0.00%), wall within noise (+-4%) — m10 skips that
+        # stage anyway unless its ALM seed is already strictly
+        # feasible, and m14's stage-2 l2-refine re-anchors regardless.
+        # () just makes the skip explicit and consistent with the
+        # seed path.
         solver = Solver(
             constraint=TriConstraint2DFullCoverage(shape=(H, W)),
             objective=L1Objective(eps=1e-4),
-            strategy=HarmonicALMRefineRepairStrategy(polish_mu=()),
+            strategy=HarmonicALMRefineRepairStrategy(
+                polish_mu=(),
+                stage1_mu_schedule=(),
+            ),
             threshold=threshold,
         )
         phi_out = solver.fit(phi_out).corrected
