@@ -701,3 +701,42 @@ def test_barrier_torch_dispatch():
 
     w = SolverWorker(deformation_i=np.zeros((3, 4, 8, 8)), method_id='barrier_torch_tet3d')
     assert isinstance(w._build_strategy(), BarrierTet3DTorchStrategy)
+
+
+# ---------------------------------------------------------------------------
+# auto-generated per-strategy parameter panel
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_params_introspection():
+    from dvfopt import SLPStrategy
+    from dvfopt_gui.strategy_params import editable_fields, strategy_class_for
+
+    assert strategy_class_for('slp') is SLPStrategy
+    assert strategy_class_for('auto') is None
+    fields = {name: (kind, default) for name, kind, default in editable_fields(SLPStrategy)}
+    assert fields['accuracy'][0] == 'choice'
+    assert 'time_budget_s' not in fields
+
+
+def test_worker_applies_strategy_overrides():
+    from dvfopt import SLPStrategy
+
+    w = SolverWorker(
+        deformation_i=np.zeros((3, 1, 6, 6)),
+        method_id='slp_2tri',
+        params={'strategy_overrides': {'cluster_pixel_threshold': 123}},
+    )
+    strat = w._build_strategy()
+    assert isinstance(strat, SLPStrategy)
+    assert strat.cluster_pixel_threshold == 123
+
+
+def test_worker_bad_override_raises():
+    w = SolverWorker(
+        deformation_i=np.zeros((3, 1, 6, 6)),
+        method_id='slp_2tri',
+        params={'strategy_overrides': {'no_such_field': 1}},
+    )
+    with pytest.raises(ValueError):
+        w._build_strategy()

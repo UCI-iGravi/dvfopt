@@ -22,6 +22,7 @@ Features
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -387,9 +388,15 @@ class ParamsDialog(QtWidgets.QDialog):
     * **History** — buffer size for the scrub slider (per-worker;
       changes apply to the next run only, since ``collections.deque``
       can't be resized in place).
+    * **Strategy** — auto-generated form of the current method's Strategy
+      dataclass fields (see :mod:`dvfopt_gui.strategy_params`); "no
+      editable parameters" for non-dataclass methods (auto / pipelines /
+      marching).
     """
 
-    def __init__(self, parent, *, history_max_size: int):
+    def __init__(
+        self, parent, *, history_max_size: int, strategy_algo: str, strategy_overrides: dict
+    ):
         super().__init__(parent)
         self.setWindowTitle('Params')
         self.setModal(True)
@@ -426,6 +433,20 @@ class ParamsDialog(QtWidgets.QDialog):
         history_form.addRow(info)
         tabs.addTab(history_tab, 'History')
 
+        # --- Strategy tab -----------------------------------------------------
+        from dvfopt_gui.strategy_params import StrategyParamsTab
+
+        self._strategy_tab = StrategyParamsTab()
+        self._strategy_tab.build(strategy_algo, dict(strategy_overrides))
+        reset_row = QtWidgets.QWidget()
+        reset_lay = QtWidgets.QVBoxLayout(reset_row)
+        reset_lay.setContentsMargins(0, 0, 0, 0)
+        reset_lay.addWidget(self._strategy_tab)
+        reset_btn = QtWidgets.QPushButton('Reset to defaults')
+        reset_btn.clicked.connect(lambda: self._strategy_tab.build(strategy_algo, {}))
+        reset_lay.addWidget(reset_btn)
+        tabs.addTab(reset_row, 'Strategy')
+
         # --- OK / Cancel ----------------------------------------------------
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
@@ -441,6 +462,7 @@ class ParamsDialog(QtWidgets.QDialog):
         the dialog has been accepted."""
         return {
             'history_max_size': int(self._hist_max_spin.value()),
+            'strategy_overrides': self._strategy_tab.values(),
         }
 
 
@@ -541,6 +563,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # workers pick these up at construction; in-flight workers
         # retain whatever they were started with.
         self._history_max_size: int = DEFAULT_HISTORY_MAX
+        # Per-method Strategy dataclass-field overrides, keyed by the algo
+        # tag (family-qualified as ``f'{algo}@tet3d'`` in 3D mode — see
+        # ``_current_params_algo``). Edited via the Params dialog's
+        # Strategy tab; merged into the worker's constructed Strategy at
+        # ``_build_strategy`` time. Persisted to QSettings as JSON.
+        self._strategy_overrides: dict[str, dict] = {}
         # Starting directory for the load/save dialogs — seeded from the
         # canonical DVF folder, then remembered across sessions (and
         # updated to the last file's folder) via QSettings.
@@ -1817,10 +1845,22 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._refresh_display_from_volume()
         self._overview_strip.set_current(self._z)
 
+    def _current_params_algo(self) -> str:
+        """Key for strategy-override storage: the algo tag, family-qualified
+        in 3D mode (the 3D classes have different knobs)."""
+        algo = self._method_combo.currentData() or ''
+        return f'{algo}@tet3d' if self._is_3d_run else algo
+
     def _on_open_params(self):
         """Open the Params dialog. On accept, write the edited values
         back to the window's instance attrs; on cancel, discard."""
-        dlg = ParamsDialog(self, history_max_size=self._history_max_size)
+        algo = self._current_params_algo()
+        dlg = ParamsDialog(
+            self,
+            history_max_size=self._history_max_size,
+            strategy_algo=algo,
+            strategy_overrides=self._strategy_overrides.get(algo, {}),
+        )
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             vals = dlg.result_values()
             new_hms = int(vals['history_max_size'])
@@ -1830,6 +1870,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     f'history_max_size set to {new_hms} (takes effect on next run)',
                     8_000,
                 )
+            strategy_overrides = vals['strategy_overrides']
+            if strategy_overrides:
+                self._strategy_overrides[algo] = strategy_overrides
+            else:
+                self._strategy_overrides.pop(algo, None)
 
     # ----- run buttons -------------------------------------------------------
 
@@ -1910,6 +1955,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'threshold': self._display_threshold(),
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
+            'strategy_overrides': self._strategy_overrides.get(self._current_params_algo(), {}),
         }
         if self._max_per_index_iter is not None:
             params['max_per_index_iter'] = int(self._max_per_index_iter)
@@ -2636,6 +2682,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         hms = s.value('history_max_size', 0, type=int)
         if hms:
             self._history_max_size = hms
+        raw = s.value('strategy_overrides', '', type=str)
+        if raw:
+            try:
+                self._strategy_overrides = {k: dict(v) for k, v in json.loads(raw).items()}
+            except (ValueError, TypeError, AttributeError):
+                self._strategy_overrides = {}
 
     def _save_settings(self) -> None:
         """Persist window geometry + toolbar selections for next launch."""
@@ -2651,6 +2703,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         s.setValue('max_iter', int(self._max_iter_spin.value()))
         s.setValue('threshold', self._display_threshold())
         s.setValue('history_max_size', int(self._history_max_size))
+        s.setValue('strategy_overrides', json.dumps(self._strategy_overrides))
 
     # ----- lifecycle ---------------------------------------------------------
 

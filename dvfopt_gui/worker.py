@@ -833,54 +833,64 @@ class SolverWorker(QtCore.QThread):
 
         time_budget = float(self._params.get('time_budget_s', 60.0))
         mid = self._method_id
+        overrides = dict(self._params.get('strategy_overrides') or {})
+
+        def _make(cls, **base):
+            try:
+                return cls(**{**base, **overrides})
+            except TypeError as exc:
+                raise ValueError(
+                    f'invalid strategy parameter(s) for {cls.__name__}: {exc}'
+                ) from exc
+
         if mid in ('barrier_2tri', 'barrier_jdet'):
-            return BarrierStrategy()
+            return _make(BarrierStrategy)
         if mid == 'm10_2tri':
-            return HarmonicALMBarrierStrategy(time_budget_s=time_budget)
+            return _make(HarmonicALMBarrierStrategy, time_budget_s=time_budget)
         if mid == 'm14_2tri':
-            return HarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+            return _make(HarmonicALMRefineRepairStrategy, time_budget_s=time_budget)
         if mid == 'm14_schwarz_2tri':
-            return SchwarzHarmonicALMRefineRepairStrategy(time_budget_s=time_budget)
+            return _make(SchwarzHarmonicALMRefineRepairStrategy, time_budget_s=time_budget)
         if mid == 'slsqp_fullgrid_2tri':
             from dvfopt import SLSQPFullGridStrategy
 
-            return SLSQPFullGridStrategy()
+            return _make(SLSQPFullGridStrategy)
         if mid == 'schwarz_2tri':
             from dvfopt import SchwarzStrategy
 
-            return SchwarzStrategy()
+            return _make(SchwarzStrategy)
         if mid == 'nmvf_jdet':
-            return NMVFStrategy()
+            return _make(NMVFStrategy)
         if mid == 'm10_tet3d':
             from dvfopt import HarmonicALMBarrier3DStrategy
 
-            return HarmonicALMBarrier3DStrategy(time_budget_s=time_budget)
+            return _make(HarmonicALMBarrier3DStrategy, time_budget_s=time_budget)
         if mid == 'm14_tet3d':
             from dvfopt import HarmonicALMRefineRepair3DStrategy
 
-            return HarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+            return _make(HarmonicALMRefineRepair3DStrategy, time_budget_s=time_budget)
         if mid == 'm14_schwarz_tet3d':
             from dvfopt import SchwarzHarmonicALMRefineRepair3DStrategy
 
-            return SchwarzHarmonicALMRefineRepair3DStrategy(time_budget_s=time_budget)
+            return _make(SchwarzHarmonicALMRefineRepair3DStrategy, time_budget_s=time_budget)
         if mid == 'slsqp_fullgrid_tet3d':
             from dvfopt import SLSQPFullGrid3DStrategy
 
-            return SLSQPFullGrid3DStrategy()
+            return _make(SLSQPFullGrid3DStrategy)
         if mid == 'active_band_tet3d':
             from dvfopt import ActiveBandALM3DStrategy
 
-            return ActiveBandALM3DStrategy()
+            return _make(ActiveBandALM3DStrategy)
         if mid == 'coupled_kring_tet3d':
             from dvfopt import CoupledKRing3DStrategy
 
-            return CoupledKRing3DStrategy()
+            return _make(CoupledKRing3DStrategy)
         if mid in ('barrier_jdet3d',):
-            return BarrierStrategy()
+            return _make(BarrierStrategy)
         if mid == 'slsqp_windowed_jdet3d':
             from dvfopt import SLSQPWindowedStrategy
 
-            return SLSQPWindowedStrategy()
+            return _make(SLSQPWindowedStrategy)
         if mid in ('auto_2tri', 'auto_jdet'):
             from dvfopt import (
                 JdetConstraint2D,
@@ -917,11 +927,11 @@ class SolverWorker(QtCore.QThread):
         if mid == 'slp_2tri':
             from dvfopt import SLPStrategy
 
-            return SLPStrategy()
+            return _make(SLPStrategy)
         if mid == 'barrier_torch_tet3d':
             from dvfopt import BarrierTet3DTorchStrategy
 
-            return BarrierTet3DTorchStrategy()
+            return _make(BarrierTet3DTorchStrategy)
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:

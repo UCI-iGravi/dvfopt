@@ -1066,3 +1066,32 @@ def test_overview_strip_wired_into_window(qapp):
     # 2D single-slice field hides the strip.
     win._load_array(np.zeros((3, 1, 6, 6)))
     assert not win._overview_strip.isVisibleTo(win)
+
+
+# ---------------------------------------------------------------------------
+# auto-generated per-strategy parameter panel
+# ---------------------------------------------------------------------------
+
+
+def test_params_dialog_strategy_tab_and_persistence(qapp, tmp_path, monkeypatch):
+    ini = str(tmp_path / 's.ini')
+    monkeypatch.setattr(
+        LiveSolverWindow,
+        '_settings',
+        staticmethod(lambda: QtCore.QSettings(ini, QtCore.QSettings.IniFormat)),
+    )
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
+    win._strategy_overrides['slp'] = {'cluster_pixel_threshold': 99}
+    win._save_settings()
+    win2 = LiveSolverWindow()
+    assert win2._strategy_overrides.get('slp') == {'cluster_pixel_threshold': 99}
+    # Overrides reach the worker params.
+    captured = {}
+    monkeypatch.setattr(
+        'dvfopt_gui.worker.SolverWorker.start',
+        lambda self: captured.setdefault('p', self._params),
+    )
+    win._select_combo_data(win._constraint_combo, '2tri')
+    win._select_combo_data(win._method_combo, 'slp')
+    win._on_run(use_roi=False)
+    assert captured['p']['strategy_overrides'] == {'cluster_pixel_threshold': 99}
