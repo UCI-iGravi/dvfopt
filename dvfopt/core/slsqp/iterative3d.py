@@ -89,8 +89,7 @@ def iterative_3d(
     # calls targeting the NaN window while real folds go untouched.
     if not np.isfinite(deformation).all():
         raise ValueError(
-            'phi contains non-finite values (NaN/Inf); '
-            'iterative_3d requires a finite field.'
+            'phi contains non-finite values (NaN/Inf); iterative_3d requires a finite field.'
         )
 
     p = _resolve_params(

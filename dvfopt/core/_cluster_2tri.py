@@ -287,7 +287,7 @@ def solve_cluster_2tri_2d(
     feas_lb = threshold - DEFAULT_PARAMS['err_tol']
 
     def _n_below(T1, T2):
-        return int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
+        return int((feas_lb > T1).sum() + (feas_lb > T2).sum())
 
     t0 = time.time()
     T1, T2 = _triangle_areas_2d(phi_win[0], phi_win[1])

@@ -21,7 +21,6 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import linprog
 
-
 # ---------------------------------------------------------------------------
 # Constant LP components, cached per problem size. Across slp_iter iterations
 # on a fixed crop only the -J data and the b_ub vector change; the objective,

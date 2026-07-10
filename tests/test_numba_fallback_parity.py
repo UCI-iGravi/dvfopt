@@ -99,9 +99,7 @@ class TestTetGradParity:
         g_numpy = tet_mod.tet_grad_T_v(phi_flat, D, H, W, v)
 
         # The forced-fallback result must be the reference numpy impl.
-        np.testing.assert_array_equal(
-            g_numpy, tet_mod._tet_grad_T_v_numpy(phi_flat, D, H, W, v)
-        )
+        np.testing.assert_array_equal(g_numpy, tet_mod._tet_grad_T_v_numpy(phi_flat, D, H, W, v))
 
         assert g_default.shape == g_numpy.shape == (3 * D * H * W,)
         assert _max_abs_diff(g_default, g_numpy) < ATOL

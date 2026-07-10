@@ -415,7 +415,7 @@ class TestConstraintRegistryOverwriteGuard:
 
         try:
             register_constraint(self._LABEL)(TriConstraint2D)
-            with pytest.raises(ValueError, match='TriConstraint2D.*JdetConstraint2D'):
+            with pytest.raises(ValueError, match=r'TriConstraint2D.*JdetConstraint2D'):
                 register_constraint(self._LABEL)(JdetConstraint2D)
             assert _CONSTRAINT_REGISTRY[self._LABEL] is TriConstraint2D
         finally:

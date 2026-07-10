@@ -124,9 +124,7 @@ class DVFoptConfig:
         # Fail fast on a bad accuracy mode regardless of which solver /
         # dispatch path would eventually consume it.
         if self.accuracy not in ('fast', 'max'):
-            raise ValueError(
-                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
-            )
+            raise ValueError(f"accuracy must be 'fast' or 'max', got {self.accuracy!r}")
 
 
 # ============================================================

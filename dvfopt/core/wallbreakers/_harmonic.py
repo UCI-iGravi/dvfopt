@@ -196,9 +196,7 @@ def harmonic_extension_2d(
     # scipy treats iterations < 1 as "repeat until convergence" (fills
     # the grid), so only dilate for merge_dilation >= 1.
     grouped = (
-        binary_dilation(cell_fold, iterations=merge_dilation)
-        if merge_dilation >= 1
-        else cell_fold
+        binary_dilation(cell_fold, iterations=merge_dilation) if merge_dilation >= 1 else cell_fold
     )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
 
@@ -218,9 +216,7 @@ def harmonic_extension_2d(
             # (fill the grid); ring_pad=0 with grow=0 must mean "no
             # dilation this round".
             iters = ring_pad + grow
-            patch_cells = (
-                binary_dilation(cur_cells, iterations=iters) if iters >= 1 else cur_cells
-            )
+            patch_cells = binary_dilation(cur_cells, iterations=iters) if iters >= 1 else cur_cells
             interior_cells = binary_erosion(patch_cells, iterations=1)
             free_mask = _cells_to_corner_mask(interior_cells, H, W)
 

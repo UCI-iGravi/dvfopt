@@ -70,9 +70,7 @@ class TestSolveLaplacianFromCorrespondences:
     def test_return_info_converged(self):
         vol_shape = (1, 10, 10)
         pts = np.array([[0, 3, 3], [0, 7, 7]])
-        deformation, info = solveLaplacianFromCorrespondences(
-            vol_shape, pts, pts, return_info=True
-        )
+        deformation, info = solveLaplacianFromCorrespondences(vol_shape, pts, pts, return_info=True)
         assert deformation.shape == (3, 1, 10, 10)
         assert all(flag == 0 for flag in info.values())
 

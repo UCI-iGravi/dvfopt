@@ -94,9 +94,7 @@ def test_slp_iter_pinned_reference_no_drift():
 
     phi_out, info = slp_iter(phi_in, threshold=0.01, seed='m14')
 
-    areas = tri_areas_flat(
-        np.concatenate([phi_out[0].ravel(), phi_out[1].ravel()]), H, W
-    )
+    areas = tri_areas_flat(np.concatenate([phi_out[0].ravel(), phi_out[1].ravel()]), H, W)
     assert int((areas <= 0).sum()) == 0
     assert info['final_min_T_exact'] >= 0.01 - 1e-5
 

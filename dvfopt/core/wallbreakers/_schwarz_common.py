@@ -83,9 +83,7 @@ def _fold_clusters_2d(phi: np.ndarray, merge_dilation: int = 2):
     # scipy treats iterations < 1 as "repeat until convergence" (fills
     # the grid), so only dilate for merge_dilation >= 1.
     grouped = (
-        binary_dilation(fold_mask, iterations=merge_dilation)
-        if merge_dilation >= 1
-        else fold_mask
+        binary_dilation(fold_mask, iterations=merge_dilation) if merge_dilation >= 1 else fold_mask
     )
     labels, n_comp = cc_label(grouped, structure=generate_binary_structure(2, 2))
     bboxes = []
@@ -256,8 +254,7 @@ def cluster_schwarz_2d_tri(
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
                         print(
-                            '  budget exhausted; skipping global fallback '
-                            '(returning best-so-far)',
+                            '  budget exhausted; skipping global fallback (returning best-so-far)',
                             flush=True,
                         )
                     break
@@ -357,8 +354,7 @@ def cluster_schwarz_2d_tri(
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
                         print(
-                            '  budget exhausted; skipping global fallback '
-                            '(returning best-so-far)',
+                            '  budget exhausted; skipping global fallback (returning best-so-far)',
                             flush=True,
                         )
                     break

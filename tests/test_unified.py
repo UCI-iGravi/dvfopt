@@ -85,7 +85,9 @@ class TestAutoStrategy:
         # non-l2 objectives (l1 routes to 'slp'; l2 to 'm10' below).
         c_small = TriConstraint2D((20, 20))
         # Smaller slice (<20K corners) still picks m14 instead of m14_schwarz.
-        assert auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='none') == "m14"
+        assert (
+            auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='none') == "m14"
+        )
         # Large slice (>20K corners) routes to m14_schwarz.
         c_big = TriConstraint2D((320, 456))
         assert (
@@ -138,8 +140,7 @@ class TestAutoStrategySLPRouting:
     def test_2tri_l1_routes_to_slp_every_tier(self, n_neg, init_min):
         for c in (TriConstraint2D((20, 20)), TriConstraint2D((320, 456))):
             assert (
-                auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l1')
-                == 'slp'
+                auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l1') == 'slp'
             )
 
     def test_2tri_l1_default_label_routes_to_slp(self):
@@ -160,15 +161,16 @@ class TestAutoStrategySLPRouting:
     def test_2tri_l2_keeps_legacy_routing(self, n_neg, init_min, expected):
         c = TriConstraint2D((20, 20))
         assert (
-            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l2')
-            == expected
+            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l2') == expected
         )
 
     def test_jdet_l1_never_routes_to_slp(self):
         """SLP is 2-tri-only; the Jdet family keeps its legacy routing
         even for l1."""
         c = JdetConstraint2D((12, 12))
-        assert auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l1') == 'slsqp_windowed'
+        assert (
+            auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l1') == 'slsqp_windowed'
+        )
         assert auto_strategy(c, init_n_neg=5000, init_min=-1.5, objective_label='l1') == 'barrier'
 
 
