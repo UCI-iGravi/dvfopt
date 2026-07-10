@@ -127,7 +127,7 @@ def test_cluster_boxes_phase_shifts_seams():
     def seam_ys(phase):
         boxes = _cluster_boxes(bad, H, W, pad=pad, dil=dil, max_box=max_box, phase=phase)
         edges = set()
-        for y0, y1, x0, x1 in boxes:
+        for y0, y1, _x0, _x1 in boxes:
             edges.add(y0)
             edges.add(y1)
         return edges

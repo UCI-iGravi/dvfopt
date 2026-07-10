@@ -104,7 +104,7 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         pf = _stack(b)
         T3 = tet_volumes_flat(pf, D, H, W)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
-        a3 = np.where(T3 < thr3 + ACTIVE_WINDOW)[0]
+        a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
         return [(J3[a3], T3[a3], thr3)]
 
     def viol_fn(b):

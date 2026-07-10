@@ -129,8 +129,8 @@ def _repair_cluster(args):
         p2 = np.concatenate([c[0].ravel(), c[1].ravel()])
         T2 = tri_areas_flat(p2, Hc, Wc)
         J2 = build_sparse_jacobian_T(p2, Hc, Wc).tocsc()[:, free2].tocsr()
-        a3 = np.where(T3 < thr3 + ACTIVE_WINDOW)[0]
-        a2 = np.where(T2 < thr2 + ACTIVE_WINDOW)[0]
+        a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
+        a2 = np.where(thr2 + ACTIVE_WINDOW > T2)[0]
         # Block order matters: 6-tet rows first, then 2-tri (slack layout).
         return [(J3[a3], T3[a3], thr3), (J2[a2], T2[a2], thr2)]
 
