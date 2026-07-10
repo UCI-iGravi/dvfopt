@@ -580,3 +580,30 @@ def test_persistence_3d_history_roundtrip(tmp_path):
     assert len(run.snapshots) == 3
     assert run.snapshots[2].phi.shape == (3, D, H, W)
     assert run.snapshots[1].n_neg == 1
+
+
+# ---------------------------------------------------------------------------
+# SLP default + Auto strategy picker dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_slp_and_auto_dispatch():
+    from dvfopt import SLPStrategy
+
+    vol2d = np.zeros((3, 1, 8, 8))
+    w = SolverWorker(deformation_i=vol2d, method_id='slp_2tri')
+    assert isinstance(w._build_strategy(), SLPStrategy)
+    assert w._trajectory_metric_kind() == '2tri'
+
+    # Auto on a mildly folded field resolves to a registry label and
+    # records it on the worker.
+    phi = np.zeros((3, 1, 8, 8))
+    phi[2, 0, 3, 3] = 1.2
+    phi[2, 0, 3, 4] = -1.2
+    wa = SolverWorker(deformation_i=phi, method_id='auto_2tri', params={'objective_id': 'l1'})
+    strat = wa._build_strategy()
+    assert strat is not None
+    assert wa.resolved_strategy_label in ('m10', 'm14_schwarz', 'm14', 'barrier', 'slsqp')
+    wj = SolverWorker(deformation_i=phi, method_id='auto_jdet', params={'objective_id': 'l1'})
+    wj._build_strategy()
+    assert wj.resolved_strategy_label in ('barrier', 'slsqp_windowed')

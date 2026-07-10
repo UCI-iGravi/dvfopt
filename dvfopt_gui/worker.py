@@ -375,6 +375,9 @@ class SolverWorker(QtCore.QThread):
         # Atomic counter for callback fires; the GUI reads this for its
         # FPS / callbacks-per-second display.
         self._callback_count = 0
+        # Set by the 'auto' dispatch: the registry label auto_strategy
+        # resolved to (e.g. 'm14_schwarz'); None for explicit methods.
+        self.resolved_strategy_label: str | None = None
 
     def request_stop(self):
         self._stop_requested = True
@@ -754,6 +757,43 @@ class SolverWorker(QtCore.QThread):
             from dvfopt import SLSQPWindowedStrategy
 
             return SLSQPWindowedStrategy()
+        if mid in ('auto_2tri', 'auto_jdet'):
+            from dvfopt import (
+                JdetConstraint2D,
+                TriConstraint2DFullCoverage,
+                make_strategy,
+            )
+            from dvfopt.solver import auto_strategy
+
+            phi_2hw = np.stack(
+                [
+                    self._deformation_i[1, 0].astype(np.float64),
+                    self._deformation_i[2, 0].astype(np.float64),
+                ]
+            )
+            H, W = phi_2hw.shape[1:]
+            kind = '2tri' if mid.endswith('_2tri') else 'jdet'
+            n_neg, min_T = _metric_counts(phi_2hw, kind)
+            constraint = (
+                TriConstraint2DFullCoverage(shape=(H, W))
+                if kind == '2tri'
+                else JdetConstraint2D(shape=(H, W))
+            )
+            label = auto_strategy(
+                constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1'))
+            )
+            try:
+                strategy = make_strategy(label)
+            except Exception:
+                # Registry label unavailable — fall back to the family default.
+                label = 'm14' if kind == '2tri' else 'barrier'
+                strategy = make_strategy(label)
+            self.resolved_strategy_label = label
+            return strategy
+        if mid == 'slp_2tri':
+            from dvfopt import SLPStrategy
+
+            return SLPStrategy()
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:

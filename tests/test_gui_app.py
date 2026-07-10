@@ -705,3 +705,26 @@ def test_input_n_neg_uses_3d_metric_in_3d_mode(qapp, monkeypatch):
     expected, _ = _metric_counts_3d(vol, 'tet3d')
     assert win._input_n_neg == expected
     assert expected > 0  # the field really does have 3D folds
+
+
+# ---------------------------------------------------------------------------
+# SLP default + Auto strategy picker (menu wiring)
+# ---------------------------------------------------------------------------
+
+
+def test_slp_is_first_and_default_2tri(qapp, tmp_path, monkeypatch):
+    ini = str(tmp_path / 'fresh.ini')
+    monkeypatch.setattr(
+        LiveSolverWindow,
+        '_settings',
+        staticmethod(lambda: QtCore.QSettings(ini, QtCore.QSettings.IniFormat)),
+    )
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))  # fresh settings -> defaults
+    win._select_combo_data(win._constraint_combo, '2tri')
+    assert win._method_combo.itemData(0) == 'slp'
+    assert win._method_combo.currentData() == 'slp'
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'auto' in algos
+    win._select_combo_data(win._constraint_combo, 'jdet')
+    algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
+    assert 'auto' in algos

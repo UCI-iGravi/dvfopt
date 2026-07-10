@@ -254,6 +254,7 @@ DEFAULT_CONSTRAINT = CONSTRAINT_2TRI
 # adjoint). Jdet gets the legacy windowed-SLSQP, the penalty→barrier
 # path, and the NMVF heuristic smoother.
 _METHOD_SPECS_2TRI = [
+    ('slp', 'SLP (champion: cluster trust-region SLP + HiGHS L1)'),
     ('m14', 'M14 (Harmonic + ALM + L2 refine + repair + polish)'),
     ('m14_schwarz', 'M14-Schwarz (cluster decomposition + global polish)'),
     ('m10', 'M10 (Harmonic + ALM + barrier polish)'),
@@ -261,11 +262,13 @@ _METHOD_SPECS_2TRI = [
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('slsqp_fullgrid', 'SLSQP full-grid (2-tri; KKT, smallest L1 on mild folds)'),
     ('schwarz', 'Schwarz (2-tri; overlapping-tile decomposition)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_JDET = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('nmvf', 'NMVF (heuristic neighborhood-mean smoother)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_TET3D = [
     ('m14', 'M14Tet (harmonic + ALM + L2 refine + repair + polish)'),
@@ -286,7 +289,7 @@ _METHOD_SPECS_BY_CONSTRAINT = {
     CONSTRAINT_JDET3D: _METHOD_SPECS_JDET3D,
 }
 DEFAULT_METHOD_BY_CONSTRAINT = {
-    CONSTRAINT_2TRI: 'm14',
+    CONSTRAINT_2TRI: 'slp',
     CONSTRAINT_JDET: 'slsqp_windowed',
     CONSTRAINT_TET3D: 'm14',
     CONSTRAINT_JDET3D: 'barrier',
@@ -481,6 +484,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Active run bookkeeping for the progress bar / ETA and the
         # before→after stats delta.
         self._active_method_id: str | None = None
+        # True once this run's "Auto → <label>" status-bar note has been
+        # shown (or there's nothing to show yet). Starts True so the
+        # getattr default in ``_on_render_tick`` never fires mid-run
+        # before the first ``_start_worker`` call; reset to False there.
+        self._auto_label_shown: bool = True
         self._run_elapsed = QtCore.QElapsedTimer()
         self._input_n_neg: int | None = None
         # Undo/redo of corrections: each entry is a full ``(3, D, H, W)``
@@ -1181,12 +1189,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         else:
             snaps = []
             history_total = 0
+        method = self._method_combo.currentData() or ''
+        if method == 'auto' and getattr(worker, 'resolved_strategy_label', None):
+            method = f'auto:{worker.resolved_strategy_label}'
         return build_save_payload(
             phi_active=self._volume[1:, self._z],
             full_volume=self._volume,
             z=self._z,
             constraint=self._constraint_combo.currentData() or '',
-            method=self._method_combo.currentData() or '',
+            method=method,
             objective=self._objective_combo.currentData() or '',
             time_budget_s=self._budget_spin.value(),
             max_iterations=self._max_iter_spin.value(),
@@ -1696,6 +1707,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             metric_kind = 'jdet' if method_id.startswith('slsqp_windowed') else constraint
             self._input_n_neg, _ = _metric_counts(phi_in, metric_kind)
         self._active_method_id = method_id
+        self._auto_label_shown = False
         self._run_elapsed.restart()
         params = {
             'time_budget_s': float(self._budget_spin.value()),
@@ -1973,6 +1985,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
         # Live progress bar / ETA for the active run.
         self._update_progress()
+
+        # One-time "Auto → <label>" note once the worker resolves it.
+        if (
+            not getattr(self, '_auto_label_shown', True)
+            and self._worker is not None
+            and getattr(self._worker, 'resolved_strategy_label', None)
+        ):
+            self._auto_label_shown = True
+            self.statusBar().showMessage(f'Auto → {self._worker.resolved_strategy_label}', 8_000)
 
         # cb-rate once per second — only while a solve is actually
         # running. A loaded run is backed by a non-running ReplayHistory
