@@ -75,9 +75,9 @@ class TestNonFiniteEntryGuard:
 
 class TestFrozenEdgeReleaseAtMaxWindow3D:
     def test_builder_drops_freeze_at_max_window(self):
-        from dvfopt.core.slsqp.constraints3d import _build_constraints_3d
-
         from scipy.optimize import LinearConstraint
+
+        from dvfopt.core.slsqp.constraints3d import _build_constraints_3d
 
         sz, sy, sx = 4, 4, 4
         phi_flat = np.zeros(3 * sz * sy * sx)
@@ -92,9 +92,7 @@ class TestFrozenEdgeReleaseAtMaxWindow3D:
 
         # At max window: no equality rows, Jdet covers ALL voxels
         # (mirrors 2D exclude_bounds=False semantics).
-        cs_max = _build_constraints_3d(
-            phi_flat, (sz, sy, sx), mask, 0.01, window_reached_max=True
-        )
+        cs_max = _build_constraints_3d(phi_flat, (sz, sy, sx), mask, 0.01, window_reached_max=True)
         assert not any(isinstance(c, LinearConstraint) for c in cs_max)
         nlc_max = next(c for c in cs_max if not isinstance(c, LinearConstraint))
         assert nlc_max.fun(phi_flat).size == sz * sy * sx

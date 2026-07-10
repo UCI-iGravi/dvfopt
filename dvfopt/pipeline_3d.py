@@ -131,8 +131,9 @@ def correct_dvf_3d(
     # otherwise sail through triage as "feasible" (silent success on
     # corrupted data).
     if not np.isfinite(phi0).all():
-        raise ValueError('phi contains non-finite values (NaN/Inf); '
-                         'correct_dvf_3d requires a finite field.')
+        raise ValueError(
+            'phi contains non-finite values (NaN/Inf); correct_dvf_3d requires a finite field.'
+        )
     rec_thr = recover_threshold if recover_threshold is not None else 1.2 * threshold
 
     # Lazy imports (avoid import cycle; keep top-level import cheap).
@@ -193,8 +194,16 @@ def correct_dvf_3d(
     )
     if n_neg_in == 0 and n_below_in == 0:
         # `cur` is unchanged since the triage measurement — reuse it.
-        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
-                              stats=(mv, n_neg_in, n_below_in, min_in))
+        return cur, _finalize(
+            cur,
+            phi0,
+            threshold,
+            n_neg_in,
+            bd_floor_in,
+            stages,
+            t0,
+            stats=(mv, n_neg_in, n_below_in, min_in),
+        )
 
     # ---- Stage 1: bulk reduction ----
     n_fold, span = _fold_sparsity(mv, threshold)
@@ -263,8 +272,7 @@ def correct_dvf_3d(
             dict(stage='escape:skipped_pathological', n_neg=n_neg_b, best_diag_floor=bd_floor_in)
         )
         # `cur` is unchanged since the post-bulk measurement — reuse it.
-        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
-                              stats=st)
+        return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=st)
 
     # Iterate the coupled k-ring escape; when it stalls, ESCALATE the halo
     # (k=2 -> 3 -> 4). The research showed k=2 plateaus at the shared-corner
@@ -389,8 +397,7 @@ def correct_dvf_3d(
         stages.append(dict(stage='tighten', n_below=n_below_fin, wall_s=time.time() - ts))
 
     # `st` always holds the measurement of the final `cur` here — reuse it.
-    return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0,
-                          stats=st)
+    return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=st)
 
 
 def _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=None):

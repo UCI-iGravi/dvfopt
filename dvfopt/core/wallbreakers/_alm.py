@@ -55,7 +55,9 @@ _ANCHOR_FLAGS = {'l2': 2, 'l1': 1}  # anything else -> 0 ('none')
 if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False)
-    def _alm_fused_kernel(dy, dx, dy_in, dx_in, mu1, mu2, H, W, threshold, rho, anchor_flag, eps_l1):
+    def _alm_fused_kernel(
+        dy, dx, dy_in, dx_in, mu1, mu2, H, W, threshold, rho, anchor_flag, eps_l1
+    ):
         """Fused anchor + T-areas + PHR co-vector + adjoint scatter.
 
         Returns ``(val, g_dy, g_dx)``. The PHR term is accumulated as
@@ -191,8 +193,18 @@ def _alm_objective(
     mu1 = np.ascontiguousarray(mu[:n_cells].reshape(H - 1, W - 1))
     mu2 = np.ascontiguousarray(mu[n_cells:].reshape(H - 1, W - 1))
     val, g_dy, g_dx = _alm_fused_kernel(
-        dy, dx, dy_in, dx_in, mu1, mu2, H, W, threshold, rho,
-        _ANCHOR_FLAGS.get(anchor, 0), eps_l1,
+        dy,
+        dx,
+        dy_in,
+        dx_in,
+        mu1,
+        mu2,
+        H,
+        W,
+        threshold,
+        rho,
+        _ANCHOR_FLAGS.get(anchor, 0),
+        eps_l1,
     )
     return val + mu_sq_const, np.concatenate([g_dy.ravel(), g_dx.ravel()])
 

@@ -134,7 +134,7 @@ class TestBatchedBarrier2DTorchInfeasiblePatch:
         return phi
 
     def _hard_interior_min_j(self, phi):
-        import torch  # noqa: F401
+        import torch
 
         from dvfopt.core.iterative2d_barrier import _jdet_2d_torch
 

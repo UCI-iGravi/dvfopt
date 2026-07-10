@@ -86,9 +86,7 @@ class SLPStrategy(Strategy):
 
     def __post_init__(self):
         if self.accuracy not in ('fast', 'max'):
-            raise ValueError(
-                f"accuracy must be 'fast' or 'max', got {self.accuracy!r}"
-            )
+            raise ValueError(f"accuracy must be 'fast' or 'max', got {self.accuracy!r}")
 
     def solve(
         self,
@@ -132,9 +130,7 @@ class SLPStrategy(Strategy):
             # succeed even without torch and users would get a raw
             # ModuleNotFoundError from deep inside the call.
             if importlib.util.find_spec('torch') is None:
-                raise ImportError(
-                    "accuracy='max' requires PyTorch (pip install torch)."
-                )
+                raise ImportError("accuracy='max' requires PyTorch (pip install torch).")
             from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
 
             try:
@@ -151,9 +147,7 @@ class SLPStrategy(Strategy):
                     "accuracy='max' GPU untangler hit CUDA out-of-memory; "
                     "retrying once on CPU (slower)."
                 )
-                gpu_seed = gpu_untangle_alm_2d(
-                    phi, threshold=threshold, device='cpu'
-                )
+                gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold, device='cpu')
 
         if self.cluster_pixel_threshold >= H * W:
             # Global path: anchor L1 to the raw input `phi`; when max, start

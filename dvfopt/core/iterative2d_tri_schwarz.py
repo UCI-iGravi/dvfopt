@@ -251,7 +251,7 @@ def iterative_2d_tri_schwarz(
     history = []
 
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-    init_n_neg = int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
+    init_n_neg = int((feas_lb > T1).sum() + (feas_lb > T2).sum())
     init_min = float(min(T1.min(), T2.min()))
     if verbose >= 1:
         print(
@@ -314,7 +314,7 @@ def iterative_2d_tri_schwarz(
                 n_small += 1
 
         T1, T2 = _triangle_areas_2d(phi[0], phi[1])
-        final_n_neg = int((T1 < feas_lb).sum() + (T2 < feas_lb).sum())
+        final_n_neg = int((feas_lb > T1).sum() + (feas_lb > T2).sum())
         final_min = float(min(T1.min(), T2.min()))
         elapsed = time.time() - t_outer
         if record_history:

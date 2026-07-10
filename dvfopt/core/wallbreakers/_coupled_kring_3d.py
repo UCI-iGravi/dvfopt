@@ -612,9 +612,7 @@ def _fold_cluster_bboxes(min_per_cube, threshold, merge_dilation=2):
         raise ValueError(f'merge_dilation must be >= 0, got {merge_dilation}')
     # scipy treats iterations < 1 as "repeat until convergence", which would
     # dilate the mask to the whole grid — only dilate for a positive count.
-    grouped = (
-        binary_dilation(fold, iterations=merge_dilation) if merge_dilation >= 1 else fold
-    )
+    grouped = binary_dilation(fold, iterations=merge_dilation) if merge_dilation >= 1 else fold
     labels, n = cc_label(grouped, structure=generate_binary_structure(3, 3))
     bboxes = []
     for cid in range(1, n + 1):

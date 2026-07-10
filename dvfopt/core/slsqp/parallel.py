@@ -82,8 +82,7 @@ def iterative_parallel(
     # targeting the NaN window while real folds go untouched.
     if not np.isfinite(deformation_i).all():
         raise ValueError(
-            'phi contains non-finite values (NaN/Inf); '
-            'iterative_parallel requires a finite field.'
+            'phi contains non-finite values (NaN/Inf); iterative_parallel requires a finite field.'
         )
 
     # Resolve parameters
@@ -428,9 +427,7 @@ def iterative_parallel(
                     _wx0, _wx1 = max(cx - w_hx - 1, 0), min(cx + w_hx_hi + 1, W)
                     _phi_snap = phi[:, cy - w_hy : cy + w_hy_hi, cx - w_hx : cx + w_hx_hi].copy()
                     _jac_snap = jacobian_matrix[:, _wy0:_wy1, _wx0:_wx1].copy()
-                    _qual_snap = (
-                        quality_matrix[:, _wy0:_wy1, _wx0:_wx1].copy() if use_q else None
-                    )
+                    _qual_snap = quality_matrix[:, _wy0:_wy1, _wx0:_wx1].copy() if use_q else None
                     _old_loc = quality_matrix[0, _wy0:_wy1, _wx0:_wx1]
                     _old_n = int((_old_loc <= threshold - err_tol).sum())
                     _old_min = float(_old_loc.min())

@@ -522,7 +522,7 @@ def test_demo_3d_loaders_and_initial_constraint(qapp):
     win._select_combo_data(win._constraint_combo, 'tet3d')  # what launch() does
     assert win._is_3d_run
     assert win._constraint_combo.currentData() == 'tet3d'
-    assert not win._run_roi_btn.isEnabled()  # 3D gating applied
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
 
 
 def test_3d_end_to_end_run_through_window(qapp):
@@ -600,7 +600,7 @@ def test_selecting_3d_constraint_enters_3d_mode_and_gates_runs(qapp):
     win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
     win._select_combo_data(win._constraint_combo, 'tet3d')
     assert win._is_3d_run
-    assert not win._run_roi_btn.isEnabled()
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
     assert not win._run_all_btn.isEnabled()
     algos = [win._method_combo.itemData(i) for i in range(win._method_combo.count())]
     assert (
@@ -622,7 +622,7 @@ def test_run_all_stays_disabled_in_3d_after_run_finishes(qapp):
     assert not win._run_all_btn.isEnabled()  # gated on entering 3D mode
     win._finalize_run_ui()  # simulate a run completing
     assert not win._run_all_btn.isEnabled()  # must stay disabled in 3D mode
-    assert not win._run_roi_btn.isEnabled()
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
 
 
 def test_run_all_in_3d_routes_to_full_volume_run(qapp, monkeypatch):
@@ -1066,3 +1066,126 @@ def test_overview_strip_wired_into_window(qapp):
     # 2D single-slice field hides the strip.
     win._load_array(np.zeros((3, 1, 6, 6)))
     assert not win._overview_strip.isVisibleTo(win)
+
+
+# ---------------------------------------------------------------------------
+# auto-generated per-strategy parameter panel
+# ---------------------------------------------------------------------------
+
+
+def test_params_dialog_strategy_tab_and_persistence(qapp, tmp_path, monkeypatch):
+    ini = str(tmp_path / 's.ini')
+    monkeypatch.setattr(
+        LiveSolverWindow,
+        '_settings',
+        staticmethod(lambda: QtCore.QSettings(ini, QtCore.QSettings.IniFormat)),
+    )
+    win = LiveSolverWindow(np.zeros((3, 1, 6, 6)))
+    win._strategy_overrides['slp'] = {'cluster_pixel_threshold': 99}
+    win._save_settings()
+    win2 = LiveSolverWindow()
+    assert win2._strategy_overrides.get('slp') == {'cluster_pixel_threshold': 99}
+    # Overrides reach the worker params.
+    captured = {}
+    monkeypatch.setattr(
+        'dvfopt_gui.worker.SolverWorker.start',
+        lambda self: captured.setdefault('p', self._params),
+    )
+    win._select_combo_data(win._constraint_combo, '2tri')
+    win._select_combo_data(win._method_combo, 'slp')
+    win._on_run(use_roi=False)
+    assert captured['p']['strategy_overrides'] == {'cluster_pixel_threshold': 99}
+
+
+def test_strategy_params_no_spurious_float_overrides(qapp):
+    # Opening the tab and reading values() without touching anything must
+    # be a no-op — even for strategies with sub-1e-6 float defaults.
+    from dvfopt_gui.strategy_params import StrategyParamsTab
+
+    for algo in ('slsqp_fullgrid', 'slsqp_fullgrid@tet3d', 'coupled_kring@tet3d'):
+        tab = StrategyParamsTab()
+        tab.build(algo, {})
+        assert tab.values() == {}, f'{algo}: spurious overrides {tab.values()}'
+
+
+def test_params_algo_key_family_accurate(qapp):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._select_combo_data(win._constraint_combo, 'jdet3d')
+    win._select_combo_data(win._method_combo, 'barrier')
+    assert win._current_params_algo() == 'barrier@jdet3d'
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert win._current_params_algo().endswith('@tet3d')
+
+
+# ---------------------------------------------------------------------------
+# 3D sub-volume ROI (Rect ROI for y/x + z-range spinboxes)
+# ---------------------------------------------------------------------------
+
+
+def test_3d_roi_spinboxes_and_run_section(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 6, 20, 20)))
+    assert not win._z0_spin.isVisibleTo(win)  # hidden in 2D mode
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    assert win._z0_spin.isVisibleTo(win) and win._z1_spin.isVisibleTo(win)
+    assert win._run_roi_btn.isEnabled()  # 3D ROI now supported
+    assert (win._z0_spin.value(), win._z1_spin.value()) == (0, 5)
+
+    win._section_roi.setPos(4, 4)
+    win._section_roi.setSize([10, 10])
+    win._z0_spin.setValue(1)
+    win._z1_spin.setValue(4)
+    captured = {}
+    monkeypatch.setattr(
+        win,
+        '_start_worker',
+        lambda def_i, method_id=None: captured.setdefault('shape', def_i.shape),
+    )
+    win._on_run(use_roi=True)
+    assert captured['shape'] == (3, 4, 10, 10)
+    assert win._section_bounds_3d == (1, 5, 4, 14, 4, 14)
+
+
+def test_3d_roi_splice_back(qapp):
+    win = LiveSolverWindow(np.zeros((3, 6, 20, 20)))
+    win._select_combo_data(win._constraint_combo, 'tet3d')
+    win._worker = None  # sender() is None -> guard passes
+    win._section_bounds_3d = (1, 5, 4, 14, 4, 14)
+    sub = np.full((3, 4, 10, 10), 2.0)
+    win._on_finished(sub, None)
+    assert win._volume[1, 2, 5, 5] == pytest.approx(2.0)
+    assert win._volume[1, 0, 5, 5] == 0.0  # outside the box untouched
+
+
+# ---------------------------------------------------------------------------
+# final-review fixes: upfront dz check on the direct pipeline path; gated
+# overview restart during Run-all / pipeline batches
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_full_checks_dz_upfront(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 4, 6, 6)))
+    win._volume[0, 1, 2, 2] = 0.5
+    win._original_volume[0, 1, 2, 2] = 0.5
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        'question',
+        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.No),
+    )
+    started = {}
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: started.setdefault('s', True))
+    win._on_run_pipeline_full()
+    assert not started.get('s'), 'declined dz consent must not start the batch'
+    assert not win._pipeline_active
+
+
+def test_overview_restart_skipped_per_slice(qapp, monkeypatch):
+    win = LiveSolverWindow(np.zeros((3, 3, 6, 6)))
+    calls = {'n': 0}
+    monkeypatch.setattr(win, '_restart_overview', lambda: calls.update(n=calls['n'] + 1))
+    # Mid-batch, ``_on_finished`` chains into ``_run_all_step``, which pops
+    # slice 2 and starts its worker for real -- stub that out too.
+    monkeypatch.setattr(win, '_start_worker', lambda *a, **k: None)
+    win._worker = None
+    win._run_all_remaining = [2]  # mid-batch
+    win._on_finished(np.zeros((2, 6, 6)), None)  # per-slice finish
+    assert calls['n'] == 0, 'no overview restart mid-batch'

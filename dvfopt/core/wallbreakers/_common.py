@@ -45,7 +45,9 @@ def min_tri(phi: np.ndarray) -> float:
 if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False)
-    def _barrier_anchored_fused_kernel(dy, dx, dy_in, dx_in, H, W, threshold, mu, anchor_flag, eps_l1):
+    def _barrier_anchored_fused_kernel(
+        dy, dx, dy_in, dx_in, H, W, threshold, mu, anchor_flag, eps_l1
+    ):
         """Fused anchor + T-areas + log-barrier + adjoint scatter.
 
         Returns ``(val, g_dy, g_dx)`` with ``val = +inf`` when the
@@ -146,7 +148,9 @@ if _HAVE_NUMBA:
         return val, g_dy, g_dx
 
 
-def _barrier_anchored_objective_ref(phi_flat, phi_in_flat, H, W, threshold, mu, anchor, eps_l1=1e-4):
+def _barrier_anchored_objective_ref(
+    phi_flat, phi_in_flat, H, W, threshold, mu, anchor, eps_l1=1e-4
+):
     """Legacy two-pass numpy objective. Kept as the no-numba fallback
     and as the equivalence reference for the fused kernel tests."""
     diff = phi_flat - phi_in_flat

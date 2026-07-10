@@ -198,7 +198,5 @@ def _patch_quality_2d(
 
     ty0 = wy0 - cy0
     tx0 = wx0 - cx0
-    quality_matrix[0, wy0:wy1, wx0:wx1] = q_comp[
-        0, ty0 : ty0 + wy1 - wy0, tx0 : tx0 + wx1 - wx0
-    ]
+    quality_matrix[0, wy0:wy1, wx0:wx1] = q_comp[0, ty0 : ty0 + wy1 - wy0, tx0 : tx0 + wx1 - wx0]
     return quality_matrix

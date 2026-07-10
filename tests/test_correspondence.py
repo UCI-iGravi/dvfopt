@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 pytest.importorskip("skimage")
-from laplacian.correspondence import (  # noqa: E402
+from laplacian.correspondence import (
     estimate2Dnormals,
     get2DCorrespondences_batch,
 )
@@ -24,9 +24,7 @@ def _circle_points(n=80, r=10.0, center=(20.0, 20.0)):
     # n=80 keeps adjacent spacing ~0.79 px so every point has >= 4
     # neighbours within the default KD-tree radius of 3.
     theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    return np.stack(
-        [center[0] + r * np.cos(theta), center[1] + r * np.sin(theta)], axis=1
-    )
+    return np.stack([center[0] + r * np.cos(theta), center[1] + r * np.sin(theta)], axis=1)
 
 
 class TestEstimate2DNormals:
@@ -81,9 +79,7 @@ class TestGet2DCorrespondencesBatch:
         percentile boundary; a match must still be produced."""
         fpoints = np.array([[5.0, 5.0]])
         fnormals = np.array([[0.0, 1.0]])
-        mpoints = np.array(
-            [[5.0, 7.0], [5.0, 3.0], [7.0, 5.0], [3.0, 5.0]]
-        )
+        mpoints = np.array([[5.0, 7.0], [5.0, 3.0], [7.0, 5.0], [3.0, 5.0]])
         mnormals = np.tile([0.0, 1.0], (4, 1))
         corr = get2DCorrespondences_batch(fpoints, fnormals, mpoints, mnormals)
         assert corr[0] != -1

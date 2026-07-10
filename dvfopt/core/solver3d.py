@@ -363,7 +363,7 @@ def _serial_fix_voxel(
             slice(cy - hy, cy + hy_hi),
             slice(cx - hx, cx + hx_hi),
         )
-        _phi_snap = phi[(slice(None),) + _win].copy()
+        _phi_snap = phi[(slice(None), *_win)].copy()
         _jac_snap = jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1].copy()
         _old_n = int((_jac_snap <= threshold - err_tol).sum())
         _old_min = float(_jac_snap.min())
@@ -387,7 +387,7 @@ def _serial_fix_voxel(
         _new_n = int((_new_loc <= threshold - err_tol).sum())
         _new_min = float(_new_loc.min())
         if _new_n > _old_n or (_new_n == _old_n and _new_min < _old_min):
-            phi[(slice(None),) + _win] = _phi_snap
+            phi[(slice(None), *_win)] = _phi_snap
             jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1] = _jac_snap
             _cur_neg = int((jacobian_matrix <= 0).sum())
             _cur_min = float(jacobian_matrix.min())

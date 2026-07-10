@@ -15,6 +15,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
+# hypothesis lives in the ``dev`` extra — skip cleanly on lean installs
+# (e.g. the ci.yml ``[fast]`` env), matching the PyQt5/SimpleITK/torch
+# optional-dependency convention used across the suite.
+pytest.importorskip('hypothesis', reason='property tests need the dev extra (hypothesis)')
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
 

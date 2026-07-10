@@ -22,6 +22,7 @@ Features
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -387,9 +388,15 @@ class ParamsDialog(QtWidgets.QDialog):
     * **History** — buffer size for the scrub slider (per-worker;
       changes apply to the next run only, since ``collections.deque``
       can't be resized in place).
+    * **Strategy** — auto-generated form of the current method's Strategy
+      dataclass fields (see :mod:`dvfopt_gui.strategy_params`); "no
+      editable parameters" for non-dataclass methods (auto / pipelines /
+      marching).
     """
 
-    def __init__(self, parent, *, history_max_size: int):
+    def __init__(
+        self, parent, *, history_max_size: int, strategy_algo: str, strategy_overrides: dict
+    ):
         super().__init__(parent)
         self.setWindowTitle('Params')
         self.setModal(True)
@@ -426,6 +433,20 @@ class ParamsDialog(QtWidgets.QDialog):
         history_form.addRow(info)
         tabs.addTab(history_tab, 'History')
 
+        # --- Strategy tab -----------------------------------------------------
+        from dvfopt_gui.strategy_params import StrategyParamsTab
+
+        self._strategy_tab = StrategyParamsTab()
+        self._strategy_tab.build(strategy_algo, dict(strategy_overrides))
+        reset_row = QtWidgets.QWidget()
+        reset_lay = QtWidgets.QVBoxLayout(reset_row)
+        reset_lay.setContentsMargins(0, 0, 0, 0)
+        reset_lay.addWidget(self._strategy_tab)
+        reset_btn = QtWidgets.QPushButton('Reset to defaults')
+        reset_btn.clicked.connect(lambda: self._strategy_tab.build(strategy_algo, {}))
+        reset_lay.addWidget(reset_btn)
+        tabs.addTab(reset_row, 'Strategy')
+
         # --- OK / Cancel ----------------------------------------------------
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
@@ -441,6 +462,7 @@ class ParamsDialog(QtWidgets.QDialog):
         the dialog has been accepted."""
         return {
             'history_max_size': int(self._hist_max_spin.value()),
+            'strategy_overrides': self._strategy_tab.values(),
         }
 
 
@@ -507,9 +529,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # a full-slice run. Set per-run; initialised here so any read
         # (e.g. ``_on_finished``) before the first run is well-defined.
         self._section_bounds: tuple[int, int, int, int] | None = None
+        # Active 3D "Run section" crop bounds ``(z0, z1ex, y0, y1, x0, x1)``
+        # (``z1ex`` exclusive) or None for a full-volume 3D run. Mirrors
+        # ``_section_bounds`` for the 3D ROI path; set per-run.
+        self._section_bounds_3d: tuple | None = None
         # True when the selected constraint is a whole-volume 3D family
-        # (tet3d / jdet3d). In 3D mode: Run-section and Run-all z are
-        # disabled; Run-full passes the entire (3, D, H, W) volume.
+        # (tet3d / jdet3d). In 3D mode: Run-all z is disabled; Run-full
+        # passes the entire (3, D, H, W) volume; Run-section solves a
+        # (z0:z1, y0:y1, x0:x1) sub-volume (see ``_section_bounds_3d``).
         self._is_3d_run = False
         # When non-None, a "Run all z" batch is in flight; holds the
         # z-slice indices still to be solved (current one already popped
@@ -541,6 +568,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # workers pick these up at construction; in-flight workers
         # retain whatever they were started with.
         self._history_max_size: int = DEFAULT_HISTORY_MAX
+        # Per-method Strategy dataclass-field overrides, keyed by the algo
+        # tag (family-qualified as ``f'{algo}@tet3d'`` or ``f'{algo}@jdet3d'``
+        # in 3D mode — see ``_current_params_algo``). Edited via the Params dialog's
+        # Strategy tab; merged into the worker's constructed Strategy at
+        # ``_build_strategy`` time. Persisted to QSettings as JSON.
+        self._strategy_overrides: dict[str, dict] = {}
         # Starting directory for the load/save dialogs — seeded from the
         # canonical DVF folder, then remembered across sessions (and
         # updated to the last file's folder) via QSettings.
@@ -653,6 +686,16 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z_label = QtWidgets.QLabel('—')
         bar.addWidget(self._z_label)
 
+        # 3D-mode sub-volume z-range (hidden in 2D). Pairs with the Rect ROI
+        # (which supplies y/x) for "Run section" on a sub-volume.
+        self._z0_label = QtWidgets.QLabel('z0:')
+        self._z0_spin = QtWidgets.QSpinBox()
+        self._z1_label = QtWidgets.QLabel('z1:')
+        self._z1_spin = QtWidgets.QSpinBox()
+        for wdg in (self._z0_label, self._z0_spin, self._z1_label, self._z1_spin):
+            bar.addWidget(wdg)
+            wdg.setVisible(False)
+
         bar.addWidget(_toolbar_separator())
         self._run_full_btn = QtWidgets.QPushButton('Run full')
         self._run_full_btn.setShortcut('F5')
@@ -661,7 +704,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         bar.addWidget(self._run_full_btn)
         self._run_roi_btn = QtWidgets.QPushButton('Run section')
         self._run_roi_btn.setShortcut('Ctrl+R')
-        self._run_roi_btn.setToolTip('Solve only inside the ROI rectangle (Ctrl+R).')
+        self._run_roi_btn.setToolTip(
+            'Solve only inside the ROI rectangle (Ctrl+R). In 3D mode also '
+            'uses the z0/z1 spinboxes to crop a sub-volume.'
+        )
         self._run_roi_btn.clicked.connect(lambda: self._on_run(use_roi=True))
         bar.addWidget(self._run_roi_btn)
         self._run_all_btn = QtWidgets.QPushButton('Run all z')
@@ -1781,10 +1827,18 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     def _apply_mode_gating(self) -> None:
         """Reflect 2D/3D mode in the run controls."""
         D = self._volume.shape[1] if self._volume is not None else 1
-        self._run_roi_btn.setEnabled(not self._is_3d_run)
+        self._run_roi_btn.setEnabled(self._volume is not None)
         self._run_all_btn.setEnabled((not self._is_3d_run) and D > 1)
         self._pipeline_btn.setEnabled(D > 1)
-        self._section_roi.setVisible((not self._is_3d_run) and self._volume is not None)
+        self._section_roi.setVisible(self._volume is not None)
+        show_z = self._is_3d_run and D > 1
+        for wdg in (self._z0_label, self._z0_spin, self._z1_label, self._z1_spin):
+            wdg.setVisible(show_z)
+        if show_z:
+            self._z0_spin.setRange(0, D - 1)
+            self._z1_spin.setRange(0, D - 1)
+            if self._z1_spin.value() == 0:
+                self._z1_spin.setValue(D - 1)
 
     def _on_constraint_changed(self, idx: int):
         constraint = self._constraint_combo.itemData(idx)
@@ -1817,10 +1871,25 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._refresh_display_from_volume()
         self._overview_strip.set_current(self._z)
 
+    def _current_params_algo(self) -> str:
+        """Key for strategy-override storage: the algo tag, family-qualified
+        in 3D mode (the 3D strategy classes have different knobs)."""
+        algo = self._method_combo.currentData() or ''
+        if not self._is_3d_run:
+            return algo
+        family = self._constraint_combo.currentData()
+        return f'{algo}@{family}'  # '@tet3d' or '@jdet3d'
+
     def _on_open_params(self):
         """Open the Params dialog. On accept, write the edited values
         back to the window's instance attrs; on cancel, discard."""
-        dlg = ParamsDialog(self, history_max_size=self._history_max_size)
+        algo = self._current_params_algo()
+        dlg = ParamsDialog(
+            self,
+            history_max_size=self._history_max_size,
+            strategy_algo=algo,
+            strategy_overrides=self._strategy_overrides.get(algo, {}),
+        )
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             vals = dlg.result_values()
             new_hms = int(vals['history_max_size'])
@@ -1830,6 +1899,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     f'history_max_size set to {new_hms} (takes effect on next run)',
                     8_000,
                 )
+            strategy_overrides = vals['strategy_overrides']
+            if strategy_overrides:
+                self._strategy_overrides[algo] = strategy_overrides
+            else:
+                self._strategy_overrides.pop(algo, None)
 
     # ----- run buttons -------------------------------------------------------
 
@@ -1844,6 +1918,31 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             return
 
         if self._is_3d_run:
+            if use_roi:
+                D, H, W = self._volume.shape[1:]
+                x, y = self._section_roi.pos()
+                w, h = self._section_roi.size()
+                y0, x0 = max(0, round(y)), max(0, round(x))
+                y1, x1 = min(H, round(y + h)), min(W, round(x + w))
+                z0, z1 = int(self._z0_spin.value()), int(self._z1_spin.value())
+                if z1 < z0:
+                    z0, z1 = z1, z0
+                z1ex = z1 + 1
+                if (z1ex - z0) < 3 or (y1 - y0) < 3 or (x1 - x0) < 3:
+                    QtWidgets.QMessageBox.warning(
+                        self, 'Section too small', 'The 3D section must be at least 3×3×3.'
+                    )
+                    return
+                self._section_bounds_3d = (z0, z1ex, y0, y1, x0, x1)
+                self.statusBar().showMessage(
+                    'Run section (3D): solving the sub-volume — check the box '
+                    'boundary for seam folds after it completes.',
+                    6_000,
+                )
+                sub = self._original_volume[:, z0:z1ex, y0:y1, x0:x1].copy()
+                self._start_worker(sub)
+                return
+            self._section_bounds_3d = None
             self._section_bounds = None
             self._start_worker(self._original_volume.copy())
             return
@@ -1863,6 +1962,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 )
                 return
             self._section_bounds = (y0, y1, x0, x1)
+            self._section_bounds_3d = None
             sub = deformation_i[:, :, y0:y1, x0:x1].copy()
             # The ROI is solved in isolation (frozen edges) then spliced
             # back, so new folds can appear at the seam where the patched
@@ -1877,6 +1977,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             self._start_worker(sub)
         else:
             self._section_bounds = None
+            self._section_bounds_3d = None
             self._start_worker(deformation_i)
 
     def _start_worker(self, deformation_i: np.ndarray, method_id: str | None = None):
@@ -1910,6 +2011,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'threshold': self._display_threshold(),
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
+            'strategy_overrides': self._strategy_overrides.get(self._current_params_algo(), {}),
         }
         if self._max_per_index_iter is not None:
             params['max_per_index_iter'] = int(self._max_per_index_iter)
@@ -2003,6 +2105,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if not self._run_all_remaining:
             self._run_all_remaining = None
             self._finalize_run_ui()
+            # The per-slice gate in ``_on_finished`` skipped every restart
+            # during the batch (``_run_all_remaining`` was non-None then) —
+            # this drain branch is the batch's actual end, so it owns the
+            # one restart that reflects the whole batch's splices. The
+            # pipeline chain-trigger branch above needs no equivalent call:
+            # it hands off to the 2.5D marching worker, whose own finish
+            # later runs with ``_run_all_remaining`` already None, so the
+            # gate in ``_on_finished`` fires naturally for it.
+            self._restart_overview()
             self.statusBar().showMessage('Run all z finished.', 10_000)
             return
         z = self._run_all_remaining.pop(0)
@@ -2010,6 +2121,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._z = z
         self._z_label.setText(f'{z} / {D - 1}')
         self._section_bounds = None
+        self._section_bounds_3d = None
         remaining = len(self._run_all_remaining)
         self.statusBar().showMessage(f'Run all z: solving slice {z} ({D - remaining}/{D})…', 0)
         # Solve from the pristine input for this slice.
@@ -2053,6 +2165,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         input IS the per-slice-corrected state)."""
         self._select_combo_data(self._constraint_combo, CONSTRAINT_TET3D)
         self._section_bounds = None
+        self._section_bounds_3d = None
         self.statusBar().showMessage('2.5D marching…', 0)
         self._start_worker(self._volume.copy(), method_id='marching25d_tet3d')
 
@@ -2081,6 +2194,19 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 self, 'Pipeline needs a volume', 'The full pipeline needs a (3, D>1, H, W) volume.'
             )
             return
+        if not zero_dz and float(np.abs(self._volume[0]).max()) > 1e-9:
+            ans = QtWidgets.QMessageBox.question(
+                self,
+                'dz is not zero',
+                'The 2.5D stage requires dz == 0, but this volume has a '
+                'nonzero dz channel — the pipeline would fail after the '
+                'per-slice 2D stage.\n\nZero the dz channel first (one '
+                'undoable operation together with the pipeline)?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            )
+            if ans != QtWidgets.QMessageBox.Yes:
+                return
+            zero_dz = True
         if self._is_3d_run:
             # Per-slice stage needs a 2D method; drop back to the 2-tri family.
             self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
@@ -2129,8 +2255,13 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             if self._run_all_remaining is None and not self._pipeline_active:
                 self._push_undo_state()
             phi_out = np.asarray(phi_out)
-            if phi_out.ndim == 4:  # full-volume 3D result [dz,dy,dx]
-                self._volume[...] = phi_out
+            if phi_out.ndim == 4:  # full-volume or 3D-ROI result [dz,dy,dx]
+                sb3 = self._section_bounds_3d
+                if sb3 is not None:
+                    z0, z1ex, y0, y1, x0, x1 = sb3
+                    self._volume[:, z0:z1ex, y0:y1, x0:x1] = phi_out
+                else:
+                    self._volume[...] = phi_out
             else:
                 sb = self._section_bounds
                 if sb is not None:
@@ -2141,7 +2272,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
-            self._restart_overview()
+            # Skip the (expensive, full-volume) overview recompute for a
+            # per-slice finish mid-batch (Run-all / the pipeline's per-slice
+            # stage) — ``_run_all_remaining`` is a list, not None, for every
+            # finish except a standalone run or the 2.5D marching stage's
+            # own finish. The batch's own end-of-run restarts are triggered
+            # explicitly: see ``_run_all_step``'s drain branch.
+            if self._run_all_remaining is None:
+                self._restart_overview()
         report = getattr(self._worker, 'pipeline_report', None)
         if report is not None:
             self.statusBar().showMessage(
@@ -2636,6 +2774,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         hms = s.value('history_max_size', 0, type=int)
         if hms:
             self._history_max_size = hms
+        raw = s.value('strategy_overrides', '', type=str)
+        if raw:
+            try:
+                self._strategy_overrides = {k: dict(v) for k, v in json.loads(raw).items()}
+            except (ValueError, TypeError, AttributeError):
+                self._strategy_overrides = {}
 
     def _save_settings(self) -> None:
         """Persist window geometry + toolbar selections for next launch."""
@@ -2651,6 +2795,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         s.setValue('max_iter', int(self._max_iter_spin.value()))
         s.setValue('threshold', self._display_threshold())
         s.setValue('history_max_size', int(self._history_max_size))
+        s.setValue('strategy_overrides', json.dumps(self._strategy_overrides))
 
     # ----- lifecycle ---------------------------------------------------------
 
@@ -2680,10 +2825,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # ``cancel()`` only flips a flag checked between per-slice metric
         # computations, so wait (bounded) for it to actually exit before
         # the window (its parent) is torn down.
-        overview_worker = self._overview_worker
-        if overview_worker is not None and overview_worker.isRunning():
-            overview_worker.cancel()
-            overview_worker.wait(2_000)
+        ow = getattr(self, '_overview_worker', None)
+        if ow is not None and ow.isRunning():
+            ow.cancel()
+            ow.wait(2_000)
+            if ow.isRunning():
+                # Per-slice cancel checks make this near-impossible, but a
+                # still-running thread at teardown can crash Qt — force it.
+                ow.terminate()
+                ow.wait(1_000)
         super().closeEvent(ev)
 
 
