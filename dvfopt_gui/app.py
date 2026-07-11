@@ -524,6 +524,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # by ``_invalidate_metric_caches``. See ``_metric3d_field``.
         self._metric3d_cache: dict = {}
         self._worker: SolverWorker | None = None
+        # One-shot load QThread (LoadWorker) — set on each Load DVF click,
+        # checked by ``_on_load`` to guard against re-entry (Ctrl+O firing
+        # again while a decode is still in flight) and drained by
+        # ``closeEvent`` so it can't outlive the window.
+        self._load_worker: LoadWorker | None = None
         self._picked_yx: tuple[int, int] | None = None
         # Active "Run section" crop bounds ``(y0, y1, x0, x1)`` or None for
         # a full-slice run. Set per-run; initialised here so any read
@@ -825,12 +830,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             'counts. Default 0.01 (package default).'
         )
         method_bar.addWidget(self._thr_spin)
-        # The metric FIELD is threshold-independent (thr only affects the
-        # reductions computed over it), so no cache invalidation is needed
-        # here — just repaint the idle stats panel with the new threshold.
-        self._thr_spin.valueChanged.connect(
-            lambda _v: self._refresh_display_from_volume() if self._worker is None else None
-        )
+        self._thr_spin.valueChanged.connect(self._on_threshold_changed)
 
         # Spacer + Params button — opens the tabbed settings dialog for
         # window-level params that don't belong in the per-run toolbar
@@ -1096,7 +1096,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu('&File')
-        file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
+        self._load_action = file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
         file_menu.addAction('Save…\tCtrl+S', self._on_save)
         file_menu.addAction('Export corrected DVF…', self._on_export)
         file_menu.addAction('Revert', self._on_revert)
@@ -1168,6 +1168,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
     # ----- DVF loading -------------------------------------------------------
 
     def _on_load(self):
+        # A load is already decoding on the worker thread — ignore re-entry
+        # (the controls are disabled, but the Ctrl+O shortcut still fires).
+        lw = self._load_worker
+        if lw is not None and getattr(lw, 'isRunning', lambda: False)():
+            return
         flt = 'DVF files (*.npy *.npz'
         from dvfopt_gui.io_formats import SITK_EXTENSIONS, sitk_available
 
@@ -1189,6 +1194,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         # Loading dispatches to a QThread (LoadWorker): GB-scale np.load +
         # float64 conversion + sitk decode no longer block the GUI thread.
         self._load_btn.setEnabled(False)
+        self._load_action.setEnabled(False)
         self.statusBar().showMessage(f'Loading {Path(path).name}…', 0)
         self._load_worker = LoadWorker(path, parent=self)
         self._load_worker.loadedRun.connect(lambda run: self._on_load_finished(path, run))
@@ -1197,6 +1203,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
     def _on_load_finished(self, path: str, run) -> None:
         self._load_btn.setEnabled(True)
+        self._load_action.setEnabled(True)
         if not self._apply_loaded_run(run):
             self.statusBar().clearMessage()
             return
@@ -1206,6 +1213,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
     def _on_load_failed(self, msg: str) -> None:
         self._load_btn.setEnabled(True)
+        self._load_action.setEnabled(True)
         self.statusBar().clearMessage()
         QtWidgets.QMessageBox.critical(self, 'Load failed', msg)
 
@@ -1307,6 +1315,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
 
     # ----- undo / redo -------------------------------------------------------
 
+    def _cap_stack(self, stack: list) -> None:
+        """Enforce the shared count + byte budget on an undo/redo stack
+        (evicts oldest first; always keeps at least one entry)."""
+        if len(stack) > self._UNDO_MAX:
+            stack.pop(0)
+        while len(stack) > 1 and sum(v.nbytes for v in stack) > UNDO_MAX_BYTES:
+            stack.pop(0)
+
     def _push_undo_state(self) -> None:
         """Snapshot the current volume onto the undo stack (capped) and
         invalidate the redo stack. Called just before a run splices its
@@ -1314,12 +1330,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if self._volume is None:
             return
         self._undo_stack.append(self._volume.copy())
-        if len(self._undo_stack) > self._UNDO_MAX:
-            self._undo_stack.pop(0)
-        while (
-            len(self._undo_stack) > 1 and sum(v.nbytes for v in self._undo_stack) > UNDO_MAX_BYTES
-        ):
-            self._undo_stack.pop(0)
+        self._cap_stack(self._undo_stack)
         self._redo_stack.clear()
         self._update_undo_redo_enabled()
 
@@ -1328,6 +1339,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if not self._undo_stack or (self._worker is not None and self._worker.isRunning()):
             return
         self._redo_stack.append(self._volume.copy())
+        self._cap_stack(self._redo_stack)
         self._volume = self._undo_stack.pop()
         self._after_undo_redo('Undid last correction.')
 
@@ -1336,6 +1348,7 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if not self._redo_stack or (self._worker is not None and self._worker.isRunning()):
             return
         self._undo_stack.append(self._volume.copy())
+        self._cap_stack(self._undo_stack)
         self._volume = self._redo_stack.pop()
         self._after_undo_redo('Redid correction.')
 
@@ -1520,7 +1533,12 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         load and whenever a finished run splices the volume."""
         if self._overview_worker is not None and self._overview_worker.isRunning():
             self._overview_worker.cancel()
-            self._overview_worker.wait(2_000)
+            if not self._overview_worker.wait(2_000):
+                # Per-slice cancel checks make a hang near-impossible, but
+                # dropping the last reference to a still-running QThread
+                # can crash Qt — force it down before reassigning.
+                self._overview_worker.terminate()
+                self._overview_worker.wait(1_000)
         D = self._volume.shape[1] if self._volume is not None else 1
         if self._volume is None or D <= 1:
             self._overview_strip.setVisible(False)
@@ -1580,6 +1598,20 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         self._stats_label.setText(self._format_stats(None))
         self._inspector_label.setText(self._format_inspector(None))
         self._refresh_convergence()
+
+    def _on_threshold_changed(self, _v) -> None:
+        """Repaint the idle stats panel with the new threshold.
+
+        The metric FIELD is threshold-independent (thr only affects the
+        reductions computed over it), so no cache invalidation is needed.
+        Gate on a *running* worker, not a merely-existing one: the worker
+        reference survives a finished run, and a threshold tweak right
+        after a run must still repaint. Mid-run the snapshot stream owns
+        the display — skip.
+        """
+        w = self._worker
+        if w is None or not getattr(w, 'isRunning', lambda: False)():
+            self._refresh_display_from_volume()
 
     def _set_view(self, phi_2hw: np.ndarray, jacobian: np.ndarray, *, fast: bool = False) -> None:
         """Update the central plot to reflect the current view mode.
@@ -2272,6 +2304,11 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                     self._volume[1, self._z] = phi_out[0]
                     self._volume[2, self._z] = phi_out[1]
             self._refresh_display_from_volume()
+            # The run is over and its result is spliced into the volume —
+            # drop the last streamed snapshot so idle-path readers
+            # (inspector, view toggles, thr-spin repaints) all see the
+            # volume, exactly like after load/undo (which also set None).
+            self._latest = None
             # Skip the (expensive, full-volume) overview recompute for a
             # per-slice finish mid-batch (Run-all / the pipeline's per-slice
             # stage) — ``_run_all_remaining`` is a list, not None, for every
@@ -2684,8 +2721,14 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
         if yx is None:
             return '<b>Pixel inspector</b><br>(click a pixel)'
         y, x = yx
+        phi3d = None
         if self._latest is not None and self._latest.phi.ndim == 4:
             phi3d = self._latest.phi
+        elif self._latest is None and self._volume is not None and self._volume.shape[1] > 1:
+            # Idle with a true-3D volume loaded: read the volume directly
+            # instead of falling through to the 2D single-slice readout.
+            phi3d = self._volume
+        if phi3d is not None:
             z = min(self._z, phi3d.shape[1] - 1)
             mv = self._metric3d_field(phi3d, 'tet3d')
             Dm, Hm, Wm = mv.shape
@@ -2834,6 +2877,15 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
                 # still-running thread at teardown can crash Qt — force it.
                 ow.terminate()
                 ow.wait(1_000)
+        # The load worker has no cancel flag (it is a one-shot decode);
+        # give it a bounded wait so it cannot outlive the window, then
+        # force it down — the process is exiting anyway.
+        lw = self._load_worker
+        if lw is not None and getattr(lw, 'isRunning', lambda: False)():
+            lw.wait(5_000)
+            if lw.isRunning():
+                lw.terminate()
+                lw.wait(1_000)
         super().closeEvent(ev)
 
 

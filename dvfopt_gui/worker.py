@@ -926,7 +926,7 @@ class SolverWorker(QtCore.QThread):
             )
             try:
                 strategy = make_strategy(label)
-            except Exception:
+            except (KeyError, ValueError):
                 # Registry label unavailable — fall back to the family default.
                 label = 'm14' if kind == '2tri' else 'barrier'
                 strategy = make_strategy(label)

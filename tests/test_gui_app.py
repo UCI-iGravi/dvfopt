@@ -1189,3 +1189,101 @@ def test_overview_restart_skipped_per_slice(qapp, monkeypatch):
     win._run_all_remaining = [2]  # mid-batch
     win._on_finished(np.zeros((2, 6, 6)), None)  # per-slice finish
     assert calls['n'] == 0, 'no overview restart mid-batch'
+
+
+# ---------------------------------------------------------------------------
+# GUI Minors B1: worker lifecycle & guards
+# ---------------------------------------------------------------------------
+
+
+class TestMinorsSweepLifecycle:
+    def _win(self, qapp, D=1):
+        vol = np.zeros((3, D, 8, 8), dtype=np.float64)
+        win = LiveSolverWindow(np.zeros((3, 1, 8, 8)))
+        win._apply_loaded_run(LoadedRun(volume=vol))
+        return win
+
+    def test_load_reentry_guarded_and_controls_reenabled(self, qapp, monkeypatch):
+        win = self._win(qapp)
+        monkeypatch.setattr(QtWidgets.QMessageBox, 'critical', staticmethod(lambda *a, **k: None))
+
+        class FakeWorker:
+            def isRunning(self):
+                return True
+
+        win._load_worker = FakeWorker()
+        # A second Ctrl+O while a load is in flight must return before
+        # even opening the file dialog.
+        monkeypatch.setattr(
+            QtWidgets.QFileDialog,
+            'getOpenFileName',
+            staticmethod(lambda *a, **k: pytest.fail('dialog opened during in-flight load')),
+        )
+        win._on_load()
+        # Finish/fail paths re-enable BOTH the toolbar button and menu action.
+        win._load_btn.setEnabled(False)
+        win._load_action.setEnabled(False)
+        win._on_load_failed('boom')
+        assert win._load_btn.isEnabled()
+        assert win._load_action.isEnabled()
+
+    def test_redo_stack_byte_budgeted(self, qapp, monkeypatch):
+        import dvfopt_gui.app as app_mod
+
+        win = self._win(qapp)
+        vol_bytes = win._volume.nbytes
+        monkeypatch.setattr(app_mod, 'UNDO_MAX_BYTES', 3 * vol_bytes)
+        stack = [win._volume.copy() for _ in range(6)]
+        win._cap_stack(stack)
+        assert len(stack) <= 3
+        assert sum(v.nbytes for v in stack) <= 3 * vol_bytes
+
+    def test_undo_pushes_capped_redo(self, qapp, monkeypatch):
+        import dvfopt_gui.app as app_mod
+
+        win = self._win(qapp)
+        monkeypatch.setattr(app_mod, 'UNDO_MAX_BYTES', 2 * win._volume.nbytes)
+        win._undo_stack = [win._volume.copy() for _ in range(4)]
+        win._redo_stack = [win._volume.copy(), win._volume.copy()]
+        win._on_undo()
+        assert sum(v.nbytes for v in win._redo_stack) <= 2 * win._volume.nbytes
+
+    def test_thr_spin_repaints_after_run_finished(self, qapp, monkeypatch):
+        win = self._win(qapp)
+
+        class DoneWorker:
+            def isRunning(self):
+                return False
+
+        win._worker = DoneWorker()  # run finished, ref not cleared
+        calls = []
+        monkeypatch.setattr(win, '_refresh_display_from_volume', lambda: calls.append(1))
+        win._on_threshold_changed(0.02)
+        assert calls, 'threshold change after a finished run must repaint'
+
+    def test_thr_spin_noop_while_running(self, qapp, monkeypatch):
+        win = self._win(qapp)
+
+        class LiveWorker:
+            def isRunning(self):
+                return True
+
+        win._worker = LiveWorker()
+        calls = []
+        monkeypatch.setattr(win, '_refresh_display_from_volume', lambda: calls.append(1))
+        win._on_threshold_changed(0.02)
+        assert not calls, 'must not repaint mid-run (stream owns the display)'
+
+    def test_inspector_3d_idle_readout(self, qapp):
+        win = self._win(qapp, D=4)
+        assert win._latest is None
+        html = win._format_inspector((2, 2))
+        assert '3D' in html and 'min 6-tet' in html, (
+            f'idle 3D volume must get the 3D readout, got: {html}'
+        )
+
+    def test_latest_cleared_on_finish(self, qapp):
+        win = self._win(qapp)
+        win._latest = _snap(np.zeros((2, 8, 8)))
+        win._on_finished(np.zeros((2, 8, 8)), None)
+        assert win._latest is None
