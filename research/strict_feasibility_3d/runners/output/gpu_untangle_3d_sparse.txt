@@ -1,0 +1,80 @@
+data: C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\data\dvfs\archive\new_b0039_laplacian_deformation_field.npz
+
+=== crop sparse: shape=(3, 16, 128, 128) ===
+  input: n_neg=2715 (1.1%)  min_T=-11.472  best_diag_floor=2669 (1.1%)
+    [alm3d outer 1] worst_g=-0.39056 folds~16871 mu=1e+03
+    [alm3d outer 2] worst_g=-0.20255 folds~2517 mu=1e+03
+    [alm3d outer 3] worst_g=-0.09580 folds~2633 mu=1e+03
+    [alm3d outer 4] worst_g=-0.11369 folds~2721 mu=3e+03
+    [alm3d outer 5] worst_g=-0.03753 folds~1287 mu=3e+03
+    [alm3d outer 6] worst_g=-0.03102 folds~1036 mu=3e+03
+    [alm3d outer 7] worst_g=-0.03225 folds~1026 mu=9e+03
+    [alm3d outer 8] worst_g=-0.02492 folds~803 mu=9e+03
+    [alm3d outer 9] worst_g=-0.03141 folds~752 mu=3e+04
+    [alm3d outer 10] worst_g=-0.03080 folds~729 mu=3e+04
+    [alm3d outer 11] worst_g=-0.05314 folds~680 mu=8e+04
+    [alm3d outer 12] worst_g=-0.03357 folds~669 mu=8e+04
+    [alm3d outer 13] worst_g=-0.03973 folds~646 mu=2e+05
+    [alm3d outer 14] worst_g=-0.02581 folds~639 mu=2e+05
+    [alm3d outer 15] worst_g=-0.02326 folds~633 mu=2e+05
+    [alm3d outer 16] worst_g=-0.03159 folds~616 mu=7e+05
+    [alm3d outer 17] worst_g=-0.04170 folds~615 mu=2e+06
+    [alm3d outer 18] worst_g=-0.02922 folds~613 mu=2e+06
+    [alm3d outer 19] worst_g=-0.03174 folds~606 mu=7e+06
+    [alm3d outer 20] worst_g=-0.02585 folds~599 mu=7e+06
+    [alm3d outer 21] worst_g=-0.02777 folds~589 mu=2e+07
+    [alm3d outer 22] worst_g=-0.02842 folds~584 mu=6e+07
+    [alm3d outer 23] worst_g=-0.02330 folds~585 mu=6e+07
+    [alm3d outer 24] worst_g=-0.03831 folds~575 mu=1e+08
+    [alm3d outer 25] worst_g=-0.03535 folds~566 mu=1e+08
+    [alm3d outer 26] worst_g=-0.03141 folds~555 mu=1e+08
+    [alm3d outer 27] worst_g=-0.05599 folds~528 mu=1e+08
+    [alm3d outer 28] worst_g=-0.04845 folds~501 mu=1e+08
+    [alm3d outer 29] worst_g=-0.05345 folds~445 mu=1e+08
+    [alm3d outer 30] worst_g=-0.07788 folds~428 mu=1e+08
+    [alm3d outer 31] worst_g=-0.05583 folds~391 mu=1e+08
+    [alm3d outer 32] worst_g=-0.11340 folds~350 mu=1e+08
+    [alm3d outer 33] worst_g=-0.10050 folds~283 mu=1e+08
+    [alm3d outer 34] worst_g=-0.12239 folds~238 mu=1e+08
+    [alm3d outer 35] worst_g=-0.20965 folds~218 mu=1e+08
+    [alm3d outer 36] worst_g=-0.05167 folds~212 mu=1e+08
+    [alm3d outer 37] worst_g=-0.03469 folds~198 mu=1e+08
+    [alm3d outer 38] worst_g=-0.05008 folds~184 mu=1e+08
+    [alm3d outer 39] worst_g=-0.03802 folds~190 mu=1e+08
+    [alm3d outer 40] worst_g=-0.07147 folds~175 mu=1e+08
+  [gpu stage] n_neg 2715 -> 41  min_T -11.472 -> -0.05947  L1=4983.3  wall=269.7s
+[triage] n_neg=41 n<thr=55 min_T=-0.05947 best-diag-floor=37
+C:\Users\Andy\Documents\GitHub\UCI-iGravi\dfp-work2\dvfopt\core\_barrier_core.py:228: OptimizeWarning: Unknown solver options: disp
+  res = minimize(
+  active-band bbox z[0:15] y[109:127] x[77:127] crop=(16, 19, 51) n_neg 41->62
+  active-band bbox z[0:15] y[105:127] x[73:127] crop=(16, 23, 55) n_neg 41->74
+[bulk:active_band] n_neg=41 min_T=-0.05947 (305.2s)
+[escape 1 k=2] n_neg 41->17 min_T=-2.80994 (342.9s)
+[escape 2 k=2] n_neg 17->5 min_T=-1.41996 (32.8s)
+[escape 3 k=2] n_neg 5->4 min_T=-0.29574 (68.4s)
+[escape 4 k=2] n_neg 4->5 min_T=-0.28385 (14.6s)
+[escape] stalled — escalating halo to k=3
+[escape 5 k=3] n_neg 5->4 min_T=-0.02758 (55.6s)
+[escape 6 k=3] n_neg 4->3 min_T=-0.00006 (117.4s)
+[escape 7 k=2] n_neg 3->3 min_T=-0.00006 (16.9s)
+[escape] stalled — escalating halo to k=3
+[escape 8 k=3] n_neg 3->3 min_T=-0.00005 (73.1s)
+[multiscale-fallback] escape plateaued at 3; re-seeding coarse-to-fine
+  [multiscale] coarse (8, 64, 64) n_neg=116
+  [multiscale] upsampled n_neg=179 (transient) -> fine polish
+  [multiscale] fine n_neg=0 (1237.5s)
+  (b) gpu-seed+correct   feasible=True  n_neg_out=     0  n_below=     0  min_T=+0.01300  L1_vs_orig=     13624.8  wall=  2534.2s  bd_floor_out=0
+[triage] n_neg=2715 n<thr=2992 min_T=-11.47158 best-diag-floor=2669
+  active-band bbox z[0:15] y[113:127] x[77:127] crop=(16, 15, 51) n_neg 2715->921
+[bulk:active_band] n_neg=921 min_T=-14.50619 (139.8s)
+[escape 1 k=2] n_neg 921->692 min_T=-14.56971 (38.6s)
+[escape 2 k=2] n_neg 692->475 min_T=-74.76891 (60.9s)
+[escape 3 k=2] n_neg 475->205 min_T=-74.76891 (102.8s)
+[escape 4 k=2] n_neg 205->14 min_T=-13.12896 (379.5s)
+[escape 5 k=2] n_neg 14->4 min_T=-2.56038 (41.2s)
+[escape 6 k=2] n_neg 4->2 min_T=-1.21095 (32.7s)
+[escape 7 k=2] n_neg 2->1 min_T=-0.00003 (44.3s)
+[escape 8 k=2] n_neg 1->1 min_T=-0.00003 (9.8s)
+[escape] stalled — escalating halo to k=3
+[multiscale-fallback] escape plateaued at 1; re-seeding coarse-to-fine
+  [multiscale] coarse (8, 64, 64) n_neg=108

@@ -1,0 +1,29 @@
+data: C:\Users\Andy\Documents\GitHub\UCI-iGravi\deformation-field-processing\data\dvfs\archive\new_b0039_laplacian_deformation_field.npz
+
+=== crop sparse: shape=(3, 16, 128, 128) ===
+  input: n_neg=2715 (1.1%)  min_T=-11.472  best_diag_floor=2669 (1.1%)
+[triage] n_neg=2715 n<thr=2992 min_T=-11.47158 best-diag-floor=2669
+  active-band bbox z[0:15] y[113:127] x[77:127] crop=(16, 15, 51) n_neg 2715->921
+[bulk:active_band] n_neg=921 min_T=-14.50619 (124.5s)
+[escape 1 k=2] n_neg 921->688 min_T=-14.56158 (38.0s)
+[escape 2 k=2] n_neg 688->517 min_T=-80.34299 (69.1s)
+[escape 3 k=2] n_neg 517->167 min_T=-80.34299 (235.9s)
+[escape 4 k=2] n_neg 167->39 min_T=-39.26180 (205.2s)
+[escape 5 k=2] n_neg 39->6 min_T=-0.66914 (202.1s)
+[escape 6 k=2] n_neg 6->1 min_T=-0.00004 (50.5s)
+[escape 7 k=2] n_neg 1->1 min_T=-0.00004 (120.5s)
+[escape] stalled — escalating halo to k=3
+[escape 8 k=3] n_neg 1->1 min_T=-0.00004 (157.5s)
+[multiscale-fallback] escape plateaued at 1; re-seeding coarse-to-fine
+  [multiscale] coarse (8, 64, 64) n_neg=105
+  [multiscale] upsampled n_neg=215 (transient) -> fine polish
+  [multiscale] fine n_neg=2 (1020.3s)
+[escape2 1 k=2] n_neg 1->1 min_T=-0.00004 (33.5s)
+[escape] stalled — escalating halo to k=3
+[escape2 2 k=3] n_neg 1->0 min_T=+0.00358 (204.5s)
+  active-band bbox z[0:7] y[111:120] x[118:127] crop=(8, 10, 10) n_neg 0->0
+  active-band bbox z[10:15] y[114:123] x[98:107] crop=(6, 10, 10) n_neg 0->0
+  (a) correct_dvf_3d     feasible=False n_neg_out=     0  n_below=     3  min_T=+0.00714  L1_vs_orig=      6002.2  wall=  2464.4s  bd_floor_out=0
+
+=== SUMMARY ===
+sparse  (a) wall=  2464.4s  L1=      6002.2  n_neg_out=     0  n_below=     3  feasible=False

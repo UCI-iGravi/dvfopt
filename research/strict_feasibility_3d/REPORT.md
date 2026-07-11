@@ -3653,3 +3653,186 @@ sweep). The ~58 h full-resolution band-loop baseline (Part XX) reached
 strict feasibility by *repairing*; this reaches 33 floor-type residuals by
 *prevention* in 14.2 h + a few h of mop — the marching is the cheaper path,
 and its residual is the geometric floor rather than a solver limitation.
+
+## Part XXIII — Mixed (per-cell) tet decomposition vs the 33-fold geometric floor
+
+Question: can the 33 geometric-floor folds left by `correct_dvf_25d` on the
+full B0039 volume (Part XXII deliverable,
+`runners/output/b0039_FULL_marching25d_mop3d.npy`) be eliminated by letting
+each cell choose its own Kuhn diagonal — and if so, what would adopting that
+semantics actually mean downstream?
+
+Runners: `runners/_mixed_decomp_floor33.py` (full analysis; writes
+`runners/output/mixed_decomp_floor33.json` + log) and
+`runners/_mixed_decomp_collateral.py` (probe-move collateral check). All
+numbers below are from executed runs on the shipped volume; the field was
+never modified.
+
+### (1) Existence of a positive alternate decomposition — per-cell answer
+
+Full-volume scan with the fused all-diagonals kernel
+(`six_tet_volumes_all_diagonals`, 11 z-bands, **3.8 s** for all
+527×319×455 cells × 4 diagonals):
+
+| semantics | folded cells (min ≤ 0) | min_T |
+|---|---:|---:|
+| fixed Kuhn diagonal (0,7) — shipped definition | **33** | −0.035021 |
+| per-cell best diagonal ("exists a positive triangulation") | **14** | −0.033007 |
+
+- The 33 fixed-diagonal residuals each have **exactly one** negative tet
+  (so Part XXII's "33 negative 6-tet volumes" is also 33 cells).
+- **19/33 (58%) are decomposition artifacts**: at least one of the other
+  three main diagonals makes all six tets strictly positive. Where a flip
+  works it works comfortably (margins +0.003…+0.010, i.e. 2–6% of the
+  identity tet volume 1/6).
+- **14/33 are true floor**: negative under ALL four main diagonals, and the
+  best-diagonal min_T (−0.033) is barely better than the fixed one
+  (−0.035). Mixed decomposition does **not** eliminate the floor; it
+  reclassifies just over half of it.
+
+Spatially the 33 sit in 16 26-connected clusters (sizes
+10, 3, 3, 3, 2, 2, and ten singletons); z=4 holds 22 cells including the
+10-cluster (y≈133–144, x≈215–224), z=0 holds 6. Of the 14 floor cells,
+10 are at z=4, 2 at z=0, 2 at z=6 — the floor is concentrated in the two
+worst dense slices, as expected.
+
+Per-cell table (min worst-tet volume per diagonal; d0 = fixed (0,7);
+probe = minimal in-plane corner movement for feasibility under the best
+diagonal, all-corners / best-single-corner, in px):
+
+| # | cell (z,y,x) | d0 | d1 | d2 | d3 | feasible | fixable | probe all / 1-corner |
+|---|---|---:|---:|---:|---:|---|---|---|
+| 0 | (0, 175, 241) | −0.0170 | 0.0034 | −0.0360 | 0.0033 | {1,3} | YES | 0 / 0 |
+| 1 | (0, 176, 241) | −0.0343 | −0.0021 | −0.0350 | −0.0021 | ∅ | NO | 0.016 / 0.033 |
+| 2 | (0, 177, 241) | −0.0350 | −0.0429 | −0.0330 | −0.0404 | ∅ | NO | 0.108 / 0.361 |
+| 3 | (0, 190, 241) | −0.0051 | 0.0033 | −0.0025 | 0.0092 | {1,3} | YES | 0 / 0 |
+| 4 | (0, 191, 241) | −0.0082 | 0.0033 | −0.0082 | 0.0056 | {1,3} | YES | 0 / 0 |
+| 5 | (0, 197, 260) | −0.0001 | 0.0007 | 0.0091 | 0.0083 | {1,2,3} | YES | 0 / 0 |
+| 6 | (4, 130, 220) | −0.0019 | −0.0016 | 0.0033 | 0.0078 | {2,3} | YES | 0 / 0 |
+| 7 | (4, 133, 220) | −0.0026 | 0.0019 | 0.0043 | 0.0093 | {1,2,3} | YES | 0 / 0 |
+| 8 | (4, 133, 222) | −0.0074 | −0.0261 | −0.0071 | −0.0252 | ∅ | NO | 0.016 / 0.031 |
+| 9 | (4, 135, 216) | −0.0029 | −0.0048 | −0.0128 | −0.0158 | ∅ | NO | 0.007 / 0.014 |
+| 10 | (4, 135, 221) | −0.0088 | −0.0089 | −0.0089 | −0.0089 | ∅ | NO | 0.023 / 0.046 |
+| 11 | (4, 136, 221) | −0.0064 | −0.0084 | −0.0064 | −0.0083 | ∅ | NO | 0.017 / 0.035 |
+| 12 | (4, 137, 216) | −0.0151 | −0.0187 | 0.0033 | 0.0102 | {2,3} | YES | 0 / 0 |
+| 13 | (4, 137, 221) | −0.0084 | −0.0099 | −0.0079 | −0.0094 | ∅ | NO | 0.022 / 0.045 |
+| 14 | (4, 138, 217) | −0.0139 | −0.0199 | −0.0347 | −0.0433 | ∅ | NO | 0.021 / 0.042 |
+| 15 | (4, 138, 221) | −0.0110 | −0.0102 | 0.0033 | 0.0093 | {2,3} | YES | 0 / 0 |
+| 16 | (4, 139, 217) | −0.0243 | −0.0368 | 0.0059 | 0.0034 | {2,3} | YES | 0 / 0 |
+| 17 | (4, 139, 222) | −0.0046 | −0.0111 | −0.0041 | −0.0096 | ∅ | NO | 0.017 / 0.035 |
+| 18 | (4, 140, 222) | −0.0030 | −0.0089 | −0.0029 | −0.0084 | ∅ | NO | 0.014 / 0.029 |
+| 19 | (4, 141, 222) | −0.0036 | −0.0119 | −0.0070 | −0.0160 | ∅ | NO | 0.017 / 0.034 |
+| 20 | (4, 142, 218) | −0.0092 | 0.0037 | −0.0088 | 0.0036 | {1,3} | YES | 0 / 0 |
+| 21 | (4, 142, 222) | −0.0064 | −0.0172 | 0.0044 | 0.0053 | {2,3} | YES | 0 / 0 |
+| 22 | (4, 143, 215) | −0.0006 | 0.0033 | −0.0008 | 0.0056 | {1,3} | YES | 0 / 0 |
+| 23 | (4, 143, 218) | −0.0085 | −0.0001 | 0.0033 | 0.0055 | {2,3} | YES | 0 / 0 |
+| 24 | (4, 143, 223) | −0.0055 | −0.0091 | 0.0033 | 0.0070 | {2,3} | YES | 0 / 0 |
+| 25 | (4, 144, 219) | −0.0125 | −0.0153 | −0.0192 | −0.0241 | ∅ | NO | 0.015 / 0.030 |
+| 26 | (4, 144, 224) | −0.0008 | −0.0028 | 0.0033 | 0.0101 | {2,3} | YES | 0 / 0 |
+| 27 | (4, 184, 248) | −0.0002 | 0.0024 | 0.0033 | 0.0101 | {1,2,3} | YES | 0 / 0 |
+| 28 | (6, 209, 172) | −0.0148 | −0.1024 | −0.0148 | −0.1008 | ∅ | NO | 0.014 / 0.030 |
+| 29 | (6, 210, 172) | −0.0066 | −0.0170 | −0.0069 | −0.0172 | ∅ | NO | 0.010 / 0.021 |
+| 30 | (11, 204, 254) | −0.0048 | 0.0038 | −0.0031 | 0.0101 | {1,3} | YES | 0 / 0 |
+| 31 | (17, 183, 184) | −0.0053 | −0.0095 | 0.0005 | 0.0101 | {2,3} | YES | 0 / 0 |
+| 32 | (18, 187, 180) | −0.0060 | 0.0071 | −0.0066 | 0.0084 | {1,3} | YES | 0 / 0 |
+
+Diagonal d3 = (3,4) is feasible for 17 of the 19 fixable cells — the most
+forgiving alternate on this data.
+
+### (2) A CONSISTENT mixed decomposition is structurally impossible per-cell
+
+"Consistent" = conforming: adjacent cells triangulate their shared face
+identically, so the union of tets is one global simplicial complex. All
+of the following is derived from the tet tables and machine-verified in
+the runner:
+
+- Each Kuhn fan induces on every cube face the face diagonal incident to
+  whichever main-diagonal endpoint lies in that face. Across a shared face
+  the two cells conform iff the neighbour's diagonal is one of exactly
+  **two** of the four choices: `compat_x(d0)={d0,d1}`, `compat_y(d0)={d0,d2}`,
+  `compat_z(d0)={d0,d3}` (same pairing pattern for every d).
+- Labelling the four diagonals with bits (u,w) ∈ GF(2)²
+  (d0=(0,0), d1=(1,0), d2=(0,1), d3=(1,1)), conformity is **linear**:
+  w constant along x, u constant along y, u⊕w constant along z. The
+  solution space is exactly the plane-separable family
+  u = φ(x)⊕h(z), w = ψ(y)⊕h(z)⊕c.
+- Consequence (verified by GF(2) elimination on a 7³ lattice with the
+  boundary pinned to d0): **no finite-support flip region exists** — you
+  cannot flip one cell, or any bounded cluster, and stay conforming with a
+  d0 background. The minimal conforming pattern containing a flipped cell
+  is a **full axis plane**: plane x=x0 → d1, plane y=y0 → d2,
+  plane z=z0 → d3.
+- Measured cost of those mandatory plane flips through each fixable cell:
+  **330–930 currently-feasible cells break per plane** (e.g. cell
+  (4,184,248) via d3 needs plane z=4 flipped: 782 newly-broken cells,
+  min_T −1.56). Every one of the 40 cell×diagonal plane options measured
+  is catastrophically counterproductive — consistent with Part III's
+  global-flip disaster (23k folds), now shown to be unavoidable even for
+  a single cell, because conformity forbids local flips.
+
+So the only usable form of mixed decomposition is **nonconforming**: store
+a per-cell diagonal and accept that adjacent cells disagree about the
+shared face's triangulation. That is a per-cell *certificate*
+("this cell's hex has a positive triangulation"), not a global tet mesh.
+
+### (3) The 14 floor cells: minimal displacement is tiny but coupled
+
+Per-cell SLSQP probe (dz≡0 preserved: only dy/dx of the cell's 8 corners
+move; constraint min-tet ≥ 10⁻³; warm-started from the identity-restoring
+displacement, which is always feasible): feasibility under the best
+diagonal needs
+
+- all-8-corners: max corner move **0.007–0.108 px** (median ≈ 0.017 px;
+  only cell (0,177,241) needs > 0.03),
+- best single corner: **0.014–0.361 px** (median ≈ 0.033 px).
+
+So no floor cell is more than ~0.1 px (all-corner) from feasibility —
+these are not crushed-beyond-repair cells. Why can't the mop fix them
+then? Applying each cell's own minimal fix (alone, to a fresh copy) and
+recounting fixed-diagonal folds in the surrounding 5×5×5 cell block
+(`_mixed_decomp_collateral.py`): **8 of 14 are locally clean** (crop count
+drops by 1, no new folds), **4 are neutral** (the fix breaks exactly one
+neighbour — the fold moves, e.g. (4,135,221): 5→5), and **2 are net
+negative** ((0,177,241): 3→8; (6,209,172): 2→3). The catch is that these
+are 14 *independent* experiments: 10 of the floor cells share the z=4
+dense cluster, their "clean" fixes move the same shared corners in
+conflicting directions, and the frozen-rim mop — which optimises all of
+them jointly with far more freedom than these probes — plateaued at
+exactly this set (min_T frozen at −0.035 across escalating pads). Together
+with the Part XI linearized-inconsistency finding, the picture is: the
+floor is a *coupled* infeasibility of ~0.02 px amplitude concentrated in
+two clusters, not a per-cell "crushed geometry" problem.
+
+### (4) Application decision: what "fold-free" means under each semantics
+
+| | fixed Kuhn (0,7) — current | stored per-cell diagonal (nonconforming) |
+|---|---|---|
+| residual folds on B0039 | 33 | 14 |
+| min_T | −0.035 | −0.033 |
+| global consistency | one conforming tet mesh; positivity ⇒ global PL injectivity on the mesh | NO global mesh: adjacent cells triangulate the shared bilinear face differently |
+| valid uses | everything: QC metric, PL warping/resampling by barycentric tet lookup, tet FEM, exact PL inversion | per-cell invertibility certificate, QC/reporting, fold masking, routing oracles (Part XXI-E) |
+| invalid uses | — | anything needing one consistent simplicial map: global PL resampling, tet-mesh export, PL inversion (face images disagree → overlaps/gaps between cells) |
+| extra artifact to ship | none | int8 `best_diag` array (D−1,H−1,W−1) + the convention documented |
+
+Recommendation:
+
+1. **Do not change the pipeline's feasibility semantics.** Mixed per-cell
+   decomposition cannot be made conforming locally (it is plane-structured
+   — provably, not just empirically), and the nonconforming variant only
+   reclassifies 19 of 33 cells while still leaving 14 floor folds at
+   min_T −0.033. It buys a smaller headline number, not feasibility.
+2. **Report both numbers as diagnostics.** "33 folds under fixed Kuhn, of
+   which 14 fold under every main-diagonal triangulation" is the honest
+   characterisation; `best_diagonal_min_volume` / `n_neg_best_diagonal`
+   already compute it in ~4 s at full volume.
+3. **If an application needs a "0 folds" claim**, the defensible lever
+   remains tolerance, not decomposition: every residual satisfies
+   min-tet ≥ −0.036 (≈ 21% of the identity tet volume 1/6, on cells whose
+   deformation is locally near-degenerate), and Part XXI-B already framed
+   this as an application-owned threshold decision. The only solver-side
+   path left is a *coupled* nonconvex surgery on the two dense-band floor
+   clusters (12 of the 14 floor cells sit at z=4/z=0) — single-cell moves
+   provably shuffle folds rather than remove them.
+
+Wall cost of the whole analysis: the full-volume 4-diagonal scan is 3.8 s;
+everything above (probes included) runs in ~15 min single-process.

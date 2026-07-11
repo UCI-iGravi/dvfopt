@@ -29,6 +29,11 @@ solve and ~35% of a 2D solve**. Therefore:
   a real **global-vs-local L1 axis**, not just a speed dial. It is *not* a
   faster method: first-order flow stalls on sliver-folds and needs an
   LP-SLP mop-up. See round 3 below.
+- **3D seed (round 4):** the 3D analogue of that GPU seed **inverts the L1
+  result in 3D** (+2.3× L1 on a raw B0039 crop) but **rescues strict
+  convergence** (baseline plateaus infeasible at 3 sub-threshold cubes;
+  seeded reaches strict feasibility at the same wall) — a **robustness
+  lever, not an accuracy lever**. See round 4 below.
 
 ## Profiling evidence
 
@@ -401,3 +406,112 @@ exactly the per-density behaviour the L1-gap analysis predicted. The
 corrected per-slice DVFs are also saved fresh as
 `b0039_FULL_stage1_continuous.npy` (3, 528, 320, 456; dz=0, corrected
 [dy,dx]) — a drop-in for the 3D pipeline.
+
+## Experimental round 4 — 3D GPU-ALM untangler as a seed for `correct_dvf_3d`
+
+Question: does a 3D analogue of the 2D accuracy='max' GPU seed
+(`gpu_untangle_alm_2d`) deliver a similar L1 win for the 3D 6-tet
+pipeline? **Answer: no — in 3D the seed INVERTS the 2D L1 result
+(+2.3× L1), but it rescues strict-feasibility convergence.** It is a
+**robustness lever, not an accuracy lever**.
+
+Prototype: `research/strict_feasibility_3d/algorithms/_gpu_untangle_3d.py`
+(`gpu_untangle_alm_3d`) — whole-volume torch PHR augmented-Lagrangian with
+Adam over the six Kuhn tet volumes of a `(3, D, H, W)` field, **all three
+channels free** (true 3D, no dz constraint), smooth-L1 anchor to input.
+Same defaults/schedule as the 2D port. Bench:
+`runners/_bench_gpu_untangle_3d.py`.
+
+### Parity gate (PASS)
+
+`runners/_verify_gpu_tet_parity.py`: the prototype torch tet-volume kernel
+vs the canonical numpy/numba `six_tet_volumes_3d`, float64, three random
+fields × {CPU, CUDA}: **max|Δ| = 2.3e-13** (gate 1e-10); identity field
+exactly +1/6 on every tet. The kernel imports `_TET_VERTICES`/`_TET_SIGN`
+from `dvfopt.jacobian.tetrahedron_sign` (single source of truth, not
+re-derived) and also matches the packaged `six_tet_volumes_3d_torch`
+bit-for-bit on those trials.
+
+### Bench setup — raw B0039 laplacian field, dense band z0–15
+
+`(3, 16, 128, 128)` crops (241,935 cubes) of graded fold density:
+
+| crop | (y0,x0) | n_neg in | % cubes | min_T in | best-diag floor in |
+|---|---|---:|---:|---:|---:|
+| sparse | (0,96) | 2,715 | 1.1% | −11.5 | 2,669 (1.1%) |
+| medium | (32,128) | 22,708 | 9.4% | −50.2 | 22,352 (9.2%) |
+| dense | (96,160) | 74,124 | 30.6% | −248.3 | 72,515 (30.0%) |
+
+Note the raw field's pathology: nearly every folded cube has **no positive
+triangulation under any diagonal** (floor ≈ n_neg). The medium/dense crops
+were triaged but not run end-to-end (the dense floor of 30% would trip
+`correct_dvf_3d`'s `floor_frac > 0.2` escape-skip guard in the baseline
+arm, and per-arm walls are ~40+ min each); the completed comparison below
+is the **sparse crop only** — see the caveat at the end.
+
+### GPU stage alone (RTX 3050, float64, n_outer=40)
+
+| crop | wall | n_neg cubes | min_T | L1 spent | stall |
+|---|---:|---:|---:|---:|---|
+| sparse | 270 s | 2,715 → **41** (−98.5%) | −11.47 → −0.059 | 4,983 | worst_g plateaus at −0.03…−0.12 despite μ→1e8 |
+
+Same signature as 2D, now confirmed in 3D: the first ~5 outers clear ~99%
+of the folds, then worst_g plateaus on coupled sliver-tets whose
+degenerate volume gradients starve Adam — first-order dynamics cannot
+organize the coordinated multi-vertex moves. **SEED, not a solver.** The
+seed also pulls the crop out of the pathological regime: best-diag floor
+2,669 → 37 (post-seed triage), i.e. the untangler makes the residual set
+diagonal-fixable.
+
+### (a) baseline vs (b) GPU-seeded, sparse crop (threshold 0.01)
+
+| arm | wall | L1 vs orig | n_neg out | n<thr out | min_T out | strictly feasible |
+|---|---:|---:|---:|---:|---:|---|
+| (a) `correct_dvf_3d(crop)` | 2,464 s | **6,002** | 0 | **3** | +0.0071 | **NO** |
+| (b) GPU-ALM → `correct_dvf_3d` | 2,534 s (270 GPU) | 13,625 | 0 | 0 | +0.0130 | **YES** |
+
+Traces:
+
+- **(a)** bulk active-band 2,715→921 (125 s); escape ground 921→1 over 8
+  iters (~1,080 s) then stalled at 1 even at k=3; multiscale fallback
+  (1,020 s) + re-escape finally broke it to 0 — but 3 cubes remain below
+  the strict 0.01 threshold that the final tighten could not lift.
+  Plateau-and-fallback behaviour end to end.
+- **(b)** post-seed bulk could NOT fix the 41 residual slivers (305 s, no
+  progress — they are exactly the coupled cores the first-order seed
+  stalled on); escape 41→3; multiscale fine polish → 0 (1,238 s); final
+  tighten clears everything to min_T = +0.013. Strict feasibility, no
+  residual.
+
+### Verdict — L1 inverted vs 2D; convergence rescued
+
+1. **The 2D L1 win does NOT transfer to 3D.** In 2D the global GPU-ALM
+   seed cut dense-slice L1 ~2× vs the local champion; here it **costs
+   2.3×** (13,625 vs 6,002). The seed alone spends L1 4,983 — 83% of the
+   baseline's entire final budget — before the exact solver even starts.
+   Plausible cause: the **dz freedom**. The 2D win came from finding a
+   better *in-plane* global basin under a fixed topology of per-slice
+   triangles; in 3D the whole-volume untangler can (and does) drift all
+   three channels across slices to relieve tet violations, moving the
+   field into a basin far from the input that the downstream exact solver
+   then refines *within*. The baseline's escape/multiscale machinery, by
+   contrast, moves only what the folds require.
+2. **But the seed rescues convergence.** At essentially the same wall
+   (2,534 vs 2,464 s), the seeded arm reached **strict** feasibility
+   (min_T +0.013) while the baseline plateaued at 1 fold, needed the
+   multiscale fallback, and still finished **infeasible** (3 cubes below
+   threshold). The seed converts a 30%-pathological-style grind into a
+   41-sliver mop-up and drops the best-diag floor 2,669 → 37 — it changes
+   *which regime* the exact pipeline operates in.
+3. **Caveats.** Single crop (sparse, 1.1%); the medium/dense arms were not
+   run end-to-end, so the density scaling of both the L1 penalty and the
+   convergence rescue is unquantified. Walls include the multiscale
+   fallback's 1,000+ s in both arms, so the "comparable wall" outcome is
+   partly coincidental. The L1 gap could likely be narrowed by
+   constraining or penalising dz drift in the seed (e.g. anisotropic
+   anchor weights) — untested.
+
+**Bottom line:** do not port the accuracy='max' GPU seed to 3D as an L1
+lever. If anything, it is a candidate **robustness pre-stage** for crops
+where `correct_dvf_3d` plateaus or trips the pathology guard — at a ~2×
+L1 cost that would need the dz-drift fix before shipping.
