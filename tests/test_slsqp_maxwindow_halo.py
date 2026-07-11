@@ -150,3 +150,42 @@ class TestMaxWindowBuilder:
         first = nlc.fun(x_a).copy()
         nlc.fun(RNG.random(3 * 27))  # perturbed evaluation in between
         np.testing.assert_array_equal(nlc.fun(x_a), first)
+
+
+class TestMaxWindowSolveIntegration:
+    def _fold_sheet_volume(self):
+        """The tripwire fixture: fold component far larger than a 3^3 window."""
+        D = H = W = 8
+        d = np.zeros((3, D, H, W), dtype=np.float64)
+        d[2, :, :, 3] = 3.0
+        return d
+
+    def test_no_new_negatives_anywhere(self):
+        # Border no-damage, globally: an accepted max-window solve fixes
+        # window voxels and cannot create fresh negatives in the halo;
+        # a rejected one is rolled back. So the set of negative voxels
+        # never grows.
+        from dvfopt.core.slsqp.iterative3d import iterative_3d
+
+        d = self._fold_sheet_volume()
+        neg_before = jacobian_det3D(d) <= THR - 1e-5
+        phi = iterative_3d(d, verbose=0, max_window=(3, 3, 3), max_iterations=5)
+        neg_after = jacobian_det3D(phi) <= THR - 1e-5
+        assert not (neg_after & ~neg_before).any(), 'solver created new negative voxels'
+        assert neg_after.sum() < neg_before.sum(), 'solver made no progress'
+
+    def test_maxwindow_requires_patch_ctx(self):
+        from dvfopt.core.solver3d import _optimize_single_window_3d
+
+        x0 = np.zeros(3 * 27)
+        with pytest.raises(AssertionError):
+            _optimize_single_window_3d(
+                x0,
+                x0,
+                (3, 3, 3),
+                np.zeros((3, 3, 3), bool),
+                THR,
+                50,
+                'SLSQP',
+                window_reached_max=True,
+            )

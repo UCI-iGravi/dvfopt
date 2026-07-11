@@ -144,6 +144,12 @@ def _build_constraints(
         *threshold* (e.g. ``0.3``) forces more vertex separation in deformed
         space, preventing distant cells from overlapping under large shear.
     """
+    # FOLLOW-UP (2D parity): at max window (exclude_bounds=False) this 2D
+    # sub-problem has the same latent structure the 3D path fixed with
+    # patch-based halo no-damage rows (_build_constraints_3d_maxwindow in
+    # constraints3d.py): the border the outer accept check measures is
+    # unconstrained here. No observed failure in 2D under scipy >= 1.16;
+    # use the 3D builder as the template if one ever appears.
     exclude_bounds = not is_at_edge and not window_reached_max
     inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
 

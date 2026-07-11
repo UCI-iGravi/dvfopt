@@ -9,6 +9,7 @@ from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size_3d
 from dvfopt.core.objective import objective_euc
 from dvfopt.core.slsqp.constraints3d import (
     _build_constraints_3d,
+    _build_constraints_3d_maxwindow,
 )
 from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d
 from dvfopt.core.slsqp.spatial3d import (
@@ -144,21 +145,34 @@ def _optimize_single_window_3d(
     max_minimize_iter,
     method_name,
     window_reached_max=False,
+    patch_ctx=None,
 ):
     """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``.
 
-    When *window_reached_max* is ``True``, the frozen-edge equality
-    constraints are released and the Jdet constraint covers the rim
-    voxels too (mirrors the 2D max-window semantics — the window cannot
-    grow further, so pinning a negative rim would be infeasible).
+    When *window_reached_max* is ``True``, the caller must supply
+    *patch_ctx* = ``(patch_flat, patch_size, win_start)`` — the window's
+    frozen surroundings (window + 2 voxels per side, clamped to the
+    volume). Constraints are then built patch-based with halo no-damage
+    rows (:func:`_build_constraints_3d_maxwindow`), so the sub-problem's
+    feasible set equals the outer accept criterion and any successful
+    solve survives paste-back regardless of which local optimum the
+    SLSQP implementation picks (scipy ≥ 1.16 ports SLSQP to C and finds
+    different valid optima than the Fortran one).
     """
-    constraints = _build_constraints_3d(
-        phi_sub_flat,
-        subvolume_size,
-        freeze_mask,
-        threshold,
-        window_reached_max=window_reached_max,
-    )
+    if window_reached_max:
+        assert patch_ctx is not None, 'max-window solve requires patch_ctx'
+        patch_flat, patch_size, win_start = patch_ctx
+        constraints = _build_constraints_3d_maxwindow(
+            patch_flat, patch_size, win_start, subvolume_size, threshold
+        )
+    else:
+        constraints = _build_constraints_3d(
+            phi_sub_flat,
+            subvolume_size,
+            freeze_mask,
+            threshold,
+            window_reached_max=False,
+        )
 
     t0 = time.time()
     result = minimize(
@@ -332,6 +346,22 @@ def _serial_fix_voxel(
         _n_vars = 3 * sz * sy * sx
         _eff_max_iter = _adaptive_maxiter(_n_vars, max_minimize_iter)
 
+        patch_ctx = None
+        if window_reached_max:
+            _Dv, _Hv, _Wv = volume_shape
+            pz0, pz1 = max(cz - hz - 2, 0), min(cz + hz_hi + 2, _Dv)
+            py0, py1 = max(cy - hy - 2, 0), min(cy + hy_hi + 2, _Hv)
+            px0, px1 = max(cx - hx - 2, 0), min(cx + hx_hi + 2, _Wv)
+            _pslc = (slice(pz0, pz1), slice(py0, py1), slice(px0, px1))
+            patch_flat = np.concatenate(
+                [phi[2][_pslc].ravel(), phi[1][_pslc].ravel(), phi[0][_pslc].ravel()]
+            )
+            patch_ctx = (
+                patch_flat,
+                (pz1 - pz0, py1 - py0, px1 - px0),
+                (cz - hz - pz0, cy - hy - py0, cx - hx - px0),
+            )
+
         result_x, elapsed, opt_success = _optimize_single_window_3d(
             phi_sub_flat,
             phi_init_sub_flat,
@@ -341,6 +371,7 @@ def _serial_fix_voxel(
             _eff_max_iter,
             method_name,
             window_reached_max=window_reached_max,
+            patch_ctx=patch_ctx,
         )
         iter_times.append(elapsed)
         if not opt_success:
