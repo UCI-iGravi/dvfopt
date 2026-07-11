@@ -1287,3 +1287,71 @@ class TestMinorsSweepLifecycle:
         win._latest = _snap(np.zeros((2, 8, 8)))
         win._on_finished(np.zeros((2, 8, 8)), None)
         assert win._latest is None
+
+
+class TestMinorsSweepPolish:
+    def test_validate_finite_reports_first_index(self):
+        from dvfopt_gui.app import validate_finite
+
+        vol = np.zeros((3, 2, 4, 4))
+        vol[1, 1, 2, 3] = np.nan
+        msg = validate_finite(vol)
+        assert msg is not None and '(1, 1, 2, 3)' in msg
+        assert validate_finite(np.zeros((3, 1, 2, 2))) is None
+
+    def test_choice_field_default_mismatch_asserts(self):
+        import dataclasses
+
+        from dvfopt_gui.strategy_params import editable_fields
+
+        @dataclasses.dataclass
+        class Bogus:
+            accuracy: str = 'warp-speed'  # not in _CHOICE_FIELDS['accuracy']
+
+        with pytest.raises(AssertionError, match='bare field name'):
+            editable_fields(Bogus)
+
+    def test_build_sanitizes_bad_overrides(self, qapp):
+        from dvfopt_gui.strategy_params import (
+            StrategyParamsTab,
+            editable_fields,
+            strategy_class_for,
+        )
+
+        tab = StrategyParamsTab()
+        # Brief used 'slp', but SLPStrategy has no float-kind field (only
+        # int/str/choice), so the shared-kind assert below can't be
+        # satisfied on it. Substituted 'slsqp_fullgrid'
+        # (SLSQPFullGridStrategy), which has both float (warm_ftol,
+        # warm_sigma) and int (max_iter, warm_max_iter, warm_seed) fields.
+        algo = 'slsqp_fullgrid'
+        cls = strategy_class_for(algo)
+        fields = editable_fields(cls)
+        float_fields = [n for n, k, _ in fields if k == 'float']
+        int_fields = [n for n, k, _ in fields if k == 'int']
+        assert float_fields and int_fields, f'test needs one field of each kind on {algo}'
+        bad = {float_fields[0]: float('nan'), int_fields[0]: 'abc'}
+        tab.build(algo, bad)  # must not crash
+        vals = tab.values()
+        # Sanitized fields fall back to defaults -> values() reports no override.
+        assert float_fields[0] not in vals
+        assert int_fields[0] not in vals
+
+    def test_overview_stale_chunk_rejected(self, qapp):
+        from dvfopt_gui.overview import OverviewWorker
+
+        vol = np.zeros((3, 4, 8, 8), dtype=np.float64)
+        win = LiveSolverWindow(np.zeros((3, 1, 8, 8)))
+        win._apply_loaded_run(LoadedRun(volume=vol))
+        win._overview_counts = np.zeros(4, dtype=np.int64)
+        w_old = OverviewWorker(vol, parent=win)
+        w_new = OverviewWorker(vol, parent=win)
+        win._overview_worker = w_new
+        # Neither thread is started: emitting from the test thread delivers
+        # synchronously and sender() is the emitting worker inside the slot.
+        w_old.chunkReady.connect(win._on_overview_chunk)
+        w_new.chunkReady.connect(win._on_overview_chunk)
+        w_old.chunkReady.emit(0, np.array([7, 7], dtype=np.int64))
+        assert not win._overview_counts.any(), 'stale worker chunk must be rejected'
+        w_new.chunkReady.emit(0, np.array([5, 5], dtype=np.int64))
+        assert list(win._overview_counts[:2]) == [5, 5], 'current worker chunk must land'

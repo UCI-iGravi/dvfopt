@@ -24,12 +24,17 @@ NPZ schema (all keys present unless noted)
   selections at save time).
 * ``time_budget_s``, ``max_iterations`` — 0-d float/int.
 * ``history_max_size`` — 0-d int, the cap that bounded the run's buffer.
+* ``dim`` — 0-d int, 2 or 3: whether the run's snapshots are per-slice
+  2D fields or full 3D volumes. Written by ``build_save_payload``;
+  ``parse_loaded`` does not surface it on :class:`LoadedRun` — loaders
+  derive dimensionality from ``volume.shape`` / snapshot ``ndim``.
 * ``final_min_jdet``, ``final_n_neg_jdet`` — 0-d, fold stats of ``phi``.
 * ``n_history_steps`` — 0-d int, number of retained snapshots.
 
 When at least one snapshot was retained, also:
 
-* ``history_phi`` — ``(N, 2, H, W)`` float64, every snapshot's phi.
+* ``history_phi`` — every snapshot's phi: ``(N, 2, H, W)`` float64 for
+  2D runs, ``(N, 3, D, H, W)`` for true-3D runs (``dim`` == 3).
 * ``history_n_neg``, ``history_min_T`` — ``(N,)`` fold-count / worst-area.
 * ``history_outer_iter``, ``history_per_index_iter`` — ``(N,)`` int
   solver bookkeeping (mostly meaningful for SLSQP-windowed).

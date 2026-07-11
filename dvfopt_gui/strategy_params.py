@@ -23,6 +23,39 @@ _EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 _CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
 
 
+def _valid_override(kind: str, name: str, value) -> bool:
+    """Reject persisted override values that would corrupt the widgets:
+    wrong-typed ints, non-finite floats, unknown choice strings. The
+    overrides come from a JSON round-trip in QSettings, so anything a
+    past version (or a hand-edited settings file) wrote can show up.
+
+    ``kind`` is one of the strings ``editable_fields`` emits: 'int' |
+    'float' | 'bool' | 'choice' | 'str' | 'readonly'. Every kind gets an
+    explicit branch rather than falling through to a permissive default,
+    so a future kind added to ``editable_fields`` without a matching
+    branch here fails loudly (as "always valid") instead of silently.
+    """
+    if kind == 'int':
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == 'float':
+        try:
+            return math.isfinite(float(value))
+        except (TypeError, ValueError):
+            return False
+    if kind == 'bool':
+        return isinstance(value, bool)
+    if kind == 'choice':
+        return isinstance(value, str) and value in _CHOICE_FIELDS.get(name, ())
+    if kind == 'str':
+        return isinstance(value, str)
+    if kind == 'readonly':
+        # Not editable and not applied to a widget from ``value`` (``build``
+        # always renders ``repr(default)`` for readonly fields) — nothing to
+        # corrupt, so any persisted value is harmless.
+        return True
+    return True
+
+
 def strategy_class_for(algo: str):
     """Strategy class for a GUI method algo tag, or None for non-dataclass
     methods (auto / pipelines / marching).
@@ -89,6 +122,13 @@ def editable_fields(cls) -> list:
             else (f.default_factory() if f.default_factory is not dataclasses.MISSING else None)
         )
         if f.name in _CHOICE_FIELDS:
+            choices = _CHOICE_FIELDS[f.name]
+            assert str(default) in choices, (
+                f'{cls.__name__}.{f.name}: default {default!r} not in {choices}. '
+                f'_CHOICE_FIELDS is keyed by bare field name across ALL strategy '
+                f'dataclasses — a colliding field with different choices needs '
+                f'per-strategy keying.'
+            )
             out.append((f.name, 'choice', default))
         elif isinstance(default, bool):
             out.append((f.name, 'bool', default))
@@ -123,6 +163,8 @@ class StrategyParamsTab(QtWidgets.QWidget):
             return
         for name, kind, default in editable_fields(cls):
             value = overrides.get(name, default)
+            if name in overrides and not _valid_override(kind, name, value):
+                value = default
             if kind == 'int':
                 w = QtWidgets.QSpinBox()
                 w.setRange(-1_000_000_000, 1_000_000_000)

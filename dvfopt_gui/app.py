@@ -359,7 +359,9 @@ def validate_finite(vol: np.ndarray) -> str | None:
     n = int(bad.sum())
     if n == 0:
         return None
-    first = tuple(int(i) for i in np.argwhere(bad)[0])
+    # argmax short-circuits to the first True in C-order — same index as
+    # argwhere(bad)[0] without materialising every bad coordinate.
+    first = tuple(int(i) for i in np.unravel_index(int(bad.argmax()), vol.shape))
     return (
         f'The loaded field contains {n} non-finite value(s) (NaN/Inf); '
         f'first at index {first}. Fix the field before loading — solvers '
@@ -2811,9 +2813,10 @@ class LiveSolverWindow(QtWidgets.QMainWindow):
             mi = s.value('max_iter', 0, type=int)
             if mi:
                 self._max_iter_spin.setValue(mi)
-        thr = s.value('threshold', 0.0, type=float)
-        if thr:
-            self._thr_spin.setValue(thr)
+        # ``if thr:`` would silently skip a legitimately-saved 0.0 —
+        # presence, not truthiness, decides whether to restore.
+        if s.contains('threshold'):
+            self._thr_spin.setValue(s.value('threshold', 0.0, type=float))
         hms = s.value('history_max_size', 0, type=int)
         if hms:
             self._history_max_size = hms
