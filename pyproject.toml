@@ -5,14 +5,7 @@ description = "Correction of negative Jacobian determinants in deformation (disp
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
-    # TEMP pin: scipy 1.16 ported SLSQP from Fortran to C; the new
-    # implementation converges to different (valid) local optima on the
-    # windowed sub-problems, which the outer accept/rollback logic rejects
-    # -> solve/reject livelock (no progress + huge runtimes). Tripwire:
-    # tests/test_slsqp_review_fixes.py::TestFrozenEdgeReleaseAtMaxWindow3D
-    # ::test_fold_larger_than_max_window_makes_progress fails under >=1.16.
-    # Lift once the max-window accept logic is robust to alternative optima.
-    "scipy<1.16",
+    "scipy",
     "SimpleITK",
     "nibabel",
     "matplotlib",
