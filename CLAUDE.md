@@ -19,14 +19,18 @@ pip install -e ".[benchmarks]"
 pip install -r requirements-dev.txt
 ```
 
-Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via .github/workflows/ci.yml on every push/PR. There is no linter. Additional validation is done through Jupyter notebooks.
+Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
 
 ```bash
 # Run all tests
 pytest
 
 # Run a specific test module
-pytest tests/test_iterative.py
+pytest tests/test_slp_strategy.py
+
+# Lint + format (ruff is pinned to 0.15.21 in the dev extras; config in pyproject.toml)
+ruff check dvfopt dvfopt_gui tests benchmarks
+ruff format --check dvfopt dvfopt_gui tests benchmarks
 ```
 
 ## Architecture
@@ -139,6 +143,7 @@ exact-feasibility solver with escalating freedom cannot move them.
 
 | Function | Module | Purpose |
 |----------|--------|---------|
+| `correct_dvf_3d()` / `Correct3DReport` | `dvfopt.pipeline_3d` | End-to-end true-3D fold-*repair* orchestrator (6-tet feasibility); complements the 2.5D *prevention* pipeline above |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
 | `solveLaplacianFromCorrespondences()` | `laplacian.solver` | Build DVF from correspondences |
 | `sliceToSlice3DLaplacian()` | `laplacian.correspondence` | Full slice-to-slice Laplacian registration pipeline |
