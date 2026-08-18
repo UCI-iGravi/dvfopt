@@ -91,6 +91,7 @@ class TestSolveInfo:
     def test_history_df_still_works_through_dvfopt(self):
         """The DVFopt.Result.history_df() helper should still produce a
         sensible dataframe even after the SolveInfo wiring."""
+        pytest.importorskip('pandas')  # history_df() lazily imports pandas (optional dep)
         rng = np.random.default_rng(7)
         phi = np.stack([rng.normal(0, 0.4, (8, 8)), rng.normal(0, 0.4, (8, 8))])
         with warnings.catch_warnings():
