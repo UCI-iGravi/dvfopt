@@ -1,4 +1,4 @@
-"""Centralized matplotlib + seaborn styling for DVFopt visualizations.
+"""Centralized matplotlib styling for DVFopt visualizations.
 
 The package previously had no global theme — every plot function set its
 own font sizes, colors, layout. This module is the single source of
@@ -22,18 +22,19 @@ the theme can pass ``style='matplotlib'`` to skip it.
 Design notes
 ------------
 
-* **Theme = seaborn 'ticks' + paper context.** Clean spines, subtle
-  grid, publication-friendly font sizes. Reads well on screen AND
-  prints well in PDFs.
+* **Theme = 'ticks'-style spines + paper context.** Clean spines,
+  subtle grid, publication-friendly font sizes. Applied as plain
+  matplotlib ``rcParams`` — no seaborn dependency. Reads well on screen
+  AND prints well in PDFs.
 * **Colormaps**: ``cmocean`` is gorgeous but adds a dependency we
   don't need. Stick with matplotlib defaults but pick deliberately:
   ``RdBu_r`` for diverging (centered on 0), ``magma`` for sequential
   positive, ``Spectral_r`` for fold-severity green→red.
 * **High-DPI by default.** ``rcParams['figure.dpi'] = 130`` —
   reasonable on most modern screens, doesn't blow up file sizes.
-* **DataFrame-ready palette**: the :class:`Palette` colors are
-  consistent with seaborn's default categorical cycle so any
-  ``sns.lineplot()`` you stack on top harmonizes.
+* **Categorical cycle**: :func:`apply_theme` sets ``axes.prop_cycle``
+  to the :class:`Palette` colors, so unlabeled plot series pick up the
+  package palette automatically.
 """
 
 from __future__ import annotations
@@ -86,6 +87,12 @@ PALETTE = Palette()
 # ---------------------------------------------------------------------------
 
 
+# Base ``font.size`` per context. Every other text size in the theme is
+# a relative string ('small', 'x-small', ...), so it scales with this.
+# 'paper' = 9 preserves the historical look; larger contexts scale up.
+_CONTEXT_BASE_FONT = {'paper': 9.0, 'notebook': 11.0, 'talk': 13.0}
+
+
 def apply_theme(context: str = 'paper', force: bool = False) -> None:
     """Apply the DVFopt visual theme. Idempotent.
 
@@ -93,7 +100,8 @@ def apply_theme(context: str = 'paper', force: bool = False) -> None:
     ----------
     context : str
         ``'paper'`` (default, smaller text, for figures),
-        ``'notebook'`` (medium), ``'talk'`` (larger).
+        ``'notebook'`` (medium), ``'talk'`` (larger). Sets the base
+        ``font.size``; all other text sizes are relative and scale with it.
     force : bool
         Re-apply even if already applied. Default ``False`` — the
         common case is "apply once on first import, ignore subsequent
@@ -103,21 +111,33 @@ def apply_theme(context: str = 'paper', force: bool = False) -> None:
     if _THEME_APPLIED and not force:
         return
 
-    # Import here so the package doesn't require seaborn unless a plot
-    # is actually drawn.
-    import seaborn as sns
+    from cycler import cycler  # bundled with matplotlib
 
-    sns.set_theme(
-        context=context,
-        style='ticks',
-        font='DejaVu Sans',
-        font_scale=1.0,
-        rc={
+    mpl.rcParams.update(
+        {
+            # ---- Fonts (DejaVu Sans = matplotlib's default; pinned) ----
+            'font.family': 'sans-serif',
+            'font.sans-serif': ['DejaVu Sans', 'Arial', 'sans-serif'],
+            'font.size': _CONTEXT_BASE_FONT.get(context, 9.0),
+            # ---- Categorical cycle: the package palette (see Palette) ----
+            'axes.prop_cycle': cycler(
+                color=[
+                    PALETTE.blue,
+                    PALETTE.orange,
+                    PALETTE.green,
+                    PALETTE.red,
+                    PALETTE.purple,
+                    PALETTE.brown,
+                    PALETTE.gray,
+                ]
+            ),
             # ---- Figure ----
             'figure.dpi': 130,
             'figure.facecolor': 'white',
             'figure.constrained_layout.use': True,
-            # ---- Axes ----
+            # ---- Axes ('ticks' style: clean spines, no grid) ----
+            'axes.facecolor': 'white',
+            'axes.axisbelow': True,
             'axes.spines.top': False,
             'axes.spines.right': False,
             'axes.linewidth': 0.8,
@@ -134,6 +154,8 @@ def apply_theme(context: str = 'paper', force: bool = False) -> None:
             'grid.linewidth': 0.6,
             'grid.alpha': 0.6,
             # ---- Ticks ----
+            'xtick.bottom': True,
+            'ytick.left': True,
             'xtick.labelsize': 'x-small',
             'ytick.labelsize': 'x-small',
             'xtick.direction': 'out',
@@ -155,9 +177,7 @@ def apply_theme(context: str = 'paper', force: bool = False) -> None:
             'savefig.bbox': 'tight',
             'savefig.facecolor': 'white',
             'savefig.transparent': False,
-            # ---- Fonts ----
-            'font.size': 9,
-        },
+        }
     )
     _THEME_APPLIED = True
 

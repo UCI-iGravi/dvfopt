@@ -699,7 +699,6 @@ def active_band_alm_recovery_3d(
     inner_solve=None,
     max_widen=1,
     max_box=48,
-    max_band_fraction=0.7,
     n_workers=1,
     verbose=0,
 ):
@@ -737,8 +736,6 @@ def active_band_alm_recovery_3d(
     max_widen : int, default 1         pad-widen retries on a regressing paste
     max_box : int, default 48          per-axis cube cap; larger clusters are
                                        tiled into bounded boxes (never global)
-    max_band_fraction : float          deprecated no-op, kept for backward
-                                       compatibility (tiling replaced it)
     n_workers : int, default 1
         Process-pool workers for solving non-overlapping cluster crops
         concurrently. ``1`` = sequential (default). ``None`` = cpu_count.

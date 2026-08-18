@@ -519,8 +519,8 @@ class TestActiveBandRecovery:
 
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.02, (3, 6, 40, 40)).astype(np.float64)
-        # Plant a wide fold band spanning most of the y and x extent (well
-        # over max_band_fraction of those axes).
+        # Plant a wide fold band spanning most of the y and x extent (an
+        # oversized cluster → tiled into bounded sub-boxes).
         phi[0, 2, 2:38, 2:38] = 1.5
         phi[0, 3, 2:38, 2:38] = -1.5
         n0 = int((six_tet_min_volume_3d(phi) <= 0).sum())

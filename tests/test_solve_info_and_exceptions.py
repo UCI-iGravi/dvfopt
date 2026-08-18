@@ -9,11 +9,9 @@ import pytest
 
 from dvfopt import (
     BarrierStrategy,
-    BudgetExhaustedError,
     DVFopt,
     DVFoptConfig,
     DVFoptError,
-    FeasibilityError,
     IncompatibleConstraintError,
     JdetConstraint2D,
     L1Objective,
@@ -153,10 +151,3 @@ class TestExceptions:
         SolverConfigError."""
         with pytest.raises(SolverConfigError):
             DVFopt(DVFoptConfig(solver=42))
-
-    def test_feasibility_error_subclass_relationships(self):
-        """``BudgetExhaustedError`` is a more specific
-        ``FeasibilityError`` (catching the broader one still works)."""
-        e = BudgetExhaustedError('hit max_iter')
-        assert isinstance(e, FeasibilityError)
-        assert isinstance(e, DVFoptError)

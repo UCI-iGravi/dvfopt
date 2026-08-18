@@ -1089,10 +1089,6 @@ class ActiveBandALM3DStrategy(Strategy):
         Cluster-merge dilation for connected-component labelling.
     max_widen : int, default 1
         Pad-widen retries if a crop paste regresses the global count.
-    max_band_fraction : float, default 0.7
-        Deprecated no-op (kept for backward compatibility). Oversized
-        clusters are now tiled into bounded sub-boxes instead of falling
-        back to a global solve.
     n_workers : int | None, default 1
         Process-pool workers for non-overlapping cluster crops. ``1`` =
         sequential. Parallelism only pays off with many large clusters
@@ -1106,7 +1102,6 @@ class ActiveBandALM3DStrategy(Strategy):
     pad: int = 4
     merge_dilation: int = 2
     max_widen: int = 1
-    max_band_fraction: float = 0.7
     n_workers: int | None = 1
     band_threshold: float | None = None
 
@@ -1136,7 +1131,6 @@ class ActiveBandALM3DStrategy(Strategy):
             pad=self.pad,
             merge_dilation=self.merge_dilation,
             max_widen=self.max_widen,
-            max_band_fraction=self.max_band_fraction,
             n_workers=self.n_workers,
             verbose=verbose,
         )
