@@ -124,6 +124,45 @@ def test_2d_measure_matches_jacobian(tmp_path):
     assert m["n_neg_init"] == m["n_neg_final"]  # same field in and out
 
 
+def test_tri_and_tet_stats():
+    sec = _folded_section(3)
+    n_tri, min_tri = cb._tri_stats_2d(sec, 0.01)
+    assert n_tri > 0 and min_tri <= 0.01
+    vol = _folded_volume(3, d=4)
+    n_tet, min_tet = cb._tet_stats_3d(vol, 0.01)
+    assert n_tet is not None and n_tet > 0
+    # oversized volumes are skipped (returns None, None) rather than OOM
+    assert cb._tet_stats_3d(vol, 0.01, max_voxels=1) == (None, None)
+
+
+def test_2d_sections_interactive_report(tmp_path, monkeypatch):
+    import benchmark_utils as bu
+
+    monkeypatch.setattr(bu, "load_cohort_field", lambda b, variant="x": _folded_volume(0))
+    rd = cb.run_cohort_2d_sections(
+        corrector=lambda s: np.zeros_like(s),
+        sections=[("B0", 1), ("B0", 2)],
+        interactive=True,
+        out_base=str(tmp_path / "int2d"),
+    )
+    doc = (rd / "report.html").read_text(encoding="utf-8")
+    assert "data-viewer" in doc and "2-tri" in doc and "jdet_before" in doc
+    header = (rd / "results.csv").read_text().splitlines()[0]
+    assert "n_tri_init" in header
+
+
+def test_3d_interactive_report(tmp_path):
+    rd = cb.run_cohort_benchmark(
+        corrector=lambda p: p,
+        fields={"A": _folded_volume(0, d=4), "B": _folded_volume(1, d=4)},
+        interactive=True,
+        out_base=str(tmp_path / "int3d"),
+    )
+    doc = (rd / "report.html").read_text(encoding="utf-8")
+    assert "data-viewer" in doc and "6-tet" in doc and "worst z" in doc
+    assert "n_tet_init" in (rd / "results.csv").read_text().splitlines()[0]
+
+
 def test_empty_report_is_warn_not_false_success(tmp_path):
     meta = {"corrector": "x", "threshold": 0.01, "generated": "now", "total_time_s": 0.0}
     p = cb.build_cohort_report(tmp_path, meta, [])
