@@ -23,12 +23,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[fast]" pytest
-      # Persist Numba's on-disk JIT cache across runs. Without it every CI
-      # run re-compiles all @njit kernels from scratch (in the main process
-      # AND each spawned pool worker), which made this numba leg ~3.7x
-      # slower than the numba-less test.yml leg (26 min vs 7 min). Numba's
-      # cache is content-addressed (it validates against the source), so a
-      # stale restore is harmless — hence the loose restore-keys fallback.
+      # Persist Numba's on-disk JIT cache across runs so @njit kernels
+      # load precompiled instead of recompiling per run/worker. Measured
+      # effect is minor — the leg's historical 30-min cost was prange
+      # sync overhead, fixed by NUMBA_NUM_THREADS=1 below (PR #37) — but
+      # the cache is near-free and shaves the residual compile time.
+      # Numba validates entries against the source, so a stale restore
+      # is harmless — hence the loose restore-keys fallback.
       - name: Restore Numba JIT cache
         uses: actions/cache@v4
         with:
@@ -48,11 +49,11 @@ jobs:
         # research worst-case tests skip without the optional data folders.
         env:
           NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba_cache
-          # Hypothesis test for the numba leg's 4-5x slowdown vs the
-          # numba-less leg (~30 min vs 6-8 min; the JIT cache restored
-          # successfully on PR #36 and moved nothing, so compile time is
-          # NOT the cost). Suspect: prange thread sync/spin overhead on
-          # the tiny test arrays x 4-vCPU runners. threads=1 removes all
-          # parallel-region overhead; compare this run's timing.
+          # Confirmed fix (PR #37: 30m27s -> 4m03s, ~8x): the suite
+          # makes thousands of prange-kernel calls on tiny test arrays,
+          # and the per-call 4-thread fork/join + OpenMP spin-wait
+          # dwarfed the actual work on 4-vCPU runners. threads=1 removes
+          # every parallel-region barrier. Production-sized volumes are
+          # unaffected (this env only applies to the CI test run).
           NUMBA_NUM_THREADS: '1'
         run: python -m pytest tests/ -q
