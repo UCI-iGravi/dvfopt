@@ -31,7 +31,7 @@ pytest                     # or: pytest -n auto
 # Run a specific test module
 pytest tests/test_slp_strategy.py
 
-# Lint + format (ruff pinned 0.15.21 in the dev extras AND .pre-commit-config.yaml)
+# Lint + format (ruff pinned 0.16.3 in the dev extras AND .pre-commit-config.yaml)
 ruff check dvfopt dvfopt_gui tests benchmarks
 ruff format --check dvfopt dvfopt_gui tests benchmarks
 

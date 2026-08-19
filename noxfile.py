@@ -21,7 +21,7 @@ import nox
 nox.options.sessions = ["lint", "format_check", "tests"]
 
 _LINT_PATHS = ("dvfopt", "dvfopt_gui", "tests", "benchmarks")
-_RUFF = "ruff==0.15.21"  # keep in lockstep with pyproject [dev] + .pre-commit-config.yaml
+_RUFF = "ruff==0.16.3"  # keep in lockstep with pyproject [dev] + .pre-commit-config.yaml
 
 
 @nox.session

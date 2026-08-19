@@ -28,7 +28,7 @@ pytest
 # Run a specific test module
 pytest tests/test_slp_strategy.py
 
-# Lint + format (ruff is pinned to 0.15.21 in the dev extras; config in pyproject.toml)
+# Lint + format (ruff is pinned to 0.16.3 in the dev extras; config in pyproject.toml)
 ruff check dvfopt dvfopt_gui tests benchmarks
 ruff format --check dvfopt dvfopt_gui tests benchmarks
 ```
