@@ -23,6 +23,7 @@ import numpy as np
 from scipy.ndimage import binary_dilation, find_objects
 from scipy.ndimage import label as cc_label
 
+from dvfopt._logging import log_info, log_warning
 from dvfopt.core.slp.lp_direct_2tri import slp_iter
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
@@ -390,6 +391,7 @@ def cluster_slp_iter(
                         seed=inner_seed,
                     )
                 except Exception as exc:
+                    log_warning(f'cluster solve FAILED: {type(exc).__name__}: {exc}')
                     round_runs.append({**c, 'error': f'{type(exc).__name__}: {exc}'})
                     continue
                 _splice_interior(phi_out, c, phi_corr)
@@ -413,12 +415,11 @@ def cluster_slp_iter(
             }
         )
         if verbose:
-            print(
+            log_info(
                 f'[outer {outer_it}] {len(clusters)} clusters: '
                 f'n_neg {pre_n_neg} -> {post_n_neg}  '
                 f'n<threshold={post_n_below_threshold}  '
                 f'({time.time() - t0:.1f}s)',
-                flush=True,
             )
         # Done iff no folds AND no margin violations.
         if post_n_neg == 0 and post_n_below_threshold == 0:
@@ -453,10 +454,9 @@ def cluster_slp_iter(
     polish_margin = 5 * 1e-5  # 5x safety_tol
     if final_global_polish and (cluster_n_neg > 0 or cluster_min_T < threshold - polish_margin):
         if verbose:
-            print(
+            log_info(
                 f'[polish] cluster min_T={cluster_min_T:+.4f} < threshold; '
                 f'running global M14 anchored to cluster output…',
-                flush=True,
             )
         t_p = time.time()
         from dvfopt import (

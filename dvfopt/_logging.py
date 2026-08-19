@@ -56,6 +56,62 @@ def enable_default_handler(level: int = logging.INFO, stream=None) -> None:
     logger.setLevel(level)
 
 
+def _ensure_visible(want_level: int) -> None:
+    """Make sure a record at ``want_level`` would actually be emitted.
+
+    Installs the default stderr handler when the caller has no real
+    handler configured on the ``dvfopt`` logger (preserving the old
+    print-visibility). When OUR default handler is the one filtering,
+    lower it to ``want_level``; a user-configured handler is left alone
+    (their level wins).
+    """
+    has_real = any(not isinstance(h, logging.NullHandler) for h in logger.handlers)
+    if not has_real:
+        enable_default_handler(level=want_level)
+        return
+    if logger.isEnabledFor(want_level):
+        return
+    for h in logger.handlers:
+        if getattr(h, '_dvfopt_default', False):
+            enable_default_handler(level=want_level)
+            break
+
+
+def vlog(verbose: int, level: int, msg: str) -> None:
+    """Verbosity-gated logging shim for solver internals.
+
+    Drop-in replacement for the historical
+    ``if verbose >= level: print(msg, flush=True)`` pattern: emits *msg*
+    through the ``dvfopt`` logger at INFO (``level <= 1``) or DEBUG
+    (``level >= 2``) iff ``verbose >= level``, with the auto-handler
+    behavior of :func:`_ensure_visible`.
+    """
+    if verbose < level:
+        return
+    lvl = logging.INFO if level <= 1 else logging.DEBUG
+    _ensure_visible(lvl)
+    logger.log(lvl, msg)
+
+
+def log_info(msg: str) -> None:
+    """Unconditional INFO emit with the auto-handler behavior.
+
+    For solver call sites already guarded by their own ``if verbose:`` —
+    the historical ``print(msg, flush=True)`` drop-in.
+    """
+    vlog(1, 1, msg)
+
+
+def log_warning(msg: str) -> None:
+    """Unconditional WARNING emit with the auto-handler behavior.
+
+    For recoverable solver failures (a cluster solve raising, a step
+    callback blowing up) that must surface regardless of ``verbose``.
+    """
+    _ensure_visible(logging.WARNING)
+    logger.warning(msg)
+
+
 @contextmanager
 def verbose_scope(verbose: int):
     """Context manager: raise/lower the package log level for the body.
@@ -74,4 +130,11 @@ def verbose_scope(verbose: int):
         logger.setLevel(prev)
 
 
-__all__ = ['enable_default_handler', 'logger', 'verbose_scope']
+__all__ = [
+    'enable_default_handler',
+    'log_info',
+    'log_warning',
+    'logger',
+    'verbose_scope',
+    'vlog',
+]

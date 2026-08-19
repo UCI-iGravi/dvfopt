@@ -10,9 +10,16 @@ DEFAULT_PARAMS = {
 
 
 def _log(verbose, level, msg):
-    """Print *msg* if *verbose* >= *level*."""
-    if verbose >= level:
-        print(msg)
+    """Emit *msg* through the ``dvfopt`` logger if *verbose* >= *level*.
+
+    Historical print-based shim; now routes through
+    :func:`dvfopt._logging.vlog` so callers with their own logging
+    config can capture/filter solver output. Visibility semantics are
+    unchanged (message shows iff ``verbose >= level``).
+    """
+    from dvfopt._logging import vlog
+
+    vlog(verbose, level, msg)
 
 
 def _resolve_params(**overrides):

@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
@@ -203,14 +204,14 @@ def correct_dvf_25d(
 
     if verbose:
         adj = [int(counts[i]) for i in (origin_idx - 1, origin_idx) if 0 <= i < counts.shape[0]]
-        print(f'[25d origin] z={origin_idx} (folds={max(adj)})', flush=True)
+        log_info(f'[25d origin] z={origin_idx} (folds={max(adj)})')
 
     # Nothing to do only when the field already meets the sweep's own target
     # (min vol >= thr3): the sweep targets thr3 > threshold, so a fold-free
     # field with cubes in [threshold, thr3) still has work to do.
     if n_neg_in == 0 and n_below_in == 0 and min_T_in >= thr3 - 1e-9:
         if verbose:
-            print('[25d] already strictly feasible; no-op', flush=True)
+            log_info('[25d] already strictly feasible; no-op')
         stages.append(dict(stage='noop', n_neg=0, min_T=min_T_in, wall_s=0.0))
         return out, _finalize(
             out,
@@ -271,7 +272,7 @@ def correct_dvf_25d(
         _sweep_done += 1
         _emit_progress('sweep', _sweep_done, D, n_after)
         if verbose:
-            print(f'[25d up z={z}] folds {n_before}->{n_after}', flush=True)
+            log_info(f'[25d up z={z}] folds {n_before}->{n_after}')
 
     # Down: repair slice z against frozen slice z+1 (cur is the lower layer).
     # The down sweep starts AT the origin: the origin slice is repaired
@@ -287,12 +288,12 @@ def correct_dvf_25d(
         _sweep_done += 1
         _emit_progress('sweep', _sweep_done, D, n_after)
         if verbose:
-            print(f'[25d dn z={z}] folds {n_before}->{n_after}', flush=True)
+            log_info(f'[25d dn z={z}] folds {n_before}->{n_after}')
 
     _, n_neg_sweep, n_below_sweep, min_sweep = _stats(out, threshold)
     stages.append(dict(stage='sweep', n_neg=n_neg_sweep, min_T=min_sweep, wall_s=time.time() - ts))
     if verbose:
-        print(f'[25d sweep] n_neg={n_neg_sweep} min_T={min_sweep:+.5f}', flush=True)
+        log_info(f'[25d sweep] n_neg={n_neg_sweep} min_T={min_sweep:+.5f}')
 
     # ---- Optional final mop ----
     # Gate on the below-threshold count (which strictly contains the
@@ -311,7 +312,7 @@ def correct_dvf_25d(
         )
         _emit_progress('mop', 1, 1, n_neg_mop)
         if verbose:
-            print(f'[25d mop] n_neg {n_neg_sweep}->{n_neg_mop}', flush=True)
+            log_info(f'[25d mop] n_neg {n_neg_sweep}->{n_neg_mop}')
         # The mop already measured its final state; reuse it (the report's
         # n_below semantics — mv < threshold - 1e-5 — come from
         # `n_below_report_after`, measured exactly that way by the mop).

@@ -50,6 +50,7 @@ from scipy.ndimage import (
     label as cc_label,
 )
 
+from dvfopt._logging import log_info, log_warning
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
@@ -195,8 +196,8 @@ def cluster_schwarz_2d_tri(
             step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
         except KeyboardInterrupt:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f'step_callback raised {type(exc).__name__}: {exc}; continuing')
 
     init_n_neg, init_min_T = _stats_2d(phi_in)
     history: dict[str, Any] = {
@@ -224,17 +225,16 @@ def cluster_schwarz_2d_tri(
         # a new outer round past the requested wall-clock budget.
         if time.time() - t0 > time_budget_s:
             if verbose:
-                print('  time budget exhausted; stopping outer loop', flush=True)
+                log_info('  time budget exhausted; stopping outer loop')
             break
         bboxes, fold_mask = _fold_clusters_2d(phi_out, merge_dilation=merge_dilation)
         if not bboxes:
             break
         n_neg = int(fold_mask.sum())
         if verbose:
-            print(
+            log_info(
                 f'[outer {outer}] {n_neg} folds in {len(bboxes)} '
                 f'clusters (elapsed {time.time() - t0:.1f}s)',
-                flush=True,
             )
 
         if len(bboxes) == 1:
@@ -253,17 +253,15 @@ def cluster_schwarz_2d_tri(
                 fallback_budget = time_budget_s - (time.time() - t0)
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
-                        print(
+                        log_info(
                             '  budget exhausted; skipping global fallback (returning best-so-far)',
-                            flush=True,
                         )
                     break
                 if verbose:
-                    print(
+                    log_info(
                         f'  single cluster spans {span_y_cells}x'
                         f'{span_x_cells} cells of {n_cells_y}x{n_cells_x}'
                         f' (HxW={H}x{W}): falling back to inner_solve(global)',
-                        flush=True,
                     )
                 history['fallback_to_global'] = True
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
@@ -273,7 +271,7 @@ def cluster_schwarz_2d_tri(
         for b in bboxes:
             if time.time() - t0 > time_budget_s:
                 if verbose:
-                    print('  budget exhausted; stopping cluster sweep', flush=True)
+                    log_info('  budget exhausted; stopping cluster sweep')
                 break
             y0 = max(0, b['cy0'] - pad)
             y1 = min(H, b['cy1'] + pad + 2)
@@ -291,11 +289,7 @@ def cluster_schwarz_2d_tri(
             try:
                 phi_win_out = inner_solve(phi_win, time_budget_s=cluster_budget)
             except Exception as exc:
-                if verbose:
-                    print(
-                        f'  cluster {b["comp_id"]} FAILED: {type(exc).__name__}: {exc}',
-                        flush=True,
-                    )
+                log_warning(f'cluster {b["comp_id"]} solve FAILED: {type(exc).__name__}: {exc}')
                 continue
             wall = time.time() - t_cluster
             n_after, min_after = _stats_2d(phi_win_out)
@@ -316,12 +310,11 @@ def cluster_schwarz_2d_tri(
                 )
             )
             if verbose:
-                print(
+                log_info(
                     f'  cluster {b["comp_id"]} crop=({crop_h}x{crop_w}) '
                     f'@({y0},{x0})  n_neg: {n_before} -> {n_after}  '
                     f'min_T: {min_before:+.3f} -> {min_after:+.4f}  '
                     f'({wall:.1f}s)',
-                    flush=True,
                 )
         history['cluster_runs'].extend(round_runs)
 
@@ -336,10 +329,9 @@ def cluster_schwarz_2d_tri(
             )
         )
         if verbose:
-            print(
+            log_info(
                 f'  round {outer} done: global n_neg {n_neg} -> '
                 f'{post_n_neg}, min_T {post_min:+.4f}',
-                flush=True,
             )
 
         if post_n_neg == 0:
@@ -353,15 +345,13 @@ def cluster_schwarz_2d_tri(
                 fallback_budget = time_budget_s - (time.time() - t0)
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
-                        print(
+                        log_info(
                             '  budget exhausted; skipping global fallback (returning best-so-far)',
-                            flush=True,
                         )
                     break
                 if verbose:
-                    print(
+                    log_info(
                         '  no progress for 2 rounds -> falling back to inner_solve(global)',
-                        flush=True,
                     )
                 history['fallback_to_global'] = True
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
@@ -377,9 +367,8 @@ def cluster_schwarz_2d_tri(
         and time.time() - t0 < time_budget_s
     ):
         if verbose:
-            print(
+            log_info(
                 f'[final polish] min_T={post_min:+.4f} < threshold; running polish',
-                flush=True,
             )
         t_polish = time.time()
         phi_out = final_polish_fn(phi_out)
@@ -388,11 +377,10 @@ def cluster_schwarz_2d_tri(
         _fire('final_polish', phi_out)
         if verbose:
             final_n, final_m = _stats_2d(phi_out)
-            print(
+            log_info(
                 f'  polish done: min_T {post_min:+.4f} -> {final_m:+.4f}  '
                 f'n_neg {post_n_neg} -> {final_n}  '
                 f'({time.time() - t_polish:.1f}s)',
-                flush=True,
             )
 
     final_n, final_min = _stats_2d(phi_out)
@@ -529,20 +517,18 @@ def cluster_schwarz_3d_tet(
                 fallback_budget = time_budget_s - (time.time() - t0)
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
-                        print(
+                        log_info(
                             '  [schwarz] budget exhausted; skipping global '
                             'fallback (returning best-so-far)',
-                            flush=True,
                         )
                     triggered_fallback = True
                     break
                 history['fallback_to_global'] = True
                 if verbose:
-                    print(
+                    log_info(
                         f'  [schwarz outer {outer_round}] cluster {b["comp_id"]} '
                         f'spans {max(span_z, span_y, span_x):.2f} > '
                         f'{fallback_size_ratio} — falling back to inner_solve(global)',
-                        flush=True,
                     )
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 triggered_fallback = True
@@ -551,9 +537,8 @@ def cluster_schwarz_3d_tet(
             break
 
         if verbose:
-            print(
+            log_info(
                 f'  [schwarz outer {outer_round}] {len(bboxes)} cluster(s); n_neg={last_n_neg}',
-                flush=True,
             )
         for b in bboxes:
             z0 = max(0, b['cz0'] - pad)
@@ -572,11 +557,7 @@ def cluster_schwarz_3d_tet(
             try:
                 crop_out = inner_solve(crop, time_budget_s=cluster_budget)
             except Exception as exc:
-                if verbose:
-                    print(
-                        f'  cluster {b["comp_id"]} FAILED: {type(exc).__name__}: {exc}',
-                        flush=True,
-                    )
+                log_warning(f'cluster {b["comp_id"]} solve FAILED: {type(exc).__name__}: {exc}')
                 continue
             phi_out[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
             history['cluster_runs'].append(
@@ -593,10 +574,9 @@ def cluster_schwarz_3d_tet(
             dict(outer=outer_round, n_neg=cur_n_neg, min_T=cur_min, wall=time.time() - t0)
         )
         if verbose:
-            print(
+            log_info(
                 f'  [schwarz outer {outer_round}] done: n_neg={cur_n_neg}  '
                 f'min_V={cur_min:+.5f}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
         if cur_n_neg == 0:
             break
@@ -606,17 +586,15 @@ def cluster_schwarz_3d_tet(
                 fallback_budget = time_budget_s - (time.time() - t0)
                 if fallback_budget <= _FALLBACK_MIN_REMAINING_S:
                     if verbose:
-                        print(
+                        log_info(
                             '  [schwarz] budget exhausted; skipping global '
                             'fallback (returning best-so-far)',
-                            flush=True,
                         )
                     break
                 history['fallback_to_global'] = True
                 if verbose:
-                    print(
+                    log_info(
                         '  [schwarz] no progress for 2 rounds — falling back to inner_solve(global)',
-                        flush=True,
                     )
                 phi_out = inner_solve(phi_out, time_budget_s=fallback_budget)
                 break
@@ -631,9 +609,8 @@ def cluster_schwarz_3d_tet(
         and time.time() - t0 < time_budget_s
     ):
         if verbose:
-            print(
+            log_info(
                 f'[final polish] min_V={post_min:+.5f}; running global polish',
-                flush=True,
             )
         t_polish = time.time()
         phi_out = final_polish_fn(phi_out)

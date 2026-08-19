@@ -27,6 +27,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.core.wallbreakers._alm_3d import augmented_lagrangian_3d
 from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
 from dvfopt.core.wallbreakers._l2_refine_3d import l2_refine_3d
@@ -147,9 +148,8 @@ def iterative_3d_tet_refine_repair(
     info['stage1_seed'] = dict(min_T=seed_min, L2=seed_L2, wall=time.time() - t0)
     _emit(seed, 'seed')
     if verbose:
-        print(
+        log_info(
             f'  stage1 seed  min_V={seed_min:+.5f}  L2={seed_L2:.3f}  ({time.time() - t0:.1f}s)',
-            flush=True,
         )
 
     # -----------------------------------------------------------------
@@ -174,10 +174,9 @@ def iterative_3d_tet_refine_repair(
     info['stage2_pull'] = dict(min_T=pulled_min, L2=pulled_L2, wall=time.time() - t0)
     _emit(pulled, 'pull')
     if verbose:
-        print(
+        log_info(
             f'  stage2 pull  min_V={pulled_min:+.5f}  L2={pulled_L2:.3f}  '
             f'({time.time() - t0:.1f}s)',
-            flush=True,
         )
 
     # -----------------------------------------------------------------
@@ -204,10 +203,9 @@ def iterative_3d_tet_refine_repair(
     )
     _emit(repaired, 'repair')
     if verbose:
-        print(
+        log_info(
             f'  stage3 patch min_V={repaired_min:+.5f}  L2={repaired_L2:.3f}  '
             f'({time.time() - t0:.1f}s)',
-            flush=True,
         )
 
     if repaired_min <= threshold:
@@ -251,11 +249,10 @@ def iterative_3d_tet_refine_repair(
             )
         )
         if verbose:
-            print(
+            log_info(
                 f'  stage4 mu={mu:.1e}  min_V={V.min():+.5f}  '
                 f'L2={float(np.linalg.norm(phi_flat - phi_anchor_flat)):.3f}  '
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
 
     n = D * H * W

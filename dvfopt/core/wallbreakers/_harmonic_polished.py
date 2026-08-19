@@ -35,6 +35,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info, log_warning
 from dvfopt.core.tri_primitives import tri_areas_flat as _tri_areas_flat
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
 from dvfopt.core.wallbreakers._common import (
@@ -134,8 +135,8 @@ def iterative_2d_tri_harmonic_polished(
             step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
         except KeyboardInterrupt:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f'step_callback raised {type(exc).__name__}: {exc}; continuing')
 
     # Stage 1: harmonic extension.
     seed, r1_info = harmonic_extension_2d(
@@ -152,9 +153,8 @@ def iterative_2d_tri_harmonic_polished(
         min_T=seed_min, L2=seed_L2, wall=time.time() - t0, patches=r1_info.get('patches')
     )
     if verbose:
-        print(
+        log_info(
             f'  stage1 harmonic min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
-            flush=True,
         )
     _fire('stage1_harmonic', seed)
 
@@ -178,11 +178,10 @@ def iterative_2d_tri_harmonic_polished(
             wall=time.time() - t0,
         )
         if verbose:
-            print(
+            log_info(
                 f'  stage2 ALM     min_T={_min_tri(seed):+.5f}  '
                 f'L2={info["stage2_alm"]["L2"]:.1f}  '
                 f'({time.time() - t0:.1f}s)',
-                flush=True,
             )
         _fire('stage2_alm', seed)
     else:
@@ -234,10 +233,9 @@ def iterative_2d_tri_harmonic_polished(
         L2 = float(np.linalg.norm((phi_cur - phi_in).ravel()))
         polish_log.append(dict(mu=mu, min_T=min_T, L2=L2, nit=int(res.nit), wall=time.time() - t0))
         if verbose:
-            print(
+            log_info(
                 f'  stage3 mu={mu:.1e}  min_T={min_T:+.5f}  L2={L2:.1f}  '
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
         # Emit per-µ snapshot so the GUI can scrub through the polish.
         _fire(f'stage3_polish_mu={mu:g}', phi_cur)

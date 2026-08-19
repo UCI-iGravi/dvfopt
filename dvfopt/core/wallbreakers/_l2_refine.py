@@ -19,6 +19,7 @@ from typing import Optional
 import numpy as np
 from scipy.optimize import minimize
 
+from dvfopt._logging import log_info
 from dvfopt.core.tri_primitives import (
     tri_areas_flat as _tri_areas_flat,
 )
@@ -230,10 +231,9 @@ def l2_refine_2d(
         L2 = float(np.linalg.norm((phi_cur - phi_in).ravel()))
         log.append(dict(lam=lam, min_T=min_T, L2=L2, nit=int(res.nit), wall=time.time() - t0))
         if verbose:
-            print(
+            log_info(
                 f'  refine lam={lam:.0e}  min_T={min_T:+.5f}  L2={L2:.1f}  '
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
 
     if require_feasibility:

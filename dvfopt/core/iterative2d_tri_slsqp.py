@@ -52,6 +52,7 @@ import numpy as np
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.core._barrier_core import anchor_term
 from dvfopt.core.tri_primitives import (
     tri_areas_flat,
@@ -380,7 +381,7 @@ def iterative_2d_tri_slsqp(
         T = _constr(res.x)
         n_neg = int((T <= 0).sum())
         scheme = 'full-coverage' if full_coverage else 'per-cell'
-        print(
+        log_info(
             f'[2d-tri-slsqp done] grid {H}x{W}  anchor={anchor}  '
             f'scheme={scheme}  '
             f'cold_nit={cold_nit} status={cold_status}  '

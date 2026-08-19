@@ -23,6 +23,7 @@ from typing import Optional
 import numpy as np
 from scipy.optimize import minimize
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import tet_grad_T_v, tet_volumes_flat
 
 
@@ -140,10 +141,9 @@ def l2_refine_3d(
             )
         )
         if verbose:
-            print(
+            log_info(
                 f'  l2_refine lam={lam:.0e}  inner={res.nit:4d}  '
                 f'min_V={min_T:+.6f}  n_neg={n_neg}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
         if require_feasibility and min_T >= target:
             break

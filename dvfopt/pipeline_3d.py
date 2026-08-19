@@ -32,6 +32,7 @@ from typing import Optional
 
 import numpy as np
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import (
     n_neg_best_diagonal,
     six_tet_min_volume_3d,
@@ -178,10 +179,9 @@ def correct_dvf_3d(
     mv, n_neg_in, n_below_in, min_in = _stats(cur, threshold)
     bd_floor_in = n_neg_best_diagonal(cur, threshold=0.0)
     if verbose:
-        print(
+        log_info(
             f'[triage] n_neg={n_neg_in} n<thr={n_below_in} min_T={min_in:+.5f} '
             f'best-diag-floor={bd_floor_in}',
-            flush=True,
         )
     stages.append(
         dict(
@@ -239,9 +239,8 @@ def correct_dvf_3d(
     st = _stats(cur, threshold)  # threaded through the stages below
     mv, n_neg_b, n_below_b, min_b = st
     if verbose:
-        print(
+        log_info(
             f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} ({time.time() - ts:.1f}s)',
-            flush=True,
         )
     stages.append(
         dict(
@@ -263,10 +262,9 @@ def correct_dvf_3d(
     floor_frac = bd_floor_in / max(1, mv.size)
     if n_neg_b > 0 and floor_frac > 0.2:
         if verbose:
-            print(
+            log_info(
                 f'[escape] skipped — {bd_floor_in} cubes ({floor_frac:.0%}) have '
                 f'no positive triangulation; feasible set ~empty, annotating',
-                flush=True,
             )
         stages.append(
             dict(stage='escape:skipped_pathological', n_neg=n_neg_b, best_diag_floor=bd_floor_in)
@@ -311,10 +309,9 @@ def correct_dvf_3d(
             st = _stats(cur, threshold)
             _, n_after, _, min_after = st
             if verbose:
-                print(
+                log_info(
                     f'[escape{tag} {it + 1} k={k}] n_neg {n_now}->{n_after} '
                     f'min_T={min_after:+.5f} ({time.time() - ts:.1f}s)',
-                    flush=True,
                 )
             stages.append(
                 dict(
@@ -334,11 +331,11 @@ def correct_dvf_3d(
                     k += 1
                     stall = 0
                     if verbose:
-                        print(f'[escape] stalled — escalating halo to k={k}', flush=True)
+                        log_info(f'[escape] stalled — escalating halo to k={k}')
                     continue
                 if stall >= 2:
                     if verbose:
-                        print('[escape] stalled — stopping', flush=True)
+                        log_info('[escape] stalled — stopping')
                     break
             else:
                 stall = 0
@@ -365,9 +362,8 @@ def correct_dvf_3d(
 
         ts = time.time()
         if verbose:
-            print(
+            log_info(
                 f'[multiscale-fallback] escape plateaued at {n_esc}; re-seeding coarse-to-fine',
-                flush=True,
             )
         seeded, _ = multiscale_seed_3d(cur, threshold=rec_thr, verbose=verbose)
         st_seed = _stats(seeded, threshold)

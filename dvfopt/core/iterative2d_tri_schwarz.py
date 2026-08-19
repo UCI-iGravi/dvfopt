@@ -39,6 +39,7 @@ from scipy.ndimage import binary_dilation, find_objects
 from scipy.ndimage import label as cc_label
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
@@ -254,7 +255,7 @@ def iterative_2d_tri_schwarz(
     init_n_neg = int((feas_lb > T1).sum() + (feas_lb > T2).sum())
     init_min = float(min(T1.min(), T2.min()))
     if verbose >= 1:
-        print(
+        log_info(
             f'[2d-tri-schwarz init] grid {H}x{W}  threshold={threshold}  '
             f'n_neg={init_n_neg}  min_tri={init_min:+.4f}'
         )
@@ -330,7 +331,7 @@ def iterative_2d_tri_schwarz(
                 )
             )
         if verbose >= 1:
-            print(
+            log_info(
                 f'  outer {outer:2d}: n_neg={final_n_neg:5d}  '
                 f'min_tri={final_min:+.4f}  '
                 f'comps={len(comps):3d} (large={n_large} small={n_small})  '
@@ -342,7 +343,7 @@ def iterative_2d_tri_schwarz(
 
     if verbose >= 1:
         status = 'converged' if converged else f'max_outer={max_outer} reached'
-        print(
+        log_info(
             f'[2d-tri-schwarz done] {status}  '
             f'n_neg {init_n_neg} -> {final_n_neg}  '
             f'min_tri {init_min:+.4f} -> {final_min:+.4f}  '

@@ -58,6 +58,7 @@ import time
 
 import numpy as np
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 
@@ -215,10 +216,9 @@ def nmvf_correct_2d(
         min_J = float(J.min())
         iter_wall = time.time() - iter_t0
         if verbose >= 1:
-            print(
+            log_info(
                 f'  [nmvf iter {cur_iter:3d}] num_neg={num_neg:4d}  '
                 f'min_J={min_J:+.4f}  wall={iter_wall:.3f}s',
-                flush=True,
             )
         if record_history:
             info['history'].append(

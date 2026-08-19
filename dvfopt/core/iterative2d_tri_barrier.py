@@ -23,6 +23,7 @@ import time
 import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.core._barrier_core import (
     DEFAULT_LAM_SCHEDULE,
     DEFAULT_MU_SCHEDULE,
@@ -115,11 +116,11 @@ def iterative_2d_tri_barrier(
     init_min = float(T_init.min())
     if verbose >= 1:
         scheme = '2-tri full-coverage' if full_coverage else '2-tri'
-        print(
+        log_info(
             f'[2d-tri-barrier init] grid {H}x{W}  threshold={threshold}  '
             f'margin={margin}  anchor={anchor}  scheme={scheme}'
         )
-        print(f'[init] tri neg={init_neg}  min={init_min:+.5f}')
+        log_info(f'[init] tri neg={init_neg}  min={init_min:+.5f}')
 
     t_start = time.time()
     phi_flat, info = run_penalty_barrier_lbfgs(
@@ -140,7 +141,7 @@ def iterative_2d_tri_barrier(
 
     if verbose >= 1:
         T = constraint_values_fn(phi_flat, H, W)
-        print(
+        log_info(
             f'[2d-tri-barrier done] neg={int((T <= 0).sum())}  '
             f'min={float(T.min()):+.6f}  feasible={info["feasible"]}  '
             f'({time.time() - t_start:.1f}s)'

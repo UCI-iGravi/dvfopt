@@ -47,6 +47,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+from dvfopt._logging import log_info
 from dvfopt.constraints import (
     Constraint,
     JdetConstraint2D,
@@ -476,7 +477,7 @@ class DVFopt:
         constraint = _build_constraint(c.constraint, (H, W))
         init_n_neg, init_min = _constraint_stats(constraint, phi2)
         if c.verbose >= 1:
-            print(f'[z={z}] init n_neg={init_n_neg}  min={init_min:+.4f}', flush=True)
+            log_info(f'[z={z}] init n_neg={init_n_neg}  min={init_min:+.4f}')
         if init_n_neg == 0 and init_min >= c.threshold - c.err_tol:
             # ``corrected`` is replaced by fit() with a read-only view
             # into the assembled volume; no per-slice copy is retained.
@@ -597,12 +598,11 @@ class DVFopt:
             history = []
 
         if c.verbose >= 1:
-            print(
+            log_info(
                 f'[z={z}] final n_neg={res.final_n_neg}  '
                 f'min={res.final_min_T:+.5f}  '
                 f'strategy={strategy_label}  '
                 f'({time.time() - t0:.1f}s)',
-                flush=True,
             )
         # ``corrected`` is replaced by fit() with a read-only view into
         # the assembled volume; no per-slice copy is retained.
