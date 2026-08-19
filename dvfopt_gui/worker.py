@@ -98,6 +98,7 @@ class StateSnapshot:
         'outer_iter',
         'per_index_iter',
         'phi',
+        'stage',
         'window_x0',
         'window_x1',
         'window_y0',
@@ -123,6 +124,7 @@ class StateSnapshot:
         outer_iter,
         n_neg,
         min_T,
+        stage=None,
     ):
         self.phi = phi
         self.window_y0 = window_y0
@@ -140,6 +142,10 @@ class StateSnapshot:
         self.outer_iter = outer_iter
         self.n_neg = n_neg
         self.min_T = min_T
+        # Pipeline-stage name for phase-boundary snapshots (wallbreaker /
+        # SLP stages); None for windowed per-step snapshots. The GUI's
+        # convergence plot uses it to draw phase markers.
+        self.stage = stage
 
 
 def _state_to_snapshot(state: dict) -> StateSnapshot:
@@ -179,7 +185,9 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
     )
 
 
-def _volume_snapshot(phi3d, *, n_neg: int, min_T: float, outer_iter: int) -> StateSnapshot:
+def _volume_snapshot(
+    phi3d, *, n_neg: int, min_T: float, outer_iter: int, stage: str | None = None
+) -> StateSnapshot:
     """Build a 3D StateSnapshot: phi is the full (3, D, H, W) volume;
     window/opt rects collapse to zero (no active-window overlay in 3D)."""
     return StateSnapshot(
@@ -199,6 +207,7 @@ def _volume_snapshot(phi3d, *, n_neg: int, min_T: float, outer_iter: int) -> Sta
         outer_iter=int(outer_iter),
         n_neg=int(n_neg),
         min_T=float(min_T),
+        stage=stage,
     )
 
 
@@ -268,6 +277,11 @@ def _metric_field_3d(phi3d, kind: str) -> np.ndarray:
         from dvfopt.jacobian.numpy_jdet import jacobian_det3D
 
         return jacobian_det3D(phi3d)
+    if kind == 'inj3d':
+        # Per-voxel min axial monotonicity gap (the injectivity-gap view).
+        from dvfopt.jacobian.monotonicity import injectivity_quality_3d
+
+        return injectivity_quality_3d(phi3d)
     raise ValueError(f'unknown 3D metric kind={kind!r}')
 
 
@@ -420,6 +434,9 @@ class SolverWorker(QtCore.QThread):
         # last 2.5D progress event for the progress bar.
         self.pipeline_report = None
         self.marching_progress: tuple | None = None
+        # SolveInfo of the last Solver-path run (record_history=True) —
+        # the window uses it for phase display + the convergence report.
+        self.solve_info = None
 
     def request_stop(self):
         self._stop_requested = True
@@ -550,6 +567,7 @@ class SolverWorker(QtCore.QThread):
             outer_iter=0,
             n_neg=n_neg,
             min_T=min_T,
+            stage='input',
         )
         self._record(snap)
 
@@ -559,9 +577,16 @@ class SolverWorker(QtCore.QThread):
         from dvfopt.core.slsqp.iterative import iterative_serial
 
         kwargs = {
-            'verbose': 0,
+            'verbose': int(self._params.get('verbose', 0)),
             'enforce_triangles': enforce_triangles,
         }
+        # Constraint-mode toggles come from the Params -> Strategy overrides
+        # (the 2D windowed path drives iterative_serial directly, so the
+        # SLSQPWindowedStrategy dataclass isn't constructed here).
+        overrides = dict(self._params.get('strategy_overrides') or {})
+        for k in ('enforce_shoelace', 'enforce_injectivity', 'injectivity_threshold'):
+            if k in overrides:
+                kwargs[k] = overrides[k]
         if 'max_iterations' in self._params:
             kwargs['max_iterations'] = int(self._params['max_iterations'])
         if self._params.get('max_per_index_iter') is not None:
@@ -669,12 +694,20 @@ class SolverWorker(QtCore.QThread):
                 outer_iter=outer[0],
                 n_neg=n_neg,
                 min_T=min_T,
+                stage=str(state.get('stage')) if state.get('stage') else None,
             )
             self._record(snap)
 
         if self._stop_requested:
             raise KeyboardInterrupt()
-        result = solver.fit(phi_2hw, step_callback=_stage_callback)
+        result = solver.fit(
+            phi_2hw,
+            step_callback=_stage_callback,
+            record_history=True,
+            verbose=int(self._params.get('verbose', 0)),
+        )
+        # getattr: test doubles stub Solver.fit with minimal results.
+        self.solve_info = getattr(result, 'info', None)
         # ``_emit_synthetic_snapshot`` still fires once at the end so
         # there's an authoritative "final" entry — strategies that
         # didn't emit any per-stage snapshots fall back to just this.
@@ -720,7 +753,7 @@ class SolverWorker(QtCore.QThread):
 
         # Initial snapshot (input volume), under the run metric.
         n0, m0 = _metric_counts_3d(vol, metric_kind)
-        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
+        self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0, stage='input'))
 
         outer = [0]
 
@@ -736,14 +769,31 @@ class SolverWorker(QtCore.QThread):
                 return
             n, m = _metric_counts_3d(phi, metric_kind)
             outer[0] += 1
-            self._record(_volume_snapshot(phi, n_neg=n, min_T=m, outer_iter=outer[0]))
+            self._record(
+                _volume_snapshot(
+                    phi,
+                    n_neg=n,
+                    min_T=m,
+                    outer_iter=outer[0],
+                    stage=str(state.get('stage')) if state.get('stage') else None,
+                )
+            )
 
         if self._stop_requested:
             raise KeyboardInterrupt()
-        result = solver.fit(vol, step_callback=_stage_callback)
+        result = solver.fit(
+            vol,
+            step_callback=_stage_callback,
+            record_history=True,
+            verbose=int(self._params.get('verbose', 0)),
+        )
+        # getattr: test doubles stub Solver.fit with minimal results.
+        self.solve_info = getattr(result, 'info', None)
         corrected = np.asarray(result.corrected, dtype=np.float64)
         nf, mf = _metric_counts_3d(corrected, metric_kind)
-        self._record(_volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1))
+        self._record(
+            _volume_snapshot(corrected, n_neg=nf, min_T=mf, outer_iter=outer[0] + 1, stage='final')
+        )
         return corrected
 
     def _run_marching_25d(self):
@@ -792,7 +842,7 @@ class SolverWorker(QtCore.QThread):
         phi_out, report = correct_dvf_25d(
             vol,
             threshold=thr,
-            verbose=0,
+            verbose=int(self._params.get('verbose', 0)),
             progress_callback=_cb,
             callback_copies=False,
         )
@@ -817,7 +867,9 @@ class SolverWorker(QtCore.QThread):
         self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
         if self._stop_requested:
             raise KeyboardInterrupt()
-        phi_out, report = dvfopt.correct_dvf_3d(vol, threshold=thr, verbose=0)
+        phi_out, report = dvfopt.correct_dvf_3d(
+            vol, threshold=thr, verbose=int(self._params.get('verbose', 0))
+        )
         self.pipeline_report = report
         phi_out = np.asarray(phi_out, dtype=np.float64)
         nf, mf = _metric_counts_3d(phi_out, 'tet3d')
@@ -936,6 +988,33 @@ class SolverWorker(QtCore.QThread):
             from dvfopt import SLPStrategy
 
             return _make(SLPStrategy)
+        if mid == 'slp_tet3d':
+            from dvfopt import SLPStrategy
+
+            return _make(SLPStrategy)
+        if mid in ('auto_tet3d', 'auto_jdet3d'):
+            from dvfopt import JdetConstraint3D, Tet6Constraint3D, make_strategy
+            from dvfopt.solver import auto_strategy
+
+            vol = np.asarray(self._deformation_i, dtype=np.float64)
+            _, D, H, W = vol.shape
+            kind = 'tet3d' if mid.endswith('_tet3d') else 'jdet3d'
+            n_neg, min_T = _metric_counts_3d(vol, kind)
+            constraint = (
+                Tet6Constraint3D(shape=(D, H, W))
+                if kind == 'tet3d'
+                else JdetConstraint3D(shape=(D, H, W))
+            )
+            label = auto_strategy(
+                constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1'))
+            )
+            try:
+                strategy = make_strategy(label)
+            except (KeyError, ValueError):
+                label = 'barrier'
+                strategy = make_strategy(label)
+            self.resolved_strategy_label = label
+            return strategy
         if mid == 'barrier_torch_tet3d':
             from dvfopt import BarrierTet3DTorchStrategy
 

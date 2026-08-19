@@ -112,18 +112,23 @@ def build_save_payload(
         min_T_arr = np.empty(n, dtype=np.float64)
         outer_arr = np.empty(n, dtype=np.int64)
         sub_arr = np.empty(n, dtype=np.int64)
+        stage_list = []
         for i, snap in enumerate(history_snaps):
             phi_hist[i] = snap.phi
             n_neg_arr[i] = snap.n_neg
             min_T_arr[i] = snap.min_T
             outer_arr[i] = snap.outer_iter
             sub_arr[i] = snap.per_index_iter
+            stage_list.append(getattr(snap, 'stage', None) or '')
         payload['n_history_steps'] = np.int64(n)
         payload['history_phi'] = phi_hist
         payload['history_n_neg'] = n_neg_arr
         payload['history_min_T'] = min_T_arr
         payload['history_outer_iter'] = outer_arr
         payload['history_per_index_iter'] = sub_arr
+        # Phase names ('' = no stage) — restored on load for the
+        # convergence plot's phase markers.
+        payload['history_stage'] = np.array(stage_list, dtype=np.str_)
         payload['history_total'] = np.int64(history_total)
     else:
         payload['n_history_steps'] = np.int64(0)
@@ -230,6 +235,10 @@ def parse_loaded(mapping) -> LoadedRun:
         min_T = _col('history_min_T', 0.0, np.float64)
         outer = _col('history_outer_iter', 0, np.int64)
         sub = _col('history_per_index_iter', 0, np.int64)
+        if 'history_stage' in files:
+            stage_arr = np.asarray(mapping['history_stage'], dtype=np.str_)
+        else:  # pre-stage save files
+            stage_arr = np.full(n, '', dtype=np.str_)
         for i in range(n):
             snapshots.append(
                 StateSnapshot(
@@ -249,6 +258,7 @@ def parse_loaded(mapping) -> LoadedRun:
                     outer_iter=int(outer[i]),
                     n_neg=int(n_neg[i]),
                     min_T=float(min_T[i]),
+                    stage=(str(stage_arr[i]) or None) if i < len(stage_arr) else None,
                 )
             )
         history_total = int(mapping['history_total']) if 'history_total' in files else n

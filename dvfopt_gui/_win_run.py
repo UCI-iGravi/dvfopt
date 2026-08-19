@@ -130,6 +130,8 @@ class RunActionsMixin:
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
             'strategy_overrides': self._strategy_overrides.get(self._current_params_algo(), {}),
+            # Log-dock level → solver verbose (0 = warnings only).
+            'verbose': int(getattr(self, '_log_verbose', 0)),
         }
         if self._max_per_index_iter is not None:
             params['max_per_index_iter'] = int(self._max_per_index_iter)
@@ -360,6 +362,13 @@ class RunActionsMixin:
         sender = self.sender()
         if sender is not None and sender is not self._worker:
             return
+        # Capture the run's recorded SolveInfo (Solver-path runs record
+        # phase history) for the View → Save convergence report action.
+        if self._worker is not None:
+            solve_info = getattr(self._worker, 'solve_info', None)
+            if solve_info is not None and getattr(solve_info, 'phases', None):
+                self._last_solve_info = solve_info
+                self._report_action.setEnabled(True)
         # Splice the result back into the volume so subsequent runs /
         # view toggles see the corrected state.
         if phi_out is not None and self._volume is not None:

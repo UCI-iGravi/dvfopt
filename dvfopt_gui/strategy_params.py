@@ -21,6 +21,25 @@ from PyQt5 import QtWidgets
 _EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 # Literal-choice fields (dataclasses can't express Literal defaults cleanly).
 _CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
+# ``float | None``-defaulted knobs: None means "derive from threshold".
+# Rendered as a checkbox-enabled spinbox; the value is the spin default
+# used when the user first enables the override.
+_OPTIONAL_FLOAT_FIELDS = {
+    'injectivity_threshold': 0.01,
+    'band_threshold': 0.012,
+    'recover_threshold': 0.012,
+}
+# Per-algo field whitelist. The 2D windowed path drives iterative_serial
+# directly (toolbar owns its iteration knobs), so only the constraint-mode
+# toggles are exposed; everything else would be editable-but-ignored.
+_INCLUDED_FIELDS_BY_ALGO = {
+    'slsqp_windowed': {'enforce_shoelace', 'enforce_injectivity', 'injectivity_threshold'},
+}
+# Per-algo greyed-out fields (config-time gating of run-time errors).
+_DISABLED_FIELDS_BY_ALGO = {
+    # enforce_shoelace is 2D-only; the 3D run would raise. Grey it out.
+    'slsqp_windowed@jdet3d': {'enforce_shoelace'},
+}
 
 
 def _valid_override(kind: str, name: str, value) -> bool:
@@ -46,6 +65,13 @@ def _valid_override(kind: str, name: str, value) -> bool:
         return isinstance(value, bool)
     if kind == 'choice':
         return isinstance(value, str) and value in _CHOICE_FIELDS.get(name, ())
+    if kind == 'optfloat':
+        if value is None:
+            return True
+        try:
+            return math.isfinite(float(value))
+        except (TypeError, ValueError):
+            return False
     if kind == 'str':
         return isinstance(value, str)
     if kind == 'readonly':
@@ -70,21 +96,21 @@ def strategy_class_for(algo: str):
 
     mapping = {
         'slp': dvfopt.SLPStrategy,
+        # 2D windowed exposes ONLY the constraint-mode toggles (see
+        # _INCLUDED_FIELDS_BY_ALGO) — the worker threads them into
+        # iterative_serial; the toolbar owns the iteration knobs.
+        'slsqp_windowed': dvfopt.SLSQPWindowedStrategy,
         'm14': dvfopt.HarmonicALMRefineRepairStrategy,
         'm14_schwarz': dvfopt.SchwarzHarmonicALMRefineRepairStrategy,
         'm10': dvfopt.HarmonicALMBarrierStrategy,
         'barrier': dvfopt.BarrierStrategy,
-        # 2D windowed-SLSQP never constructs a Strategy (run() routes it to
-        # _run_windowed_slsqp, driven by the toolbar's max_iter spinbox), so
-        # a params tab here would be editable-but-ignored. The 3D variant
-        # ('slsqp_windowed@jdet3d') IS Strategy-constructed and editable.
-        'slsqp_windowed': None,
         'slsqp_fullgrid': dvfopt.SLSQPFullGridStrategy,
         'schwarz': dvfopt.SchwarzStrategy,
         'nmvf': dvfopt.NMVFStrategy,
         'barrier_torch': dvfopt.BarrierTet3DTorchStrategy,
     }
     tet3d = {
+        'slp@tet3d': dvfopt.SLPStrategy,
         'm14@tet3d': dvfopt.HarmonicALMRefineRepair3DStrategy,
         'm14_schwarz@tet3d': dvfopt.SchwarzHarmonicALMRefineRepair3DStrategy,
         'm10@tet3d': dvfopt.HarmonicALMBarrier3DStrategy,
@@ -121,7 +147,9 @@ def editable_fields(cls) -> list:
             if f.default is not dataclasses.MISSING
             else (f.default_factory() if f.default_factory is not dataclasses.MISSING else None)
         )
-        if f.name in _CHOICE_FIELDS:
+        if f.name in _OPTIONAL_FLOAT_FIELDS and default is None:
+            out.append((f.name, 'optfloat', None))
+        elif f.name in _CHOICE_FIELDS:
             choices = _CHOICE_FIELDS[f.name]
             assert str(default) in choices, (
                 f'{cls.__name__}.{f.name}: default {default!r} not in {choices}. '
@@ -161,7 +189,12 @@ class StrategyParamsTab(QtWidgets.QWidget):
         if cls is None:
             self._form.addRow(QtWidgets.QLabel('<i>No editable parameters for this method.</i>'))
             return
+        base_algo = algo.split('@', 1)[0]
+        include = _INCLUDED_FIELDS_BY_ALGO.get(algo, _INCLUDED_FIELDS_BY_ALGO.get(base_algo))
+        disabled = _DISABLED_FIELDS_BY_ALGO.get(algo, set())
         for name, kind, default in editable_fields(cls):
+            if include is not None and name not in include:
+                continue
             value = overrides.get(name, default)
             if name in overrides and not _valid_override(kind, name, value):
                 value = default
@@ -189,12 +222,37 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 for c in _CHOICE_FIELDS[name]:
                     w.addItem(c)
                 w.setCurrentText(str(value))
+            elif kind == 'optfloat':
+                # Checkbox-enabled spinbox: unchecked = None (derive from
+                # threshold), checked = explicit override value.
+                w = QtWidgets.QWidget()
+                lay = QtWidgets.QHBoxLayout(w)
+                lay.setContentsMargins(0, 0, 0, 0)
+                cb = QtWidgets.QCheckBox('override')
+                spin = QtWidgets.QDoubleSpinBox()
+                spin.setDecimals(6)
+                spin.setRange(-1e12, 1e12)
+                spin.setValue(
+                    float(value)
+                    if value is not None
+                    else float(_OPTIONAL_FLOAT_FIELDS.get(name, 0.0))
+                )
+                cb.setChecked(value is not None)
+                spin.setEnabled(value is not None)
+                cb.toggled.connect(spin.setEnabled)
+                lay.addWidget(cb)
+                lay.addWidget(spin)
+                w._opt_check = cb  # type: ignore[attr-defined]
+                w._opt_spin = spin  # type: ignore[attr-defined]
             elif kind == 'str':
                 w = QtWidgets.QLineEdit(str(value))
             else:  # readonly
                 w = QtWidgets.QLabel(repr(default))
                 self._form.addRow(f'{name}:', w)
                 continue
+            if name in disabled:
+                w.setEnabled(False)
+                w.setToolTip('Not applicable for this constraint family.')
             self._widgets[name] = (kind, w)
             self._defaults[name] = default
             self._form.addRow(f'{name}:', w)
@@ -211,8 +269,15 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 v = bool(w.isChecked())
             elif kind == 'choice':
                 v = str(w.currentText())
+            elif kind == 'optfloat':
+                v = float(w._opt_spin.value()) if w._opt_check.isChecked() else None
             else:
                 v = str(w.text())
+            if kind == 'optfloat':
+                if v == self._defaults[name]:  # both None, or same float
+                    continue
+                out[name] = v
+                continue
             if kind == 'float':
                 default = self._defaults[name]
                 if isinstance(default, (int, float)) and math.isclose(

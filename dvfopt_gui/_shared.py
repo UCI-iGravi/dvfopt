@@ -51,6 +51,27 @@ def _jdet_colormap():
     return pg.ColorMap(stops, colors)
 
 
+def _min_gap_2d(phi_2hw: np.ndarray) -> np.ndarray:
+    """Per-pixel min axial monotonicity gap (the 2D injectivity-gap view).
+
+    2D analogue of :func:`dvfopt.jacobian.injectivity_quality_3d`
+    (axial-only): each h/v deformed-coordinate gap is spread to both
+    endpoint pixels and the element-wise minimum taken. Unit gaps (1.0)
+    everywhere on the identity field; negative where deformed columns/
+    rows cross.
+    """
+    from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d
+
+    dy, dx = phi_2hw[0], phi_2hw[1]
+    h, v = _monotonicity_diffs_2d(dy, dx)
+    q = np.full(dy.shape, np.inf)
+    q[:, :-1] = np.minimum(q[:, :-1], h)
+    q[:, 1:] = np.minimum(q[:, 1:], h)
+    q[:-1] = np.minimum(q[:-1], v)
+    q[1:] = np.minimum(q[1:], v)
+    return q
+
+
 def _min_tri_from_phi(phi_2hw: np.ndarray) -> np.ndarray:
     """Compute per-cell ``min(T1, T2)`` from a ``(2, H, W)`` field.
 
@@ -201,6 +222,7 @@ VIEW_JDET = 'jdet'
 VIEW_2TRI = '2tri'
 VIEW_GRID = 'grid'
 VIEW_DIFF = 'diff'
+VIEW_INJ = 'inj'
 
 
 # Constraint families. The worker dispatches on ``method_id`` which is
@@ -239,6 +261,7 @@ _METHOD_SPECS_JDET = [
     ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_TET3D = [
+    ('slp', 'SLP-3D (cluster trust-region SLP + HiGHS L1; m10 seed)'),
     ('m14', 'M14Tet (harmonic + ALM + L2 refine + repair + polish)'),
     ('m14_schwarz', 'M14-Schwarz3D (cluster decomposition + global polish)'),
     ('m10', 'M10Tet (harmonic + ALM + barrier polish)'),
@@ -247,10 +270,12 @@ _METHOD_SPECS_TET3D = [
     ('coupled_kring', 'CoupledKRing3D (k-ring SLSQP attractor escape; research)'),
     ('pipeline3d', 'Full 3D pipeline (bulk auto + k-ring escape)'),
     ('barrier_torch', 'Barrier GPU (torch; CPU fallback)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_JDET3D = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed 3D'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_BY_CONSTRAINT = {
     CONSTRAINT_2TRI: _METHOD_SPECS_2TRI,

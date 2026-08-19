@@ -16,9 +16,11 @@ from dvfopt_gui._shared import (
     VIEW_2TRI,
     VIEW_DIFF,
     VIEW_GRID,
+    VIEW_INJ,
     VIEW_JDET,
     _folded_cells_path,
     _grid_lines,
+    _min_gap_2d,
     _min_tri_from_phi,
     _quiver_lines,
 )
@@ -141,6 +143,15 @@ class RenderMixin:
             self._cbar.setVisible(True)
             self._grid_curve.setVisible(False)
             self._fold_overlay.setVisible(False)
+        elif mode == VIEW_INJ:
+            gap = _min_gap_2d(phi_2hw)
+            self._img.setImage(gap, autoLevels=False)
+            self._apply_levels(gap)
+            self._img.setVisible(True)
+            self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
+            self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
         elif mode == VIEW_DIFF:
             # Current minus originally-loaded per-pixel Jdet. Positive
             # (red) = Jdet rose toward feasible; negative (blue) = fell.
@@ -184,6 +195,9 @@ class RenderMixin:
         kernel runs at most once per displayed field; z only changes
         which slice of the cached field gets returned."""
         z = min(self._z, phi3d.shape[1] - 1)
+        if self._view_mode == VIEW_INJ:
+            field = self._metric3d_field(phi3d, 'inj3d')  # (D, H, W)
+            return field[z]
         if self._constraint_combo.currentData() == CONSTRAINT_JDET3D:
             field = self._metric3d_field(phi3d, 'jdet3d')  # (D, H, W)
             return field[z]
@@ -268,6 +282,15 @@ class RenderMixin:
                 (worker.history_get(i).min_T for i in range(n)), dtype=float, count=n
             )
             self._conv_plot.set_data(steps, n_neg, min_T)
+            # Phase-boundary markers: wallbreaker / SLP stage snapshots
+            # carry their stage name; windowed per-step snapshots don't.
+            marks = [
+                (offset + i, worker.history_get(i).stage)
+                for i in range(n)
+                if getattr(worker.history_get(i), 'stage', None) not in (None, '', 'input')
+            ]
+            self._conv_plot.set_stage_markers([m[0] for m in marks], [m[1] for m in marks])
+            self._conv_plot.set_threshold(self._display_threshold())
             self._conv_len = n
         self._conv_plot.set_cursor(offset + self._history_slider.value())
 
