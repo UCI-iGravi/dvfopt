@@ -53,3 +53,36 @@ def planted_fold(H: int = 10, W: int = 10, *, seed: int = 0, scale: float = 0.4)
     """
     rng = np.random.default_rng(seed)
     return np.stack([rng.normal(0, scale, (H, W)), rng.normal(0, scale, (H, W))])
+
+
+def planted_fold_3d(
+    D: int = 4, H: int = 6, W: int = 6, *, seed: int = 0, depth: float = 1.4
+) -> np.ndarray:
+    """Return a ``(3, D, H, W)`` ``[dz, dy, dx]`` volume with a punched
+    central fold. 3D sibling of :func:`planted_fold` — consolidates the
+    folded-volume builders previously duplicated across the 3D test files.
+    """
+    rng = np.random.default_rng(seed)
+    v = rng.normal(0, 0.02, (3, D, H, W))
+    v[1, 1 : D - 1, 2:4, 2:4] -= depth
+    v[2, 1 : D - 1, 2:4, 2:4] -= depth
+    return v
+
+
+# ---------------------------------------------------------------------------
+# Shared offscreen QApplication for the GUI test files (PyQt5-gated).
+# Session-scoped: one QApplication per test session (Qt allows only one).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope='session')
+def qapp():
+    PyQt5 = pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
+    del PyQt5
+    import os
+
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PyQt5 import QtWidgets
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    yield app

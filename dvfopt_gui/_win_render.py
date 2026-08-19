@@ -274,22 +274,22 @@ class RenderMixin:
         total = worker.history_total
         offset = total - n  # absolute step at buffer index 0
         if n != self._conv_len:
+            # Single pass: history_get is a Python call + deque random
+            # index — fetch each snapshot once and derive everything.
+            snaps = [worker.history_get(i) for i in range(n)]
             steps = np.arange(offset, offset + n)
-            n_neg = np.fromiter(
-                (worker.history_get(i).n_neg for i in range(n)), dtype=float, count=n
-            )
-            min_T = np.fromiter(
-                (worker.history_get(i).min_T for i in range(n)), dtype=float, count=n
-            )
+            n_neg = np.fromiter((s.n_neg for s in snaps), dtype=float, count=n)
+            min_T = np.fromiter((s.min_T for s in snaps), dtype=float, count=n)
             self._conv_plot.set_data(steps, n_neg, min_T)
             # Phase-boundary markers: wallbreaker / SLP stage snapshots
             # carry their stage name; windowed per-step snapshots don't.
-            marks = [
-                (offset + i, worker.history_get(i).stage)
-                for i in range(n)
-                if getattr(worker.history_get(i), 'stage', None) not in (None, '', 'input')
-            ]
-            self._conv_plot.set_stage_markers([m[0] for m in marks], [m[1] for m in marks])
+            mark_steps: list = []
+            mark_labels: list = []
+            for i, snap in enumerate(snaps):
+                if snap.stage not in (None, '', 'input'):
+                    mark_steps.append(offset + i)
+                    mark_labels.append(snap.stage)
+            self._conv_plot.set_stage_markers(mark_steps, mark_labels)
             self._conv_plot.set_threshold(self._display_threshold())
             self._conv_len = n
         self._conv_plot.set_cursor(offset + self._history_slider.value())

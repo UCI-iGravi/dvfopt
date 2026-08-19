@@ -54,22 +54,12 @@ def _jdet_colormap():
 def _min_gap_2d(phi_2hw: np.ndarray) -> np.ndarray:
     """Per-pixel min axial monotonicity gap (the 2D injectivity-gap view).
 
-    2D analogue of :func:`dvfopt.jacobian.injectivity_quality_3d`
-    (axial-only): each h/v deformed-coordinate gap is spread to both
-    endpoint pixels and the element-wise minimum taken. Unit gaps (1.0)
-    everywhere on the identity field; negative where deformed columns/
-    rows cross.
+    Thin delegate to :func:`dvfopt.jacobian.monotonicity.injectivity_quality_2d`
+    — the domain math lives in dvfopt, next to its 3D sibling.
     """
-    from dvfopt.jacobian.monotonicity import _monotonicity_diffs_2d
+    from dvfopt.jacobian.monotonicity import injectivity_quality_2d
 
-    dy, dx = phi_2hw[0], phi_2hw[1]
-    h, v = _monotonicity_diffs_2d(dy, dx)
-    q = np.full(dy.shape, np.inf)
-    q[:, :-1] = np.minimum(q[:, :-1], h)
-    q[:, 1:] = np.minimum(q[:, 1:], h)
-    q[:-1] = np.minimum(q[:-1], v)
-    q[1:] = np.minimum(q[1:], v)
-    return q
+    return injectivity_quality_2d(phi_2hw)
 
 
 def _min_tri_from_phi(phi_2hw: np.ndarray) -> np.ndarray:

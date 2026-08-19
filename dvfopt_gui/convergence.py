@@ -97,6 +97,10 @@ class ConvergencePlot(pg.PlotWidget):
         index where each named stage's snapshot landed. Existing markers
         are replaced (call with empty sequences to clear).
         """
+        key = (tuple(steps), tuple(labels))
+        if key == getattr(self, '_last_marks', None):
+            return  # unchanged — skip the Qt item churn
+        self._last_marks = key
         pi = self.getPlotItem()
         for item in self._stage_lines:
             pi.removeItem(item)

@@ -26,16 +26,9 @@ from dvfopt_gui._shared import (
 )
 from dvfopt_gui.worker import (
     SolverWorker,
-    StateSnapshot,
     _metric_field_3d,
     _volume_snapshot,
 )
-
-
-@pytest.fixture(scope='session')
-def qapp():
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    yield app
 
 
 def _folded_slice(H=8, W=8):
@@ -48,13 +41,7 @@ def _folded_slice(H=8, W=8):
     return d
 
 
-def _folded_volume(D=4, H=6, W=6):
-    rng = np.random.default_rng(0)
-    v = rng.normal(0, 0.02, (3, D, H, W))
-    v[1, 1:3, 2:4, 2:4] -= 1.4
-    v[2, 1:3, 2:4, 2:4] -= 1.4
-    return v
-
+from tests.conftest import planted_fold_3d as _folded_volume  # shared 3D fold builder
 
 # ---------------------------------------------------------------------------
 # 3D method menu entries + worker dispatch
@@ -375,3 +362,47 @@ class TestWindowWiring:
                 win._worker.wait(5000)
         finally:
             win.close()
+
+
+class TestReviewRegressions:
+    """Pinned fixes from the branch review."""
+
+    def test_jdet3d_windowed_tab_keeps_iteration_knobs(self, qapp):
+        """The 2D whitelist must NOT bleed onto the 3D windowed tab —
+        for the 3D path the Params tab is the only route to the
+        iteration knobs (the toolbar spinbox only reaches the 2D path)."""
+        from dvfopt_gui.strategy_params import StrategyParamsTab
+
+        tab = StrategyParamsTab()
+        tab.build('slsqp_windowed@jdet3d', {})
+        assert 'max_iterations' in tab._widgets
+        assert 'max_minimize_iter' in tab._widgets
+
+    def test_disabled_field_never_emitted_and_sanitized(self, qapp):
+        """Greying is not enough: values() must skip disabled widgets and
+        the window-side sanitizer must strip persisted overrides for
+        them (stale QSettings bypass the dialog entirely)."""
+        from dvfopt_gui._win_run import _sanitized_overrides
+        from dvfopt_gui.strategy_params import StrategyParamsTab
+
+        tab = StrategyParamsTab()
+        # A stale persisted override for the disabled field...
+        tab.build('slsqp_windowed@jdet3d', {'enforce_shoelace': True})
+        # ...is never re-emitted by the dialog...
+        assert 'enforce_shoelace' not in tab.values()
+        # ...and is stripped at the single override-application point.
+        out = _sanitized_overrides(
+            'slsqp_windowed@jdet3d', {'enforce_shoelace': True, 'max_iterations': 50}
+        )
+        assert out == {'max_iterations': 50}
+        # Algos without a disabled set pass through untouched.
+        assert _sanitized_overrides('m14', {'margin': 1e-3}) == {'margin': 1e-3}
+
+    def test_optfloat_detected_by_annotation_not_name(self):
+        """float|None knobs render as optfloat via their dataclass
+        annotation — a new such knob needs no registry entry."""
+        from dvfopt import ActiveBandALM3DStrategy
+        from dvfopt_gui.strategy_params import editable_fields
+
+        kinds = {name: kind for name, kind, _d in editable_fields(ActiveBandALM3DStrategy)}
+        assert kinds['band_threshold'] == 'optfloat'

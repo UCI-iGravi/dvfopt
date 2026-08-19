@@ -645,18 +645,19 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         # recorded trajectories; see ``_refresh_convergence``.
         right.addWidget(QtWidgets.QLabel('<b>Convergence</b>'))
         self._conv_plot = ConvergencePlot()
+        self._conv_plot.setMinimumHeight(150)
+
         # Live solver-log dock (hidden until toggled via the View menu).
         # Attaching its handler makes it the process's single log sink
-        # (suppresses _logging's stdout auto-install).
+        # (suppresses _logging's stdout auto-install). The dock's level
+        # combo is read LIVE at worker start (worker_verbose) — no cached
+        # copy to drift.
         self._log_dock = LogDock(self)
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._log_dock)
         self._log_dock.hide()
         self._log_dock.attach()
-        self._log_verbose = self._log_dock.worker_verbose
-        self._log_dock.verboseChanged.connect(self._on_log_verbose_changed)
         # SolveInfo of the last finished Solver-path run (for the report).
         self._last_solve_info = None
-        self._conv_plot.setMinimumHeight(150)
         right.addWidget(self._conv_plot, stretch=2)
         # Number of history entries last plotted — lets us rebuild the
         # curve only when it grows (the cursor still moves every frame).
@@ -854,11 +855,6 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         help_menu = menubar.addMenu('&Help')
         help_menu.addAction('Keyboard shortcuts…', self._show_shortcuts)
         help_menu.addAction('About', self._show_about)
-
-    def _on_log_verbose_changed(self, verbose: int) -> None:
-        """Log-dock level drives the NEXT worker's ``verbose`` (solver log
-        lines are guarded by ``if verbose:`` at the call sites)."""
-        self._log_verbose = int(verbose)
 
     def _on_save_report(self) -> None:
         """Render the last run's SolveInfo phases via

@@ -185,6 +185,12 @@ def _state_to_snapshot(state: dict) -> StateSnapshot:
     )
 
 
+def _stage_of(state: dict) -> str | None:
+    """Stage name from a strategy step_callback payload ('' / missing -> None)."""
+    stage = state.get('stage')
+    return str(stage) if stage else None
+
+
 def _volume_snapshot(
     phi3d, *, n_neg: int, min_T: float, outer_iter: int, stage: str | None = None
 ) -> StateSnapshot:
@@ -401,6 +407,8 @@ class SolverWorker(QtCore.QThread):
         self._deformation_i = deformation_i
         self._method_id = method_id
         self._params = dict(params or {})
+        # Solver verbosity for this run (log-dock level), resolved once.
+        self._verbose = int(self._params.get('verbose', 0))
         self._stop_requested = False
         # Bounded queue so a slow GUI doesn't stall the solver. The
         # producer pre-drains the old item before pushing — we always
@@ -577,7 +585,7 @@ class SolverWorker(QtCore.QThread):
         from dvfopt.core.slsqp.iterative import iterative_serial
 
         kwargs = {
-            'verbose': int(self._params.get('verbose', 0)),
+            'verbose': self._verbose,
             'enforce_triangles': enforce_triangles,
         }
         # Constraint-mode toggles come from the Params -> Strategy overrides
@@ -694,7 +702,7 @@ class SolverWorker(QtCore.QThread):
                 outer_iter=outer[0],
                 n_neg=n_neg,
                 min_T=min_T,
-                stage=str(state.get('stage')) if state.get('stage') else None,
+                stage=_stage_of(state),
             )
             self._record(snap)
 
@@ -704,7 +712,7 @@ class SolverWorker(QtCore.QThread):
             phi_2hw,
             step_callback=_stage_callback,
             record_history=True,
-            verbose=int(self._params.get('verbose', 0)),
+            verbose=self._verbose,
         )
         # getattr: test doubles stub Solver.fit with minimal results.
         self.solve_info = getattr(result, 'info', None)
@@ -751,8 +759,13 @@ class SolverWorker(QtCore.QThread):
         est = DEFAULT_HISTORY_MAX_3D * 3 * D * H * W * 8
         keep_stages = est <= MAX_3D_HISTORY_BYTES
 
-        # Initial snapshot (input volume), under the run metric.
-        n0, m0 = _metric_counts_3d(vol, metric_kind)
+        # Initial snapshot (input volume), under the run metric. The auto
+        # dispatch may have just computed these on the identical volume.
+        cached = getattr(self, '_init_counts_3d', None)
+        if cached is not None and cached[0] == metric_kind:
+            n0, m0 = cached[1], cached[2]
+        else:
+            n0, m0 = _metric_counts_3d(vol, metric_kind)
         self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0, stage='input'))
 
         outer = [0]
@@ -775,7 +788,7 @@ class SolverWorker(QtCore.QThread):
                     n_neg=n,
                     min_T=m,
                     outer_iter=outer[0],
-                    stage=str(state.get('stage')) if state.get('stage') else None,
+                    stage=_stage_of(state),
                 )
             )
 
@@ -785,7 +798,7 @@ class SolverWorker(QtCore.QThread):
             vol,
             step_callback=_stage_callback,
             record_history=True,
-            verbose=int(self._params.get('verbose', 0)),
+            verbose=self._verbose,
         )
         # getattr: test doubles stub Solver.fit with minimal results.
         self.solve_info = getattr(result, 'info', None)
@@ -842,7 +855,7 @@ class SolverWorker(QtCore.QThread):
         phi_out, report = correct_dvf_25d(
             vol,
             threshold=thr,
-            verbose=int(self._params.get('verbose', 0)),
+            verbose=self._verbose,
             progress_callback=_cb,
             callback_copies=False,
         )
@@ -867,14 +880,34 @@ class SolverWorker(QtCore.QThread):
         self._record(_volume_snapshot(vol, n_neg=n0, min_T=m0, outer_iter=0))
         if self._stop_requested:
             raise KeyboardInterrupt()
-        phi_out, report = dvfopt.correct_dvf_3d(
-            vol, threshold=thr, verbose=int(self._params.get('verbose', 0))
-        )
+        phi_out, report = dvfopt.correct_dvf_3d(vol, threshold=thr, verbose=self._verbose)
         self.pipeline_report = report
         phi_out = np.asarray(phi_out, dtype=np.float64)
         nf, mf = _metric_counts_3d(phi_out, 'tet3d')
         self._record(_volume_snapshot(phi_out, n_neg=nf, min_T=mf, outer_iter=1))
         return phi_out
+
+    def _resolve_auto(self, constraint, n_neg: int, min_T: float, fallback_label: str):
+        """Shared auto-dispatch: route via ``auto_strategy``, fall back to
+        the family default if the resolved registry label is unavailable,
+        and record ``resolved_strategy_label`` for the status display."""
+        from dvfopt import make_strategy
+        from dvfopt.solver import auto_strategy
+
+        label = auto_strategy(constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1')))
+        try:
+            strategy = make_strategy(label)
+        except (KeyError, ValueError):
+            from dvfopt._logging import log_warning
+
+            log_warning(
+                f'auto-strategy resolved to unavailable label {label!r}; '
+                f'falling back to {fallback_label!r}'
+            )
+            label = fallback_label
+            strategy = make_strategy(label)
+        self.resolved_strategy_label = label
+        return strategy
 
     def _build_strategy(self):
         """Build a configured Strategy instance for the chosen method.
@@ -952,12 +985,7 @@ class SolverWorker(QtCore.QThread):
 
             return _make(SLSQPWindowedStrategy)
         if mid in ('auto_2tri', 'auto_jdet'):
-            from dvfopt import (
-                JdetConstraint2D,
-                TriConstraint2DFullCoverage,
-                make_strategy,
-            )
-            from dvfopt.solver import auto_strategy
+            from dvfopt import JdetConstraint2D, TriConstraint2DFullCoverage
 
             phi_2hw = np.stack(
                 [
@@ -973,17 +1001,9 @@ class SolverWorker(QtCore.QThread):
                 if kind == '2tri'
                 else JdetConstraint2D(shape=(H, W))
             )
-            label = auto_strategy(
-                constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1'))
+            return self._resolve_auto(
+                constraint, n_neg, min_T, 'm14' if kind == '2tri' else 'barrier'
             )
-            try:
-                strategy = make_strategy(label)
-            except (KeyError, ValueError):
-                # Registry label unavailable — fall back to the family default.
-                label = 'm14' if kind == '2tri' else 'barrier'
-                strategy = make_strategy(label)
-            self.resolved_strategy_label = label
-            return strategy
         if mid == 'slp_2tri':
             from dvfopt import SLPStrategy
 
@@ -993,28 +1013,22 @@ class SolverWorker(QtCore.QThread):
 
             return _make(SLPStrategy)
         if mid in ('auto_tet3d', 'auto_jdet3d'):
-            from dvfopt import JdetConstraint3D, Tet6Constraint3D, make_strategy
-            from dvfopt.solver import auto_strategy
+            from dvfopt import JdetConstraint3D, Tet6Constraint3D
 
             vol = np.asarray(self._deformation_i, dtype=np.float64)
             _, D, H, W = vol.shape
             kind = 'tet3d' if mid.endswith('_tet3d') else 'jdet3d'
             n_neg, min_T = _metric_counts_3d(vol, kind)
+            # The whole-volume metric kernel is the priciest step in the
+            # GUI — stash the counts so _run_via_solver_3d's initial
+            # snapshot (same kind) doesn't recompute them.
+            self._init_counts_3d = (kind, n_neg, min_T)
             constraint = (
                 Tet6Constraint3D(shape=(D, H, W))
                 if kind == 'tet3d'
                 else JdetConstraint3D(shape=(D, H, W))
             )
-            label = auto_strategy(
-                constraint, n_neg, min_T, str(self._params.get('objective_id', 'l1'))
-            )
-            try:
-                strategy = make_strategy(label)
-            except (KeyError, ValueError):
-                label = 'barrier'
-                strategy = make_strategy(label)
-            self.resolved_strategy_label = label
-            return strategy
+            return self._resolve_auto(constraint, n_neg, min_T, 'barrier')
         if mid == 'barrier_torch_tet3d':
             from dvfopt import BarrierTet3DTorchStrategy
 

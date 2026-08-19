@@ -13,6 +13,8 @@ import math
 
 from PyQt5 import QtWidgets
 
+from dvfopt._defaults import DEFAULT_PARAMS as _DVFOPT_DEFAULTS
+
 # Fields the toolbar already owns, or that make no sense to override here.
 # ``supports_3d`` is a typed dataclass field on every Strategy (used for
 # compatibility checks at Solver construction) but it is not a solver knob:
@@ -21,14 +23,26 @@ from PyQt5 import QtWidgets
 _EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 # Literal-choice fields (dataclasses can't express Literal defaults cleanly).
 _CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
-# ``float | None``-defaulted knobs: None means "derive from threshold".
-# Rendered as a checkbox-enabled spinbox; the value is the spin default
-# used when the user first enables the override.
-_OPTIONAL_FLOAT_FIELDS = {
-    'injectivity_threshold': 0.01,
-    'band_threshold': 0.012,
-    'recover_threshold': 0.012,
+# Spin SEEDS for ``float | None`` knobs when the user first ticks the
+# override checkbox. Detection is by dataclass ANNOTATION (any
+# float|None field with default None renders as optfloat); this table
+# only picks the initial spin value. Derived from the canonical
+# dvfopt default threshold (single source) — note the true None
+# derivation uses the RUN threshold at solve time, so these are seeds,
+# not the effective defaults.
+_OPTFLOAT_SPIN_DEFAULTS = {
+    'injectivity_threshold': float(_DVFOPT_DEFAULTS['threshold']),
+    'band_threshold': 1.2 * float(_DVFOPT_DEFAULTS['threshold']),
+    'recover_threshold': 1.2 * float(_DVFOPT_DEFAULTS['threshold']),
 }
+_OPTFLOAT_ANNOTATIONS = {'float|None', 'Optional[float]', 'None|float'}
+
+
+def _is_optional_float(field) -> bool:
+    ann = str(field.type).replace(' ', '')
+    return ann in _OPTFLOAT_ANNOTATIONS
+
+
 # Per-algo field whitelist. The 2D windowed path drives iterative_serial
 # directly (toolbar owns its iteration knobs), so only the constraint-mode
 # toggles are exposed; everything else would be editable-but-ignored.
@@ -147,7 +161,7 @@ def editable_fields(cls) -> list:
             if f.default is not dataclasses.MISSING
             else (f.default_factory() if f.default_factory is not dataclasses.MISSING else None)
         )
-        if f.name in _OPTIONAL_FLOAT_FIELDS and default is None:
+        if default is None and _is_optional_float(f):
             out.append((f.name, 'optfloat', None))
         elif f.name in _CHOICE_FIELDS:
             choices = _CHOICE_FIELDS[f.name]
@@ -189,8 +203,10 @@ class StrategyParamsTab(QtWidgets.QWidget):
         if cls is None:
             self._form.addRow(QtWidgets.QLabel('<i>No editable parameters for this method.</i>'))
             return
-        base_algo = algo.split('@', 1)[0]
-        include = _INCLUDED_FIELDS_BY_ALGO.get(algo, _INCLUDED_FIELDS_BY_ALGO.get(base_algo))
+        # Exact-algo keying ONLY: a base-algo fallback would bleed the 2D
+        # windowed whitelist onto 'slsqp_windowed@jdet3d' and hide the 3D
+        # tab's iteration knobs (their only input route).
+        include = _INCLUDED_FIELDS_BY_ALGO.get(algo)
         disabled = _DISABLED_FIELDS_BY_ALGO.get(algo, set())
         for name, kind, default in editable_fields(cls):
             if include is not None and name not in include:
@@ -235,7 +251,7 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 spin.setValue(
                     float(value)
                     if value is not None
-                    else float(_OPTIONAL_FLOAT_FIELDS.get(name, 0.0))
+                    else float(_OPTFLOAT_SPIN_DEFAULTS.get(name, 0.01))
                 )
                 cb.setChecked(value is not None)
                 spin.setEnabled(value is not None)
@@ -261,6 +277,10 @@ class StrategyParamsTab(QtWidgets.QWidget):
         """Only the values that differ from the dataclass defaults."""
         out = {}
         for name, (kind, w) in self._widgets.items():
+            if not w.isEnabled():
+                # Disabled = not applicable for this constraint family;
+                # never (re-)emit an override for it.
+                continue
             if kind == 'int':
                 v = int(w.value())
             elif kind == 'float':
@@ -273,11 +293,6 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 v = float(w._opt_spin.value()) if w._opt_check.isChecked() else None
             else:
                 v = str(w.text())
-            if kind == 'optfloat':
-                if v == self._defaults[name]:  # both None, or same float
-                    continue
-                out[name] = v
-                continue
             if kind == 'float':
                 default = self._defaults[name]
                 if isinstance(default, (int, float)) and math.isclose(

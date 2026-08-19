@@ -48,6 +48,29 @@ def _monotonicity_diffs_3d(dz, dy, dx):
     return z_mono, y_mono, x_mono
 
 
+def injectivity_quality_2d(phi):
+    """Per-pixel minimum axial monotonicity gap (2D).
+
+    2D sibling of :func:`injectivity_quality_3d` — each h/v deformed-
+    coordinate gap is spread to both endpoint pixels and the element-wise
+    minimum taken. Unit gaps (1.0) everywhere on the identity field;
+    negative where deformed columns/rows cross. Axial-only, same caveat
+    as the 3D version.
+
+    Parameters
+    ----------
+    phi : ndarray, shape ``(2, H, W)`` with channels ``[dy, dx]``.
+    """
+    dy, dx = phi[0], phi[1]
+    h_mono, v_mono = _monotonicity_diffs_2d(dy, dx)
+    q = np.full(dy.shape, np.inf)
+    q[:, :-1] = np.minimum(q[:, :-1], h_mono)
+    q[:, 1:] = np.minimum(q[:, 1:], h_mono)
+    q[:-1] = np.minimum(q[:-1], v_mono)
+    q[1:] = np.minimum(q[1:], v_mono)
+    return q
+
+
 def injectivity_quality_3d(phi):
     """Per-voxel minimum axial monotonicity gap, spread to both endpoints.
 
