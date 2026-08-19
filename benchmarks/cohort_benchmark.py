@@ -25,6 +25,7 @@ import datetime
 import html
 import io
 import json
+import math
 import time
 from pathlib import Path
 
@@ -231,6 +232,8 @@ def _fmt(x, nd=4):
         f = float(x)
     except (TypeError, ValueError):
         return _esc(x)
+    if not math.isfinite(f):  # nan / inf: render as text, never int(nan)->ValueError
+        return _esc(f)
     if f == int(f) and abs(f) < 1e15:
         return f"{int(f):,}"
     return f"{f:,.{nd}f}"
@@ -314,11 +317,13 @@ def build_cohort_report(run_dir, meta, rows, cohort_fig_uri=None):
         hdr = "".join(
             f"<dt>{_esc(k)}</dt><dd>{_esc(v)}</dd>" for k, v in hdr_pairs if v not in (None, "")
         )
-        banner_cls, banner_txt = (
-            ("ok", f"All {n} fields feasible (0 residual folds).")
-            if n_feasible == n
-            else ("warn", f"{n - n_feasible} of {n} fields still have residual folds.")
-        )
+        if n == 0:
+            banner_cls, banner_txt = ("warn", "No fields processed (cohort data not found?).")
+        elif n_feasible == n:
+            banner_cls, banner_txt = ("ok", f"All {n} fields feasible (0 residual folds).")
+        else:
+            banner_cls = "warn"
+            banner_txt = f"{n - n_feasible} of {n} fields still have residual folds."
         overview = (
             f'<img src="{cohort_fig_uri}" alt="folds before/after by field"/>'
             if cohort_fig_uri
@@ -422,7 +427,7 @@ def run_cohort_benchmark(
         Run knobs. ``out_base`` is cwd-relative unless absolute.
     """
     if corrector is None:
-        corrector = make_25d_corrector()
+        corrector = make_25d_corrector(threshold=threshold)
     corrector_label = getattr(corrector, "label", getattr(corrector, "__name__", "corrector"))
 
     # Resolve the (label, brain, variant, loader) work list.
@@ -558,12 +563,27 @@ def _section_figure(label, jac_init, jac_final, threshold):
     return buf.getvalue()
 
 
+def _folds_per_slice(field, threshold):
+    """2D fold count per z-slice, computed slice-by-slice (memory-light).
+
+    Uses the 2D Jacobian on each slice's [dy, dx] — the metric the 2D-section
+    corrector actually targets — instead of the full 3D determinant, which would
+    allocate ~GBs of float64 temporaries over the whole (3, D, H, W) volume.
+    """
+    field = np.asarray(field)
+    d = field.shape[1]
+    counts = np.empty(d, dtype=np.int64)
+    for z in range(d):
+        jac = np.asarray(jacobian_det2D(np.stack([field[1, z], field[2, z]]))).squeeze()
+        counts[z] = int((jac < threshold).sum())
+    return counts
+
+
 def _worst_slices(field, threshold, n):
     """Return the *n* z-indices with the most 2D folds (descending), folded only."""
-    jac = jacobian_det3D(np.asarray(field).astype(np.float64))
-    folds_per_z = (jac < threshold).reshape(jac.shape[0], -1).sum(axis=1)
-    order = np.argsort(folds_per_z)[::-1]
-    return [int(z) for z in order[:n] if folds_per_z[z] > 0]
+    counts = _folds_per_slice(field, threshold)
+    order = np.argsort(counts)[::-1]
+    return [int(z) for z in order[:n] if counts[z] > 0]
 
 
 def make_jdet2d_corrector(**kw):
@@ -607,7 +627,7 @@ def run_cohort_2d_sections(
         Run knobs.
     """
     if corrector is None:
-        corrector = make_jdet2d_corrector()
+        corrector = make_jdet2d_corrector(threshold=threshold)
     corrector_label = getattr(corrector, "label", getattr(corrector, "__name__", "corrector"))
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -615,18 +635,25 @@ def run_cohort_2d_sections(
     fig_dir = run_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve the section work list, loading each brain's field at most once.
+    # Resolve the section work list, loading each brain's field at most once
+    # (both the auto and explicit paths — cohort fields are multi-GB each).
     if sections is None:
         if brains is None:
             brains = [b for (b, v) in bu.list_cohort() if v == variant]
-        work = []
-        for b in brains:
-            field = bu.load_cohort_field(b, variant)
-            for z in _worst_slices(field, threshold, n_worst):
-                work.append((b, z, field[:, z : z + 1].copy()))
-            del field
+        by_brain = {b: None for b in brains}  # None => auto-pick worst slices
     else:
-        work = [(b, z, bu.load_cohort_section(b, z, variant)) for (b, z) in sections]
+        by_brain = {}
+        for b, z in sections:
+            by_brain.setdefault(b, []).append(z)
+
+    work = []
+    for b, zs in by_brain.items():
+        field = bu.load_cohort_field(b, variant)
+        if zs is None:
+            zs = _worst_slices(field, threshold, n_worst)
+        for z in zs:
+            work.append((b, z, field[:, z : z + 1].copy()))
+        del field
 
     rows = []
     t_run = time.perf_counter()
