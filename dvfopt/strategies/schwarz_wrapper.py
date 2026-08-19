@@ -107,6 +107,9 @@ class SchwarzWrapperStrategy(Strategy):
     time_budget_s: float = 600.0
     final_polish: bool = True
     final_polish_max_iter: int = 200
+    # Forwarded to the final polish's BarrierStrategy.barrier_grad_rtol
+    # (near-feasible start → sparsified gradient up to ~5-9x faster).
+    final_polish_grad_rtol: float = 0.0
 
     # 2D + 3D both go through this single class. The dispatch happens at
     # solve() time based on the outer constraint.
@@ -197,7 +200,10 @@ class SchwarzWrapperStrategy(Strategy):
         if self.final_polish:
             from dvfopt.strategies.barrier import BarrierStrategy
 
-            polisher = BarrierStrategy(max_iter=self.final_polish_max_iter)
+            polisher = BarrierStrategy(
+                max_iter=self.final_polish_max_iter,
+                barrier_grad_rtol=self.final_polish_grad_rtol,
+            )
 
             def final_polish_fn(phi: np.ndarray) -> np.ndarray:
                 phi_out, _info = polisher.solve(

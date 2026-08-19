@@ -231,7 +231,9 @@ def run_penalty_barrier_lbfgs(
             jac=True,
             method='L-BFGS-B',
             bounds=bounds,
-            options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
+            # L-BFGS-B verbosity is 'iprint' (newer scipy rejects 'disp'
+            # with an OptimizeWarning on every call).
+            options={'maxiter': max_iter, 'gtol': 1e-6, 'iprint': 99 if verbose >= 3 else -1},
         )
         phi_flat = res.x
         lam_steps += 1
@@ -273,7 +275,9 @@ def run_penalty_barrier_lbfgs(
                 jac=True,
                 method='L-BFGS-B',
                 bounds=bounds,
-                options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
+                # L-BFGS-B verbosity is 'iprint' (newer scipy rejects 'disp'
+            # with an OptimizeWarning on every call).
+            options={'maxiter': max_iter, 'gtol': 1e-6, 'iprint': 99 if verbose >= 3 else -1},
             )
             # Only accept the step if the barrier objective is finite; an
             # infeasible iterate returns inf and would silently corrupt phi.

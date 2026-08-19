@@ -306,6 +306,10 @@ class Harmonic3DStrategy(Strategy):
     merge_dilation: int = 2
     polish: bool = True  # run BarrierStrategy from the harmonic seed
     polish_max_iter: int = 200
+    # Forwarded to BarrierStrategy.barrier_grad_rtol for the polish stage.
+    # The polish starts near-feasible, where the sparsified barrier
+    # gradient is up to ~5-9x faster; 0 = exact (default).
+    polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
     accepts_constraints = (Tet6Constraint3D,)
@@ -370,7 +374,9 @@ class Harmonic3DStrategy(Strategy):
 
         from dvfopt.strategies.barrier import BarrierStrategy
 
-        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        barrier = BarrierStrategy(
+            max_iter=self.polish_max_iter, barrier_grad_rtol=self.polish_grad_rtol
+        )
         phi_out, polish_info = barrier.solve(
             phi_harmonic,
             constraint=constraint,
@@ -515,6 +521,9 @@ class HarmonicALMBarrier3DStrategy(Strategy):
     # Polish stage (barrier from feasible)
     polish: bool = True
     polish_max_iter: int = 200
+    # Forwarded to BarrierStrategy.barrier_grad_rtol for the polish stage
+    # (near-feasible start → sparsified gradient up to ~5-9x faster).
+    polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
     accepts_constraints = (Tet6Constraint3D,)
@@ -623,7 +632,9 @@ class HarmonicALMBarrier3DStrategy(Strategy):
         # ---- Stage 3: barrier polish ----
         from dvfopt.strategies.barrier import BarrierStrategy
 
-        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        barrier = BarrierStrategy(
+            max_iter=self.polish_max_iter, barrier_grad_rtol=self.polish_grad_rtol
+        )
         phi_out, polish_info = barrier.solve(
             phi_alm,
             constraint=constraint,

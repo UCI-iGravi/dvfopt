@@ -23,7 +23,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[fast]" pytest
+      # Persist Numba's on-disk JIT cache across runs. Without it every CI
+      # run re-compiles all @njit kernels from scratch (in the main process
+      # AND each spawned pool worker), which made this numba leg ~3.7x
+      # slower than the numba-less test.yml leg (26 min vs 7 min). Numba's
+      # cache is content-addressed (it validates against the source), so a
+      # stale restore is harmless — hence the loose restore-keys fallback.
+      - name: Restore Numba JIT cache
+        uses: actions/cache@v4
+        with:
+          path: .numba_cache
+          key: numba-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('dvfopt/**/*.py') }}
+          restore-keys: |
+            numba-${{ runner.os }}-py${{ matrix.python-version }}-
       - name: Run test suite
         # GUI tests importorskip PyQt5; torch-gated tests skip without torch;
         # research worst-case tests skip without the optional data folders.
+        env:
+          NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba_cache
         run: python -m pytest tests/ -q
