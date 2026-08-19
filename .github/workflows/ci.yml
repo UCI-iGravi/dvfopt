@@ -31,7 +31,7 @@ jobs:
       # Numba validates entries against the source, so a stale restore
       # is harmless — hence the loose restore-keys fallback.
       - name: Restore Numba JIT cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .numba_cache
           key: numba-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('dvfopt/**/*.py') }}
