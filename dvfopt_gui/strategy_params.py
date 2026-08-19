@@ -82,10 +82,11 @@ def _valid_override(kind: str, name: str, value) -> bool:
     if kind == 'optfloat':
         if value is None:
             return True
-        try:
-            return math.isfinite(float(value))
-        except (TypeError, ValueError):
+        # Real numbers only: bools pass float() (True -> 1.0) and strings
+        # like '0.01' float() fine but crash downstream — both rejected.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             return False
+        return math.isfinite(float(value))
     if kind == 'str':
         return isinstance(value, str)
     if kind == 'readonly':

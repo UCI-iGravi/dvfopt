@@ -592,9 +592,16 @@ class SolverWorker(QtCore.QThread):
         # (the 2D windowed path drives iterative_serial directly, so the
         # SLSQPWindowedStrategy dataclass isn't constructed here).
         overrides = dict(self._params.get('strategy_overrides') or {})
-        for k in ('enforce_shoelace', 'enforce_injectivity', 'injectivity_threshold'):
-            if k in overrides:
+        # Type-coerce: these come from a QSettings JSON round-trip, so a
+        # hand-edited or legacy file can hold bools/strings that would
+        # reach the solver unvalidated (e.g. injectivity_threshold=true
+        # silently becoming a gap bound of 1.0).
+        for k in ('enforce_shoelace', 'enforce_injectivity'):
+            if isinstance(overrides.get(k), bool):
                 kwargs[k] = overrides[k]
+        thr_o = overrides.get('injectivity_threshold')
+        if isinstance(thr_o, (int, float)) and not isinstance(thr_o, bool):
+            kwargs['injectivity_threshold'] = float(thr_o)
         if 'max_iterations' in self._params:
             kwargs['max_iterations'] = int(self._params['max_iterations'])
         if self._params.get('max_per_index_iter') is not None:
@@ -906,6 +913,17 @@ class SolverWorker(QtCore.QThread):
             )
             label = fallback_label
             strategy = make_strategy(label)
+        # Honor the toolbar's time budget like the explicit menu entries
+        # do — without this an Auto-resolved wallbreaker self-terminates
+        # at its dataclass default budget regardless of the spinbox.
+        import dataclasses
+
+        if dataclasses.is_dataclass(strategy) and any(
+            f.name == 'time_budget_s' for f in dataclasses.fields(strategy)
+        ):
+            strategy = dataclasses.replace(
+                strategy, time_budget_s=float(self._params.get('time_budget_s', 60.0))
+            )
         self.resolved_strategy_label = label
         return strategy
 

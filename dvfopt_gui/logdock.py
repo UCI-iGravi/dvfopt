@@ -41,29 +41,52 @@ _LEVELS = [
 class _LogEmitter(QtCore.QObject):
     """Qt signal relay owned by the dock (dies with it)."""
 
-    message = QtCore.pyqtSignal(str, int)  # text, levelno
+    flush = QtCore.pyqtSignal()  # "records pending — drain the buffer"
 
 
 class _QtLogHandler(logging.Handler):
-    """logging.Handler that re-emits formatted records via a Qt signal.
+    """logging.Handler that buffers records and signals the GUI to drain.
 
     Deliberately a PLAIN Handler (not a QObject): logging.shutdown()
     touches every registered handler at interpreter exit, and a
     QObject-derived handler whose C++ side Qt already deleted raises
     RuntimeError there. The QObject half lives in :class:`_LogEmitter`;
     if it dies first, ``emit`` swallows the RuntimeError.
+
+    Coalescing: at most ONE queued cross-thread signal is outstanding at
+    a time — a Debug-level solver can log far faster than the GUI event
+    loop drains, and a per-record signal would grow the event queue
+    unboundedly (the same failure mode the worker's bounded snapshot
+    queue exists to avoid). Records buffer under a lock; the GUI slot
+    takes the whole batch.
     """
 
     def __init__(self, emitter: _LogEmitter):
         logging.Handler.__init__(self)
         self._emitter = emitter
+        self._buf: list[tuple[str, int]] = []
+        self._pending = False
         self.setFormatter(logging.Formatter('%(message)s'))
 
     def emit(self, record):  # logging.Handler API
         try:
-            self._emitter.message.emit(self.format(record), record.levelno)
+            text = self.format(record)
+            with self.lock:
+                self._buf.append((text, record.levelno))
+                fire = not self._pending
+                self._pending = True
+            if fire:
+                self._emitter.flush.emit()
         except Exception:  # never let logging crash the solver thread
             pass
+
+    def take_batch(self) -> list[tuple[str, int]]:
+        """GUI-thread drain: return buffered records, reset the pending flag."""
+        with self.lock:
+            batch = self._buf
+            self._buf = []
+            self._pending = False
+        return batch
 
 
 class LogDock(QtWidgets.QDockWidget):
@@ -101,7 +124,7 @@ class LogDock(QtWidgets.QDockWidget):
 
         self._emitter = _LogEmitter(self)
         self._handler = _QtLogHandler(self._emitter)
-        self._emitter.message.connect(self._append)  # queued across threads
+        self._emitter.flush.connect(self._drain)  # queued across threads
         # Belt-and-braces: if Qt destroys the dock without closeEvent
         # (tests, embedding), still unhook the handler from the logger.
         self.destroyed.connect(lambda *_: self.detach())
@@ -115,20 +138,27 @@ class LogDock(QtWidgets.QDockWidget):
         """Attach the handler to the ``dvfopt`` logger.
 
         The logger level is opened to DEBUG (filtering happens at this
-        handler); a real handler on the logger also suppresses
-        ``_logging``'s stdout auto-install, so the dock becomes the
-        single sink for solver output in the GUI process.
+        handler) and propagation is disabled — same contract as
+        ``_logging.enable_default_handler`` — so records reach exactly
+        one sink (this dock) and don't duplicate into root handlers of
+        an embedding process. ``detach`` restores both.
         """
         if self._attached:
             return
+        self._prev_level = _dvfopt_logger.level
+        self._prev_propagate = _dvfopt_logger.propagate
         _dvfopt_logger.addHandler(self._handler)
         _dvfopt_logger.setLevel(logging.DEBUG)
+        _dvfopt_logger.propagate = False
         self._attached = True
 
     def detach(self) -> None:
+        """Undo :meth:`attach` symmetrically (level + propagation
+        restored; the handler stays open so a later re-attach works)."""
         if self._attached:
             _dvfopt_logger.removeHandler(self._handler)
-            self._handler.close()  # deregister from logging's shutdown list
+            _dvfopt_logger.setLevel(self._prev_level)
+            _dvfopt_logger.propagate = self._prev_propagate
             self._attached = False
 
     # ----- level -------------------------------------------------------------
@@ -143,6 +173,11 @@ class LogDock(QtWidgets.QDockWidget):
         self.verboseChanged.emit(verbose)
 
     # ----- sink --------------------------------------------------------------
+    def _drain(self) -> None:
+        """Drain the handler's buffered records into the text view."""
+        for text, levelno in self._handler.take_batch():
+            self._append(text, levelno)
+
     def _append(self, text: str, levelno: int) -> None:
         if levelno >= logging.WARNING:
             import html

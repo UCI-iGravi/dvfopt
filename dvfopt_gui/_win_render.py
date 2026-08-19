@@ -289,9 +289,19 @@ class RenderMixin:
                 if snap.stage not in (None, '', 'input'):
                     mark_steps.append(offset + i)
                     mark_labels.append(snap.stage)
+            # Markers only stay legible for a handful of pipeline phases.
+            # Some strategies stage-tag nearly every snapshot (barrier
+            # λ/μ steps, Schwarz per-cluster splices — hundreds): past
+            # this cap a labeled line would land on every data point and
+            # the labeled-item churn is O(N²) over a live run, so skip.
+            _MAX_STAGE_MARKERS = 24
+            if len(mark_steps) > _MAX_STAGE_MARKERS:
+                mark_steps, mark_labels = [], []
             self._conv_plot.set_stage_markers(mark_steps, mark_labels)
-            self._conv_plot.set_threshold(self._display_threshold())
             self._conv_len = n
+        # Outside the rebuild guard: the thr spinbox can change while the
+        # history length doesn't, and the line must follow it.
+        self._conv_plot.set_threshold(self._display_threshold())
         self._conv_plot.set_cursor(offset + self._history_slider.value())
 
     def _input_jacobian(self) -> np.ndarray:

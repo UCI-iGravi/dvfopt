@@ -106,11 +106,15 @@ class ConvergencePlot(pg.PlotWidget):
             pi.removeItem(item)
         self._stage_lines.clear()
         for step, label in zip(steps, labels):
+            # pyqtgraph renders the label as a str.format template —
+            # escape braces so stage names like 'bulk:{m14}' can't raise
+            # inside InfLineLabel on the GUI thread.
+            safe = str(label).replace('{', '{{').replace('}', '}}')
             line = pg.InfiniteLine(
                 pos=float(step),
                 angle=90,
                 pen=pg.mkPen('#888', width=1, style=QtCore.Qt.DotLine),
-                label=str(label),
+                label=safe,
                 labelOpts={
                     'position': 0.92,
                     'rotateAxis': (1, 0),
@@ -127,8 +131,11 @@ class ConvergencePlot(pg.PlotWidget):
         self._cursor.show()
 
     def clear_data(self) -> None:
-        """Remove all plotted data and hide the cursor + markers."""
+        """Remove all plotted data and hide the cursor, markers, and
+        threshold line (a stale line would otherwise survive a load)."""
         self._n_neg_curve.setData([], [])
         self._min_T_curve.setData([], [])
         self._cursor.hide()
+        self._last_marks = None  # force the next marker set to redraw
         self.set_stage_markers([], [])
+        self._thr_line.hide()

@@ -872,9 +872,16 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         )
         if not path:
             return
+        import sys
+
         import matplotlib
 
-        matplotlib.use('Agg', force=True)  # savefig-only; keep out of the Qt loop
+        # Only pick the Agg backend while pyplot is still unloaded: a
+        # forced switch in an embedding session (Jupyter %matplotlib)
+        # would close every open figure and hijack the user's backend.
+        # savefig works on any backend, so an already-loaded one is fine.
+        if 'matplotlib.pyplot' not in sys.modules:
+            matplotlib.use('Agg')
         import matplotlib.pyplot as plt
 
         from dvfopt.viz import plot_solve_info
@@ -1308,7 +1315,6 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
 
     def closeEvent(self, ev):
         self._save_settings()
-        self._log_dock.detach()
         # Cancel any in-flight run and wait for the worker to actually
         # exit before tearing down — otherwise the QThread can outlive
         # the window. ``request_stop`` is only honoured at the next
@@ -1351,6 +1357,10 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
             if lw.isRunning():
                 lw.terminate()
                 lw.wait(1_000)
+        # Detach AFTER the worker drains: removing the dock handler while
+        # the solver thread still logs would trigger _logging's stdout
+        # auto-install mid-shutdown (console spew + a leaked handler).
+        self._log_dock.detach()
         super().closeEvent(ev)
 
 

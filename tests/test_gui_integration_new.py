@@ -29,6 +29,7 @@ from dvfopt_gui.worker import (
     _metric_field_3d,
     _volume_snapshot,
 )
+from tests.conftest import planted_fold_3d as _folded_volume
 
 
 def _folded_slice(H=8, W=8):
@@ -40,8 +41,6 @@ def _folded_slice(H=8, W=8):
     d[2, 0, 3:5, 3:5] -= 1.3
     return d
 
-
-from tests.conftest import planted_fold_3d as _folded_volume  # shared 3D fold builder
 
 # ---------------------------------------------------------------------------
 # 3D method menu entries + worker dispatch
@@ -406,3 +405,134 @@ class TestReviewRegressions:
 
         kinds = {name: kind for name, kind, _d in editable_fields(ActiveBandALM3DStrategy)}
         assert kinds['band_threshold'] == 'optfloat'
+
+
+class TestReviewRound3:
+    """Pinned fixes from review rounds 2-3 (lifecycle, staleness, coercion)."""
+
+    def test_logdock_attach_detach_restores_logger_state(self, qapp):
+        import logging
+
+        from dvfopt._logging import logger as dlog
+        from dvfopt_gui.logdock import LogDock
+
+        prev_level, prev_prop = dlog.level, dlog.propagate
+        dock = LogDock()
+        dock.attach()
+        assert dlog.level == logging.DEBUG and dlog.propagate is False
+        dock.detach()
+        assert dlog.level == prev_level and dlog.propagate == prev_prop
+        # Re-attach after detach must still deliver records (the handler
+        # is NOT closed on detach).
+        from dvfopt._logging import log_warning
+
+        dock.attach()
+        try:
+            log_warning('re-attach works')
+            qapp.processEvents()
+            assert 're-attach works' in dock._text.toPlainText()
+        finally:
+            dock.detach()
+
+    def test_logdock_coalesces_bursts(self, qapp):
+        """A burst of records produces at most one outstanding signal —
+        and every line still lands after a single drain."""
+        from dvfopt._logging import log_info
+        from dvfopt_gui.logdock import LogDock
+
+        dock = LogDock()
+        dock.attach()
+        try:
+            dock._level_combo.setCurrentIndex(1)  # Info
+            for i in range(50):
+                log_info(f'burst line {i}')
+            qapp.processEvents()
+            text = dock._text.toPlainText()
+            assert 'burst line 0' in text and 'burst line 49' in text
+        finally:
+            dock.detach()
+
+    def test_clear_data_hides_threshold_line(self, qapp):
+        from dvfopt_gui.convergence import ConvergencePlot
+
+        plot = ConvergencePlot()
+        plot.set_threshold(0.01)
+        assert plot._thr_line.isVisible()
+        plot.clear_data()
+        assert not plot._thr_line.isVisible()
+
+    def test_stage_marker_braces_do_not_crash(self, qapp):
+        from dvfopt_gui.convergence import ConvergencePlot
+
+        plot = ConvergencePlot()
+        plot.set_stage_markers([1], ['bulk:{m14}'])  # format-template braces
+        assert len(plot._stage_lines) == 1
+
+    def test_optfloat_rejects_bool_and_str(self):
+        from dvfopt_gui.strategy_params import _valid_override
+
+        assert not _valid_override('optfloat', 'injectivity_threshold', True)
+        assert not _valid_override('optfloat', 'injectivity_threshold', '0.01')
+        assert _valid_override('optfloat', 'injectivity_threshold', 0.01)
+
+    def test_auto_resolved_strategy_honors_time_budget(self):
+        """Auto runs must honor the toolbar budget like explicit menu
+        entries do (the wallbreaker would otherwise self-terminate at
+        its dataclass default regardless of the spinbox)."""
+        import dataclasses
+
+        vol = _folded_volume()
+        vol[1, 1:3, 2:4, 2:4] -= 30.0  # extreme -> wallbreaker tier
+        w = SolverWorker(
+            deformation_i=vol,
+            method_id='auto_tet3d',
+            params={'time_budget_s': 123.0, 'objective_id': 'l1'},
+        )
+        strategy = w._build_strategy()
+        if dataclasses.is_dataclass(strategy) and any(
+            f.name == 'time_budget_s' for f in dataclasses.fields(strategy)
+        ):
+            assert strategy.time_budget_s == 123.0
+
+    def test_windowed_overrides_type_coerced(self, monkeypatch):
+        """Bool/str values from a hand-edited settings file must not
+        reach iterative_serial as the injectivity threshold."""
+        captured = {}
+
+        def fake_serial(deformation, **kwargs):
+            captured.update(kwargs)
+            return np.stack([deformation[1, 0], deformation[2, 0]])
+
+        import dvfopt.core.slsqp.iterative as it_mod
+
+        monkeypatch.setattr(it_mod, 'iterative_serial', fake_serial)
+        w = SolverWorker(
+            deformation_i=_folded_slice(),
+            method_id='slsqp_windowed_2tri',
+            params={
+                'threshold': 0.01,
+                'strategy_overrides': {
+                    'enforce_injectivity': True,
+                    'injectivity_threshold': True,  # poisoned value
+                },
+            },
+        )
+        w._run_windowed_slsqp(enforce_triangles=True)
+        assert captured.get('enforce_injectivity') is True
+        assert 'injectivity_threshold' not in captured
+
+    def test_report_resets_on_new_load(self, qapp):
+        from dvfopt.solver import PhaseInfo, SolveInfo
+        from dvfopt_gui.app import LiveSolverWindow
+
+        win = LiveSolverWindow()
+        try:
+            win._last_solve_info = SolveInfo(
+                strategy_name='X', phases=[PhaseInfo(name='p', wall_s=0.1)]
+            )
+            win._report_action.setEnabled(True)
+            win._load_array(_folded_slice())
+            assert win._last_solve_info is None
+            assert not win._report_action.isEnabled()
+        finally:
+            win.close()
