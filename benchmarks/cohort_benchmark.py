@@ -111,10 +111,10 @@ def _corr_payload(corr):
     if not corr:
         return {}
     return {
-        "corr_fy": ir.b64_floats(corr["fy"]),
-        "corr_fx": ir.b64_floats(corr["fx"]),
-        "corr_my": ir.b64_floats(corr["my"]),
-        "corr_mx": ir.b64_floats(corr["mx"]),
+        "corr_fy": ir.b64_uint16(corr["fy"]),
+        "corr_fx": ir.b64_uint16(corr["fx"]),
+        "corr_my": ir.b64_uint16(corr["my"]),
+        "corr_mx": ir.b64_uint16(corr["mx"]),
         "corr_outlier_idx": corr["outlier_idx"],
         "corr_outliers": corr["outliers"],
         "corr_stats": corr["stats"],

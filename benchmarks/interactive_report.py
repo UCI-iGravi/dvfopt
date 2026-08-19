@@ -1,7 +1,7 @@
 """Self-contained *interactive* HTML report for cohort correction runs.
 
 Renders each field as a pan/zoom ``<canvas>`` viewer over its Jacobian-determinant
-map (before/after toggle), with an exact-value hover tooltip, a toggleable
+map (before/after toggle), with a hover-readout tooltip (~3-digit display), a toggleable
 displacement-vector overlay, and a click-to-locate region-of-interest table that
 ranks the worst fold clusters. Everything is inlined (base64 float arrays + one
 shared vanilla-JS viewer) so the single .html file is portable — no CDNs, no
@@ -21,6 +21,8 @@ import json
 import numpy as np
 from scipy import ndimage as ndi
 
+_F16_MAX = 65504.0
+
 
 def b64_floats(arr):
     """Base64 of a little-endian float16 buffer (halves report size; the JS side
@@ -28,9 +30,19 @@ def b64_floats(arr):
 
     float16 (~3-4 significant digits) is display-only precision — these arrays feed
     the canvas/hover/quiver, never a computation. All reported metrics are computed
-    in Python at full precision. Coordinates (< 2048) are exact in float16.
+    in Python at full precision. Values are clipped to the float16 range so a
+    divergent field can't overflow to inf. Use ``b64_uint16`` for exact integer
+    coordinates (float16 loses integer exactness above 2048).
     """
-    return base64.b64encode(np.ascontiguousarray(arr, dtype="<f2").tobytes()).decode("ascii")
+    a = np.clip(np.asarray(arr, dtype=np.float64), -_F16_MAX, _F16_MAX)
+    return base64.b64encode(a.astype("<f2").tobytes()).decode("ascii")
+
+
+def b64_uint16(arr):
+    """Base64 of a little-endian uint16 buffer — exact for integer pixel coords
+    (0..65535). Used for correspondence coordinates (float16 would snap ≥2048)."""
+    a = np.clip(np.rint(np.asarray(arr, dtype=np.float64)), 0, 65535).astype("<u2")
+    return base64.b64encode(a.tobytes()).decode("ascii")
 
 
 def _clusters(mask, jac, threshold, top, ndim):
@@ -137,11 +149,19 @@ function halfToFloat(h){  // IEEE 754 half -> JS number
   if (e===0x1F) return f?NaN:((s?-1:1)*Infinity);
   return (s?-1:1)*Math.pow(2,e-15)*(1+f/1024);
 }
-function b64ToF32(b64){  // base64 of little-endian float16 -> Float32Array
+function b64Bytes(b64){
   const bin = atob(b64); const len = bin.length; const u8 = new Uint8Array(len);
   for (let i=0;i<len;i++) u8[i]=bin.charCodeAt(i);
-  const n = len>>1; const out = new Float32Array(n);
+  return u8;
+}
+function b64ToF32(b64){  // base64 of little-endian float16 -> Float32Array
+  const u8 = b64Bytes(b64); const n = u8.length>>1; const out = new Float32Array(n);
   for (let i=0;i<n;i++) out[i] = halfToFloat(u8[2*i] | (u8[2*i+1]<<8));
+  return out;
+}
+function b64ToU16(b64){  // base64 of little-endian uint16 -> plain array (exact coords)
+  const u8 = b64Bytes(b64); const n = u8.length>>1; const out = new Array(n);
+  for (let i=0;i<n;i++) out[i] = u8[2*i] | (u8[2*i+1]<<8);
   return out;
 }
 function divColor(v, thr, vmax){
@@ -162,8 +182,8 @@ function Viewer(root, data){
   const dyB=b64ToF32(data.dy_before), dxB=b64ToF32(data.dx_before);
   const dyA=b64ToF32(data.dy_after), dxA=b64ToF32(data.dx_after);
   const hasCorr=!!data.corr_fx;
-  const cfy=hasCorr?b64ToF32(data.corr_fy):null, cfx=hasCorr?b64ToF32(data.corr_fx):null;
-  const cmy=hasCorr?b64ToF32(data.corr_my):null, cmx=hasCorr?b64ToF32(data.corr_mx):null;
+  const cfy=hasCorr?b64ToU16(data.corr_fy):null, cfx=hasCorr?b64ToU16(data.corr_fx):null;
+  const cmy=hasCorr?b64ToU16(data.corr_my):null, cmx=hasCorr?b64ToU16(data.corr_mx):null;
   const coutlier=new Set(hasCorr?data.corr_outlier_idx:[]);
   let showCorr=false;
   const cv=root.querySelector('canvas'), ctx=cv.getContext('2d');
@@ -218,7 +238,7 @@ function Viewer(root, data){
     if (x<0||y<0||x>=W||y>=H){ tip.style.display='none'; return; }
     const i=y*W+x; const jv=(showAfter?ja:jb)[i];
     const hdy=(showAfter?dyA:dyB)[i], hdx=(showAfter?dxA:dxB)[i];
-    tip.textContent='y='+y+' x='+x+'\nJdet '+jv.toFixed(4)+(jv<thr?'  (FOLD)':'')+
+    tip.textContent='y='+y+' x='+x+'\nJdet ~'+jv.toFixed(3)+(jv<thr?'  (FOLD)':'')+
                     '\ndy='+hdy.toFixed(3)+' dx='+hdx.toFixed(3);
     const r=cv.getBoundingClientRect();
     tip.style.left=(e.clientX-r.left+12)+'px'; tip.style.top=(e.clientY-r.top+12)+'px'; tip.style.display='block';
@@ -425,7 +445,8 @@ def build_interactive_report(out_path, meta, payloads):
         blocks = "".join(_field_block(p) for p in payloads)
         body = (
             "<h1>Interactive Cohort Report</h1>"
-            '<p class="sub">Pan/zoom Jacobian maps, hover for exact values, toggle '
+            '<p class="sub">Pan/zoom Jacobian maps, hover for values (~3-digit display; '
+            "tables are exact), toggle "
             "displacement vectors, click a region to focus.</p>"
             f'<dl class="hdr-grid">{hdr}</dl>'
             f'<div class="banner {bcls}">{_esc(btxt)}</div>{blocks}'

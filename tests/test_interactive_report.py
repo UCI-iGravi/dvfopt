@@ -14,11 +14,24 @@ import interactive_report as ir  # noqa: E402
 
 
 def test_b64_floats_roundtrips_float16():
-    # Embedded arrays are display-only float16 (halves report size).
+    # Embedded field arrays are display-only float16 (halves report size).
     a = np.array([[1.5, -2.0], [0.01, 300.0]], dtype=np.float64)
     back = np.frombuffer(base64.b64decode(ir.b64_floats(a)), dtype="<f2").reshape(a.shape)
     assert np.allclose(a, back, atol=0.2)  # ~3-4 sig digits
     assert len(base64.b64decode(ir.b64_floats(a))) == a.size * 2  # 2 bytes/value
+
+
+def test_b64_floats_clips_instead_of_overflowing_to_inf():
+    big = np.array([70000.0, -70000.0])
+    back = np.frombuffer(base64.b64decode(ir.b64_floats(big)), dtype="<f2")
+    assert np.isfinite(back).all()  # clipped to +-65504, not inf
+
+
+def test_b64_uint16_coords_are_exact():
+    # Correspondence coords must be exact (float16 would snap >= 2048).
+    coords = np.array([0, 456, 2049, 5000, 60000], dtype=np.float32)
+    back = np.frombuffer(base64.b64decode(ir.b64_uint16(coords)), dtype="<u2")
+    assert np.array_equal(back, coords.astype(np.uint16))
 
 
 def test_fold_clusters_2d_ranks_by_severity():
