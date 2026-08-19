@@ -15,7 +15,7 @@ follows [Semantic Versioning](https://semver.org/).
   cleanly-typed modules (`[tool.mypy]`); a `nox` task runner (`noxfile.py`);
   `asv` solver-perf benchmarks (`asv_bench/`, `asv.conf.json`); Dependabot
   (`.github/dependabot.yml`); and the `ruff-pre-commit` pin bumped to
-  `v0.15.21` to match pyproject/CI. `test.yml` now also runs mypy, an
+  `v0.16.3` to match pyproject/CI. `test.yml` now also runs mypy, an
   installed-CLI smoke, and a coverage job. (`pytest -n auto` speeds local
   runs on many-core boxes; CI stays serial — few-core runners don't benefit.)
 
