@@ -147,6 +147,11 @@ function Viewer(root, data){
   const jb=b64ToF32(data.jdet_before), ja=b64ToF32(data.jdet_after);
   const dyB=b64ToF32(data.dy_before), dxB=b64ToF32(data.dx_before);
   const dyA=b64ToF32(data.dy_after), dxA=b64ToF32(data.dx_after);
+  const hasCorr=!!data.corr_fx;
+  const cfy=hasCorr?b64ToF32(data.corr_fy):null, cfx=hasCorr?b64ToF32(data.corr_fx):null;
+  const cmy=hasCorr?b64ToF32(data.corr_my):null, cmx=hasCorr?b64ToF32(data.corr_mx):null;
+  const coutlier=new Set(hasCorr?data.corr_outlier_idx:[]);
+  let showCorr=false;
   const cv=root.querySelector('canvas'), ctx=cv.getContext('2d');
   const tip=root.querySelector('.tip');
   const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d');
@@ -169,6 +174,14 @@ function Viewer(root, data){
         ctx.moveTo(x+0.5, y+0.5); ctx.lineTo(x+0.5+dx[i], y+0.5+dy[i]);
       }
       ctx.stroke();
+    }
+    if (showCorr && hasCorr){
+      ctx.lineWidth=Math.max(0.35,0.6/scale); ctx.strokeStyle='rgba(0,200,255,.45)'; ctx.beginPath();
+      for (let i=0;i<cfx.length;i++){ ctx.moveTo(cfx[i]+0.5,cfy[i]+0.5); ctx.lineTo(cmx[i]+0.5,cmy[i]+0.5); }
+      ctx.stroke();
+      const r=Math.max(0.6,1.3/scale);
+      for (let i=0;i<cfx.length;i++){ ctx.fillStyle=coutlier.has(i)?'#ff8a00':'#00d0ff';
+        ctx.fillRect(cfx[i]+0.5-r, cfy[i]+0.5-r, 2*r, 2*r); }
     }
     if (roiBox){ ctx.lineWidth=Math.max(1,2/scale); ctx.strokeStyle='#ffd000';
       ctx.strokeRect(roiBox[0]+0.5, roiBox[1]+0.5, roiBox[2], roiBox[3]); }
@@ -202,15 +215,28 @@ function Viewer(root, data){
     e.target.textContent=showAfter?'Showing: after':'Showing: before'; draw(); });
   root.querySelector('[data-act=quiver]').addEventListener('click', e=>{
     showQuiver=!showQuiver; e.target.classList.toggle('on', showQuiver); draw(); });
+  const corrBtn=root.querySelector('[data-act=corr]');
+  if (corrBtn) corrBtn.addEventListener('click', e=>{
+    showCorr=!showCorr; e.target.classList.toggle('on', showCorr); draw(); });
   root.querySelector('[data-act=reset]').addEventListener('click', ()=>{ scale=1; ox=0; oy=0; roiBox=null; draw(); });
+  function locate(cx, cy, half){
+    const pad=half*1.5+8; scale=Math.max(1, Math.min(60, cv.width/(2*pad)));
+    roiBox=[cx-half, cy-half, 2*half, 2*half];
+    ox=cv.width/2 - cx*scale; oy=cv.height/2 - cy*scale; draw();
+  }
   root.querySelectorAll('.roi tr[data-bbox]').forEach(tr=>{
     tr.addEventListener('click', ()=>{
       root.querySelectorAll('.roi tr').forEach(t=>t.classList.remove('sel')); tr.classList.add('sel');
       const bb=JSON.parse(tr.getAttribute('data-bbox'));  // [y0,y1,x0,x1]
-      const w=bb[3]-bb[2], h=bb[1]-bb[0]; roiBox=[bb[2],bb[0],w,h];
-      const pad=Math.max(w,h)*1.5+8; scale=Math.max(1, Math.min(60, cv.width/(2*pad)));
-      const cxp=bb[2]+w/2, cyp=bb[0]+h/2;
-      ox=cv.width/2 - cxp*scale; oy=cv.height/2 - cyp*scale; draw();
+      locate(bb[2]+(bb[3]-bb[2])/2, bb[0]+(bb[1]-bb[0])/2, Math.max(bb[3]-bb[2], bb[1]-bb[0]));
+    });
+  });
+  root.querySelectorAll('.roi tr[data-loc]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      root.querySelectorAll('.roi tr').forEach(t=>t.classList.remove('sel')); tr.classList.add('sel');
+      const yx=JSON.parse(tr.getAttribute('data-loc'));  // [y,x]
+      if (corrBtn && !showCorr){ showCorr=true; corrBtn.classList.add('on'); }
+      locate(yx[1], yx[0], 14);
     });
   });
   draw();
@@ -273,37 +299,76 @@ def _metrics_table(families):
     )
 
 
+def _corr_stats_html(s):
+    return (
+        f'<p class="sub">Correspondences on this slice: <b>{s["n"]:,}</b> · '
+        f'mean prescribed |move&rarr;fixed| <b>{s["mean_disp"]:.2f}</b> vox (max {s["max_disp"]:.1f}) · '
+        f'registration residual (fit) before <b>{s["mean_resid_before"]:.3f}</b> &rarr; '
+        f'after <b>{s["mean_resid_after"]:.3f}</b> vox · outliers <b>{s["n_outliers"]}</b> '
+        f'(large-disp {s["n_large"]}, high-residual {s["n_high_resid"]}, '
+        f'incoherent {s["n_incoherent"]})</p>'
+    )
+
+
+def _corr_outlier_table(outliers):
+    if not outliers:
+        return ""
+    head = "".join(
+        f"<th onclick='sortTable(this)'>{h}</th>"
+        for h in ("#", "y", "x", "move y,x", "disp", "resid b&rarr;a", "type")
+    )
+    body = []
+    for e in outliers:
+        body.append(
+            f'<tr data-loc="[{e["y"]},{e["x"]}]"><td>{e["rank"]}</td>'
+            f'<td>{e["y"]}</td><td>{e["x"]}</td><td>{e["my"]},{e["mx"]}</td>'
+            f'<td>{e["disp"]:.1f}</td><td>{e["resid_before"]:.2f}&rarr;{e["resid_after"]:.2f}</td>'
+            f'<td>{_esc(e["types"])}</td></tr>'
+        )
+    return (
+        '<div class="roi"><div class="sub">Correspondence outliers (click to locate)</div>'
+        f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
+    )
+
+
 def _field_block(p):
     vid = p["id"]
+    has_corr = "corr_fy" in p
+    corr_btn = "<button data-act=corr>Correspondences</button>" if has_corr else ""
     controls = (
         '<div class="controls">'
         '<button data-act=after>Showing: before</button>'
         '<button data-act=quiver>Displacement vectors</button>'
+        f"{corr_btn}"
         '<button data-act=reset>Reset view</button>'
         "<span class=sub>scroll = zoom · drag = pan · hover = value</span></div>"
     )
     viewer = (
         f'<div class="viewer"><canvas></canvas><div class="tip"></div></div>'
         f'<div class="roi">{_roi_table(p["rois"], p["threshold"])}</div>'
+        f"{_corr_outlier_table(p.get('corr_outliers')) if has_corr else ''}"
     )
-    data_json = json.dumps(
-        {
-            "w": p["w"],
-            "h": p["h"],
-            "threshold": p["threshold"],
-            "vmax": p["vmax"],
-            "jdet_before": p["jdet_before"],
-            "jdet_after": p["jdet_after"],
-            "dy_before": p["dy_before"],
-            "dx_before": p["dx_before"],
-            "dy_after": p["dy_after"],
-            "dx_after": p["dx_after"],
-        }
-    )
+    data = {
+        "w": p["w"],
+        "h": p["h"],
+        "threshold": p["threshold"],
+        "vmax": p["vmax"],
+        "jdet_before": p["jdet_before"],
+        "jdet_after": p["jdet_after"],
+        "dy_before": p["dy_before"],
+        "dx_before": p["dx_before"],
+        "dy_after": p["dy_after"],
+        "dx_after": p["dx_after"],
+    }
+    if has_corr:
+        for k in ("corr_fy", "corr_fx", "corr_my", "corr_mx", "corr_outlier_idx"):
+            data[k] = p[k]
+    data_json = json.dumps(data)
     note = f'<p class="sub">{_esc(p["note"])}</p>' if p.get("note") else ""
+    corr_stats = _corr_stats_html(p["corr_stats"]) if has_corr else ""
     return (
         f'<div class="field" data-viewer="{vid}"><h3>{_esc(p["label"])}</h3>'
-        f'<div class="metrics">{_metrics_table(p["families"])}</div>{note}'
+        f'<div class="metrics">{_metrics_table(p["families"])}</div>{note}{corr_stats}'
         f"{controls}"
         f'<div class="viewer-row">{viewer}</div>'
         f'<script type="application/json" id="data-{vid}">{data_json}</script></div>'

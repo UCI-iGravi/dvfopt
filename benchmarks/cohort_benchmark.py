@@ -33,6 +33,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no GUI, safe in notebooks / CI
 import benchmark_utils as bu
+import correspondence_analysis as ca
 import interactive_report as ir
 import matplotlib.pyplot as plt
 import numpy as np
@@ -105,7 +106,22 @@ def _tet_stats_3d(field, threshold, max_voxels=8_000_000):
         return None, None
 
 
-def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, threshold):
+def _corr_payload(corr):
+    """Turn a correspondence-analysis dict into embeddable viewer fields (or {})."""
+    if not corr:
+        return {}
+    return {
+        "corr_fy": ir.b64_floats(corr["fy"]),
+        "corr_fx": ir.b64_floats(corr["fx"]),
+        "corr_my": ir.b64_floats(corr["my"]),
+        "corr_mx": ir.b64_floats(corr["mx"]),
+        "corr_outlier_idx": corr["outlier_idx"],
+        "corr_outliers": corr["outliers"],
+        "corr_stats": corr["stats"],
+    }
+
+
+def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, threshold, corr=None):
     """Assemble the per-section interactive-viewer payload (base64 arrays + ROI + metrics)."""
     vmax = float(max(1.0, np.percentile(np.abs(jac_init), 99)))
     families = [
@@ -113,6 +129,7 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
         ("2-tri", m["n_tri_init"], m["n_tri_final"], m["tri_min_init"], m["tri_min_final"]),
     ]
     return {
+        **_corr_payload(corr),
         "id": vid,
         "label": label,
         "w": int(jac_init.shape[1]),
@@ -130,7 +147,9 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
     }
 
 
-def _build_3d_payload(vid, label, field_init, field_out, jac_init3d, jac_final3d, m, threshold):
+def _build_3d_payload(
+    vid, label, field_init, field_out, jac_init3d, jac_final3d, m, threshold, mp=None, fp=None
+):
     """3D interactive payload: worst z-slice viewer + volume-wide ROI (z,y,x).
 
     Embedding the whole volume would be extreme (~GBs); the viewer shows the
@@ -140,6 +159,12 @@ def _build_3d_payload(vid, label, field_init, field_out, jac_init3d, jac_final3d
     folds_per_z = (jac_init3d < threshold).reshape(jac_init3d.shape[0], -1).sum(axis=1)
     zc = int(np.argmax(folds_per_z))
     jb, ja = jac_init3d[zc], jac_final3d[zc]
+    mp_s, fp_s = ca.slice_correspondences(mp, fp, zc)
+    corr = (
+        ca.analyze_slice(field_init[:, zc : zc + 1], field_out[:, zc : zc + 1], mp_s, fp_s)
+        if mp_s is not None and len(mp_s)
+        else None
+    )
     vmax = float(max(1.0, np.percentile(np.abs(jac_init3d), 99)))
     families = [
         ("Jdet", m["n_neg_init"], m["n_neg_final"], m["min_jdet_init"], m["min_jdet_final"]),
@@ -149,6 +174,7 @@ def _build_3d_payload(vid, label, field_init, field_out, jac_init3d, jac_final3d
             ("6-tet", m["n_tet_init"], m["n_tet_final"], m["tet_min_init"], m["tet_min_final"])
         )
     return {
+        **_corr_payload(corr),
         "id": vid,
         "label": f"{label}  (viewer: worst z={zc})",
         "w": int(jb.shape[1]),
@@ -572,8 +598,15 @@ def run_cohort_benchmark(
         fig_uri = None
         if interactive:
             vid = label.replace("/", "__")
+            mp, fp = (
+                bu.load_cohort_correspondences(brain, variant)
+                if brain is not None
+                else (None, None)
+            )
             payloads.append(
-                _build_3d_payload(vid, label, phi_init, phi, jac_init, jac_final, m, threshold)
+                _build_3d_payload(
+                    vid, label, phi_init, phi, jac_init, jac_final, m, threshold, mp=mp, fp=fp
+                )
             )
         elif static_figs:
             png = _field_figure(label, jac_init, jac_final, threshold)
@@ -737,12 +770,14 @@ def make_jdet2d_corrector(**kw):
     )
 
 
-def _process_section(corrector, brain, z, sec_init, threshold, make_figures, interactive=False):
+def _process_section(
+    corrector, brain, z, sec_init, threshold, make_figures, interactive=False, corr_pts=None
+):
     """Solve + measure one 2D section (module-level so it is process-pool picklable).
 
     Returns ``(brain, z, metrics, extra)``. ``extra`` is the interactive-viewer
     payload dict when *interactive*, else the static figure PNG bytes (or None).
-    Both are built in the worker so only compact data crosses the process boundary.
+    *corr_pts* is ``(mp_slice, fp_slice)`` for this slice (or None).
     """
     sec_init = np.asarray(sec_init).astype(np.float64)
     t0 = time.perf_counter()
@@ -755,8 +790,19 @@ def _process_section(corrector, brain, z, sec_init, threshold, make_figures, int
 
     extra = None
     if interactive:
+        corr = None
+        if corr_pts is not None and corr_pts[0] is not None and len(corr_pts[0]):
+            corr = ca.analyze_slice(sec_init, sec_out, corr_pts[0], corr_pts[1])
         extra = _build_2d_payload(
-            f"{brain}__z{z}", f"{brain}/z{z}", sec_init, sec_out, jac_init, jac_final, m, threshold
+            f"{brain}__z{z}",
+            f"{brain}/z{z}",
+            sec_init,
+            sec_out,
+            jac_init,
+            jac_final,
+            m,
+            threshold,
+            corr=corr,
         )
     elif make_figures:
         extra = _section_figure(f"{brain}/z{z}", jac_init, jac_final, threshold)
@@ -821,13 +867,16 @@ def run_cohort_2d_sections(
         for b, z in sections:
             by_brain.setdefault(b, []).append(z)
 
+    # Correspondences only matter for the interactive report; loaded per brain once.
     work = []
     for b, zs in by_brain.items():
         field = bu.load_cohort_field(b, variant)
+        mp, fp = bu.load_cohort_correspondences(b, variant) if interactive else (None, None)
         if zs is None:
             zs = _worst_slices(field, threshold, n_worst)
         for z in zs:
-            work.append((b, z, field[:, z : z + 1].copy()))
+            corr_pts = ca.slice_correspondences(mp, fp, z) if interactive else None
+            work.append((b, z, field[:, z : z + 1].copy(), corr_pts))
         del field
 
     # Interactive mode builds a payload per section instead of a static PNG.
@@ -841,9 +890,17 @@ def run_cohort_2d_sections(
         with ProcessPoolExecutor(max_workers=n_workers) as ex:
             fut_id = {
                 ex.submit(
-                    _process_section, corrector, b, z, sec, threshold, static_figs, interactive
+                    _process_section,
+                    corrector,
+                    b,
+                    z,
+                    sec,
+                    threshold,
+                    static_figs,
+                    interactive,
+                    cp,
                 ): (b, z)
-                for (b, z, sec) in work
+                for (b, z, sec, cp) in work
             }
             done = {}
             for fut in as_completed(fut_id):
@@ -851,14 +908,14 @@ def run_cohort_2d_sections(
                 done[(b, z)] = fut.result()
                 if verbose:
                     print(f"[2d] {b}/z{z} done ({len(done)}/{len(work)})", flush=True)
-            results = [done[(b, z)] for (b, z, _sec) in work]  # restore submission order
+            results = [done[(b, z)] for (b, z, _sec, _cp) in work]  # restore submission order
     else:
         results = []
-        for b, z, sec in work:
+        for b, z, sec, cp in work:
             if verbose:
                 print(f"[2d] {b}/z{z} ...", flush=True)
             results.append(
-                _process_section(corrector, b, z, sec, threshold, static_figs, interactive)
+                _process_section(corrector, b, z, sec, threshold, static_figs, interactive, cp)
             )
 
     rows, payloads = [], []
