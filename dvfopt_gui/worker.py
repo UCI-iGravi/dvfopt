@@ -348,7 +348,7 @@ class LoadWorker(QtCore.QThread):
 
     Dispatches by extension: ``.npy``/``.npz`` through
     :func:`dvfopt_gui.persistence.parse_loaded` (full saved-run support),
-    SimpleITK formats through :func:`dvfopt_gui.io_formats.load_dvf_sitk`.
+    SimpleITK formats through :func:`dvfopt.io.fields.load_dvf_sitk`.
     Emits ``loadedRun`` with a ``LoadedRun`` on success, else ``failed``
     with a message. GB-scale ``np.load`` + float64 conversion no longer
     freeze the window.
@@ -363,7 +363,7 @@ class LoadWorker(QtCore.QThread):
 
     def run(self):
         try:
-            from dvfopt_gui.io_formats import is_sitk_path, load_dvf_sitk
+            from dvfopt.io.fields import is_sitk_path, load_dvf_sitk
             from dvfopt_gui.persistence import LoadedRun, parse_loaded
 
             if is_sitk_path(self._path):

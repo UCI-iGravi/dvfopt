@@ -148,7 +148,7 @@ from dvfopt.exceptions import (
 )
 
 # -- I/O --------------------------------------------------------------------
-from dvfopt.io import load_nii_images
+from dvfopt.io import load_dvf, load_nii_images, save_dvf
 
 # -- Jacobian primitives ----------------------------------------------------
 from dvfopt.jacobian import (
@@ -300,6 +300,7 @@ __all__ = [
     'injectivity_constraint',
     'jacobian_det2D',
     'jacobian_det3D',
+    'load_dvf',
     'load_nii_images',
     'logger',
     'make_constraint',
@@ -307,6 +308,7 @@ __all__ = [
     'make_strategy',
     'register_constraint',
     'register_strategy',
+    'save_dvf',
     'scale_dvf',
     'scale_dvf_3d',
     'shoelace_constraint',

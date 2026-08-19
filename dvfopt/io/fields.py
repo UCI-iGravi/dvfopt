@@ -1,4 +1,9 @@
-"""Displacement-field import/export via SimpleITK (NIfTI/MetaImage/NRRD).
+"""Displacement-field import/export (``.npy``/``.npz`` + SimpleITK).
+
+Library-level field I/O usable without the ``[gui]`` extra. The
+extension-dispatching :func:`load_dvf` / :func:`save_dvf` are the entry
+points the CLI and any non-GUI caller use; the ``*_sitk`` helpers handle
+NIfTI/MetaImage/NRRD specifically.
 
 Channel/axis convention mirrors :mod:`dvfopt.jacobian.sitk_jdet` (the
 package's single source of truth): the canonical numpy layout is
@@ -69,3 +74,36 @@ def save_dvf_sitk(path, vol) -> None:
         raise ValueError(f'expected (3, D, H, W); got {vol.shape}')
     arr = np.transpose(vol, (1, 2, 3, 0))[..., [2, 1, 0]]  # -> (D,H,W,3) [dx,dy,dz]
     sitk.WriteImage(sitk.GetImageFromArray(arr, isVector=True), str(path))
+
+
+def load_dvf(path) -> np.ndarray:
+    """Load a displacement field from ``.npy``/``.npz`` or a SimpleITK format.
+
+    ``.npz`` must hold exactly one array. SimpleITK formats return the
+    canonical ``(3, D, H, W)`` ``[dz, dy, dx]`` layout via
+    :func:`load_dvf_sitk`; numpy files are returned as stored (any layout
+    ``dvfopt.validation.validate_dvf`` accepts), as float64.
+    """
+    lower = str(path).lower()
+    if lower.endswith('.npy'):
+        return np.asarray(np.load(path), dtype=np.float64)
+    if lower.endswith('.npz'):
+        with np.load(path) as z:
+            if len(z.files) != 1:
+                raise ValueError(f'{path}: .npz holds {len(z.files)} arrays; expected exactly 1')
+            return np.asarray(z[z.files[0]], dtype=np.float64)
+    if is_sitk_path(lower):
+        return load_dvf_sitk(path)
+    raise ValueError(f'unsupported DVF format: {path} (want .npy/.npz or one of {SITK_EXTENSIONS})')
+
+
+def save_dvf(path, vol) -> None:
+    """Save a displacement field to ``.npy`` or a SimpleITK format."""
+    lower = str(path).lower()
+    if lower.endswith('.npy'):
+        np.save(path, np.asarray(vol))
+        return
+    if is_sitk_path(lower):
+        save_dvf_sitk(path, vol)
+        return
+    raise ValueError(f'unsupported DVF format: {path} (want .npy or one of {SITK_EXTENSIONS})')

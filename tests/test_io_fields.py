@@ -1,14 +1,17 @@
-"""SimpleITK DVF import/export round-trip + LoadWorker dispatch."""
+"""dvfopt.io.fields — .npy/.npz + SimpleITK DVF I/O, plus GUI LoadWorker dispatch.
+
+Library I/O is testable without the ``[gui]`` extra; only the LoadWorker
+case needs PyQt5 (guarded locally). SimpleITK is a core dependency.
+"""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra')
 sitk = pytest.importorskip('SimpleITK', reason='sitk interop tests need SimpleITK')
 
-from dvfopt_gui import io_formats
+from dvfopt.io import fields as io_formats
 
 
 def _vol(D=3, H=4, W=5):
@@ -65,6 +68,7 @@ def test_is_sitk_path():
 
 
 def test_loadworker_npy_and_sitk(tmp_path, qapp_placeholder=None):
+    pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra')
     from dvfopt_gui.worker import LoadWorker
 
     npy = tmp_path / 'f.npy'
@@ -81,3 +85,45 @@ def test_loadworker_npy_and_sitk(tmp_path, qapp_placeholder=None):
     w2.loadedRun.connect(lambda r: results.append(r))
     w2.run()
     assert results[-1].volume.shape == (3, 3, 4, 5)
+
+
+# --- format-dispatching load_dvf / save_dvf (no GUI, no SimpleITK needed) ---
+
+
+def test_load_save_dvf_npy_roundtrip(tmp_path):
+    from dvfopt.io import load_dvf, save_dvf
+
+    vol = np.zeros((3, 2, 4, 5))
+    vol[1] = 1.5
+    p = tmp_path / 'f.npy'
+    save_dvf(p, vol)
+    back = load_dvf(p)
+    np.testing.assert_array_equal(back, vol)
+    assert back.dtype == np.float64
+
+
+def test_load_dvf_npz_single_array(tmp_path):
+    from dvfopt.io import load_dvf
+
+    vol = np.ones((2, 4, 5))
+    p = tmp_path / 'f.npz'
+    np.savez(p, field=vol)
+    np.testing.assert_array_equal(load_dvf(p), vol)
+
+
+def test_load_dvf_npz_multi_array_rejected(tmp_path):
+    from dvfopt.io import load_dvf
+
+    p = tmp_path / 'f.npz'
+    np.savez(p, a=np.ones(3), b=np.ones(3))
+    with pytest.raises(ValueError, match='2 arrays'):
+        load_dvf(p)
+
+
+def test_load_save_dvf_unsupported_extension(tmp_path):
+    from dvfopt.io import load_dvf, save_dvf
+
+    with pytest.raises(ValueError, match='unsupported'):
+        load_dvf(tmp_path / 'f.txt')
+    with pytest.raises(ValueError, match='unsupported'):
+        save_dvf(tmp_path / 'f.txt', np.zeros((2, 4, 5)))
