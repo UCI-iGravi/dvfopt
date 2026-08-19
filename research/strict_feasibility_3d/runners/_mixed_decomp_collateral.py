@@ -20,15 +20,16 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent.parent))
 sys.path.insert(0, str(HERE))
 
-from _mixed_decomp_floor33 import (  # noqa: E402
+from _mixed_decomp_floor33 import (
+    CORNER_OFFSETS,
     DEFAULT_INPUT,
     FALLBACK_INPUT,
-    CORNER_OFFSETS,
     cell_corner_positions,
-    tet_volumes_from_positions,
     probe_min_displacement,
+    tet_volumes_from_positions,
 )
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_all_diagonals  # noqa: E402
+
+from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_all_diagonals
 
 
 def crop_fold_count(vol, cell, rad=2):

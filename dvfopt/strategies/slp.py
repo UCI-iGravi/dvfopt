@@ -24,7 +24,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from dvfopt.constraints import TriConstraint2D, TriConstraint2DFullCoverage
+from dvfopt.constraints import (
+    Tet6Constraint3D,
+    TriConstraint2D,
+    TriConstraint2DFullCoverage,
+)
 from dvfopt.strategies.base import (
     Strategy,
     _build_solve_info,
@@ -36,6 +40,11 @@ from dvfopt.strategies.base import (
 @dataclass
 class SLPStrategy(Strategy):
     """Per-cluster trust-region sequential-LP — the 2-tri L1 champion.
+
+    Also accepts the 3D 6-tet constraint (promoted from
+    ``research/strict_feasibility_3d``): volumes route through the same
+    small-global / large-cluster dispatch with the 3D SLP solvers and
+    the research-validated ``seed_3d='m10'`` seed.
 
     Parameters
     ----------
@@ -80,9 +89,16 @@ class SLPStrategy(Strategy):
     global_seed: str = 'm14'
     cluster_pixel_threshold: int = 5000
     accuracy: str = 'fast'
+    # 3D (6-tet) path knobs. seed_3d='m10' is the research-validated 3D
+    # default (m14 catastrophically overshoots on dense 3D folds — see
+    # research/strict_feasibility_3d README). n_workers_3d=1 because the
+    # 3D cluster path builds a per-call process pool whose Windows
+    # spawn + JIT warmup tax outweighs parallelism on typical runs.
+    seed_3d: str = 'm10'
+    n_workers_3d: int = 1
 
-    supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    supports_3d: bool = True
+    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage, Tet6Constraint3D)
 
     def __post_init__(self):
         if self.accuracy not in ('fast', 'max'):
@@ -102,6 +118,12 @@ class SLPStrategy(Strategy):
         from dvfopt.core.slp import cluster_slp_iter, slp_iter
 
         self._check_constraint(constraint)
+        if isinstance(constraint, Tet6Constraint3D):
+            return self._solve_3d(
+                phi_in,
+                threshold=threshold,
+                verbose=verbose,
+            )
         # 2-tri pack is DY_FIRST: phi_in is (2, H, W) = [dy, dx], exactly
         # what the SLP solvers consume. The objective is implicit (the LP
         # minimises L1 deviation from phi_in); ``threshold`` is the per-tri
@@ -187,6 +209,74 @@ class SLPStrategy(Strategy):
             info['l1_anchor'] = l1_anchor
             # TRUE L1 vs the raw input (the anchor-relative numbers inside
             # `info` are not comparable across paths in 'max' mode).
+            info['l1_from_input'] = float(np.abs(phi_out - phi_raw).sum())
+        return phi_out, _build_solve_info('SLPStrategy', info, threshold)
+
+    def _solve_3d(self, phi_in, *, threshold, verbose=0):
+        """6-tet SLP path (promoted from ``research/strict_feasibility_3d``).
+
+        Mirrors the 2D dispatch: small volumes take the global
+        :func:`~dvfopt.core.slp.slp_iter_3d`; larger ones decompose into
+        fold clusters via :func:`~dvfopt.core.slp.cluster_slp_iter_3d`.
+        ``accuracy='max'`` seeds with the whole-volume GPU PHR-ALM
+        untangler (:func:`~dvfopt.core.slp._gpu_untangle_3d.gpu_untangle_alm_3d`),
+        with the same anchoring semantics as 2D (cluster path anchors to
+        the GPU seed by design; ``l1_from_input`` reports the true
+        deviation).
+        """
+        from dvfopt.core.slp import cluster_slp_iter_3d, slp_iter_3d
+
+        phi = np.asarray(phi_in, dtype=np.float64)
+        D, H, W = phi.shape[1:]
+
+        phi_raw = phi
+        gpu_seed = None
+        if self.accuracy == 'max':
+            import importlib.util
+
+            if importlib.util.find_spec('torch') is None:
+                raise ImportError("accuracy='max' requires PyTorch (pip install torch).")
+            from dvfopt.core.slp._gpu_untangle_3d import gpu_untangle_alm_3d
+
+            try:
+                gpu_seed = gpu_untangle_alm_3d(phi, threshold=threshold, verbose=verbose)
+            except Exception as exc:
+                import torch
+
+                cuda_oom = getattr(torch.cuda, 'OutOfMemoryError', ())
+                if not isinstance(exc, cuda_oom):
+                    raise
+                import warnings
+
+                warnings.warn(
+                    "accuracy='max' GPU untangler hit CUDA out-of-memory; "
+                    'retrying once on CPU (slower).'
+                )
+                gpu_seed = gpu_untangle_alm_3d(phi, threshold=threshold, device='cpu')
+
+        if self.cluster_pixel_threshold >= D * H * W:
+            phi_out, info = slp_iter_3d(
+                phi,
+                threshold=threshold,
+                seed=(gpu_seed if gpu_seed is not None else self.seed_3d),
+            )
+            info = {**info, 'slp_dispatch': 'global_3d'}
+            l1_anchor = 'input'
+        else:
+            phi_out, info = cluster_slp_iter_3d(
+                gpu_seed if gpu_seed is not None else phi,
+                threshold=threshold,
+                inner_seed=self.seed_3d,
+                max_outer_iters=self.max_outer_iters,
+                n_workers=self.n_workers_3d,
+                verbose=verbose,
+            )
+            info = {**info, 'slp_dispatch': 'cluster_3d'}
+            l1_anchor = 'gpu_seed' if gpu_seed is not None else 'input'
+        info = {**info, 'accuracy': self.accuracy}
+        if self.accuracy == 'max':
+            info['slp_seed'] = 'gpu'
+            info['l1_anchor'] = l1_anchor
             info['l1_from_input'] = float(np.abs(phi_out - phi_raw).sum())
         return phi_out, _build_solve_info('SLPStrategy', info, threshold)
 

@@ -35,10 +35,10 @@ def _stats(V):
 
 
 def main():
-    from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
     from dvfopt.core.wallbreakers._coupled_kring_3d import (
         active_band_alm_recovery_3d,
     )
+    from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
     full = np.array(np.load(SRC))          # writable copy
     V0 = six_tet_volumes_3d(full)

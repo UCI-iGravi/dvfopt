@@ -21,7 +21,7 @@ from scipy.optimize import linprog
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from dvfopt.jacobian.tetrahedron_sign import (  # noqa: E402
+from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
     six_tet_min_volume_3d,
     tet_volumes_flat,

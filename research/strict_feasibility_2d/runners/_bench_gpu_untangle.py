@@ -29,8 +29,10 @@ def _nneg(p):
 
 def main():
     import torch
+
     from research.strict_feasibility_2d.algorithms._gpu_untangle import (
-        gpu_untangle_2d, _areas_torch,
+        _areas_torch,
+        gpu_untangle_2d,
     )
     print(f'torch {torch.__version__}  cuda={torch.cuda.is_available()}', flush=True)
 
@@ -47,7 +49,7 @@ def main():
     a_t = torch.cat([t1.reshape(-1), t2.reshape(-1)]).cpu().numpy()
     print(f'[parity] max|torch-np| = {np.abs(a_t - a_np).max():.2e}', flush=True)
 
-    from dvfopt.core.slp import slp_iter, cluster_slp_iter
+    from dvfopt.core.slp import cluster_slp_iter, slp_iter
 
     for z, tag in ((300, 'mild'), (13, 'dense')):
         sl = raw[1:3, z].astype(np.float64)
