@@ -18,7 +18,9 @@ repos:
         args: ['--fix=lf']
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Keep in lockstep with the ruff pin in pyproject.toml [dev] extra, so
+    # local pre-commit and CI (`.[dev]` → ruff 0.15.21) lint identically.
+    rev: v0.15.21
     hooks:
       - id: ruff
         args: [--fix]

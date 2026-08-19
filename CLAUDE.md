@@ -21,18 +21,30 @@ pip install -r requirements-dev.txt
 
 The install exposes a `dvfopt` CLI (`dvfopt {info, correct, gui}`, also `python -m dvfopt`) over the library — see [dvfopt/cli.py](dvfopt/cli.py); `correct` drives the solver / per-slice sweep / 2.5D / 3D pipelines and writes `summary.json` + `convergence.png` reports. Exit codes: 0 feasible / 1 folds remain / 2 usage errors.
 
-Solver progress output routes through the `dvfopt` logger (`dvfopt/_logging.py` — `vlog`/`log_info`/`log_warning`; `verbose=` semantics unchanged). A live-stdout handler is auto-installed (and propagation disabled, so lines print exactly once) only when no handler is attached to the `dvfopt` logger; attach your own handler to that logger to take over routing. Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
+Solver progress output routes through the `dvfopt` logger (`dvfopt/_logging.py` — `vlog`/`log_info`/`log_warning`; `verbose=` semantics unchanged). A live-stdout handler is auto-installed (and propagation disabled, so lines print exactly once) only when no handler is attached to the `dvfopt` logger; attach your own handler to that logger to take over routing. Tests live in `tests/` and are run with `pytest` (`[tool.pytest.ini_options]` in pyproject scopes collection to `tests/`, so a bare `pytest` never over-collects the `notebooks/experiments/_run_*_test.py` scratch scripts). CI: `.github/workflows/ci.yml` runs the numba-tuned suite on Python 3.11/3.12; `.github/workflows/test.yml` runs Python 3.10/3.11/3.12 with `ruff check` + `ruff format --check` + `mypy` + the pytest suite + an installed-CLI smoke, plus a coverage job and a benchmark-import smoke. Additional validation is done through Jupyter notebooks.
 
 ```bash
-# Run all tests
-pytest
+# Run all tests. pytest-randomly shuffles order each run (reproduce a failure
+# with --randomly-seed=<seed>); pytest-xdist parallelizes with -n auto.
+pytest                     # or: pytest -n auto
 
 # Run a specific test module
 pytest tests/test_slp_strategy.py
 
-# Lint + format (ruff is pinned to 0.15.21 in the dev extras; config in pyproject.toml)
+# Lint + format (ruff pinned 0.15.21 in the dev extras AND .pre-commit-config.yaml)
 ruff check dvfopt dvfopt_gui tests benchmarks
 ruff format --check dvfopt dvfopt_gui tests benchmarks
+
+# Static types (scoped to the cleanly-typed modules; see [tool.mypy]) + coverage
+mypy
+pytest tests/ --cov=dvfopt --cov-report=term-missing
+
+# Or drive everything through the nox task runner (noxfile.py):
+nox                        # default: lint + format_check + tests
+nox -s typecheck           # mypy      | nox -s cov   # coverage
+
+# Solver perf regression tracking (airspeed velocity; not run in CI):
+asv run                    # asv_bench/benchmarks/, config in asv.conf.json
 ```
 
 ## Architecture

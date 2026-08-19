@@ -27,11 +27,21 @@ benchmarks = [
 ]
 dev = [
     "pytest>=7",
+    "pytest-xdist>=3",       # parallel test execution: `pytest -n auto`
+    "pytest-cov>=5",         # coverage: `pytest --cov=dvfopt`
+    "pytest-randomly>=3",    # shuffle test order to surface order-dependencies
     "ruff==0.15.21",
+    "mypy>=1.11",            # static type checks (see [tool.mypy]; scoped to clean modules)
+    "nox>=2024",             # task runner (see noxfile.py)
     "pre-commit>=3",
     "hypothesis>=6",
     "nbformat>=5",
     "pandas",
+]
+perf = [
+    # Airspeed Velocity — solver performance regression tracking.
+    # `asv run` builds isolated envs per commit; not run in CI (too slow).
+    "asv>=0.6",
 ]
 gui = [
     # Live-visualisation app (``dvfopt_gui``). Standalone — only needed
@@ -49,6 +59,37 @@ fast = [
 
 [tool.setuptools.packages.find]
 include = ["dvfopt*", "laplacian*", "test_cases*", "dvfopt_gui*"]
+
+# ---------------------------------------------------------------------------
+# Pytest. Scope collection to tests/ so a bare `pytest` does NOT pull in the
+# notebooks/experiments/_run_*_test.py scratch scripts (they load gitignored
+# data at import time and error at collection). Matches CI's `pytest tests/`.
+# pytest-randomly (dev extra) shuffles test order each run and prints the seed
+# — reproduce a failure with `pytest -p randomly --randomly-seed=<seed>`.
+# Parallelize with `pytest -n auto` (pytest-xdist).
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+xfail_strict = true
+
+# ---------------------------------------------------------------------------
+# mypy: static type checks. Lenient + scoped — the numpy-heavy solver core is
+# not yet annotated for strict checking, so we gate only the cleanly-typed
+# newer modules and expand as annotations land. Run with `mypy` (no args).
+# ---------------------------------------------------------------------------
+[tool.mypy]
+# No python_version pin: mypy uses the running interpreter's version, so it
+# parses the installed numpy/... stubs natively. Pinning an older version made
+# mypy choke on numpy's 3.12-syntax stubs (`type X = ...`) on the 3.12 CI leg.
+ignore_missing_imports = true      # numpy/scipy/SimpleITK ship incomplete stubs
+# Only REPORT on the listed files; follow imports for types but stay silent on
+# the (not-yet-annotated) modules they pull in — so this gate covers the clean
+# newer surface and grows as `files` grows, without drowning in transitive noise.
+follow_imports = "silent"
+warn_redundant_casts = true
+warn_unused_ignores = true
+files = ["dvfopt/cli.py", "dvfopt/metrics.py", "dvfopt/io"]
 
 # ---------------------------------------------------------------------------
 # Ruff: lint + format. Run with `ruff check --fix` and `ruff format`.
