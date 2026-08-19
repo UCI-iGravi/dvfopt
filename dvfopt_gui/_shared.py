@@ -51,6 +51,17 @@ def _jdet_colormap():
     return pg.ColorMap(stops, colors)
 
 
+def _min_gap_2d(phi_2hw: np.ndarray) -> np.ndarray:
+    """Per-pixel min axial monotonicity gap (the 2D injectivity-gap view).
+
+    Thin delegate to :func:`dvfopt.jacobian.monotonicity.injectivity_quality_2d`
+    — the domain math lives in dvfopt, next to its 3D sibling.
+    """
+    from dvfopt.jacobian.monotonicity import injectivity_quality_2d
+
+    return injectivity_quality_2d(phi_2hw)
+
+
 def _min_tri_from_phi(phi_2hw: np.ndarray) -> np.ndarray:
     """Compute per-cell ``min(T1, T2)`` from a ``(2, H, W)`` field.
 
@@ -201,6 +212,7 @@ VIEW_JDET = 'jdet'
 VIEW_2TRI = '2tri'
 VIEW_GRID = 'grid'
 VIEW_DIFF = 'diff'
+VIEW_INJ = 'inj'
 
 
 # Constraint families. The worker dispatches on ``method_id`` which is
@@ -239,6 +251,7 @@ _METHOD_SPECS_JDET = [
     ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_TET3D = [
+    ('slp', 'SLP-3D (cluster trust-region SLP + HiGHS L1; m10 seed)'),
     ('m14', 'M14Tet (harmonic + ALM + L2 refine + repair + polish)'),
     ('m14_schwarz', 'M14-Schwarz3D (cluster decomposition + global polish)'),
     ('m10', 'M10Tet (harmonic + ALM + barrier polish)'),
@@ -247,10 +260,12 @@ _METHOD_SPECS_TET3D = [
     ('coupled_kring', 'CoupledKRing3D (k-ring SLSQP attractor escape; research)'),
     ('pipeline3d', 'Full 3D pipeline (bulk auto + k-ring escape)'),
     ('barrier_torch', 'Barrier GPU (torch; CPU fallback)'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_JDET3D = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed 3D'),
+    ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_BY_CONSTRAINT = {
     CONSTRAINT_2TRI: _METHOD_SPECS_2TRI,

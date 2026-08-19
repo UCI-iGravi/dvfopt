@@ -13,6 +13,8 @@ import math
 
 from PyQt5 import QtWidgets
 
+from dvfopt._defaults import DEFAULT_PARAMS as _DVFOPT_DEFAULTS
+
 # Fields the toolbar already owns, or that make no sense to override here.
 # ``supports_3d`` is a typed dataclass field on every Strategy (used for
 # compatibility checks at Solver construction) but it is not a solver knob:
@@ -21,6 +23,37 @@ from PyQt5 import QtWidgets
 _EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 # Literal-choice fields (dataclasses can't express Literal defaults cleanly).
 _CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
+# Spin SEEDS for ``float | None`` knobs when the user first ticks the
+# override checkbox. Detection is by dataclass ANNOTATION (any
+# float|None field with default None renders as optfloat); this table
+# only picks the initial spin value. Derived from the canonical
+# dvfopt default threshold (single source) — note the true None
+# derivation uses the RUN threshold at solve time, so these are seeds,
+# not the effective defaults.
+_OPTFLOAT_SPIN_DEFAULTS = {
+    'injectivity_threshold': float(_DVFOPT_DEFAULTS['threshold']),
+    'band_threshold': 1.2 * float(_DVFOPT_DEFAULTS['threshold']),
+    'recover_threshold': 1.2 * float(_DVFOPT_DEFAULTS['threshold']),
+}
+_OPTFLOAT_ANNOTATIONS = {'float|None', 'Optional[float]', 'None|float'}
+
+
+def _is_optional_float(field) -> bool:
+    ann = str(field.type).replace(' ', '')
+    return ann in _OPTFLOAT_ANNOTATIONS
+
+
+# Per-algo field whitelist. The 2D windowed path drives iterative_serial
+# directly (toolbar owns its iteration knobs), so only the constraint-mode
+# toggles are exposed; everything else would be editable-but-ignored.
+_INCLUDED_FIELDS_BY_ALGO = {
+    'slsqp_windowed': {'enforce_shoelace', 'enforce_injectivity', 'injectivity_threshold'},
+}
+# Per-algo greyed-out fields (config-time gating of run-time errors).
+_DISABLED_FIELDS_BY_ALGO = {
+    # enforce_shoelace is 2D-only; the 3D run would raise. Grey it out.
+    'slsqp_windowed@jdet3d': {'enforce_shoelace'},
+}
 
 
 def _valid_override(kind: str, name: str, value) -> bool:
@@ -46,6 +79,14 @@ def _valid_override(kind: str, name: str, value) -> bool:
         return isinstance(value, bool)
     if kind == 'choice':
         return isinstance(value, str) and value in _CHOICE_FIELDS.get(name, ())
+    if kind == 'optfloat':
+        if value is None:
+            return True
+        # Real numbers only: bools pass float() (True -> 1.0) and strings
+        # like '0.01' float() fine but crash downstream — both rejected.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        return math.isfinite(float(value))
     if kind == 'str':
         return isinstance(value, str)
     if kind == 'readonly':
@@ -70,21 +111,21 @@ def strategy_class_for(algo: str):
 
     mapping = {
         'slp': dvfopt.SLPStrategy,
+        # 2D windowed exposes ONLY the constraint-mode toggles (see
+        # _INCLUDED_FIELDS_BY_ALGO) — the worker threads them into
+        # iterative_serial; the toolbar owns the iteration knobs.
+        'slsqp_windowed': dvfopt.SLSQPWindowedStrategy,
         'm14': dvfopt.HarmonicALMRefineRepairStrategy,
         'm14_schwarz': dvfopt.SchwarzHarmonicALMRefineRepairStrategy,
         'm10': dvfopt.HarmonicALMBarrierStrategy,
         'barrier': dvfopt.BarrierStrategy,
-        # 2D windowed-SLSQP never constructs a Strategy (run() routes it to
-        # _run_windowed_slsqp, driven by the toolbar's max_iter spinbox), so
-        # a params tab here would be editable-but-ignored. The 3D variant
-        # ('slsqp_windowed@jdet3d') IS Strategy-constructed and editable.
-        'slsqp_windowed': None,
         'slsqp_fullgrid': dvfopt.SLSQPFullGridStrategy,
         'schwarz': dvfopt.SchwarzStrategy,
         'nmvf': dvfopt.NMVFStrategy,
         'barrier_torch': dvfopt.BarrierTet3DTorchStrategy,
     }
     tet3d = {
+        'slp@tet3d': dvfopt.SLPStrategy,
         'm14@tet3d': dvfopt.HarmonicALMRefineRepair3DStrategy,
         'm14_schwarz@tet3d': dvfopt.SchwarzHarmonicALMRefineRepair3DStrategy,
         'm10@tet3d': dvfopt.HarmonicALMBarrier3DStrategy,
@@ -121,7 +162,9 @@ def editable_fields(cls) -> list:
             if f.default is not dataclasses.MISSING
             else (f.default_factory() if f.default_factory is not dataclasses.MISSING else None)
         )
-        if f.name in _CHOICE_FIELDS:
+        if default is None and _is_optional_float(f):
+            out.append((f.name, 'optfloat', None))
+        elif f.name in _CHOICE_FIELDS:
             choices = _CHOICE_FIELDS[f.name]
             assert str(default) in choices, (
                 f'{cls.__name__}.{f.name}: default {default!r} not in {choices}. '
@@ -161,7 +204,14 @@ class StrategyParamsTab(QtWidgets.QWidget):
         if cls is None:
             self._form.addRow(QtWidgets.QLabel('<i>No editable parameters for this method.</i>'))
             return
+        # Exact-algo keying ONLY: a base-algo fallback would bleed the 2D
+        # windowed whitelist onto 'slsqp_windowed@jdet3d' and hide the 3D
+        # tab's iteration knobs (their only input route).
+        include = _INCLUDED_FIELDS_BY_ALGO.get(algo)
+        disabled = _DISABLED_FIELDS_BY_ALGO.get(algo, set())
         for name, kind, default in editable_fields(cls):
+            if include is not None and name not in include:
+                continue
             value = overrides.get(name, default)
             if name in overrides and not _valid_override(kind, name, value):
                 value = default
@@ -189,12 +239,37 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 for c in _CHOICE_FIELDS[name]:
                     w.addItem(c)
                 w.setCurrentText(str(value))
+            elif kind == 'optfloat':
+                # Checkbox-enabled spinbox: unchecked = None (derive from
+                # threshold), checked = explicit override value.
+                w = QtWidgets.QWidget()
+                lay = QtWidgets.QHBoxLayout(w)
+                lay.setContentsMargins(0, 0, 0, 0)
+                cb = QtWidgets.QCheckBox('override')
+                spin = QtWidgets.QDoubleSpinBox()
+                spin.setDecimals(6)
+                spin.setRange(-1e12, 1e12)
+                spin.setValue(
+                    float(value)
+                    if value is not None
+                    else float(_OPTFLOAT_SPIN_DEFAULTS.get(name, 0.01))
+                )
+                cb.setChecked(value is not None)
+                spin.setEnabled(value is not None)
+                cb.toggled.connect(spin.setEnabled)
+                lay.addWidget(cb)
+                lay.addWidget(spin)
+                w._opt_check = cb  # type: ignore[attr-defined]
+                w._opt_spin = spin  # type: ignore[attr-defined]
             elif kind == 'str':
                 w = QtWidgets.QLineEdit(str(value))
             else:  # readonly
                 w = QtWidgets.QLabel(repr(default))
                 self._form.addRow(f'{name}:', w)
                 continue
+            if name in disabled:
+                w.setEnabled(False)
+                w.setToolTip('Not applicable for this constraint family.')
             self._widgets[name] = (kind, w)
             self._defaults[name] = default
             self._form.addRow(f'{name}:', w)
@@ -203,6 +278,10 @@ class StrategyParamsTab(QtWidgets.QWidget):
         """Only the values that differ from the dataclass defaults."""
         out = {}
         for name, (kind, w) in self._widgets.items():
+            if not w.isEnabled():
+                # Disabled = not applicable for this constraint family;
+                # never (re-)emit an override for it.
+                continue
             if kind == 'int':
                 v = int(w.value())
             elif kind == 'float':
@@ -211,6 +290,8 @@ class StrategyParamsTab(QtWidgets.QWidget):
                 v = bool(w.isChecked())
             elif kind == 'choice':
                 v = str(w.currentText())
+            elif kind == 'optfloat':
+                v = float(w._opt_spin.value()) if w._opt_check.isChecked() else None
             else:
                 v = str(w.text())
             if kind == 'float':

@@ -294,6 +294,10 @@ class FileIOMixin:
         if msg is not None:
             QtWidgets.QMessageBox.critical(self, 'Invalid DVF', msg)
             return False
+        # A new dataset invalidates the previous run's phase history —
+        # the report action must not render volume A's phases for B.
+        self._last_solve_info = None
+        self._report_action.setEnabled(False)
         self._volume = np.asarray(run.volume, dtype=np.float64)
         # Pristine copy of what was loaded — every Run reads its input
         # from here, never from ``self._volume`` (which is mutated by

@@ -34,12 +34,6 @@ from dvfopt_gui.persistence import LoadedRun
 from dvfopt_gui.worker import StateSnapshot
 
 
-@pytest.fixture(scope='session')
-def qapp():
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    yield app
-
-
 def _snap(phi, **over):
     base = dict(
         phi=phi,

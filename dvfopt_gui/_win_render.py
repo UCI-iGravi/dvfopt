@@ -16,9 +16,11 @@ from dvfopt_gui._shared import (
     VIEW_2TRI,
     VIEW_DIFF,
     VIEW_GRID,
+    VIEW_INJ,
     VIEW_JDET,
     _folded_cells_path,
     _grid_lines,
+    _min_gap_2d,
     _min_tri_from_phi,
     _quiver_lines,
 )
@@ -141,6 +143,15 @@ class RenderMixin:
             self._cbar.setVisible(True)
             self._grid_curve.setVisible(False)
             self._fold_overlay.setVisible(False)
+        elif mode == VIEW_INJ:
+            gap = _min_gap_2d(phi_2hw)
+            self._img.setImage(gap, autoLevels=False)
+            self._apply_levels(gap)
+            self._img.setVisible(True)
+            self._img.setOpacity(1.0)
+            self._cbar.setVisible(True)
+            self._grid_curve.setVisible(False)
+            self._fold_overlay.setVisible(False)
         elif mode == VIEW_DIFF:
             # Current minus originally-loaded per-pixel Jdet. Positive
             # (red) = Jdet rose toward feasible; negative (blue) = fell.
@@ -184,6 +195,9 @@ class RenderMixin:
         kernel runs at most once per displayed field; z only changes
         which slice of the cached field gets returned."""
         z = min(self._z, phi3d.shape[1] - 1)
+        if self._view_mode == VIEW_INJ:
+            field = self._metric3d_field(phi3d, 'inj3d')  # (D, H, W)
+            return field[z]
         if self._constraint_combo.currentData() == CONSTRAINT_JDET3D:
             field = self._metric3d_field(phi3d, 'jdet3d')  # (D, H, W)
             return field[z]
@@ -260,15 +274,34 @@ class RenderMixin:
         total = worker.history_total
         offset = total - n  # absolute step at buffer index 0
         if n != self._conv_len:
+            # Single pass: history_get is a Python call + deque random
+            # index — fetch each snapshot once and derive everything.
+            snaps = [worker.history_get(i) for i in range(n)]
             steps = np.arange(offset, offset + n)
-            n_neg = np.fromiter(
-                (worker.history_get(i).n_neg for i in range(n)), dtype=float, count=n
-            )
-            min_T = np.fromiter(
-                (worker.history_get(i).min_T for i in range(n)), dtype=float, count=n
-            )
+            n_neg = np.fromiter((s.n_neg for s in snaps), dtype=float, count=n)
+            min_T = np.fromiter((s.min_T for s in snaps), dtype=float, count=n)
             self._conv_plot.set_data(steps, n_neg, min_T)
+            # Phase-boundary markers: wallbreaker / SLP stage snapshots
+            # carry their stage name; windowed per-step snapshots don't.
+            mark_steps: list = []
+            mark_labels: list = []
+            for i, snap in enumerate(snaps):
+                if snap.stage not in (None, '', 'input'):
+                    mark_steps.append(offset + i)
+                    mark_labels.append(snap.stage)
+            # Markers only stay legible for a handful of pipeline phases.
+            # Some strategies stage-tag nearly every snapshot (barrier
+            # λ/μ steps, Schwarz per-cluster splices — hundreds): past
+            # this cap a labeled line would land on every data point and
+            # the labeled-item churn is O(N²) over a live run, so skip.
+            _MAX_STAGE_MARKERS = 24
+            if len(mark_steps) > _MAX_STAGE_MARKERS:
+                mark_steps, mark_labels = [], []
+            self._conv_plot.set_stage_markers(mark_steps, mark_labels)
             self._conv_len = n
+        # Outside the rebuild guard: the thr spinbox can change while the
+        # history length doesn't, and the line must follow it.
+        self._conv_plot.set_threshold(self._display_threshold())
         self._conv_plot.set_cursor(offset + self._history_slider.value())
 
     def _input_jacobian(self) -> np.ndarray:

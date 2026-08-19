@@ -52,6 +52,14 @@ class ConvergencePlot(pg.PlotWidget):
         self._zero = pg.InfiniteLine(angle=0, pen=pg.mkPen('#999', style=QtCore.Qt.DashLine))
         self._vb2.addItem(self._zero)
         self._zero.setValue(0.0)
+        # Dashed threshold line (the solver's actual target, thr > 0).
+        self._thr_line = pg.InfiniteLine(
+            angle=0, pen=pg.mkPen(_MIN_T_COLOR, width=1, style=QtCore.Qt.DotLine)
+        )
+        self._vb2.addItem(self._thr_line)
+        self._thr_line.hide()
+        # Phase-boundary markers (wallbreaker / SLP stage names).
+        self._stage_lines: list = []
 
         # Vertical cursor marking the current history step.
         self._cursor = pg.InfiniteLine(
@@ -77,13 +85,57 @@ class ConvergencePlot(pg.PlotWidget):
         self._min_T_curve.setData(steps, np.asarray(min_T, dtype=float))
         self._sync_views()
 
+    def set_threshold(self, thr) -> None:
+        """Show the feasibility-threshold line on the ``min_T`` axis."""
+        self._thr_line.setValue(float(thr))
+        self._thr_line.show()
+
+    def set_stage_markers(self, steps, labels) -> None:
+        """Mark pipeline-stage boundaries with labeled vertical lines.
+
+        ``steps``/``labels`` are parallel sequences: the history-step
+        index where each named stage's snapshot landed. Existing markers
+        are replaced (call with empty sequences to clear).
+        """
+        key = (tuple(steps), tuple(labels))
+        if key == getattr(self, '_last_marks', None):
+            return  # unchanged — skip the Qt item churn
+        self._last_marks = key
+        pi = self.getPlotItem()
+        for item in self._stage_lines:
+            pi.removeItem(item)
+        self._stage_lines.clear()
+        for step, label in zip(steps, labels):
+            # pyqtgraph renders the label as a str.format template —
+            # escape braces so stage names like 'bulk:{m14}' can't raise
+            # inside InfLineLabel on the GUI thread.
+            safe = str(label).replace('{', '{{').replace('}', '}}')
+            line = pg.InfiniteLine(
+                pos=float(step),
+                angle=90,
+                pen=pg.mkPen('#888', width=1, style=QtCore.Qt.DotLine),
+                label=safe,
+                labelOpts={
+                    'position': 0.92,
+                    'rotateAxis': (1, 0),
+                    'color': '#555',
+                    'anchors': [(0.0, 0.5), (0.0, 0.5)],
+                },
+            )
+            pi.addItem(line)
+            self._stage_lines.append(line)
+
     def set_cursor(self, step) -> None:
         """Move the vertical step cursor and show it."""
         self._cursor.setValue(float(step))
         self._cursor.show()
 
     def clear_data(self) -> None:
-        """Remove all plotted data and hide the cursor."""
+        """Remove all plotted data and hide the cursor, markers, and
+        threshold line (a stale line would otherwise survive a load)."""
         self._n_neg_curve.setData([], [])
         self._min_T_curve.setData([], [])
         self._cursor.hide()
+        self._last_marks = None  # force the next marker set to redraw
+        self.set_stage_markers([], [])
+        self._thr_line.hide()

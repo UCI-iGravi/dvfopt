@@ -730,7 +730,18 @@ def test_strategy_params_excludes_supports_3d_and_2d_windowed():
 
     names = {name for name, _k, _d in editable_fields(SLPStrategy)}
     assert 'supports_3d' not in names
-    assert strategy_class_for('slsqp_windowed') is None  # 2D: ignored -> honest
+    # 2D windowed now exposes ONLY the constraint-mode toggles (the
+    # worker threads them into iterative_serial; the toolbar owns the
+    # iteration knobs) — pinned via _INCLUDED_FIELDS_BY_ALGO.
+    from dvfopt import SLSQPWindowedStrategy
+    from dvfopt_gui.strategy_params import _INCLUDED_FIELDS_BY_ALGO
+
+    assert strategy_class_for('slsqp_windowed') is SLSQPWindowedStrategy
+    assert _INCLUDED_FIELDS_BY_ALGO['slsqp_windowed'] == {
+        'enforce_shoelace',
+        'enforce_injectivity',
+        'injectivity_threshold',
+    }
     assert strategy_class_for('slsqp_windowed@jdet3d') is not None
     assert strategy_class_for('barrier@jdet3d') is not None
 

@@ -22,6 +22,21 @@ from dvfopt_gui.worker import (
 )
 
 
+def _sanitized_overrides(algo: str, overrides: dict) -> dict:
+    """Drop overrides for fields the Params dialog disables for this algo.
+
+    The greyed-out widget alone is cosmetic — persisted QSettings
+    overrides bypass the dialog entirely, so the filter must live at the
+    single point where overrides are handed to the worker.
+    """
+    from dvfopt_gui.strategy_params import _DISABLED_FIELDS_BY_ALGO
+
+    disabled = _DISABLED_FIELDS_BY_ALGO.get(algo, set())
+    if not disabled:
+        return dict(overrides)
+    return {k: v for k, v in overrides.items() if k not in disabled}
+
+
 class RunActionsMixin:
     # ----- run buttons -------------------------------------------------------
 
@@ -129,7 +144,12 @@ class RunActionsMixin:
             'threshold': self._display_threshold(),
             'objective_id': objective_id,
             'method_name': self._slsqp_method_name,
-            'strategy_overrides': self._strategy_overrides.get(self._current_params_algo(), {}),
+            'strategy_overrides': _sanitized_overrides(
+                self._current_params_algo(),
+                self._strategy_overrides.get(self._current_params_algo(), {}),
+            ),
+            # Log-dock level → solver verbose (0 = warnings only).
+            'verbose': int(self._log_dock.worker_verbose),
         }
         if self._max_per_index_iter is not None:
             params['max_per_index_iter'] = int(self._max_per_index_iter)
@@ -360,6 +380,12 @@ class RunActionsMixin:
         sender = self.sender()
         if sender is not None and sender is not self._worker:
             return
+        # Capture the run's recorded SolveInfo (Solver-path runs record
+        # phase history) for the View → Save convergence report action.
+        solve_info = getattr(self._worker, 'solve_info', None)
+        if solve_info is not None and getattr(solve_info, 'phases', None):
+            self._last_solve_info = solve_info
+            self._report_action.setEnabled(True)
         # Splice the result back into the volume so subsequent runs /
         # view toggles see the corrected state.
         if phi_out is not None and self._volume is not None:

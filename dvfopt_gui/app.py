@@ -54,6 +54,7 @@ from dvfopt_gui._shared import (  # noqa: F401  (re-exported for back-compat)
     VIEW_2TRI,
     VIEW_DIFF,
     VIEW_GRID,
+    VIEW_INJ,
     VIEW_JDET,
     _compose_method_id,
     _default_roi_geometry,
@@ -71,6 +72,7 @@ from dvfopt_gui._win_render import RenderMixin
 from dvfopt_gui._win_run import RunActionsMixin
 from dvfopt_gui.convergence import ConvergencePlot
 from dvfopt_gui.history import HistoryController
+from dvfopt_gui.logdock import LogDock
 from dvfopt_gui.overview import OverviewWorker, SliceOverviewStrip
 from dvfopt_gui.worker import (  # noqa: F401  (re-exported for back-compat)
     DEFAULT_HISTORY_MAX,
@@ -349,6 +351,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         self._view_combo.addItem('2-tri (min T1, T2)', VIEW_2TRI)
         self._view_combo.addItem('Deformation grid', VIEW_GRID)
         self._view_combo.addItem('Δ Jdet vs input', VIEW_DIFF)
+        self._view_combo.addItem('Injectivity gap (min axial)', VIEW_INJ)
         self._view_combo.setToolTip(
             'Central image. "Δ Jdet vs input" shows the current minus the '
             'originally-loaded per-pixel Jdet (red = increased, blue = '
@@ -643,6 +646,18 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         right.addWidget(QtWidgets.QLabel('<b>Convergence</b>'))
         self._conv_plot = ConvergencePlot()
         self._conv_plot.setMinimumHeight(150)
+
+        # Live solver-log dock (hidden until toggled via the View menu).
+        # Attaching its handler makes it the process's single log sink
+        # (suppresses _logging's stdout auto-install). The dock's level
+        # combo is read LIVE at worker start (worker_verbose) — no cached
+        # copy to drift.
+        self._log_dock = LogDock(self)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._log_dock)
+        self._log_dock.hide()
+        self._log_dock.attach()
+        # SolveInfo of the last finished Solver-path run (for the report).
+        self._last_solve_info = None
         right.addWidget(self._conv_plot, stretch=2)
         # Number of history entries last plotted — lets us rebuild the
         # curve only when it grows (the cursor still moves every frame).
@@ -816,6 +831,13 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         quit_act = file_menu.addAction('Quit', self.close)
         quit_act.setShortcut('Ctrl+Q')
 
+        view_menu = menubar.addMenu('&View')
+        log_toggle = self._log_dock.toggleViewAction()
+        log_toggle.setText('Solver log')
+        view_menu.addAction(log_toggle)
+        self._report_action = view_menu.addAction('Save convergence report…', self._on_save_report)
+        self._report_action.setEnabled(False)
+
         edit_menu = menubar.addMenu('&Edit')
         edit_menu.addAction('Undo\tCtrl+Z', self._on_undo)
         edit_menu.addAction('Redo\tCtrl+Y', self._on_redo)
@@ -833,6 +855,40 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         help_menu = menubar.addMenu('&Help')
         help_menu.addAction('Keyboard shortcuts…', self._show_shortcuts)
         help_menu.addAction('About', self._show_about)
+
+    def _on_save_report(self) -> None:
+        """Render the last run's SolveInfo phases via
+        :func:`dvfopt.viz.plot_solve_info` and save as an image."""
+        info = self._last_solve_info
+        if info is None or not getattr(info, 'phases', None):
+            QtWidgets.QMessageBox.information(
+                self,
+                'No solve history',
+                'No recorded phase history yet — run a solver first.',
+            )
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save convergence report', 'convergence_report.png', 'Images (*.png *.pdf)'
+        )
+        if not path:
+            return
+        import sys
+
+        import matplotlib
+
+        # Only pick the Agg backend while pyplot is still unloaded: a
+        # forced switch in an embedding session (Jupyter %matplotlib)
+        # would close every open figure and hijack the user's backend.
+        # savefig works on any backend, so an already-loaded one is fine.
+        if 'matplotlib.pyplot' not in sys.modules:
+            matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from dvfopt.viz import plot_solve_info
+
+        fig = plot_solve_info(info, threshold=self._display_threshold(), save_path=path)
+        plt.close(fig)
+        self.statusBar().showMessage(f'Saved convergence report: {path}', 5000)
 
     def _show_shortcuts(self) -> None:
         QtWidgets.QMessageBox.information(
@@ -1301,6 +1357,10 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
             if lw.isRunning():
                 lw.terminate()
                 lw.wait(1_000)
+        # Detach AFTER the worker drains: removing the dock handler while
+        # the solver thread still logs would trigger _logging's stdout
+        # auto-install mid-shutdown (console spew + a leaked handler).
+        self._log_dock.detach()
         super().closeEvent(ev)
 
 
