@@ -189,6 +189,12 @@ cython_debug/
 /notebooks/output_demo
 /benchmarks/results
 /benchmarks/output
+# asv (airspeed velocity) build envs, results, and generated HTML.
+/.asv/
+# pytest-cov output.
+/.coverage
+/htmlcov/
+/coverage.xml
 # Strict-feasibility research artifacts (large per-case corrected fields).
 /research/strict_feasibility_2d/runners/output/corrected/
 
