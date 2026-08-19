@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from dvfopt.constraints import JdetConstraint2D
-from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
+from dvfopt.strategies.base import Strategy, register_strategy
 
 
 @register_strategy('nmvf')
@@ -76,10 +76,7 @@ class NMVFStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info('NMVFStrategy', info, threshold)
-        return out, _build_solve_info('NMVFStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 __all__ = ['NMVFStrategy']

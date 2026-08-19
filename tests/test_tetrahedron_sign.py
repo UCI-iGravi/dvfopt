@@ -1022,19 +1022,37 @@ class TestTet6Constraint3D:
         V = c.values(flat)
         assert np.allclose(V, 1 / 6)
 
-    def test_auto_strategy_routes_to_barrier(self):
-        """``auto_strategy`` must route ``Tet6Constraint3D`` to barrier
-        (it's the only strategy that supports tet today). Regression:
-        early versions fell through to ``slsqp_windowed`` which doesn't
-        accept tet constraints."""
+    def test_auto_strategy_tet_tiering(self):
+        """``auto_strategy`` tiers ``Tet6Constraint3D`` like 2D: mild to
+        moderate folds go barrier; extremes (where the barrier's penalty
+        phase stalls) go to the 3D wallbreakers. Regression: early
+        versions fell through to ``slsqp_windowed`` which doesn't accept
+        tet constraints."""
         from dvfopt import Tet6Constraint3D
         from dvfopt.solver import auto_strategy
 
-        c = Tet6Constraint3D(shape=(4, 5, 5))
-        # Across a range of fold densities, tet should always go barrier.
-        for n_neg, init_min in [(1, -0.05), (200, -0.5), (10000, -5.0)]:
-            label = auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='l2')
+        c_small = Tet6Constraint3D(shape=(4, 5, 5))
+        # Mild/moderate → barrier.
+        for n_neg, init_min in [(1, -0.05), (200, -0.5)]:
+            label = auto_strategy(
+                c_small, init_n_neg=n_neg, init_min=init_min, objective_label='l2'
+            )
             assert label == 'barrier', f'n_neg={n_neg}: got {label!r}, expected barrier'
+        # Extreme + L2 → m10_3d (ALM phase is L2-optimal).
+        assert (
+            auto_strategy(c_small, init_n_neg=10000, init_min=-5.0, objective_label='l2')
+            == 'm10_3d'
+        )
+        # Extreme + non-L2: small volume → m14_3d, big volume → schwarz.
+        assert (
+            auto_strategy(c_small, init_n_neg=10000, init_min=-5.0, objective_label='l1')
+            == 'm14_3d'
+        )
+        c_big = Tet6Constraint3D(shape=(64, 64, 64))  # 262144 voxels > 200K
+        assert (
+            auto_strategy(c_big, init_n_neg=10000, init_min=-5.0, objective_label='l1')
+            == 'm14_schwarz_3d'
+        )
 
     def test_auto_dispatch_via_correct_dvf(self):
         """End-to-end: ``correct_dvf(constraint='6tet', strategy='auto')``

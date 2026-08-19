@@ -106,6 +106,22 @@ class Strategy(ABC):
         info : SolveInfo
         """
 
+    # ---- return-normalization helper used by subclasses --------------
+    def _finish(self, out, record_history: bool, threshold: float):
+        """Normalize an implementation's return into ``(phi_out, SolveInfo)``.
+
+        Implementations return ``(phi_out, info)`` when
+        ``record_history`` and bare ``phi_out`` otherwise; every
+        strategy's ``solve`` ends with the same unpack +
+        :func:`_build_solve_info` dance. The strategy name is taken from
+        the concrete class.
+        """
+        name = type(self).__name__
+        if record_history:
+            phi_out, info = out
+            return phi_out, _build_solve_info(name, info, threshold)
+        return out, _build_solve_info(name, {}, threshold)
+
     # ---- validation helper used by subclasses ------------------------
     def _check_constraint(self, constraint: Constraint) -> None:
         from dvfopt.exceptions import IncompatibleConstraintError
