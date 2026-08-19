@@ -136,3 +136,54 @@ def test_fmt_handles_non_finite():
     # nan/inf must render as text, never crash the whole report via int(nan).
     assert cb._fmt(float("nan")) == "nan"
     assert cb._fmt(float("inf")) == "inf"
+
+
+def test_process_section_worker():
+    # The parallel worker: solve + measure + figure for one section.
+    sec = _folded_section(5)
+    brain, z, m, png = cb._process_section(lambda s: np.zeros_like(s), "B0", 3, sec, 0.01, True)
+    assert (brain, z) == ("B0", 3)
+    assert m["n_neg_init"] > 0 and m["n_neg_final"] == 0
+    assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_jdet2d_corrector_is_picklable():
+    # Trusted in-process round-trip (not untrusted data): ProcessPoolExecutor
+    # pickles the corrector to each worker, so n_workers>1 needs this to hold.
+    import pickle
+
+    c = cb.make_jdet2d_corrector(threshold=0.01)
+    assert pickle.loads(pickle.dumps(c)).label == c.label
+
+
+# Module-level so it is importable/picklable by spawned worker processes.
+class _ZeroCorrector:
+    label = "zero"
+
+    def __call__(self, section):
+        return np.zeros_like(section)
+
+
+def test_2d_sections_parallel_branch(tmp_path, monkeypatch):
+    # Drives the n_workers>1 ProcessPoolExecutor path end-to-end. Field loading
+    # happens in the parent (so the monkeypatch applies); workers only receive
+    # the picklable corrector + section arrays.
+    import benchmark_utils as bu
+
+    monkeypatch.setattr(bu, "load_cohort_field", lambda b, variant="x": _folded_volume(1, d=4))
+    rd = cb.run_cohort_2d_sections(
+        corrector=_ZeroCorrector(),
+        sections=[("B0", 1), ("B0", 2), ("B0", 3)],
+        n_workers=2,
+        make_figures=False,
+        out_base=str(tmp_path / "par"),
+    )
+    summ = json.loads((rd / "summary.json").read_text(encoding="utf-8"))
+    assert summ["n_fields"] == 3
+    assert summ["total_folds_after"] == 0
+    # rows must stay aligned to sections (submission order restored)
+    import csv as _csv
+
+    with open(rd / "results.csv") as f:
+        labels = [r["label"] for r in _csv.DictReader(f)]
+    assert labels == ["B0/z1", "B0/z2", "B0/z3"]
