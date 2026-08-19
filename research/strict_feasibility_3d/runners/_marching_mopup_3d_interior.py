@@ -19,17 +19,18 @@ from pathlib import Path
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, find_objects
 from scipy.ndimage import label as cc_label
-from scipy.ndimage import find_objects
 from scipy.optimize import linprog
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from dvfopt.core.slp.tri_linearize import build_sparse_jacobian_T  # noqa: E402
-from dvfopt.core.tri_primitives import tri_areas_flat  # noqa: E402
-from dvfopt.jacobian.tetrahedron_sign import (  # noqa: E402
-    build_tet_sparse_jac, tet_volumes_flat, six_tet_volumes_3d,
+from dvfopt.core.slp.tri_linearize import build_sparse_jacobian_T
+from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.jacobian.tetrahedron_sign import (
+    build_tet_sparse_jac,
+    six_tet_volumes_3d,
+    tet_volumes_flat,
 )
 
 OUT = 'research/strict_feasibility_3d/runners/output'

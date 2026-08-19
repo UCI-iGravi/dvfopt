@@ -45,7 +45,7 @@ from scipy.optimize import minimize
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent.parent))  # repo root
 
-from dvfopt.jacobian.tetrahedron_sign import (  # noqa: E402
+from dvfopt.jacobian.tetrahedron_sign import (
     _ALL_DIAG_SIGNS,
     _ALL_DIAG_TETS,
     _MAIN_DIAGONALS,

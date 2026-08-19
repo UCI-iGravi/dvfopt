@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from dvfopt._logging import log_info
+
 
 def _areas_torch(dy, dx, torch):
     """Per-triangle signed areas (T1, T2) matching tri_areas_flat."""
@@ -134,9 +136,8 @@ def gpu_untangle_alm_2d(
             prev_worst = worst
             if verbose:
                 nneg = int((t1 < threshold).sum() + (t2 < threshold).sum())
-                print(
+                log_info(
                     f'    [alm outer {outer + 1}] worst_g={worst:+.5f} folds~{nneg} mu={mu:.0e}',
-                    flush=True,
                 )
             if worst >= 0.0:
                 break

@@ -25,6 +25,7 @@ import numpy as np
 from scipy.ndimage import binary_dilation, find_objects
 from scipy.ndimage import label as cc_label
 
+from dvfopt._logging import log_info
 from dvfopt.core.marching._elastic_engine import ACTIVE_WINDOW, elastic_trust_solve
 from dvfopt.core.marching._precondition import require_25d_input
 from dvfopt.core.tri_primitives import tri_areas_flat
@@ -288,11 +289,10 @@ def mop_interior_3d(
             }
         )
         if verbose >= 1:
-            print(
+            log_info(
                 f"  [mop pass {i} zpad={zpad} pad={pad}] "
                 f"n_neg {before_neg}->{after_neg} "
                 f"n_below {before_below}->{after_below} min_T={mn:.5f}",
-                flush=True,
             )
 
     # `mv` already measures the final state (post last pass, or the initial

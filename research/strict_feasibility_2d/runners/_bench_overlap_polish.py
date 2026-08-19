@@ -26,9 +26,9 @@ from scipy.ndimage import label as cc_label
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from dvfopt.core.slp.highs_solver import solve_l1_lp_step  # noqa: E402
-from dvfopt.core.slp.tri_linearize import linearize_T_2tri  # noqa: E402
-from dvfopt.core.tri_primitives import tri_areas_flat  # noqa: E402
+from dvfopt.core.slp.highs_solver import solve_l1_lp_step
+from dvfopt.core.slp.tri_linearize import linearize_T_2tri
+from dvfopt.core.tri_primitives import tri_areas_flat
 
 THR = 0.01
 

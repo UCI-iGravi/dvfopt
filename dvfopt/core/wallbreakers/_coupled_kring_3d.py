@@ -72,6 +72,7 @@ import time
 import numpy as np
 from scipy.optimize import minimize
 
+from dvfopt._logging import log_info, log_warning
 from dvfopt.jacobian.tetrahedron_sign import (
     _TET_SIGN,
     _TET_VERTICES,
@@ -494,18 +495,16 @@ def local_alm_recovery_3d(
         try:
             crop_out = inner_solve(crop)
         except Exception as exc:
-            if verbose:
-                print(f'  local recovery inner_solve failed: {exc}', flush=True)
+            log_warning(f'local recovery inner_solve failed: {type(exc).__name__}: {exc}')
             break
         trial = phi.copy()
         trial[:, z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1] = crop_out
         # Fused per-cube count (same semantics as n_neg_before above).
         n_trial = int((six_tet_min_volume_3d(trial) <= 0).sum())
         if verbose:
-            print(
+            log_info(
                 f'  local recovery widen={widen} pad={p} crop='
                 f'{crop.shape[1:]} n_neg {n_neg_before}->{n_trial}',
-                flush=True,
             )
         if n_trial <= n_neg_before:
             best = trial
@@ -824,10 +823,9 @@ def active_band_alm_recovery_3d(
             batch_delta = sum(c[2] - c[1] for c in cands if c is not None)
             n_after = n_before + batch_delta
             if verbose:
-                print(
+                log_info(
                     f'  active-band parallel batch ({len(batch)} crops): '
                     f'n_neg {n_before}->{n_after}',
-                    flush=True,
                 )
             if batch_delta <= 0:
                 # Batch-global accept: paste every solved crop.
@@ -877,11 +875,10 @@ def active_band_alm_recovery_3d(
                         n_run += local_after - local_before
                     else:
                         if verbose:
-                            print(
+                            log_info(
                                 f'  active-band per-crop reject bbox={pb} '
                                 f'local n_neg {local_before}->{local_after}; '
                                 f'queued for sequential retry',
-                                flush=True,
                             )
                         retry_bboxes.append(bboxes[i])
         # Accepted boxes were solved above; individually rejected ones fall
@@ -907,8 +904,7 @@ def active_band_alm_recovery_3d(
             try:
                 crop_out = inner_solve(crop)
             except Exception as exc:
-                if verbose:
-                    print(f'  active-band cluster solve failed: {exc}', flush=True)
+                log_warning(f'active-band cluster solve failed: {type(exc).__name__}: {exc}')
                 break
             # CROP-LOCAL verify: _freeze_rim restores all six crop faces, so
             # only cubes strictly inside the crop's cube range [z0, z1-1] x
@@ -921,10 +917,9 @@ def active_band_alm_recovery_3d(
             local_after = int((six_tet_min_volume_3d(candidate) <= 0).sum())
             n_after = n_before - local_before + local_after
             if verbose:
-                print(
+                log_info(
                     f'  active-band bbox z[{z0}:{z1}] y[{y0}:{y1}] x[{x0}:{x1}] '
                     f'crop={crop.shape[1:]} n_neg {n_before}->{n_after}',
-                    flush=True,
                 )
             if local_after <= local_before:
                 # Paste directly into cur only after the local check passes;
@@ -957,7 +952,7 @@ def active_band_alm_recovery_3d(
             f'{n_neg_before} despite per-crop accepts; no rollback attempted'
         )
         if verbose:
-            print(f'  active-band WARNING: {info["warning"]}', flush=True)
+            log_info(f'  active-band WARNING: {info["warning"]}')
     return cur, info
 
 
@@ -1078,7 +1073,7 @@ def parallel_zband_solve(
             cur[:, w_lo:w_hi, :, :] = solved[:, loc_lo:loc_hi, :, :]
         if verbose:
             n_mid = int((six_tet_min_volume_3d(cur) <= 0).sum())
-            print(f'  z-band paste: n_neg={n_mid} (bands={n_bands})', flush=True)
+            log_info(f'  z-band paste: n_neg={n_mid} (bands={n_bands})')
 
     seam_ran = False
     if seam_cleanup and int((six_tet_min_volume_3d(cur) <= 0).sum()) > 0:

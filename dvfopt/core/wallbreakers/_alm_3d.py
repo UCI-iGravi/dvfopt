@@ -34,6 +34,7 @@ from typing import Optional
 import numpy as np
 from scipy.optimize import minimize
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import tet_grad_T_v, tet_volumes_flat
 
 
@@ -185,11 +186,10 @@ def augmented_lagrangian_3d(
             )
         )
         if verbose:
-            print(
+            log_info(
                 f'  ALM out={outer:3d}  inner={res.nit:4d}  '
                 f'min_V={min_T:+.5f}  viol={viol_now:.3e}  '
                 f'rho={rho:.1e}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
         last_min = min_T
         if min_T >= target:

@@ -31,6 +31,8 @@ from typing import Callable, Optional
 import numpy as np
 from scipy.optimize import minimize
 
+from dvfopt._logging import log_info, log_warning
+
 # Schedules shared across all CPU barrier solvers.
 DEFAULT_LAM_SCHEDULE: tuple[float, ...] = (1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
 DEFAULT_MU_SCHEDULE: tuple[float, ...] = (1e-1, 1e-2, 1e-3, 1e-4)
@@ -204,8 +206,8 @@ def run_penalty_barrier_lbfgs(
             step_callback({'phi_flat': phi_flat_now.copy(), 'stage': stage})
         except KeyboardInterrupt:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f'step_callback raised {type(exc).__name__}: {exc}; continuing')
 
     obj_kwargs = dict(
         phi_anchor=phi_anchor,
@@ -231,7 +233,11 @@ def run_penalty_barrier_lbfgs(
             jac=True,
             method='L-BFGS-B',
             bounds=bounds,
-            options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
+            # No verbosity option: scipy's 1.15 C rewrite of L-BFGS-B
+            # removed 'disp'/'iprint' (passing either raises
+            # OptimizeWarning on every call). Progress goes through our
+            # own per-phase log lines instead.
+            options={'maxiter': max_iter, 'gtol': 1e-6},
         )
         phi_flat = res.x
         lam_steps += 1
@@ -250,11 +256,10 @@ def run_penalty_barrier_lbfgs(
                 )
             )
         if verbose >= 1:
-            print(
+            log_info(
                 f'{log_prefix}[penalty {lam_steps}] lam={lam:g}  '
                 f'neg={cur_neg}  min_T={cur_min:+.6f}  '
                 f'({time.time() - t0:.2f}s)',
-                flush=True,
             )
         _fire(f'penalty_lam={lam:g}', phi_flat)
         if cur_min >= target:
@@ -273,7 +278,11 @@ def run_penalty_barrier_lbfgs(
                 jac=True,
                 method='L-BFGS-B',
                 bounds=bounds,
-                options={'maxiter': max_iter, 'gtol': 1e-6, 'disp': verbose >= 3},
+                # No verbosity option: scipy's 1.15 C rewrite of L-BFGS-B
+                # removed 'disp'/'iprint' (passing either raises
+                # OptimizeWarning on every call). Progress goes through our
+                # own per-phase log lines instead.
+                options={'maxiter': max_iter, 'gtol': 1e-6},
             )
             # Only accept the step if the barrier objective is finite; an
             # infeasible iterate returns inf and would silently corrupt phi.
@@ -295,11 +304,10 @@ def run_penalty_barrier_lbfgs(
                     )
                 )
             if verbose >= 1:
-                print(
+                log_info(
                     f'{log_prefix}[barrier {mu_steps}] mu={mu:g}  '
                     f'neg={cur_neg}  min_T={cur_min:+.6f}  '
                     f'({time.time() - t0:.2f}s)',
-                    flush=True,
                 )
             _fire(f'barrier_mu={mu:g}', phi_flat)
 

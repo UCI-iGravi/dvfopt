@@ -27,8 +27,78 @@ def jacobian_constraint_3d(phi_flat, subvolume_size, freeze_mask=None):
     return jdet.flatten()
 
 
+def _injectivity_linear_constraint_3d(subvolume_size, inj_lb, freeze_mask=None):
+    """Axial monotonicity of deformed coordinates as ONE sparse LinearConstraint.
+
+    Each axial gap is linear in phi: ``gap = 1 + d_next - d_prev`` (the
+    deformed coordinate is ``index + displacement``), so unlike the 2D
+    path no NonlinearConstraint is needed — SLSQP gets exact linear rows.
+    One row per neighbouring voxel pair along each axis (x-gaps read the
+    dx block, y-gaps dy, z-gaps dz), bounded ``gap >= inj_lb`` i.e.
+    ``A @ phi >= inj_lb - 1``.
+
+    When *freeze_mask* is given, only rows whose BOTH endpoints are
+    non-frozen are kept (the 2D ``exclude_boundaries`` spirit) — frozen
+    ring pairs the input may already violate would otherwise make the
+    sub-problem structurally infeasible.
+    """
+    sz, sy, sx = _unpack_size_3d(subvolume_size)
+    voxels = sz * sy * sx
+    lin = np.arange(voxels).reshape(sz, sy, sx)
+    free = None if freeze_mask is None else ~freeze_mask
+
+    rows_prev, rows_next, block = [], [], []
+    # (prev-slice, next-slice, channel block index) per axis:
+    # x-gaps -> dx block 0, y-gaps -> dy block 1, z-gaps -> dz block 2.
+    specs = [
+        (
+            lin[:, :, :-1],
+            lin[:, :, 1:],
+            0,
+            None if free is None else free[:, :, :-1] & free[:, :, 1:],
+        ),
+        (
+            lin[:, :-1, :],
+            lin[:, 1:, :],
+            1,
+            None if free is None else free[:, :-1, :] & free[:, 1:, :],
+        ),
+        (
+            lin[:-1, :, :],
+            lin[1:, :, :],
+            2,
+            None if free is None else free[:-1, :, :] & free[1:, :, :],
+        ),
+    ]
+    for prev, nxt, blk, keep in specs:
+        p = prev.ravel()
+        n = nxt.ravel()
+        if keep is not None:
+            k = keep.ravel()
+            p, n = p[k], n[k]
+        rows_prev.append(p + blk * voxels)
+        rows_next.append(n + blk * voxels)
+        block.append(len(p))
+    prev_cols = np.concatenate(rows_prev)
+    next_cols = np.concatenate(rows_next)
+    n_rows = prev_cols.size
+    if n_rows == 0:
+        return None
+    row_idx = np.repeat(np.arange(n_rows), 2)
+    col_idx = np.stack([prev_cols, next_cols], axis=1).ravel()
+    data = np.tile(np.array([-1.0, 1.0]), n_rows)
+    A = scipy.sparse.csr_matrix((data, (row_idx, col_idx)), shape=(n_rows, 3 * voxels))
+    return LinearConstraint(A, inj_lb - 1.0, np.inf)
+
+
 def _build_constraints_3d(
-    phi_sub_flat, subvolume_size, freeze_mask, threshold, window_reached_max=False
+    phi_sub_flat,
+    subvolume_size,
+    freeze_mask,
+    threshold,
+    window_reached_max=False,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Build SLSQP constraints for a 3D sub-volume optimisation.
 
@@ -59,6 +129,12 @@ def _build_constraints_3d(
     )
     constraints = [nlc]
 
+    if enforce_injectivity:
+        inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
+        inj = _injectivity_linear_constraint_3d(subvolume_size, inj_lb, freeze_mask=fm)
+        if inj is not None:
+            constraints.append(inj)
+
     if fm is not None and fm.any():
         sz, sy, sx = _unpack_size_3d(subvolume_size)
         voxels = sz * sy * sx
@@ -81,7 +157,15 @@ def _build_constraints_3d(
     return constraints
 
 
-def _build_constraints_3d_maxwindow(patch_flat, patch_size, win_start, win_size, threshold):
+def _build_constraints_3d_maxwindow(
+    patch_flat,
+    patch_size,
+    win_start,
+    win_size,
+    threshold,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
+):
     """Constraints for a max-window solve: Jdet over window ∪ halo on a
     context patch, with per-row lower bounds.
 
@@ -150,4 +234,14 @@ def _build_constraints_3d_maxwindow(patch_flat, patch_size, win_start, win_size,
         np.inf,
         jac=lambda x: jdet_constraint_jacobian_3d(_embed(x), (pz, py, px))[rows][:, cols].tocsr(),
     )
-    return [nlc]
+    constraints = [nlc]
+
+    if enforce_injectivity:
+        # Window-interior gaps only (both endpoints are decision vars).
+        # Halo separation is not enforced here — the outer loop's quality
+        # gate re-selects any remaining boundary violation.
+        inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
+        inj = _injectivity_linear_constraint_3d((sz, sy, sx), inj_lb, freeze_mask=None)
+        if inj is not None:
+            constraints.append(inj)
+    return constraints

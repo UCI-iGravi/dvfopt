@@ -138,16 +138,17 @@ class Constraint(ABC):
         """
         return None
 
-    # ----------------------------- metadata --------------------------
-    @property
-    def supports_slsqp(self) -> bool:
-        """True if :meth:`jacobian` returns a real matrix."""
-        # Cheap test: probe with a zero vector of the right length.
-        try:
-            zero = np.zeros(self.n_variables)
-            return self.jacobian(zero) is not None
-        except Exception:
-            return False
+    def _cached_jac_builder(self, factory):
+        """Memoize a Jacobian *builder* on the instance.
+
+        The builders precompute the sparsity pattern for this shape —
+        rebuilding one on every ``jacobian()`` call wastes that work.
+        ``factory`` is a zero-arg callable constructing the builder.
+        """
+        builder = getattr(self, '_jac_builder', None)
+        if builder is None:
+            builder = self._jac_builder = factory()
+        return builder
 
     def __repr__(self) -> str:
         return (
@@ -245,12 +246,14 @@ class TriConstraint2D(Constraint):
         return tri_grad_T_v(phi_flat, *self.shape, v)
 
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
+        # Cached builder (precomputed sparsity pattern). It returns a
+        # reused dense buffer (fastest for scipy's SLSQP adapter, which
+        # densifies anyway); this convenience API keeps its documented
+        # sparse contract.
         from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
 
-        # The builder returns a reused dense buffer (fastest for scipy's
-        # SLSQP adapter, which densifies anyway); this convenience API
-        # keeps its documented sparse contract.
-        return sp.csr_matrix(_build_full_grid_tri_jac(*self.shape, False)(phi_flat))
+        builder = self._cached_jac_builder(lambda: _build_full_grid_tri_jac(*self.shape, False))
+        return sp.csr_matrix(builder(phi_flat))
 
 
 class TriConstraint2DFullCoverage(Constraint):
@@ -307,11 +310,12 @@ class TriConstraint2DFullCoverage(Constraint):
         return tri_grad_T_v_full_coverage(phi_flat, *self.shape, v)
 
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
+        # See TriConstraint2D.jacobian — cached builder, dense buffer
+        # wrapped to keep the documented sparse contract.
         from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
 
-        # See TriConstraint2D.jacobian — dense buffer wrapped to keep the
-        # documented sparse contract of this convenience API.
-        return sp.csr_matrix(_build_full_grid_tri_jac(*self.shape, True)(phi_flat))
+        builder = self._cached_jac_builder(lambda: _build_full_grid_tri_jac(*self.shape, True))
+        return sp.csr_matrix(builder(phi_flat))
 
 
 # ---------------------------------------------------------------------------
@@ -513,10 +517,10 @@ class Tet6Constraint3D(Constraint):
         """
         from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
 
-        # Build the (rows, cols) pattern lazily — once per call. (Caching
-        # across calls is a future optimization; sparse build is ~ms on
-        # the tiny grids where SLSQP-on-tet makes sense.)
-        return build_tet_sparse_jac(*self.shape)(phi_flat)
+        # Cached builder — the (rows, cols) pattern is precomputed once
+        # per instance instead of on every call.
+        builder = self._cached_jac_builder(lambda: build_tet_sparse_jac(*self.shape))
+        return builder(phi_flat)
 
 
 # ---------------------------------------------------------------------------

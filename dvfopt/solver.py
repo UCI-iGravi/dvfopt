@@ -474,6 +474,12 @@ def auto_strategy(
       * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
         certs).
 
+    For the 6-tet 3D constraint: extremes (``n_neg > 5000`` or
+    ``init_min < -10``) route to the 3D wallbreakers (``m10_3d`` for L2,
+    ``m14_schwarz_3d`` on volumes >200K voxels, ``m14_3d`` otherwise) —
+    the plain barrier stalls on dense 3D folds. Everything else keeps
+    ``barrier``.
+
     For the Jdet family (no wallbreakers, no SLP): barrier above
     ``n_neg > 500`` or ``init_min < -1``, slsqp below.
     """
@@ -495,9 +501,19 @@ def auto_strategy(
         if init_n_neg > 100 or init_min < -0.25:
             return 'barrier'
         return 'slsqp'
-    # 6-tet 3D: only the barrier path supports tet today
-    # (no sparse Jacobian → no SLSQP path; no 3D wallbreakers yet).
+    # 6-tet 3D: mirror the 2D tiering. Dense 3D folds are exactly where
+    # the plain barrier stalls (its penalty phase can't find a feasible
+    # step when many tets crowd zero simultaneously) — route extremes to
+    # the 3D wallbreakers, whose harmonic seed guarantees a feasible
+    # start. Mild-to-moderate folds keep the barrier (fast, and the
+    # full-grid tet SLSQP does not scale).
     if isinstance(constraint, Tet6Constraint3D):
+        if init_n_neg > 5000 or init_min < -10.0:
+            if objective_label == 'l2':
+                return 'm10_3d'  # ALM phase is L2-optimal
+            if int(np.prod(constraint.shape)) > 200_000:
+                return 'm14_schwarz_3d'  # cluster-localized on big volumes
+            return 'm14_3d'
         return 'barrier'
     # Jdet 2D/3D
     if init_n_neg > 500 or init_min < -1.0:

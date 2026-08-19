@@ -40,6 +40,7 @@ import time
 import numpy as np
 
 from dvfopt._defaults import _resolve_params
+from dvfopt._logging import log_info
 
 # Torch is in the [benchmarks] extra. Defer the import so this module
 # can be imported on a torch-less install (matches the pattern used by
@@ -372,13 +373,13 @@ def iterative_3d_tet_barrier_torch(
         init_neg = int((V0 <= 0).sum().item())
         init_min = float(V0.min().item())
     if verbose >= 1:
-        print(
+        log_info(
             f'[3d-tet-barrier-torch init] grid {tuple(deformation.shape[1:])}  '
             f'threshold={threshold_f}  margin={margin}  anchor={anchor}  '
             f'device={device} dtype={dtype}  '
             f'mode={"windowed" if windowed else "full-grid"}'
         )
-        print(f'[init] tet neg={init_neg}  min={init_min:+.5f}')
+        log_info(f'[init] tet neg={init_neg}  min={init_min:+.5f}')
 
     # -----------------------------------------------------------------
     # Windowed path: per-component patch optimization with frozen
@@ -402,7 +403,7 @@ def iterative_3d_tet_barrier_torch(
                 n_neg = int((V <= 0).sum().item())
             n_fold_cells = int(fold_cells_mask.sum())
             if verbose >= 1:
-                print(
+                log_info(
                     f'[windowed outer {outer_iter}] fold cells: {n_fold_cells}  '
                     f'tets with V<=0: {n_neg}'
                 )
@@ -452,7 +453,7 @@ def iterative_3d_tet_barrier_torch(
                     device,
                 )
                 if verbose >= 2:
-                    print(
+                    log_info(
                         f'  comp {comp_id:3d}: bbox ({z0}-{z1}, {y0}-{y1}, {x0}-{x1})  '
                         f'lam_steps={lam_steps} mu_steps={mu_steps}'
                     )
@@ -465,7 +466,7 @@ def iterative_3d_tet_barrier_torch(
         wall = time.time() - t0
         if verbose >= 1:
             ok = n_neg == 0 and min_V >= threshold_f - 1e-5
-            print(
+            log_info(
                 f'[3d-tet-barrier-torch done] feasible={ok}  '
                 f'n_neg={n_neg}  min={min_V:+.6f}  ({wall:.2f}s, windowed)'
             )
@@ -515,7 +516,7 @@ def iterative_3d_tet_barrier_torch(
             cur_min = float(V.min().item())
             l2 = float(torch.linalg.norm(phi_var - phi_init).item())
         if verbose >= 1:
-            print(
+            log_info(
                 f'[penalty step {step}] lam={lam:.0e}  '
                 f'n_neg={n_neg}  min={cur_min:+.6f}  L2(phi-init)={l2:.5f}'
             )
@@ -571,7 +572,7 @@ def iterative_3d_tet_barrier_torch(
                 cur_min = float(V.min().item())
                 l2 = float(torch.linalg.norm(phi_var - phi_init).item())
             if verbose >= 1:
-                print(
+                log_info(
                     f'[barrier  step {step}] mu={mu:.0e}  '
                     f'n_neg={n_neg}  min={cur_min:+.6f}  L2(phi-init)={l2:.5f}'
                 )
@@ -587,7 +588,7 @@ def iterative_3d_tet_barrier_torch(
         min_V = float(V_final.min().item())
     if verbose >= 1:
         ok = n_neg == 0 and min_V >= threshold_f - 1e-5
-        print(
+        log_info(
             f'[3d-tet-barrier-torch done] feasible={ok}  '
             f'n_neg={n_neg}  min={min_V:+.6f}  ({wall:.2f}s)'
         )

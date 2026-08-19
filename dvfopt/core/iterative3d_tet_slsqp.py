@@ -35,6 +35,7 @@ import numpy as np
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.core._barrier_core import anchor_term
 from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac, tet_volumes_flat
 
@@ -106,7 +107,7 @@ def iterative_3d_tet_slsqp(
 
     if verbose >= 1:
         V_init = _constr(z_anchor)
-        print(
+        log_info(
             f'[3d-tet-slsqp init] grid {D}x{H}x{W}  threshold={threshold}  '
             f'anchor={anchor}  n_constraints={V_init.size}  '
             f'n_neg={int((V_init <= 0).sum())}  min_V={float(V_init.min()):+.5f}'
@@ -127,7 +128,7 @@ def iterative_3d_tet_slsqp(
     n_neg = int((V_final <= 0).sum())
     min_V = float(V_final.min())
     if verbose >= 1:
-        print(
+        log_info(
             f'[3d-tet-slsqp done] success={res.success}  nit={res.nit}  '
             f'n_neg={n_neg}  min_V={min_V:+.6f}  ({wall:.2f}s)'
         )

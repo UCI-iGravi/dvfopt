@@ -119,6 +119,35 @@ def _patch_jacobian_3d(jacobian_matrix, phi, center, sub_size):
     return jacobian_matrix
 
 
+def _local_quality_3d(phi, jac_region, region, volume_shape, inj_shift):
+    """Compose the local accept/rollback metric over *region* slices.
+
+    ``jac_region`` is the Jdet patch for ``region`` (z/y/x slice bounds).
+    With injectivity active (``inj_shift is not None``), the axial
+    monotonicity quality is computed on the region grown by 1 voxel (so
+    every region voxel sees both of its gaps) and min-composed with the
+    Jdet after the ``- inj_lb + threshold`` shift (``inj_shift``), i.e.
+    the same composition the outer loop's gate uses. Without injectivity
+    this is just ``jac_region``.
+    """
+    if inj_shift is None:
+        return jac_region
+    from dvfopt.jacobian.monotonicity import injectivity_quality_3d
+
+    (z0, z1), (y0, y1), (x0, x1) = region
+    D, H, W = volume_shape
+    mz0, mz1 = max(z0 - 1, 0), min(z1 + 1, D)
+    my0, my1 = max(y0 - 1, 0), min(y1 + 1, H)
+    mx0, mx1 = max(x0 - 1, 0), min(x1 + 1, W)
+    q = injectivity_quality_3d(phi[:, mz0:mz1, my0:my1, mx0:mx1])
+    q = q[
+        z0 - mz0 : z0 - mz0 + (z1 - z0),
+        y0 - my0 : y0 - my0 + (y1 - y0),
+        x0 - mx0 : x0 - mx0 + (x1 - x0),
+    ]
+    return np.minimum(jac_region, q + inj_shift)
+
+
 def _apply_result_3d(phi, result_x, cz, cy, cx, sub_size):
     """Write optimised sub-volume back into *phi*."""
     sz, sy, sx = _unpack_size_3d(sub_size)
@@ -146,6 +175,8 @@ def _optimize_single_window_3d(
     method_name,
     window_reached_max=False,
     patch_ctx=None,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``.
 
@@ -163,7 +194,13 @@ def _optimize_single_window_3d(
         assert patch_ctx is not None, 'max-window solve requires patch_ctx'
         patch_flat, patch_size, win_start = patch_ctx
         constraints = _build_constraints_3d_maxwindow(
-            patch_flat, patch_size, win_start, subvolume_size, threshold
+            patch_flat,
+            patch_size,
+            win_start,
+            subvolume_size,
+            threshold,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
     else:
         constraints = _build_constraints_3d(
@@ -172,6 +209,8 @@ def _optimize_single_window_3d(
             freeze_mask,
             threshold,
             window_reached_max=False,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
 
     t0 = time.time()
@@ -256,6 +295,8 @@ def _serial_fix_voxel(
     min_window=(3, 3, 3),
     labeled_array=None,
     max_window_voxels=None,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Fix a single voxel using the serial adaptive-window inner loop.
 
@@ -372,6 +413,8 @@ def _serial_fix_voxel(
             method_name,
             window_reached_max=window_reached_max,
             patch_ctx=patch_ctx,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
         iter_times.append(elapsed)
         if not opt_success:
@@ -384,7 +427,11 @@ def _serial_fix_voxel(
         # Compare-and-rollback guard: snapshot the write region and the
         # local Jdet patch region (window + 1-voxel border — exactly what
         # _patch_jacobian_3d rewrites) so a failed/worse SLSQP result is
-        # rejected instead of applied unconditionally.
+        # rejected instead of applied unconditionally. With injectivity
+        # active the gate measures the COMPOSED local quality (Jdet min
+        # monotonicity, same shift as the outer loop's gate) — a
+        # Jdet-only gate would revert every injectivity-only repair that
+        # nudges a still-healthy Jdet down, livelocking the outer loop.
         _D, _H, _W = volume_shape
         _wz0, _wz1 = max(cz - hz - 1, 0), min(cz + hz_hi + 1, _D)
         _wy0, _wy1 = max(cy - hy - 1, 0), min(cy + hy_hi + 1, _H)
@@ -394,10 +441,16 @@ def _serial_fix_voxel(
             slice(cy - hy, cy + hy_hi),
             slice(cx - hx, cx + hx_hi),
         )
+        _inj_shift = None
+        if enforce_injectivity:
+            _inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
+            _inj_shift = threshold - _inj_lb
+        _region = ((_wz0, _wz1), (_wy0, _wy1), (_wx0, _wx1))
         _phi_snap = phi[(slice(None), *_win)].copy()
         _jac_snap = jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1].copy()
-        _old_n = int((_jac_snap <= threshold - err_tol).sum())
-        _old_min = float(_jac_snap.min())
+        _old_q = _local_quality_3d(phi, _jac_snap, _region, volume_shape, _inj_shift)
+        _old_n = int((_old_q <= threshold - err_tol).sum())
+        _old_min = float(_old_q.min())
 
         _apply_result_3d(phi, result_x, cz, cy, cx, subvolume_size)
 
@@ -413,10 +466,12 @@ def _serial_fix_voxel(
         )
 
         # Roll back if the sub-solve made the window locally *strictly*
-        # worse ((n_neg_local, -min_local) lexicographic).
+        # worse ((n_neg_local, -min_local) lexicographic on the composed
+        # local quality).
         _new_loc = jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1]
-        _new_n = int((_new_loc <= threshold - err_tol).sum())
-        _new_min = float(_new_loc.min())
+        _new_q = _local_quality_3d(phi, _new_loc, _region, volume_shape, _inj_shift)
+        _new_n = int((_new_q <= threshold - err_tol).sum())
+        _new_min = float(_new_q.min())
         if _new_n > _old_n or (_new_n == _old_n and _new_min < _old_min):
             phi[(slice(None), *_win)] = _phi_snap
             jacobian_matrix[_wz0:_wz1, _wy0:_wy1, _wx0:_wx1] = _jac_snap
@@ -435,11 +490,20 @@ def _serial_fix_voxel(
 
         _log(verbose, 2, f"  [sub-Jdet] centre ({cz},{cy},{cx}) window {sz}x{sy}x{sx}")
 
-        if float(jacobian_matrix.min()) > threshold - err_tol:
+        if float(jacobian_matrix.min()) > threshold - err_tol and _inj_shift is None:
             break
 
-        # Check local window and grow for next sub-iteration
-        local = jacobian_matrix[cz - hz : cz + hz_hi, cy - hy : cy + hy_hi, cx - hx : cx + hx_hi]
+        # Check local window and grow for next sub-iteration (composed
+        # quality when injectivity is active, so injectivity-only
+        # residuals keep the window growing instead of breaking early).
+        _wreg = ((cz - hz, cz + hz_hi), (cy - hy, cy + hy_hi), (cx - hx, cx + hx_hi))
+        local = _local_quality_3d(
+            phi,
+            jacobian_matrix[(*map(lambda b: slice(*b), _wreg),)],
+            _wreg,
+            volume_shape,
+            _inj_shift,
+        )
         if not (local < threshold - err_tol).any():
             break
         if sz < max_sz or sy < max_sy or sx < max_sx:

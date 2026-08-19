@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from research.strict_feasibility_2d.runners._bench_overlap_polish import (  # noqa: E402
+from research.strict_feasibility_2d.runners._bench_overlap_polish import (
     _areas,
     polish_sweeps,
 )

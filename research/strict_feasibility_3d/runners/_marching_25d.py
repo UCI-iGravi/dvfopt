@@ -28,9 +28,9 @@ from scipy.optimize import linprog
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from dvfopt.core.slp.tri_linearize import build_sparse_jacobian_T  # noqa: E402
-from dvfopt.core.tri_primitives import tri_areas_flat  # noqa: E402
-from dvfopt.jacobian.tetrahedron_sign import (  # noqa: E402
+from dvfopt.core.slp.tri_linearize import build_sparse_jacobian_T
+from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
     tet_volumes_flat,
 )

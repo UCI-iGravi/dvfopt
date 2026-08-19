@@ -47,6 +47,27 @@ from dvfopt.constraints import (
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
 
+def _flatten_polish_phases(polish_info) -> list[dict]:
+    """Flatten a polish ``SolveInfo``'s phases into the legacy history
+    schema so they flow through the ``_build_solve_info`` adapter
+    alongside the seeding phases (rather than being lost to a
+    SolveInfo-shaped blob inside a stage-keyed dict — the original
+    PR #13 bug)."""
+    from dataclasses import asdict
+
+    return [
+        {
+            'phase': f'polish_{p.name}',
+            'n_iter': p.n_iter,
+            'n_neg': p.n_neg,
+            'min_T': p.min_T,
+            'wall_s': p.wall_s,
+            **asdict(p).get('extras', {}),
+        }
+        for p in polish_info.phases
+    ]
+
+
 @register_strategy('harmonic_alm_barrier')
 @register_strategy('m10')  # back-compat alias for the original "m10" tag
 @dataclass
@@ -106,10 +127,7 @@ class HarmonicALMBarrierStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info('HarmonicALMBarrierStrategy', info, threshold)
-        return out, _build_solve_info('HarmonicALMBarrierStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 # Back-compat alias for code that imports ``M10Strategy`` directly.
@@ -187,10 +205,7 @@ class HarmonicALMRefineRepairStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info('HarmonicALMRefineRepairStrategy', info, threshold)
-        return out, _build_solve_info('HarmonicALMRefineRepairStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 # Back-compat alias.
@@ -261,12 +276,7 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info(
-                'SchwarzHarmonicALMRefineRepairStrategy', info, threshold
-            )
-        return out, _build_solve_info('SchwarzHarmonicALMRefineRepairStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 # Back-compat alias.
@@ -306,6 +316,10 @@ class Harmonic3DStrategy(Strategy):
     merge_dilation: int = 2
     polish: bool = True  # run BarrierStrategy from the harmonic seed
     polish_max_iter: int = 200
+    # Forwarded to BarrierStrategy.barrier_grad_rtol for the polish stage.
+    # The polish starts near-feasible, where the sparsified barrier
+    # gradient is up to ~5-9x faster; 0 = exact (default).
+    polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
     accepts_constraints = (Tet6Constraint3D,)
@@ -366,11 +380,11 @@ class Harmonic3DStrategy(Strategy):
 
         # Polish via barrier-on-tet from the harmonic seed. We import
         # BarrierStrategy lazily to avoid an import cycle.
-        from dataclasses import asdict
-
         from dvfopt.strategies.barrier import BarrierStrategy
 
-        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        barrier = BarrierStrategy(
+            max_iter=self.polish_max_iter, barrier_grad_rtol=self.polish_grad_rtol
+        )
         phi_out, polish_info = barrier.solve(
             phi_harmonic,
             constraint=constraint,
@@ -379,26 +393,9 @@ class Harmonic3DStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        # ``polish_info`` is a SolveInfo dataclass. Flatten each phase
-        # into the legacy history schema so they flow through the
-        # adapter alongside the harmonic phase (rather than being lost
-        # to a SolveInfo-shaped blob inside a stage-keyed dict, which
-        # was the original PR #13 bug the reviewer caught).
-        polish_phases = []
-        for p in polish_info.phases:
-            entry = {
-                'phase': f'polish_{p.name}',
-                'n_iter': p.n_iter,
-                'n_neg': p.n_neg,
-                'min_T': p.min_T,
-                'wall_s': p.wall_s,
-                **asdict(p).get('extras', {}),
-            }
-            polish_phases.append(entry)
-
         return phi_out, _build_solve_info(
             'Harmonic3DStrategy',
-            [harmonic_phase, *polish_phases],
+            [harmonic_phase, *_flatten_polish_phases(polish_info)],
             threshold,
         )
 
@@ -515,6 +512,9 @@ class HarmonicALMBarrier3DStrategy(Strategy):
     # Polish stage (barrier from feasible)
     polish: bool = True
     polish_max_iter: int = 200
+    # Forwarded to BarrierStrategy.barrier_grad_rtol for the polish stage
+    # (near-feasible start → sparsified gradient up to ~5-9x faster).
+    polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
     accepts_constraints = (Tet6Constraint3D,)
@@ -532,7 +532,6 @@ class HarmonicALMBarrier3DStrategy(Strategy):
         **_,
     ):
         import time
-        from dataclasses import asdict
 
         import numpy as np
 
@@ -623,7 +622,9 @@ class HarmonicALMBarrier3DStrategy(Strategy):
         # ---- Stage 3: barrier polish ----
         from dvfopt.strategies.barrier import BarrierStrategy
 
-        barrier = BarrierStrategy(max_iter=self.polish_max_iter)
+        barrier = BarrierStrategy(
+            max_iter=self.polish_max_iter, barrier_grad_rtol=self.polish_grad_rtol
+        )
         phi_out, polish_info = barrier.solve(
             phi_alm,
             constraint=constraint,
@@ -632,20 +633,9 @@ class HarmonicALMBarrier3DStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        polish_phases = [
-            {
-                'phase': f'polish_{p.name}',
-                'n_iter': p.n_iter,
-                'n_neg': p.n_neg,
-                'min_T': p.min_T,
-                'wall_s': p.wall_s,
-                **asdict(p).get('extras', {}),
-            }
-            for p in polish_info.phases
-        ]
         return phi_out, _build_solve_info(
             'HarmonicALMBarrier3DStrategy',
-            [harmonic_phase, alm_phase, *polish_phases],
+            [harmonic_phase, alm_phase, *_flatten_polish_phases(polish_info)],
             threshold,
         )
 
@@ -729,10 +719,7 @@ class HarmonicALMRefineRepair3DStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info('HarmonicALMRefineRepair3DStrategy', info, threshold)
-        return out, _build_solve_info('HarmonicALMRefineRepair3DStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 # Back-compat alias.
@@ -803,12 +790,7 @@ class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
             record_history=record_history,
             step_callback=step_callback,
         )
-        if record_history:
-            phi_out, info = out
-            return phi_out, _build_solve_info(
-                'SchwarzHarmonicALMRefineRepair3DStrategy', info, threshold
-            )
-        return out, _build_solve_info('SchwarzHarmonicALMRefineRepair3DStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold)
 
 
 # Back-compat alias.

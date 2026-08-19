@@ -27,10 +27,10 @@ def _nneg(p):
 
 
 def main():
+    from dvfopt.core.slp import cluster_slp_iter, slp_iter
     from research.strict_feasibility_2d.algorithms._gpu_untangle import (
         gpu_untangle_alm_2d,
     )
-    from dvfopt.core.slp import slp_iter, cluster_slp_iter
 
     THR = 0.01
     raw = np.load('data/dvfs/archive/new_b0039_laplacian_deformation_field.npz')['arr']

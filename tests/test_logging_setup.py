@@ -19,6 +19,12 @@ def test_package_logger_exists_and_is_namespaced():
 
 
 def test_enable_default_handler_is_idempotent():
+    # The auto-install path (vlog/log_info during earlier tests in the
+    # same process) may already have added the default handler; strip it
+    # so the add-once contract is checked deterministically.
+    for h in list(logger.handlers):
+        if getattr(h, '_dvfopt_default', False):
+            logger.removeHandler(h)
     n0 = len(logger.handlers)
     enable_default_handler()
     n1 = len(logger.handlers)

@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).parents[3]))
 
 
 def main():
-    from dvfopt.core.slp.cluster_lp_2tri import _fold_clusters
     from dvfopt.core.slp import slp_iter
+    from dvfopt.core.slp.cluster_lp_2tri import _fold_clusters
     from dvfopt.core.tri_primitives import tri_areas_flat
     from research.strict_feasibility_2d.algorithms._elastic_slp import (
         elastic_slp_iter,

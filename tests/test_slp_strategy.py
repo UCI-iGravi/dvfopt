@@ -55,14 +55,22 @@ def test_slp_cluster_path_serial():
     assert _n_neg(res.corrected) == 0
 
 
-def test_slp_is_2d_only():
-    """SLPStrategy must reject a 3D constraint (supports_3d=False)."""
-    from dvfopt import Tet6Constraint3D
+def test_slp_constraint_compat():
+    """SLPStrategy accepts the 2-tri and 6-tet families (the 3D SLP was
+    promoted from research) and still rejects the Jdet family."""
+    from dvfopt import JdetConstraint2D, Tet6Constraint3D
     from dvfopt.exceptions import IncompatibleConstraintError
 
-    with pytest.raises((IncompatibleConstraintError, Exception)):
+    # 6-tet now composes at construction time.
+    Solver(
+        constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+        objective=L1Objective(eps=1e-4),
+        strategy=SLPStrategy(),
+        threshold=0.01,
+    )
+    with pytest.raises(IncompatibleConstraintError):
         Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=JdetConstraint2D((8, 8)),
             objective=L1Objective(eps=1e-4),
             strategy=SLPStrategy(),
             threshold=0.01,

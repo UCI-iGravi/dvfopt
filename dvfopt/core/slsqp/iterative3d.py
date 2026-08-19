@@ -30,6 +30,8 @@ def iterative_3d(
     max_window_voxels_ceiling=None,
     voxel_cap_growth=2.0,
     voxel_cap_stall_threshold=5,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Iterative SLSQP correction of negative Jacobian determinants in 3D.
 
@@ -77,6 +79,20 @@ def iterative_3d(
     voxel_cap_stall_threshold : int
         How many consecutive non-improving outer iterations trigger a
         voxel-cap bump (default ``5``).
+    enforce_injectivity : bool
+        When ``True``, additionally enforces axial monotonicity of the
+        deformed coordinates (the 3D analogue of the 2D
+        ``enforce_injectivity`` mode; axial-only — see
+        :func:`dvfopt.jacobian.monotonicity.injectivity_quality_3d`).
+        The gaps are linear in phi, so SLSQP receives exact sparse
+        LinearConstraint rows. Voxel selection and the convergence gate
+        use the element-wise minimum of Jdet and the (shifted)
+        monotonicity quality, so the worst violation of either metric
+        drives the solve. The 3D analogue of ``enforce_shoelace``
+        (geometric cell volume) is served by the dedicated 6-tet
+        constraint family instead.
+    injectivity_threshold : float or None
+        Lower bound for each axial gap. ``None`` uses *threshold*.
 
     Returns
     -------
@@ -130,10 +146,66 @@ def iterative_3d(
         phi, phi_init, num_neg_jac, min_jdet_list
     )
 
+    # Composed quality: element-wise min of Jdet and the (shifted) axial
+    # monotonicity gaps, so a violation of either metric drives voxel
+    # selection and the loop gate. The shift maps the injectivity lower
+    # bound onto the Jdet threshold so a single gate value works:
+    # quality <= threshold - err_tol  <=>  gap <= inj_lb - err_tol.
+    inj_lb = threshold if injectivity_threshold is None else injectivity_threshold
+
+    def _quality(jac):
+        if not enforce_injectivity:
+            return jac
+        from dvfopt.jacobian.monotonicity import injectivity_quality_3d
+
+        return np.minimum(jac, injectivity_quality_3d(phi) - inj_lb + threshold)
+
+    def _quality_patch(quality, jac, center, size):
+        """Patch-local quality refresh after a window solve.
+
+        Mirrors ``_patch_jacobian_3d``'s windowed-update design instead
+        of recomputing the injectivity map over the whole volume every
+        outer iteration: phi changed only inside the window, Jdet only
+        in window±1, and the gap spread reaches one voxel further — so
+        quality changes are confined to window±2. The gaps of that
+        region are computed exactly from a window±3 crop.
+        """
+        if not enforce_injectivity:
+            return jac
+        from dvfopt._defaults import _unpack_size_3d
+        from dvfopt.jacobian.monotonicity import injectivity_quality_3d
+
+        cz_, cy_, cx_ = center
+        sz_, sy_, sx_ = _unpack_size_3d(size)
+        hz_, hy_, hx_ = sz_ // 2, sy_ // 2, sx_ // 2
+        z0, z1 = max(cz_ - hz_ - 2, 0), min(cz_ + (sz_ - hz_) + 2, D)
+        y0, y1 = max(cy_ - hy_ - 2, 0), min(cy_ + (sy_ - hy_) + 2, H)
+        x0, x1 = max(cx_ - hx_ - 2, 0), min(cx_ + (sx_ - hx_) + 2, W)
+        mz0, mz1 = max(z0 - 1, 0), min(z1 + 1, D)
+        my0, my1 = max(y0 - 1, 0), min(y1 + 1, H)
+        mx0, mx1 = max(x0 - 1, 0), min(x1 + 1, W)
+        q = injectivity_quality_3d(phi[:, mz0:mz1, my0:my1, mx0:mx1])
+        q = q[
+            z0 - mz0 : z0 - mz0 + (z1 - z0),
+            y0 - my0 : y0 - my0 + (y1 - y0),
+            x0 - mx0 : x0 - mx0 + (x1 - x0),
+        ]
+        quality[z0:z1, y0:y1, x0:x1] = np.minimum(jac[z0:z1, y0:y1, x0:x1], q - inj_lb + threshold)
+        # Outside the affected region jac may not have changed but the
+        # stored quality there is already correct; refresh only jac-min.
+        return quality
+
+    quality_matrix = _quality(jacobian_matrix)
+    # Stall/escalation counters must track the same metric the loop
+    # gates on: with injectivity active the quality-violation count can
+    # differ wildly from the Jdet count (init_neg), and seeding from the
+    # wrong scale misfires the escalation heuristics from iteration 1.
+    init_gate_neg = int((quality_matrix <= threshold - err_tol).sum())
+
     _log(verbose, 1, f"[init] Neg-Jdet voxels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
-    prev_neg = init_neg
+    prev_neg = init_gate_neg
     global_min_window = (3, 3, 3)
     stall_counts = {}
     consecutive_improving = 0
@@ -145,7 +217,7 @@ def iterative_3d(
     # SLSQP livelock where neg oscillates (e.g. 12 -> 13 -> 12) without
     # either direction being sustained "progress".
     cur_voxel_cap = max_window_voxels
-    best_neg_seen = init_neg
+    best_neg_seen = init_gate_neg
     iters_since_best = 0
     _escalate_cap = (
         max_window_voxels is not None
@@ -161,14 +233,15 @@ def iterative_3d(
     iters_since_window_best = 0
     _OSCILLATION_STALL = 4
 
-    while iteration < max_iterations and (jacobian_matrix <= threshold - err_tol).any():
+    while iteration < max_iterations and (quality_matrix <= threshold - err_tol).any():
         iteration += 1
 
-        neg_index = argmin_worst_voxel(jacobian_matrix)
+        neg_index = argmin_worst_voxel(quality_matrix)
 
-        # Compute connected-component labels for the current negative mask.
+        # Compute connected-component labels for the current negative mask
+        # (quality-based, so injectivity violations are windowed too).
         # Used by the bounding-window and component-aware freeze mask.
-        neg_mask = jacobian_matrix <= threshold - err_tol
+        neg_mask = quality_matrix <= threshold - err_tol
         structure = np.ones((3, 3, 3))  # 26-connectivity
         labeled_array, _ = label(neg_mask, structure=structure)
 
@@ -176,7 +249,7 @@ def iterative_3d(
         stall_counts = {
             k: v
             for k, v in stall_counts.items()
-            if jacobian_matrix[k[0], k[1], k[2]] <= threshold - err_tol
+            if quality_matrix[k[0], k[1], k[2]] <= threshold - err_tol
         }
 
         jacobian_matrix, subvolume_size, per_index_iter, (_cz, _cy, _cx) = _serial_fix_voxel(
@@ -200,11 +273,18 @@ def iterative_3d(
             min_window=global_min_window,
             labeled_array=labeled_array,
             max_window_voxels=cur_voxel_cap,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
+        )
+        quality_matrix = (
+            _quality_patch(quality_matrix, jacobian_matrix, (_cz, _cy, _cx), subvolume_size)
+            if enforce_injectivity
+            else jacobian_matrix
         )
 
         sz, sy, sx = _unpack_size_3d(subvolume_size)
-        cur_neg = int((jacobian_matrix <= threshold - err_tol).sum())
-        cur_min = float(jacobian_matrix.min())
+        cur_neg = int((quality_matrix <= threshold - err_tol).sum())
+        cur_min = float(quality_matrix.min())
         cur_err = error_list[-1] if error_list else 0.0
         _log(
             verbose,
@@ -292,8 +372,8 @@ def iterative_3d(
                     f"{global_min_window[2]}",
                 )
 
-        if float(jacobian_matrix.min()) > threshold - err_tol:
-            _log(verbose, 1, f"[done] All Jdet > threshold after iter {iteration}")
+        if float(quality_matrix.min()) > threshold - err_tol:
+            _log(verbose, 1, f"[done] All quality > threshold after iter {iteration}")
             break
 
     end_time = time.time()

@@ -310,3 +310,35 @@ class TestDebugTracer:
     def test_constructs(self):
         tracer = DebugTracer()
         assert tracer is not None
+
+
+# ---------------------------------------------------------------------------
+# solveinfo.py
+# ---------------------------------------------------------------------------
+
+
+class TestPlotSolveInfo:
+    def test_renders_real_solve_history(self):
+        from dvfopt import BarrierStrategy, L2Objective, Solver, TriConstraint2D
+        from dvfopt.viz import plot_solve_info
+
+        rng = np.random.default_rng(3)
+        H, W = 10, 10
+        phi = np.stack([rng.normal(0, 0.2, (H, W)), rng.normal(0, 0.2, (H, W))])
+        phi[:, 4:6, 4:6] -= 1.2  # punch a fold
+        result = Solver(
+            constraint=TriConstraint2D(shape=(H, W)),
+            objective=L2Objective(),
+            strategy=BarrierStrategy(max_iter=50),
+        ).fit(phi, record_history=True)
+        fig = plot_solve_info(result.info, threshold=0.01)
+        assert len(fig.axes) == 2
+        plt.close(fig)
+
+    def test_renders_empty_info(self):
+        from dvfopt.solver import SolveInfo
+        from dvfopt.viz import plot_solve_info
+
+        fig = plot_solve_info(SolveInfo(strategy_name='EmptyStrategy'))
+        assert len(fig.axes) == 2
+        plt.close(fig)

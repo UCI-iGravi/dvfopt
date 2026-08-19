@@ -40,6 +40,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info, log_warning
 from dvfopt.core.tri_primitives import tri_areas_flat as _tri_areas_flat
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
 from dvfopt.core.wallbreakers._common import (
@@ -136,8 +137,8 @@ def iterative_2d_tri_refine_repair(
             step_callback({'phi': np.asarray(phi).copy(), 'stage': stage})
         except KeyboardInterrupt:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f'step_callback raised {type(exc).__name__}: {exc}; continuing')
 
     # Stage 1: m10 seed.
     if seed is None:
@@ -161,9 +162,8 @@ def iterative_2d_tri_refine_repair(
     seed_min = _min_tri(seed)
     info['stage1_seed'] = dict(min_T=seed_min, L2=seed_L2, wall=time.time() - t0)
     if verbose:
-        print(
+        log_info(
             f'  stage1 seed  min_T={seed_min:+.5f}  L2={seed_L2:.1f}  ({time.time() - t0:.1f}s)',
-            flush=True,
         )
     _fire('stage1_seed', seed)
 
@@ -190,10 +190,9 @@ def iterative_2d_tri_refine_repair(
         min_T=pulled_min, L2=pulled_L2, n_neg=pulled_neg, wall=time.time() - t0
     )
     if verbose:
-        print(
+        log_info(
             f'  stage2 pull  min_T={pulled_min:+.5f}  L2={pulled_L2:.1f}  '
             f'n_neg={pulled_neg}  ({time.time() - t0:.1f}s)',
-            flush=True,
         )
     _fire('stage2_pull', pulled)
 
@@ -212,10 +211,9 @@ def iterative_2d_tri_refine_repair(
     repaired_L2 = float(np.linalg.norm((repaired - phi_in).ravel()))
     info['stage3_repair'] = dict(min_T=repaired_min, L2=repaired_L2, wall=time.time() - t0)
     if verbose:
-        print(
+        log_info(
             f'  stage3 patch min_T={repaired_min:+.5f}  '
             f'L2={repaired_L2:.1f}  ({time.time() - t0:.1f}s)',
-            flush=True,
         )
     _fire('stage3_repair', repaired)
 
@@ -273,11 +271,10 @@ def iterative_2d_tri_refine_repair(
             )
         )
         if verbose:
-            print(
+            log_info(
                 f'  stage4 mu={mu:.1e}  min_T={T.min():+.5f}  '
                 f'L2={float(np.linalg.norm(phi_flat - phi_in_flat)):.1f}  '
                 f'nit={res.nit}  ({time.time() - t0:.1f}s)',
-                flush=True,
             )
         # Emit one snapshot per μ-step so the GUI can scrub through the
         # polish loop. Unflatten phi_flat back to (2, H, W).

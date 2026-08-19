@@ -26,6 +26,7 @@ import time
 import numpy as np
 from scipy.ndimage import zoom
 
+from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
@@ -114,27 +115,25 @@ def multiscale_seed_3d(
     coarse = _downsample_2x(phi)
     if coarse is None or min(coarse.shape[1:]) < 2:
         if verbose:
-            print('  [multiscale] too small to downsample — single fine solve', flush=True)
+            log_info('  [multiscale] too small to downsample — single fine solve')
         out = inner_solve(phi, threshold)
         return out, {'used_multiscale': False, 'wall_s': time.time() - t0}
 
     if verbose:
         cv = six_tet_min_volume_3d(coarse)
-        print(f'  [multiscale] coarse {coarse.shape[1:]} n_neg={int((cv <= 0).sum())}', flush=True)
+        log_info(f'  [multiscale] coarse {coarse.shape[1:]} n_neg={int((cv <= 0).sum())}')
     coarse_out = inner_solve(coarse, coarse_threshold)
     ups = _upsample_2x(coarse_out, phi.shape[1:])
     if verbose:
         uv = six_tet_min_volume_3d(ups)
-        print(
+        log_info(
             f'  [multiscale] upsampled n_neg={int((uv <= 0).sum())} (transient) -> fine polish',
-            flush=True,
         )
     out = inner_solve(ups, threshold)
     if verbose:
         ov = six_tet_min_volume_3d(out)
-        print(
+        log_info(
             f'  [multiscale] fine n_neg={int((ov <= 0).sum())} ({time.time() - t0:.1f}s)',
-            flush=True,
         )
     return out, {'used_multiscale': True, 'wall_s': time.time() - t0}
 

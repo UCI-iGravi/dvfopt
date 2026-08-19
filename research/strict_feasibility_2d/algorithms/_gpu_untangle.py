@@ -435,5 +435,10 @@ def gpu_shifted_barrier_untangle_2d(phi_in_2hw, *, threshold=0.01, buffer=0.05,
     return out, {'n_neg': nneg, 'min_area': amn}
 
 
-__all__ = ['gpu_untangle_2d', 'gpu_untangle_alm_2d', 'gpu_untangle_full_2d',
-           'gpu_barrier_untangle_2d', 'gpu_shifted_barrier_untangle_2d']
+__all__ = [
+    'gpu_barrier_untangle_2d',
+    'gpu_shifted_barrier_untangle_2d',
+    'gpu_untangle_2d',
+    'gpu_untangle_alm_2d',
+    'gpu_untangle_full_2d',
+]

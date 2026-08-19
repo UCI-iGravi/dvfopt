@@ -21,8 +21,8 @@ DEPTH_CUT = -2.0
 
 
 def main():
-    from dvfopt.core.slp.cluster_lp_2tri import _fold_clusters
     from dvfopt.core.slp import slp_iter
+    from dvfopt.core.slp.cluster_lp_2tri import _fold_clusters
     from dvfopt.core.tri_primitives import tri_areas_flat
 
     THR = 0.01
