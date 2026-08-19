@@ -6,6 +6,18 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Developer tooling.** `[tool.pytest.ini_options]` scopes collection to
+  `tests/` (bare `pytest` no longer over-collects the notebook scratch
+  scripts); `pytest-randomly` (order-shuffling), `pytest-xdist`
+  (`pytest -n auto`), and `pytest-cov` added; `mypy` gate scoped to the
+  cleanly-typed modules (`[tool.mypy]`); a `nox` task runner (`noxfile.py`);
+  `asv` solver-perf benchmarks (`asv_bench/`, `asv.conf.json`); Dependabot
+  (`.github/dependabot.yml`); and the `ruff-pre-commit` pin bumped to
+  `v0.15.21` to match pyproject/CI. `test.yml` now also runs mypy, a
+  parallel test leg, an installed-CLI smoke, and a coverage job.
+
 ### Fixed
 
 - **Visualization theme no longer leaks global matplotlib state.**
