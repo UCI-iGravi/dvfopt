@@ -36,8 +36,40 @@ jobs:
       - name: Format check
         run: python -m ruff format --check dvfopt dvfopt_gui tests benchmarks
 
+      - name: Type check (scoped; see [tool.mypy] in pyproject.toml)
+        run: python -m mypy
+
       - name: Tests
-        run: python -m pytest tests/ -q
+        # -n auto (pytest-xdist) parallelizes across the runner's cores;
+        # pytest-randomly shuffles order to surface order-dependencies.
+        run: python -m pytest tests/ -q -n auto
+
+      - name: CLI smoke (installed entry point)
+        run: |
+          dvfopt --help
+          python -c "import numpy as np; np.save('flat.npy', np.zeros((2, 8, 8)))"
+          dvfopt info flat.npy --check
+
+  coverage:
+    # Coverage report (single Python; non-blocking — no threshold gate yet).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Tests with coverage
+        run: python -m pytest tests/ -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
   benchmark-smoke:
     # Smoke-test that the benchmark scripts can still import.
