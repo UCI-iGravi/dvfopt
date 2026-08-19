@@ -3,9 +3,11 @@
 Renders each field as a pan/zoom ``<canvas>`` viewer over its Jacobian-determinant
 map (before/after toggle), with a hover-readout tooltip (~3-digit display), a toggleable
 displacement-vector overlay, and a click-to-locate region-of-interest table that
-ranks the worst fold clusters. Everything is inlined (base64 float arrays + one
-shared vanilla-JS viewer) so the single .html file is portable — no CDNs, no
-external assets.
+ranks the worst fold clusters. When the payload carries a ``traj`` (K sampled Jdet
+frames from the solver's iterations — see ``cohort_benchmark._sample_trajectory``),
+the viewer also gets a play/scrub timeline that animates how the field deforms as
+the solver runs. Everything is inlined (base64 float arrays + one shared vanilla-JS
+viewer) so the single .html file is portable — no CDNs, no external assets.
 
 Pure-Python, testable pieces:
 - ``b64_floats`` / ``fold_clusters_2d`` / ``fold_clusters_3d`` — data prep.
@@ -130,6 +132,10 @@ tr.feasible td.status { color:var(--good); } tr.infeasible td.status { color:var
 .controls button { font:inherit; padding:3px 10px; border:1px solid var(--line); border-radius:4px;
                    background:var(--bg); color:var(--fg); cursor:pointer; }
 .controls button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+.trajgrp { display:inline-flex; gap:8px; align-items:center; padding-left:6px;
+           margin-left:2px; border-left:1px solid var(--line); }
+.trajgrp input.traj { vertical-align:middle; width:150px; accent-color:var(--accent); }
+.trajlbl { font:12px/1.3 monospace; color:var(--muted, #667); min-width:96px; }
 .tip { position:absolute; pointer-events:none; background:rgba(0,0,0,.82); color:#fff; padding:4px 7px;
        border-radius:4px; font:12px/1.3 monospace; white-space:pre; display:none; z-index:5; }
 .roi { flex:1 1 320px; min-width:280px; max-height:360px; overflow:auto; }
@@ -189,17 +195,28 @@ function Viewer(root, data){
   const cv=root.querySelector('canvas'), ctx=cv.getContext('2d');
   const tip=root.querySelector('.tip');
   const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d');
-  let showAfter=false, showQuiver=false;
+  let showAfter=false, showQuiver=false, trajIdx=-1, playTimer=null;
   const imgB=buildImage(jb,W,H,thr,vmax), imgA=buildImage(ja,W,H,thr,vmax);
+  const hasTraj=!!(data.traj&&data.traj.length);
+  const trajF32=hasTraj?data.traj.map(b64ToF32):null;
+  const imgTraj=hasTraj?trajF32.map(f=>buildImage(f,W,H,thr,vmax)):null;
+  const trajLbls=data.traj_labels||[];
+  function curImg(){ return trajIdx>=0?imgTraj[trajIdx]:(showAfter?imgA:imgB); }
+  function setTrajLbl(){ const l=root.querySelector('.trajlbl');
+    if (l) l.textContent = trajIdx>=0 ? (trajLbls[trajIdx]||('frame '+(trajIdx+1)+'/'+imgTraj.length)) : ''; }
+  function stopPlay(){ if (playTimer){ clearInterval(playTimer); playTimer=null; }
+    const pb=root.querySelector('[data-act=play]'); if (pb) pb.classList.remove('on'); }
+  function exitTraj(){ stopPlay(); trajIdx=-1;
+    const s=root.querySelector('.traj'); if (s) s.value=0; setTrajLbl(); }
   cv.width=W; cv.height=H;  // internal res = data res; CSS scales to fit
   let scale=1, ox=0, oy=0, roiBox=null;
   function draw(){
-    octx.putImageData(showAfter?imgA:imgB, 0, 0);
+    octx.putImageData(curImg(), 0, 0);
     ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
     ctx.imageSmoothingEnabled=false;
     ctx.setTransform(scale,0,0,scale,ox,oy);
     ctx.drawImage(off,0,0);
-    if (showQuiver){
+    if (showQuiver && trajIdx<0){
       const dy=showAfter?dyA:dyB, dx=showAfter?dxA:dxB;  // vectors match the shown view
       const stride=Math.max(1, Math.round(10/scale)); ctx.lineWidth=Math.max(0.4,0.8/scale);
       ctx.strokeStyle='rgba(255,220,0,.8)'; ctx.beginPath();
@@ -236,23 +253,36 @@ function Viewer(root, data){
       ox=drag[2]+(e.clientX-drag[0])*sx; oy=drag[3]+(e.clientY-drag[1])*sy; draw(); return; }
     const [px,py]=toPix(e); const x=Math.floor(px), y=Math.floor(py);
     if (x<0||y<0||x>=W||y>=H){ tip.style.display='none'; return; }
-    const i=y*W+x; const jv=(showAfter?ja:jb)[i];
-    const hdy=(showAfter?dyA:dyB)[i], hdx=(showAfter?dxA:dxB)[i];
-    tip.textContent='y='+y+' x='+x+'\nJdet ~'+jv.toFixed(3)+(jv<thr?'  (FOLD)':'')+
-                    '\ndy='+hdy.toFixed(3)+' dx='+hdx.toFixed(3);
+    const i=y*W+x; const jv=trajIdx>=0?trajF32[trajIdx][i]:(showAfter?ja:jb)[i];
+    let txt='y='+y+' x='+x+'\nJdet ~'+jv.toFixed(3)+(jv<thr?'  (FOLD)':'');
+    if (trajIdx<0){ const hdy=(showAfter?dyA:dyB)[i], hdx=(showAfter?dxA:dxB)[i];
+      txt+='\ndy='+hdy.toFixed(3)+' dx='+hdx.toFixed(3); }
+    tip.textContent=txt;
     const r=cv.getBoundingClientRect();
     tip.style.left=(e.clientX-r.left+12)+'px'; tip.style.top=(e.clientY-r.top+12)+'px'; tip.style.display='block';
   });
   cv.addEventListener('pointerleave', ()=>{ tip.style.display='none'; });
   root.querySelector('[data-act=after]').addEventListener('click', e=>{
-    showAfter=!showAfter; e.target.classList.toggle('on', showAfter);
+    exitTraj(); showAfter=!showAfter; e.target.classList.toggle('on', showAfter);
     e.target.textContent=showAfter?'Showing: after':'Showing: before'; draw(); });
+  if (hasTraj){
+    const sl=root.querySelector('.traj'), pb=root.querySelector('[data-act=play]');
+    sl.addEventListener('input', ()=>{ stopPlay(); trajIdx=+sl.value; setTrajLbl(); draw(); });
+    pb.addEventListener('click', ()=>{
+      if (playTimer){ stopPlay(); return; }
+      pb.classList.add('on'); trajIdx=0; sl.value=0; setTrajLbl(); draw();
+      playTimer=setInterval(()=>{
+        if (trajIdx>=imgTraj.length-1){ stopPlay(); return; }
+        trajIdx++; sl.value=trajIdx; setTrajLbl(); draw();
+      }, 450);
+    });
+  }
   root.querySelector('[data-act=quiver]').addEventListener('click', e=>{
     showQuiver=!showQuiver; e.target.classList.toggle('on', showQuiver); draw(); });
   const corrBtn=root.querySelector('[data-act=corr]');
   if (corrBtn) corrBtn.addEventListener('click', e=>{
     showCorr=!showCorr; e.target.classList.toggle('on', showCorr); draw(); });
-  root.querySelector('[data-act=reset]').addEventListener('click', ()=>{ scale=1; ox=0; oy=0; roiBox=null; draw(); });
+  root.querySelector('[data-act=reset]').addEventListener('click', ()=>{ exitTraj(); scale=1; ox=0; oy=0; roiBox=null; draw(); });
   function centerOn(cx, cy, half){  // set zoom+pan to frame a region; caller sets roiBox
     const pad=half*1.5+8; scale=Math.max(1, Math.min(60, cv.width/(2*pad)));
     ox=cv.width/2 - cx*scale; oy=cv.height/2 - cy*scale; draw();
@@ -371,13 +401,24 @@ def _corr_outlier_table(outliers):
 def _field_block(p):
     vid = p["id"]
     has_corr = "corr_fy" in p
+    has_traj = bool(p.get("traj"))
     corr_btn = "<button data-act=corr>Correspondences</button>" if has_corr else ""
+    traj_ctrl = (
+        (
+            '<span class="trajgrp"><button data-act=play>▶ Play iterations</button>'
+            f'<input type=range class=traj min=0 max="{len(p["traj"]) - 1}" value=0 step=1>'
+            '<span class=trajlbl></span></span>'
+        )
+        if has_traj
+        else ""
+    )
     controls = (
         '<div class="controls">'
         '<button data-act=after>Showing: before</button>'
         '<button data-act=quiver>Displacement vectors</button>'
         f"{corr_btn}"
         '<button data-act=reset>Reset view</button>'
+        f"{traj_ctrl}"
         "<span class=sub>scroll = zoom · drag = pan · hover = value</span></div>"
     )
     viewer = (
@@ -400,6 +441,9 @@ def _field_block(p):
     if has_corr:
         for k in ("corr_fy", "corr_fx", "corr_my", "corr_mx", "corr_outlier_idx"):
             data[k] = p[k]
+    if has_traj:
+        data["traj"] = p["traj"]
+        data["traj_labels"] = p.get("traj_labels") or []
     data_json = json.dumps(data)
     note = f'<p class="sub">{_esc(p["note"])}</p>' if p.get("note") else ""
     corr_stats = _corr_stats_html(p["corr_stats"]) if has_corr else ""

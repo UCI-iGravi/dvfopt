@@ -297,3 +297,31 @@ def test_build_3d_payload_traj_presence():
     assert len(p["traj_labels"]) == len(p["traj"])
     p0 = cb._build_3d_payload("v2", "lbl", fi, fo, ji, jf, m, 0.01, frames=None)
     assert "traj" not in p0
+
+
+def test_interactive_report_animates_streaming_corrector(tmp_path):
+    # Default corrector (make_25d_corrector) streams intermediate volumes ->
+    # the interactive report gains the play/scrub trajectory control.
+    rd = cb.run_cohort_benchmark(
+        fields={"F": _folded(0)},
+        interactive=True,
+        run_name="traj",
+        out_base=str(tmp_path),
+        threshold=0.01,
+    )
+    doc = (rd / "report.html").read_text(encoding="utf-8")
+    assert "Play iterations" in doc
+
+
+def test_interactive_report_no_animation_for_nonstreaming_corrector(tmp_path):
+    # A plain corrector(phi)->phi can't stream frames -> before/after only.
+    rd = cb.run_cohort_benchmark(
+        corrector=lambda p: p * 0.1,
+        fields={"F": _folded(0)},
+        interactive=True,
+        run_name="noanim",
+        out_base=str(tmp_path),
+        threshold=0.01,
+    )
+    doc = (rd / "report.html").read_text(encoding="utf-8")
+    assert "Play iterations" not in doc
