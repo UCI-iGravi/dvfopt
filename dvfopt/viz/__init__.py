@@ -45,6 +45,7 @@ from dvfopt.viz.overview import (
     plot_solver_comparison,
 )
 from dvfopt.viz.snapshots import plot_step_snapshot
+from dvfopt.viz.solveinfo import plot_solve_info
 from dvfopt.viz.theme import (
     PALETTE,
     Palette,
@@ -91,6 +92,7 @@ __all__ = [
     "plot_neg_jdet_neighborhoods",
     "plot_neg_voxels_before_after",
     "plot_problematic_triangles",
+    "plot_solve_info",
     "plot_solver_comparison",
     "plot_step_snapshot",
     "plot_triangle_debug",
