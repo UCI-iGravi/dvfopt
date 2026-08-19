@@ -33,6 +33,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no GUI, safe in notebooks / CI
 import benchmark_utils as bu
+import interactive_report as ir
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -70,6 +71,101 @@ def _n_clusters(jac, threshold):
     from scipy.ndimage import label
 
     return int(label(jac < threshold)[1])
+
+
+def _tri_stats_2d(section, threshold):
+    """2-triangle fold count + min triangle area for a (3, 1, H, W) 2D section."""
+    from dvfopt.core.tri_primitives import tri_areas_flat
+
+    dy, dx = section[1, 0], section[2, 0]
+    h, w = dy.shape
+    areas = tri_areas_flat(np.concatenate([dy.ravel(), dx.ravel()]), h, w)
+    return int((areas < threshold).sum()), float(areas.min())
+
+
+def _tet_stats_3d(field, threshold, max_voxels=8_000_000):
+    """6-tet fold count + min tet volume for a (3, D, H, W) field.
+
+    Best-effort: the 6-tet constraint materializes ~6 volumes of tet volumes, so
+    for large fields (or on MemoryError) it returns ``(None, None)`` rather than
+    OOM the run — the report shows "n/a" for the tet family then.
+    """
+    d, h, w = field.shape[1:]
+    if d * h * w > max_voxels:
+        return None, None
+    try:
+        from dvfopt.constraints import Tet6Constraint3D
+
+        c = Tet6Constraint3D(shape=(d, h, w))
+        vals = np.asarray(c.values(c.flatten(field)))
+        if vals.size == 0:  # degenerate dim (D/H/W == 1) -> no tets
+            return None, None
+        return int((vals < threshold).sum()), float(vals.min())
+    except (MemoryError, ValueError):
+        return None, None
+
+
+def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, threshold):
+    """Assemble the per-section interactive-viewer payload (base64 arrays + ROI + metrics)."""
+    vmax = float(max(1.0, np.percentile(np.abs(jac_init), 99)))
+    families = [
+        ("Jdet", m["n_neg_init"], m["n_neg_final"], m["min_jdet_init"], m["min_jdet_final"]),
+        ("2-tri", m["n_tri_init"], m["n_tri_final"], m["tri_min_init"], m["tri_min_final"]),
+    ]
+    return {
+        "id": vid,
+        "label": label,
+        "w": int(jac_init.shape[1]),
+        "h": int(jac_init.shape[0]),
+        "threshold": threshold,
+        "vmax": vmax,
+        "jdet_before": ir.b64_floats(jac_init),
+        "jdet_after": ir.b64_floats(jac_final),
+        "dy_before": ir.b64_floats(sec_init[1, 0]),
+        "dx_before": ir.b64_floats(sec_init[2, 0]),
+        "dy_after": ir.b64_floats(sec_out[1, 0]),
+        "dx_after": ir.b64_floats(sec_out[2, 0]),
+        "rois": ir.fold_clusters_2d(jac_init, threshold),
+        "families": families,
+    }
+
+
+def _build_3d_payload(vid, label, field_init, field_out, jac_init3d, jac_final3d, m, threshold):
+    """3D interactive payload: worst z-slice viewer + volume-wide ROI (z,y,x).
+
+    Embedding the whole volume would be extreme (~GBs); the viewer shows the
+    worst-folding slice at full resolution, and the ROI table ranks fold clusters
+    across the entire volume (each carries its z).
+    """
+    folds_per_z = (jac_init3d < threshold).reshape(jac_init3d.shape[0], -1).sum(axis=1)
+    zc = int(np.argmax(folds_per_z))
+    jb, ja = jac_init3d[zc], jac_final3d[zc]
+    vmax = float(max(1.0, np.percentile(np.abs(jac_init3d), 99)))
+    families = [
+        ("Jdet", m["n_neg_init"], m["n_neg_final"], m["min_jdet_init"], m["min_jdet_final"]),
+    ]
+    if m.get("n_tet_init") is not None:
+        families.append(
+            ("6-tet", m["n_tet_init"], m["n_tet_final"], m["tet_min_init"], m["tet_min_final"])
+        )
+    return {
+        "id": vid,
+        "label": f"{label}  (viewer: worst z={zc})",
+        "w": int(jb.shape[1]),
+        "h": int(jb.shape[0]),
+        "threshold": threshold,
+        "vmax": vmax,
+        "jdet_before": ir.b64_floats(jb),
+        "jdet_after": ir.b64_floats(ja),
+        "dy_before": ir.b64_floats(field_init[1, zc]),
+        "dx_before": ir.b64_floats(field_init[2, zc]),
+        "dy_after": ir.b64_floats(field_out[1, zc]),
+        "dx_after": ir.b64_floats(field_out[2, zc]),
+        "rois": ir.fold_clusters_3d(jac_init3d, threshold),
+        "families": families,
+        "note": f"3D volume — viewer embeds the worst z-slice (z={zc}); ROI table spans the "
+        "whole volume (click a row whose z matches the shown slice to locate it).",
+    }
 
 
 def _measure(phi_init, phi, elapsed, threshold):
@@ -393,6 +489,14 @@ _CSV_COLS = [
     "n_clusters_final",
     "min_jdet_init",
     "min_jdet_final",
+    "n_tri_init",
+    "n_tri_final",
+    "tri_min_init",
+    "tri_min_final",
+    "n_tet_init",
+    "n_tet_final",
+    "tet_min_init",
+    "tet_min_final",
     "l2_err",
     "time_s",
 ]
@@ -404,6 +508,7 @@ def run_cohort_benchmark(
     fields=None,
     items=None,
     variant="laplacian_exterior",
+    interactive=False,
     run_name="run",
     out_base="output/cohort",
     threshold=0.01,
@@ -423,6 +528,9 @@ def run_cohort_benchmark(
     variant : str
         Cohort variant to benchmark when *items* is not given
         (default ``"laplacian_exterior"`` — the folding-benchmark focus).
+    interactive : bool
+        Emit the interactive HTML report (Jdet + 6-tet metrics, a worst-z-slice
+        pan/zoom viewer, and a volume-wide ROI table) instead of static figures.
     run_name, out_base, threshold, make_figures, verbose
         Run knobs. ``out_base`` is cwd-relative unless absolute.
     """
@@ -445,7 +553,8 @@ def run_cohort_benchmark(
     fig_dir = run_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = []
+    static_figs = make_figures and not interactive
+    rows, payloads = [], []
     t_run = time.perf_counter()
     for label, brain, variant, load in work:
         if verbose:
@@ -455,22 +564,34 @@ def run_cohort_benchmark(
         phi = corrector(phi_init.copy())
         elapsed = time.perf_counter() - t0
         m = _measure(phi_init, phi, elapsed, threshold)
+        jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
+        if interactive:  # 6-tet is heavy (materializes ~6 volumes) — only when reported
+            m["n_tet_init"], m["tet_min_init"] = _tet_stats_3d(phi_init, threshold)
+            m["n_tet_final"], m["tet_min_final"] = _tet_stats_3d(phi, threshold)
 
         fig_uri = None
-        if make_figures:
-            png = _field_figure(label, m.pop("_jac_init"), m.pop("_jac_final"), threshold)
-            fig_path = fig_dir / (label.replace("/", "__") + ".png")
-            fig_path.write_bytes(png)
+        if interactive:
+            vid = label.replace("/", "__")
+            payloads.append(
+                _build_3d_payload(vid, label, phi_init, phi, jac_init, jac_final, m, threshold)
+            )
+        elif static_figs:
+            png = _field_figure(label, jac_init, jac_final, threshold)
+            (fig_dir / (label.replace("/", "__") + ".png")).write_bytes(png)
             fig_uri = _png_data_uri(png)
-        else:
-            m.pop("_jac_init", None)
-            m.pop("_jac_final", None)
 
         rows.append({"label": label, "brain": brain, "variant": variant, "fig_uri": fig_uri, **m})
 
     total_time_s = time.perf_counter() - t_run
     _write_run_artifacts(
-        run_dir, fig_dir, rows, corrector_label, threshold, total_time_s, make_figures
+        run_dir,
+        fig_dir,
+        rows,
+        corrector_label,
+        threshold,
+        total_time_s,
+        make_figures=static_figs,
+        payloads=payloads if interactive else None,
     )
     if verbose:
         print(f"[cohort] wrote {run_dir}", flush=True)
@@ -478,14 +599,19 @@ def run_cohort_benchmark(
 
 
 def _write_run_artifacts(
-    run_dir, fig_dir, rows, corrector_label, threshold, total_time_s, make_figures
+    run_dir, fig_dir, rows, corrector_label, threshold, total_time_s, make_figures, payloads=None
 ):
-    """Shared: write results.csv, summary.json, cohort figure, and report.html."""
+    """Shared: write results.csv, summary.json, and report.html.
+
+    When *payloads* is given, an interactive report is written instead of the
+    static one (the cohort bar chart is skipped — the viewer replaces it).
+    """
+    cols = [c for c in _CSV_COLS if any(c in r for r in rows)] or _CSV_COLS
     with open(run_dir / "results.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=_CSV_COLS)
+        w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         for r in rows:
-            w.writerow({k: r.get(k) for k in _CSV_COLS})
+            w.writerow({k: r.get(k) for k in cols})
 
     meta = {
         "corrector": corrector_label,
@@ -498,6 +624,10 @@ def _write_run_artifacts(
         "total_time_s": total_time_s,
     }
     (run_dir / "summary.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    if payloads is not None:
+        ir.build_interactive_report(run_dir / "report.html", meta, payloads)
+        return
 
     cohort_fig_uri = None
     if make_figures:
@@ -607,24 +737,30 @@ def make_jdet2d_corrector(**kw):
     )
 
 
-def _process_section(corrector, brain, z, sec_init, threshold, make_figures):
+def _process_section(corrector, brain, z, sec_init, threshold, make_figures, interactive=False):
     """Solve + measure one 2D section (module-level so it is process-pool picklable).
 
-    Returns ``(brain, z, metrics_dict, png_bytes_or_None)``. The figure PNG is
-    built in the worker so only ~50 KB of bytes cross the process boundary.
+    Returns ``(brain, z, metrics, extra)``. ``extra`` is the interactive-viewer
+    payload dict when *interactive*, else the static figure PNG bytes (or None).
+    Both are built in the worker so only compact data crosses the process boundary.
     """
     sec_init = np.asarray(sec_init).astype(np.float64)
     t0 = time.perf_counter()
     sec_out = corrector(sec_init.copy())
     elapsed = time.perf_counter() - t0
     m = _measure_2d(sec_init, sec_out, elapsed, threshold)
-    png = None
-    if make_figures:
-        png = _section_figure(f"{brain}/z{z}", m.pop("_jac_init"), m.pop("_jac_final"), threshold)
-    else:
-        m.pop("_jac_init", None)
-        m.pop("_jac_final", None)
-    return brain, z, m, png
+    jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
+    m["n_tri_init"], m["tri_min_init"] = _tri_stats_2d(sec_init, threshold)
+    m["n_tri_final"], m["tri_min_final"] = _tri_stats_2d(sec_out, threshold)
+
+    extra = None
+    if interactive:
+        extra = _build_2d_payload(
+            f"{brain}__z{z}", f"{brain}/z{z}", sec_init, sec_out, jac_init, jac_final, m, threshold
+        )
+    elif make_figures:
+        extra = _section_figure(f"{brain}/z{z}", jac_init, jac_final, threshold)
+    return brain, z, m, extra
 
 
 def run_cohort_2d_sections(
@@ -635,6 +771,7 @@ def run_cohort_2d_sections(
     variant="laplacian_exterior",
     n_worst=3,
     n_workers=1,
+    interactive=False,
     run_name="sections2d",
     out_base="output/cohort_2d",
     threshold=0.01,
@@ -693,6 +830,8 @@ def run_cohort_2d_sections(
             work.append((b, z, field[:, z : z + 1].copy()))
         del field
 
+    # Interactive mode builds a payload per section instead of a static PNG.
+    static_figs = make_figures and not interactive
     t_run = time.perf_counter()
     if n_workers > 1 and len(work) > 1:
         from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -701,7 +840,9 @@ def run_cohort_2d_sections(
             print(f"[2d] {len(work)} sections across {n_workers} workers ...", flush=True)
         with ProcessPoolExecutor(max_workers=n_workers) as ex:
             fut_id = {
-                ex.submit(_process_section, corrector, b, z, sec, threshold, make_figures): (b, z)
+                ex.submit(
+                    _process_section, corrector, b, z, sec, threshold, static_figs, interactive
+                ): (b, z)
                 for (b, z, sec) in work
             }
             done = {}
@@ -716,20 +857,31 @@ def run_cohort_2d_sections(
         for b, z, sec in work:
             if verbose:
                 print(f"[2d] {b}/z{z} ...", flush=True)
-            results.append(_process_section(corrector, b, z, sec, threshold, make_figures))
+            results.append(
+                _process_section(corrector, b, z, sec, threshold, static_figs, interactive)
+            )
 
-    rows = []
-    for brain, z, m, png in results:
+    rows, payloads = [], []
+    for brain, z, m, extra in results:
         label = f"{brain}/z{z}"
         fig_uri = None
-        if png is not None:
-            (fig_dir / (label.replace("/", "__") + ".png")).write_bytes(png)
-            fig_uri = _png_data_uri(png)
+        if interactive and extra is not None:
+            payloads.append(extra)
+        elif extra is not None:
+            (fig_dir / (label.replace("/", "__") + ".png")).write_bytes(extra)
+            fig_uri = _png_data_uri(extra)
         rows.append({"label": label, "brain": brain, "variant": f"z{z}", "fig_uri": fig_uri, **m})
 
     total_time_s = time.perf_counter() - t_run
     _write_run_artifacts(
-        run_dir, fig_dir, rows, corrector_label, threshold, total_time_s, make_figures
+        run_dir,
+        fig_dir,
+        rows,
+        corrector_label,
+        threshold,
+        total_time_s,
+        make_figures=static_figs,
+        payloads=payloads if interactive else None,
     )
     if verbose:
         print(f"[2d] wrote {run_dir}", flush=True)
