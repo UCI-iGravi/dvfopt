@@ -23,8 +23,14 @@ from scipy import ndimage as ndi
 
 
 def b64_floats(arr):
-    """Base64 of a little-endian float32 buffer (the JS side reads it as Float32Array)."""
-    return base64.b64encode(np.ascontiguousarray(arr, dtype="<f4").tobytes()).decode("ascii")
+    """Base64 of a little-endian float16 buffer (halves report size; the JS side
+    decodes it back to a Float32Array).
+
+    float16 (~3-4 significant digits) is display-only precision — these arrays feed
+    the canvas/hover/quiver, never a computation. All reported metrics are computed
+    in Python at full precision. Coordinates (< 2048) are exact in float16.
+    """
+    return base64.b64encode(np.ascontiguousarray(arr, dtype="<f2").tobytes()).decode("ascii")
 
 
 def _clusters(mask, jac, threshold, top, ndim):
@@ -125,10 +131,18 @@ code { background:var(--line); padding:1px 5px; border-radius:3px; font-size:12p
 # One viewer instance per field. Data is attached as a JSON <script> per field and
 # wired by id. Vanilla JS, no libraries.
 _JS = r"""
-function b64ToF32(b64){
-  const bin = atob(b64); const len = bin.length; const buf = new Uint8Array(len);
-  for (let i=0;i<len;i++) buf[i]=bin.charCodeAt(i);
-  return new Float32Array(buf.buffer);
+function halfToFloat(h){  // IEEE 754 half -> JS number
+  const s=(h&0x8000)>>15, e=(h&0x7C00)>>10, f=h&0x03FF;
+  if (e===0) return (s?-1:1)*Math.pow(2,-14)*(f/1024);
+  if (e===0x1F) return f?NaN:((s?-1:1)*Infinity);
+  return (s?-1:1)*Math.pow(2,e-15)*(1+f/1024);
+}
+function b64ToF32(b64){  // base64 of little-endian float16 -> Float32Array
+  const bin = atob(b64); const len = bin.length; const u8 = new Uint8Array(len);
+  for (let i=0;i<len;i++) u8[i]=bin.charCodeAt(i);
+  const n = len>>1; const out = new Float32Array(n);
+  for (let i=0;i<n;i++) out[i] = halfToFloat(u8[2*i] | (u8[2*i+1]<<8));
+  return out;
 }
 function divColor(v, thr, vmax){
   // diverging: folded (< thr) reds, feasible blues, |v| scaled by vmax

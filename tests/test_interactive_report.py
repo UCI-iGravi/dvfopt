@@ -13,10 +13,12 @@ if str(benchmarks_dir) not in sys.path:
 import interactive_report as ir  # noqa: E402
 
 
-def test_b64_floats_roundtrips():
+def test_b64_floats_roundtrips_float16():
+    # Embedded arrays are display-only float16 (halves report size).
     a = np.array([[1.5, -2.0], [0.01, 300.0]], dtype=np.float64)
-    back = np.frombuffer(base64.b64decode(ir.b64_floats(a)), dtype="<f4").reshape(a.shape)
-    assert np.allclose(a, back, atol=1e-4)
+    back = np.frombuffer(base64.b64decode(ir.b64_floats(a)), dtype="<f2").reshape(a.shape)
+    assert np.allclose(a, back, atol=0.2)  # ~3-4 sig digits
+    assert len(base64.b64decode(ir.b64_floats(a))) == a.size * 2  # 2 bytes/value
 
 
 def test_fold_clusters_2d_ranks_by_severity():
