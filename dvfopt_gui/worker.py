@@ -348,7 +348,7 @@ class LoadWorker(QtCore.QThread):
 
     Dispatches by extension: ``.npy``/``.npz`` through
     :func:`dvfopt_gui.persistence.parse_loaded` (full saved-run support),
-    SimpleITK formats through :func:`dvfopt_gui.io_formats.load_dvf_sitk`.
+    SimpleITK formats through :func:`dvfopt.io.fields.load_dvf_sitk`.
     Emits ``loadedRun`` with a ``LoadedRun`` on success, else ``failed``
     with a message. GB-scale ``np.load`` + float64 conversion no longer
     freeze the window.
@@ -363,7 +363,7 @@ class LoadWorker(QtCore.QThread):
 
     def run(self):
         try:
-            from dvfopt_gui.io_formats import is_sitk_path, load_dvf_sitk
+            from dvfopt.io.fields import is_sitk_path, load_dvf_sitk
             from dvfopt_gui.persistence import LoadedRun, parse_loaded
 
             if is_sitk_path(self._path):
@@ -378,6 +378,39 @@ class LoadWorker(QtCore.QThread):
             self.loadedRun.emit(run)
         except Exception as exc:
             self.failed.emit(f'{type(exc).__name__}: {exc}')
+
+
+# Map GUI method-ids (``<algo>_<constraint>``) to dvfopt strategy-registry
+# labels, so ``_build_strategy`` constructs via the library's ``make_strategy``
+# instead of a hand-maintained class ladder. Adding/renaming a Strategy then
+# needs a registry label + a menu-spec row + one row here; the menu<->registry
+# parity is test-enforced (tests/test_gui_strategy_parity.py).
+#
+# Method-ids NOT here route dynamically and are handled explicitly in
+# ``_build_strategy`` / ``run``: the ``auto_*`` pickers (via ``auto_strategy``),
+# the 2D windowed path (``iterative_serial`` directly), and ``pipeline3d`` /
+# ``marching25d`` (whole-pipeline entry points, not a Strategy).
+_MID_TO_LABEL = {
+    'barrier_2tri': 'barrier',
+    'barrier_jdet': 'barrier',
+    'barrier_jdet3d': 'barrier',
+    'm10_2tri': 'm10',
+    'm14_2tri': 'm14',
+    'm14_schwarz_2tri': 'm14_schwarz',
+    'slsqp_fullgrid_2tri': 'slsqp',
+    'schwarz_2tri': 'schwarz',
+    'nmvf_jdet': 'nmvf',
+    'slp_2tri': 'slp',
+    'slp_tet3d': 'slp',
+    'm10_tet3d': 'm10_3d',
+    'm14_tet3d': 'm14_3d',
+    'm14_schwarz_tet3d': 'm14_schwarz_3d',
+    'slsqp_fullgrid_tet3d': 'slsqp_3d_tet',
+    'active_band_tet3d': 'active_band_alm_3d',
+    'coupled_kring_tet3d': 'coupled_kring_3d',
+    'slsqp_windowed_jdet3d': 'slsqp_windowed',
+    'barrier_torch_tet3d': 'barrier_tet_3d_torch',
+}
 
 
 class SolverWorker(QtCore.QThread):
@@ -913,9 +946,16 @@ class SolverWorker(QtCore.QThread):
             )
             label = fallback_label
             strategy = make_strategy(label)
-        # Honor the toolbar's time budget like the explicit menu entries
-        # do — without this an Auto-resolved wallbreaker self-terminates
-        # at its dataclass default budget regardless of the spinbox.
+        self.resolved_strategy_label = label
+        return self._apply_time_budget(strategy)
+
+    def _apply_time_budget(self, strategy):
+        """Honor the toolbar's time budget on any strategy that has the knob.
+
+        Without this an Auto-resolved or menu-selected wallbreaker
+        self-terminates at its dataclass default budget regardless of the
+        spinbox. No-op for strategies without a ``time_budget_s`` field.
+        """
         import dataclasses
 
         if dataclasses.is_dataclass(strategy) and any(
@@ -924,84 +964,38 @@ class SolverWorker(QtCore.QThread):
             strategy = dataclasses.replace(
                 strategy, time_budget_s=float(self._params.get('time_budget_s', 60.0))
             )
-        self.resolved_strategy_label = label
         return strategy
 
     def _build_strategy(self):
         """Build a configured Strategy instance for the chosen method.
 
-        ``self._method_id`` is always ``<algo>_<constraint>``. The
-        wallbreaker family (m10/m14/m14_schwarz) is 2-tri-only by design;
-        Barrier and NMVF work with either constraint family.
+        ``self._method_id`` is always ``<algo>_<constraint>``. Fixed-label
+        methods construct through the dvfopt strategy registry via
+        ``_MID_TO_LABEL`` -> ``make_strategy`` (single source of truth,
+        parity-tested against the menus); the ``auto_*`` pickers route
+        dynamically by fold stats. Per-method ``strategy_overrides`` from the
+        Params dialog are applied with ``dataclasses.replace``; the toolbar
+        time budget is applied to any strategy that exposes the knob.
         """
-        from dvfopt import (
-            BarrierStrategy,
-            HarmonicALMBarrierStrategy,
-            HarmonicALMRefineRepairStrategy,
-            NMVFStrategy,
-            SchwarzHarmonicALMRefineRepairStrategy,
-        )
+        import dataclasses
 
-        time_budget = float(self._params.get('time_budget_s', 60.0))
         mid = self._method_id
         overrides = dict(self._params.get('strategy_overrides') or {})
 
-        def _make(cls, **base):
-            try:
-                return cls(**{**base, **overrides})
-            except TypeError as exc:
-                raise ValueError(
-                    f'invalid strategy parameter(s) for {cls.__name__}: {exc}'
-                ) from exc
+        label = _MID_TO_LABEL.get(mid)
+        if label is not None:
+            from dvfopt import make_strategy
 
-        if mid in ('barrier_2tri', 'barrier_jdet'):
-            return _make(BarrierStrategy)
-        if mid == 'm10_2tri':
-            return _make(HarmonicALMBarrierStrategy, time_budget_s=time_budget)
-        if mid == 'm14_2tri':
-            return _make(HarmonicALMRefineRepairStrategy, time_budget_s=time_budget)
-        if mid == 'm14_schwarz_2tri':
-            return _make(SchwarzHarmonicALMRefineRepairStrategy, time_budget_s=time_budget)
-        if mid == 'slsqp_fullgrid_2tri':
-            from dvfopt import SLSQPFullGridStrategy
+            strategy = self._apply_time_budget(make_strategy(label))
+            if overrides:
+                try:
+                    strategy = dataclasses.replace(strategy, **overrides)
+                except TypeError as exc:
+                    raise ValueError(
+                        f'invalid strategy parameter(s) for {type(strategy).__name__}: {exc}'
+                    ) from exc
+            return strategy
 
-            return _make(SLSQPFullGridStrategy)
-        if mid == 'schwarz_2tri':
-            from dvfopt import SchwarzStrategy
-
-            return _make(SchwarzStrategy)
-        if mid == 'nmvf_jdet':
-            return _make(NMVFStrategy)
-        if mid == 'm10_tet3d':
-            from dvfopt import HarmonicALMBarrier3DStrategy
-
-            return _make(HarmonicALMBarrier3DStrategy, time_budget_s=time_budget)
-        if mid == 'm14_tet3d':
-            from dvfopt import HarmonicALMRefineRepair3DStrategy
-
-            return _make(HarmonicALMRefineRepair3DStrategy, time_budget_s=time_budget)
-        if mid == 'm14_schwarz_tet3d':
-            from dvfopt import SchwarzHarmonicALMRefineRepair3DStrategy
-
-            return _make(SchwarzHarmonicALMRefineRepair3DStrategy, time_budget_s=time_budget)
-        if mid == 'slsqp_fullgrid_tet3d':
-            from dvfopt import SLSQPFullGrid3DStrategy
-
-            return _make(SLSQPFullGrid3DStrategy)
-        if mid == 'active_band_tet3d':
-            from dvfopt import ActiveBandALM3DStrategy
-
-            return _make(ActiveBandALM3DStrategy)
-        if mid == 'coupled_kring_tet3d':
-            from dvfopt import CoupledKRing3DStrategy
-
-            return _make(CoupledKRing3DStrategy)
-        if mid in ('barrier_jdet3d',):
-            return _make(BarrierStrategy)
-        if mid == 'slsqp_windowed_jdet3d':
-            from dvfopt import SLSQPWindowedStrategy
-
-            return _make(SLSQPWindowedStrategy)
         if mid in ('auto_2tri', 'auto_jdet'):
             from dvfopt import JdetConstraint2D, TriConstraint2DFullCoverage
 
@@ -1022,14 +1016,6 @@ class SolverWorker(QtCore.QThread):
             return self._resolve_auto(
                 constraint, n_neg, min_T, 'm14' if kind == '2tri' else 'barrier'
             )
-        if mid == 'slp_2tri':
-            from dvfopt import SLPStrategy
-
-            return _make(SLPStrategy)
-        if mid == 'slp_tet3d':
-            from dvfopt import SLPStrategy
-
-            return _make(SLPStrategy)
         if mid in ('auto_tet3d', 'auto_jdet3d'):
             from dvfopt import JdetConstraint3D, Tet6Constraint3D
 
@@ -1047,10 +1033,6 @@ class SolverWorker(QtCore.QThread):
                 else JdetConstraint3D(shape=(D, H, W))
             )
             return self._resolve_auto(constraint, n_neg, min_T, 'barrier')
-        if mid == 'barrier_torch_tet3d':
-            from dvfopt import BarrierTet3DTorchStrategy
-
-            return _make(BarrierTet3DTorchStrategy)
         raise ValueError(f'unknown method_id={mid!r}')
 
     def _trajectory_metric_kind(self) -> str:

@@ -45,6 +45,7 @@ import numpy as np
 
 from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
+from dvfopt.metrics import fold_stats
 
 
 @dataclass
@@ -64,9 +65,8 @@ class Correct25DReport:
 
 def _stats(phi, threshold):
     mv = six_tet_min_volume_3d(phi)
-    n_neg = int((mv <= 0).sum())
-    n_below = int((mv < threshold - 1e-5).sum())
-    return mv, n_neg, n_below, float(mv.min())
+    st = fold_stats(mv, threshold)
+    return mv, st.n_neg, st.n_below, st.min_val
 
 
 def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0, stats=None):

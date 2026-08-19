@@ -37,6 +37,7 @@ from dvfopt.jacobian.tetrahedron_sign import (
     n_neg_best_diagonal,
     six_tet_min_volume_3d,
 )
+from dvfopt.metrics import fold_stats
 
 
 @dataclass
@@ -58,9 +59,8 @@ class Correct3DReport:
 
 def _stats(phi, threshold):
     mv = six_tet_min_volume_3d(phi)
-    n_neg = int((mv <= 0).sum())
-    n_below = int((mv < threshold - 1e-5).sum())
-    return mv, n_neg, n_below, float(mv.min())
+    st = fold_stats(mv, threshold)
+    return mv, st.n_neg, st.n_below, st.min_val
 
 
 def _fold_sparsity(mv, threshold):

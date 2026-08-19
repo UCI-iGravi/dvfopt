@@ -158,8 +158,9 @@ class SolveResult:
         ``True`` when ``final_n_neg == 0`` and
         ``final_min_T >= threshold - err_tol``.
     wall_time : float
-    info : dict
-        Strategy-specific history.
+    info : SolveInfo
+        Standardized run history (phases, totals); strategy-specific
+        extras live under ``info.extras``.
     """
 
     corrected: np.ndarray
@@ -169,7 +170,7 @@ class SolveResult:
     final_min_T: float
     feasible: bool
     wall_time: float
-    info: dict[str, Any] = field(default_factory=dict)
+    info: SolveInfo = field(default_factory=SolveInfo)
 
 
 class Solver:

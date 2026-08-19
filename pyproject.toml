@@ -1,6 +1,6 @@
 [project]
 name = "dvfopt"
-version = "0.3.0"
+version = "0.4.0"
 description = "Correction of negative Jacobian determinants in deformation (displacement) fields"
 requires-python = ">=3.9"
 dependencies = [
@@ -13,6 +13,9 @@ dependencies = [
     "joblib",
     "tqdm",
 ]
+
+[project.scripts]
+dvfopt = "dvfopt.cli:main"
 
 [project.optional-dependencies]
 benchmarks = [
@@ -95,8 +98,8 @@ ignore = [
 "tests/**" = ["F401", "F811"]      # test fixtures often look unused
 # importorskip('torch') must run BEFORE importing the module under test.
 "tests/test_gpu_untangle.py" = ["E402"]
-# importorskip('PyQt5'/'SimpleITK') must run BEFORE importing the module under test.
-"tests/test_gui_io_formats.py" = ["E402"]
+# importorskip('SimpleITK') must run BEFORE importing the module under test.
+"tests/test_io_fields.py" = ["E402"]
 # importorskip('hypothesis') must run BEFORE the hypothesis imports.
 "tests/test_constraint_properties.py" = ["E402"]
 "**/conftest.py" = ["F401"]

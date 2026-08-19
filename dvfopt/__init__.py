@@ -110,7 +110,7 @@ The :func:`auto_strategy` helper encodes this routing as a function.
 """
 
 # -- Package metadata -------------------------------------------------------
-__version__ = "0.3.0"  # 6-tet 3D constraint + visualization theme + 2tri default flip
+__version__ = "0.4.0"  # CLI + dvfopt.metrics + dvfopt.io.fields
 
 # -- New API: constraints, objectives, strategies, solver -------------------
 # -- Logging ----------------------------------------------------------------
@@ -148,7 +148,7 @@ from dvfopt.exceptions import (
 )
 
 # -- I/O --------------------------------------------------------------------
-from dvfopt.io import load_nii_images
+from dvfopt.io import load_dvf, load_nii_images, save_dvf
 
 # -- Jacobian primitives ----------------------------------------------------
 from dvfopt.jacobian import (
@@ -161,6 +161,7 @@ from dvfopt.jacobian import (
     triangle_constraint,
     triangle_det2D,
 )
+from dvfopt.metrics import FoldStats, constraint_fold_stats, fold_stats
 from dvfopt.objectives import (
     L1Objective,
     L2Objective,
@@ -246,6 +247,7 @@ __all__ = [
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
+    'FoldStats',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
     'HarmonicALMBarrierStrategy',
@@ -287,15 +289,18 @@ __all__ = [
     'TriConstraint2DFullCoverage',
     'auto_strategy',
     'coerce_to_ndarray',
+    'constraint_fold_stats',
     'correct_dvf',
     'correct_dvf_3d',
     'correct_dvf_25d',
     'enable_default_handler',
+    'fold_stats',
     'generate_random_dvf',
     'generate_random_dvf_3d',
     'injectivity_constraint',
     'jacobian_det2D',
     'jacobian_det3D',
+    'load_dvf',
     'load_nii_images',
     'logger',
     'make_constraint',
@@ -303,6 +308,7 @@ __all__ = [
     'make_strategy',
     'register_constraint',
     'register_strategy',
+    'save_dvf',
     'scale_dvf',
     'scale_dvf_3d',
     'shoelace_constraint',

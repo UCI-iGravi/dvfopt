@@ -38,7 +38,7 @@ class FileIOMixin:
         if lw is not None and getattr(lw, 'isRunning', lambda: False)():
             return
         flt = 'DVF files (*.npy *.npz'
-        from dvfopt_gui.io_formats import SITK_EXTENSIONS, sitk_available
+        from dvfopt.io.fields import SITK_EXTENSIONS, sitk_available
 
         if sitk_available():
             flt += ' ' + ' '.join(f'*{e}' for e in SITK_EXTENSIONS)
@@ -126,7 +126,7 @@ class FileIOMixin:
                 self, 'Nothing to export', 'Load a DVF first via "Load DVF…".'
             )
             return
-        from dvfopt_gui.io_formats import save_dvf_sitk, sitk_available
+        from dvfopt.io.fields import save_dvf_sitk, sitk_available
 
         filters = 'NumPy array (*.npy)'
         if sitk_available():
