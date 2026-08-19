@@ -586,16 +586,45 @@ def _worst_slices(field, threshold, n):
     return [int(z) for z in order[:n] if counts[z] > 0]
 
 
-def make_jdet2d_corrector(**kw):
-    """Return a 2D corrector ``(3,1,H,W) -> (3,1,H,W)`` via ``correct_dvf(constraint='jdet')``."""
-    from dvfopt import correct_dvf
+class _CorrectDvfCorrector:
+    """Picklable 2D-section corrector built on ``correct_dvf`` (needed for n_workers>1)."""
 
-    def _corrector(section):
+    def __init__(self, label, **kw):
+        self.label = label
+        self._kw = kw
+
+    def __call__(self, section):
+        from dvfopt import correct_dvf
+
         h, w = section.shape[-2:]
-        return correct_dvf(section, constraint="jdet", shape=(h, w), **kw).corrected
+        return correct_dvf(section, shape=(h, w), **self._kw).corrected
 
-    _corrector.label = "correct_dvf(constraint='jdet', strategy='auto')"
-    return _corrector
+
+def make_jdet2d_corrector(**kw):
+    """Return a picklable 2D corrector via ``correct_dvf(constraint='jdet')``."""
+    return _CorrectDvfCorrector(
+        "correct_dvf(constraint='jdet', strategy='auto')", constraint="jdet", **kw
+    )
+
+
+def _process_section(corrector, brain, z, sec_init, threshold, make_figures):
+    """Solve + measure one 2D section (module-level so it is process-pool picklable).
+
+    Returns ``(brain, z, metrics_dict, png_bytes_or_None)``. The figure PNG is
+    built in the worker so only ~50 KB of bytes cross the process boundary.
+    """
+    sec_init = np.asarray(sec_init).astype(np.float64)
+    t0 = time.perf_counter()
+    sec_out = corrector(sec_init.copy())
+    elapsed = time.perf_counter() - t0
+    m = _measure_2d(sec_init, sec_out, elapsed, threshold)
+    png = None
+    if make_figures:
+        png = _section_figure(f"{brain}/z{z}", m.pop("_jac_init"), m.pop("_jac_final"), threshold)
+    else:
+        m.pop("_jac_init", None)
+        m.pop("_jac_final", None)
+    return brain, z, m, png
 
 
 def run_cohort_2d_sections(
@@ -605,6 +634,7 @@ def run_cohort_2d_sections(
     sections=None,
     variant="laplacian_exterior",
     n_worst=3,
+    n_workers=1,
     run_name="sections2d",
     out_base="output/cohort_2d",
     threshold=0.01,
@@ -623,6 +653,11 @@ def run_cohort_2d_sections(
         Explicit sections; overrides ``brains``/``n_worst`` auto-selection.
     n_worst : int
         When auto-selecting, the number of worst-folding z-slices per brain.
+    n_workers : int
+        Sections run in parallel processes when > 1. Each section is an
+        independent multi-minute solve, so this scales near-linearly with cores.
+        Requires a *picklable* corrector (the defaults are); a lambda/closure
+        raises. Serial (n_workers=1) accepts any callable.
     variant, run_name, out_base, threshold, make_figures, verbose
         Run knobs.
     """
@@ -655,27 +690,32 @@ def run_cohort_2d_sections(
             work.append((b, z, field[:, z : z + 1].copy()))
         del field
 
-    rows = []
     t_run = time.perf_counter()
-    for brain, z, sec_init in work:
-        label = f"{brain}/z{z}"
-        if verbose:
-            print(f"[2d] {label} ...", flush=True)
-        sec_init = sec_init.astype(np.float64)
-        t0 = time.perf_counter()
-        sec_out = corrector(sec_init.copy())
-        elapsed = time.perf_counter() - t0
-        m = _measure_2d(sec_init, sec_out, elapsed, threshold)
+    if n_workers > 1 and len(work) > 1:
+        from concurrent.futures import ProcessPoolExecutor
 
+        if verbose:
+            print(f"[2d] {len(work)} sections across {n_workers} workers ...", flush=True)
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            futures = [
+                ex.submit(_process_section, corrector, b, z, sec, threshold, make_figures)
+                for (b, z, sec) in work
+            ]
+            results = [f.result() for f in futures]
+    else:
+        results = []
+        for b, z, sec in work:
+            if verbose:
+                print(f"[2d] {b}/z{z} ...", flush=True)
+            results.append(_process_section(corrector, b, z, sec, threshold, make_figures))
+
+    rows = []
+    for brain, z, m, png in results:
+        label = f"{brain}/z{z}"
         fig_uri = None
-        if make_figures:
-            png = _section_figure(label, m.pop("_jac_init"), m.pop("_jac_final"), threshold)
+        if png is not None:
             (fig_dir / (label.replace("/", "__") + ".png")).write_bytes(png)
             fig_uri = _png_data_uri(png)
-        else:
-            m.pop("_jac_init", None)
-            m.pop("_jac_final", None)
-
         rows.append({"label": label, "brain": brain, "variant": f"z{z}", "fig_uri": fig_uri, **m})
 
     total_time_s = time.perf_counter() - t_run

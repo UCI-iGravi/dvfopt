@@ -136,3 +136,21 @@ def test_fmt_handles_non_finite():
     # nan/inf must render as text, never crash the whole report via int(nan).
     assert cb._fmt(float("nan")) == "nan"
     assert cb._fmt(float("inf")) == "inf"
+
+
+def test_process_section_worker():
+    # The parallel worker: solve + measure + figure for one section.
+    sec = _folded_section(5)
+    brain, z, m, png = cb._process_section(lambda s: np.zeros_like(s), "B0", 3, sec, 0.01, True)
+    assert (brain, z) == ("B0", 3)
+    assert m["n_neg_init"] > 0 and m["n_neg_final"] == 0
+    assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_jdet2d_corrector_is_picklable():
+    # Trusted in-process round-trip (not untrusted data): ProcessPoolExecutor
+    # pickles the corrector to each worker, so n_workers>1 needs this to hold.
+    import pickle
+
+    c = cb.make_jdet2d_corrector(threshold=0.01)
+    assert pickle.loads(pickle.dumps(c)).label == c.label
