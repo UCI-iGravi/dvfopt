@@ -9,24 +9,6 @@ from dvfopt.cli import _parse_params, main
 from tests.conftest import planted_fold
 
 
-@pytest.fixture(autouse=True)
-def _isolate_matplotlib_theme():
-    # The CLI report path calls plot_solve_info -> apply_theme, which mutates
-    # GLOBAL matplotlib rcParams (constrained_layout) and a module guard.
-    # Restore both so these tests don't perturb figure-building in later
-    # suites (e.g. cohort_benchmark's tight_layout + colorbar). The product
-    # CLI runs one-shot per process, so the leak only matters across the
-    # persistent pytest process.
-    import matplotlib as mpl
-
-    from dvfopt.viz import theme
-
-    saved_applied = theme._THEME_APPLIED
-    with mpl.rc_context():
-        yield
-    theme._THEME_APPLIED = saved_applied
-
-
 def _save_folded(tmp_path, name='in.npy'):
     phi = planted_fold(10, 10, seed=0, scale=0.4)
     p = tmp_path / name

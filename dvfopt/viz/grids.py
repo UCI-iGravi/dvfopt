@@ -168,7 +168,7 @@ def plot_deformed_quads_colored(
     x0 = max(center_x - patch_size // 2, 0)
     x1 = min(center_x + patch_size // 2, W - spacing - 1)
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
     for i in range(y0, y1, spacing):
         for j in range(x0, x1, spacing):
             corners = [(j, i), (j + spacing, i), (j + spacing, i + spacing), (j, i + spacing)]

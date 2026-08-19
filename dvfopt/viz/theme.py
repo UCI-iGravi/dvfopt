@@ -134,7 +134,11 @@ def apply_theme(context: str = 'paper', force: bool = False) -> None:
             # ---- Figure ----
             'figure.dpi': 130,
             'figure.facecolor': 'white',
-            'figure.constrained_layout.use': True,
+            # NOTE: constrained_layout is applied PER FIGURE (each dvfopt viz
+            # helper passes ``constrained_layout=True`` at creation), NOT via a
+            # global rcParam. A global default leaks into non-dvfopt figures and
+            # makes their ``fig.tight_layout()`` (with a colorbar) raise. See
+            # tests/test_viz_theme.py::test_apply_theme_does_not_leak_layout.
             # ---- Axes ('ticks' style: clean spines, no grid) ----
             'axes.facecolor': 'white',
             'axes.axisbelow': True,

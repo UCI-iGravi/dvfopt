@@ -58,7 +58,7 @@ def plot_solve_info(
     apply_theme()
 
     phases = [p for p in getattr(info, 'phases', []) if p is not None]
-    fig, (ax_t, ax_n) = plt.subplots(2, 1, sharex=True, figsize=figsize)
+    fig, (ax_t, ax_n) = plt.subplots(2, 1, sharex=True, figsize=figsize, constrained_layout=True)
 
     if not phases:
         ax_t.text(

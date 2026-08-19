@@ -122,7 +122,7 @@ def plot_fold_overview(
     fold_mask, T1, T2, n_neg, min_T, jdet = _fold_stats(phi2)
     H, W = phi2.shape[1], phi2.shape[2]
 
-    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    fig, axes = plt.subplots(2, 2, figsize=figsize, constrained_layout=True)
 
     # -----------------------------------------------------------------
     # Top-left: Jdet heatmap with fold contour
@@ -390,7 +390,9 @@ def plot_before_after(
     _, _, _, n_a, m_a, jdet_a = _fold_stats(phi_a)
     norm = jdet_norm([jdet_b, jdet_a], threshold=threshold)
 
-    fig, axes = plt.subplots(1, 3, figsize=figsize, gridspec_kw={'width_ratios': [1, 1, 1]})
+    fig, axes = plt.subplots(
+        1, 3, figsize=figsize, gridspec_kw={'width_ratios': [1, 1, 1]}, constrained_layout=True
+    )
 
     for ax, jdet, label, n, m in [
         (axes[0], jdet_b, 'BEFORE', n_b, m_b),
@@ -458,7 +460,7 @@ def plot_solver_comparison(
     n = len(items)
     if figsize is None:
         figsize = (3.6 * n, 4.2)
-    fig, axes = plt.subplots(1, n, figsize=figsize, squeeze=False)
+    fig, axes = plt.subplots(1, n, figsize=figsize, squeeze=False, constrained_layout=True)
     axes = axes[0]
 
     # Shared norm across all solvers.
@@ -550,7 +552,7 @@ def plot_fold_overview_3d(
     neg_mask = jdet <= 0
     n_neg = int(neg_mask.sum())
 
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, constrained_layout=True)
     ax_scatter = fig.add_subplot(2, 2, 1, projection='3d')
     ax_slice = fig.add_subplot(2, 2, 2)
     ax_hist = fig.add_subplot(2, 2, 3)
@@ -821,7 +823,7 @@ def plot_before_after_3d(
     n_a = int((jdet_a <= 0).sum())
     norm = jdet_norm([jdet_b, jdet_a], threshold=threshold)
 
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, constrained_layout=True)
     for idx, (jd, label, n_neg) in enumerate([(jdet_b, 'BEFORE', n_b), (jdet_a, 'AFTER', n_a)]):
         ax = fig.add_subplot(1, 2, idx + 1, projection='3d')
         neg = jd <= 0

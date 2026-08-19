@@ -4,6 +4,25 @@ Tracks user-visible changes to `dvfopt`. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Visualization theme no longer leaks global matplotlib state.**
+  `apply_theme` used to set `figure.constrained_layout.use = True` in the
+  process-global `rcParams`, so **any** later figure — including
+  non-dvfopt code — inherited constrained layout and its
+  `fig.tight_layout()` (with a colorbar) raised
+  `RuntimeError: Colorbar layout of new layout engine not compatible…`.
+  This broke `benchmarks/cohort_benchmark.py` /
+  `benchmarks/interactive_report.py` and caused a Qt canvas abort in the
+  GUI suite when a dvfopt plot ran earlier in the same process.
+  `apply_theme` now leaves the global default alone; each dvfopt viz
+  helper passes `constrained_layout=True` at figure creation instead
+  (regression test:
+  `tests/test_viz_theme.py::TestApplyTheme::test_apply_theme_does_not_leak_layout`).
+  Removed the `test_cli.py` workaround fixture that restored rcParams.
+
 ## [0.4.0] — 2026-08-19
 
 ### Added

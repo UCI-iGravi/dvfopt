@@ -143,6 +143,7 @@ def plot_triangle_debug(phi_xy, x, y, ax=None, show_formula=True):
             1,
             2,
             figsize=(11, 5.5),
+            constrained_layout=True,
             gridspec_kw={"width_ratios": [1.1, 1.4]},
         )
     else:

@@ -87,6 +87,26 @@ class TestApplyTheme:
         assert talk_font >= paper_font
         reset_theme()
 
+    def test_apply_theme_does_not_leak_layout(self, folded_phi):
+        # Regression: apply_theme must NOT set constrained_layout in GLOBAL
+        # rcParams. A global default leaks into non-dvfopt figures and makes
+        # their fig.tight_layout() (with a colorbar) raise — this broke
+        # cohort_benchmark / interactive_report and caused a Qt abort via
+        # test ordering. dvfopt applies constrained_layout PER FIGURE instead.
+        reset_theme()
+        apply_theme(force=True)
+        assert plt.rcParams['figure.constrained_layout.use'] is False
+        # A dvfopt plot (applies theme, per-figure constrained_layout) ...
+        dfig = plot_fold_overview(folded_phi)
+        plt.close(dfig)
+        # ... must not have poisoned the global default for foreign code:
+        fig, ax = plt.subplots()  # no constrained_layout kwarg → matplotlib default
+        im = ax.imshow(np.zeros((4, 4)))
+        fig.colorbar(im, ax=ax)
+        fig.tight_layout()  # must NOT raise
+        plt.close(fig)
+        reset_theme()
+
 
 class TestPalette:
     def test_palette_constants_are_strings(self):
