@@ -166,7 +166,10 @@ exact-feasibility solver with escalating freedom cannot move them.
   - `scaling/` — performance vs grid size, folding severity, L2-Jdet correlation
   - `registration/` — external registration methods (Elastix, VoxelMorph, TransMorph, ANTs, OpenCV) + post-hoc correction
   - `pipelines/` — end-to-end 3D slice-wise correction pipelines
-  - `benchmark_utils.py` — shared helpers; notebooks add `..` to sys.path to import it
+  - `benchmark_utils.py` — shared helpers (plotting, metrics, run-dir I/O) + the brain-cohort loader (`list_cohort`, `load_cohort_field`, `load_cohort_section`, `load_cohort_correspondences`); notebooks add `..` to sys.path to import it
+  - `cohort_benchmark.py` — folding benchmark over the in-repo brain cohort (`data/dvfs/brain25_cohort_corrected/`, gitignored). `run_cohort_2d_sections` (isolated 2D z-slices, `n_workers` for parallel solves) and `run_cohort_benchmark` (whole-field) each write a timestamped run dir (`results.csv`, `summary.json`, `figures/`, `report.html`) with before→after Jdet / 2-tri / 6-tet fold metrics; `interactive=True` emits the interactive report instead of static figures
+  - `interactive_report.py` — self-contained interactive HTML report: per-field pan/zoom Jacobian-map `<canvas>` (hover exact Jdet + dy/dx, before/after toggle, displacement-vector overlay, correspondence overlay), severity-ranked fold-cluster ROI table (click-to-locate) — base64 float arrays + vanilla JS, no external assets
+  - `correspondence_analysis.py` — per-slice Laplacian boundary-condition diagnostics: prescribed displacement, registration residual (fit) before/after correction, and outlier flags (large-disp / high-residual / incoherent). Convention (verified): `field[:, fixed] == moving − fixed` (backward map)
 - `scripts/` — image generation scripts for docs
-- `data/` — real data NIfTI files and `.npy` test case arrays
+- `data/` — real data NIfTI files and `.npy` test case arrays (all gitignored). Includes `dvfs/brain25_cohort_corrected/<brain>/<variant>/` — 7 real brains (Laplacian field + ANTs warp + correspondences) copied from the sibling RegTools project, consumed by `benchmarks/cohort_benchmark.py`
 - `archive/` — historical notebooks (not canonical)
