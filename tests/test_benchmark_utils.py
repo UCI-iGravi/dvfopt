@@ -103,3 +103,32 @@ def test_results_to_rows_flattens_nested_method_results():
             "time": 9.876543,
         },
     ]
+
+
+# --- cohort loader (data is gitignored; skips cleanly where absent, e.g. CI) ---
+
+import pytest  # noqa: E402
+
+
+def test_cohort_dir_points_at_repo_data():
+    d = benchmark_utils.cohort_dir()
+    assert d.name == "brain25_cohort_corrected"
+    assert d.parent.name == "dvfs"
+
+
+def test_list_cohort_returns_pairs_or_empty():
+    pairs = benchmark_utils.list_cohort()
+    # Always a list; each entry is (brain, variant) with a known variant.
+    assert isinstance(pairs, list)
+    for b, v in pairs:
+        assert isinstance(b, str) and v in benchmark_utils.COHORT_VARIANTS
+
+
+def test_load_cohort_field_is_dvfopt_native_when_present():
+    pairs = benchmark_utils.list_cohort()
+    if not pairs:
+        pytest.skip("cohort data not present (gitignored)")
+    brain, variant = pairs[0]
+    phi = benchmark_utils.load_cohort_field(brain, variant)
+    assert phi.ndim == 4 and phi.shape[0] == 3  # (3, D, H, W)
+    assert np.all(phi[0] == 0)  # dz == 0 (in-plane residual)

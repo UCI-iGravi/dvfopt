@@ -14,6 +14,58 @@ from dvfopt import jacobian_det2D, jacobian_det3D
 from dvfopt._defaults import DEFAULT_PARAMS
 
 # ---------------------------------------------------------------------------
+# Real-brain cohort loader (RegTools brain25_cohort_corrected, copied in-repo)
+# ---------------------------------------------------------------------------
+# Fields live at data/dvfs/brain25_cohort_corrected/<brain>/<variant>/ and are
+# gitignored (see .gitignore *.npz/*.gz) — present only on machines that ran the
+# copy. The laplacian_deformation_field.npz is dvfopt-native: (3, D, H, W) =
+# (3, z, y, x), channels [dz, dy, dx], voxel units, with dz (channel 0) == 0
+# (in-plane refinement residual — already satisfies the 2.5D dz==0 precondition).
+# Folding benchmarks use the 'laplacian_exterior' variant (the loader default).
+
+COHORT_VARIANTS = ("laplacian_all", "laplacian_exterior")
+
+
+def cohort_dir():
+    """Path to the in-repo corrected brain cohort (may not exist; data is gitignored)."""
+    return Path(__file__).resolve().parents[1] / "data" / "dvfs" / "brain25_cohort_corrected"
+
+
+def list_cohort():
+    """Return sorted ``(brain, variant)`` pairs that have a laplacian field on disk."""
+    base = cohort_dir()
+    if not base.is_dir():
+        return []
+    return [
+        (b.name, v)
+        for b in sorted(base.iterdir())
+        if b.is_dir()
+        for v in COHORT_VARIANTS
+        if (b / v / "laplacian_deformation_field.npz").is_file()
+    ]
+
+
+def load_cohort_field(brain, variant="laplacian_exterior"):
+    """Load a cohort Laplacian deformation field as ``(3, D, H, W)`` [dz, dy, dx].
+
+    dvfopt-native, ready to pass straight to a solver. Raises ``FileNotFoundError``
+    with the expected path if the (gitignored) data is not present.
+    """
+    p = cohort_dir() / brain / variant / "laplacian_deformation_field.npz"
+    if not p.is_file():
+        raise FileNotFoundError(f"cohort field not found (data is gitignored): {p}")
+    return np.load(p)["arr"]
+
+
+def load_cohort_section(brain, z, variant="laplacian_exterior"):
+    """Load a single z-slice as a ``(3, 1, H, W)`` 2D field (dvfopt 2D convention).
+
+    The cohort fields have dz == 0, so a z-slice is a genuine in-plane 2D field.
+    """
+    return load_cohort_field(brain, variant)[:, z : z + 1].copy()
+
+
+# ---------------------------------------------------------------------------
 # Output directory management
 # ---------------------------------------------------------------------------
 
