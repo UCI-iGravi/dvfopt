@@ -260,3 +260,40 @@ def test_2d_sections_parallel_branch(tmp_path, monkeypatch):
     with open(rd / "results.csv") as f:
         labels = [r["label"] for r in _csv.DictReader(f)]
     assert labels == ["B0/z1", "B0/z2", "B0/z3"]
+
+
+# --- solver-trajectory animation (interactive report) ---------------------
+
+
+def test_sample_trajectory_samples_and_labels():
+    phi_init, phi_out = _folded(0), _folded(0) * 0.15
+    vols = [phi_init * (1 - t) + phi_out * t for t in np.linspace(0.0, 1.0, 20)]
+    tr = cb._sample_trajectory(vols, phi_init, phi_out, zc=1, threshold=0.01, k=6)
+    assert 0 < len(tr) <= 6
+    assert tr[0]["label"] == "input" and tr[-1]["label"] == "final"
+    assert all(isinstance(f["jdet"], str) and f["jdet"] for f in tr)  # base64 strings
+    assert all(isinstance(f["n_neg"], int) for f in tr)
+
+
+def test_sample_trajectory_empty_without_frames():
+    z = np.zeros((3, 3, 8, 8))
+    assert cb._sample_trajectory([], z, z, zc=1, threshold=0.01) == []
+
+
+def test_build_3d_payload_traj_presence():
+    from dvfopt import jacobian_det3D
+
+    fi, fo = _folded(1), _folded(1) * 0.15
+    ji, jf = jacobian_det3D(fi), jacobian_det3D(fo)
+    m = {
+        "n_neg_init": int((ji < 0.01).sum()),
+        "n_neg_final": int((jf < 0.01).sum()),
+        "min_jdet_init": float(ji.min()),
+        "min_jdet_final": float(jf.min()),
+    }
+    vols = [fi * (1 - t) + fo * t for t in (0.3, 0.6, 0.9)]
+    p = cb._build_3d_payload("v1", "lbl", fi, fo, ji, jf, m, 0.01, frames=vols)
+    assert len(p["traj"]) >= 2
+    assert len(p["traj_labels"]) == len(p["traj"])
+    p0 = cb._build_3d_payload("v2", "lbl", fi, fo, ji, jf, m, 0.01, frames=None)
+    assert "traj" not in p0
