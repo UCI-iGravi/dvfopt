@@ -98,6 +98,33 @@ print(result.summary())                  # text report
 print(result.to_dataframe())             # per-slice tabular
 ```
 
+### Command line
+
+Installed with the package (`pip install -e .`) as `dvfopt` (or `python -m dvfopt`):
+
+```bash
+# Fold metrics only (auto constraint: 2tri for 2D, 6tet for 3D volumes).
+dvfopt info field.nii.gz
+dvfopt info field.npy --check          # exit 1 if not strictly feasible (CI-friendly)
+
+# One-shot correction. Writes the corrected field + optional report dir
+# (summary.json + convergence.png).
+dvfopt correct in.npy out.npy --report-dir runs/fix1 -v
+
+# Real 3D volume, end-to-end: per-slice 2D sweep, then 2.5D marching.
+dvfopt correct vol.nii.gz mid.npy --pipeline slices
+dvfopt correct mid.npy out.nii.gz --pipeline 25d
+
+# Strategy knobs pass through as --param KEY=VALUE (literal-eval'd).
+dvfopt correct in.npy out.npy --strategy barrier --param eps=1e-4
+
+# Launch the GUI (needs `pip install -e ".[gui]"`).
+dvfopt gui --b0039 12
+```
+
+Formats: `.npy`/`.npz` and (via SimpleITK) `.nii`/`.nii.gz`/`.mha`/`.mhd`/`.nrrd`.
+Exit codes: `0` feasible, `1` folds remain, `2` usage/data error.
+
 ### Visualizing folds
 
 ```python

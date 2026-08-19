@@ -4,10 +4,30 @@ Tracks user-visible changes to `dvfopt`. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] — 2026-08-19
 
 ### Added
 
+- **Command-line interface** — `dvfopt {info, correct, gui}` console
+  script + `python -m dvfopt` ([dvfopt/cli.py](dvfopt/cli.py)). `info`
+  reports fold metrics (with a `--check` exit code); `correct` runs the
+  solver, per-slice sweep, 2.5D marching, or full-3D repair and writes
+  `summary.json` + `convergence.png` reports; `gui` launches the live
+  solver. `-v`/`-vv`/`--log-file` route the `dvfopt` logger. Exit codes
+  0 feasible / 1 folds remain / 2 usage errors.
+- **`dvfopt.metrics`** — canonical `FoldStats` / `fold_stats` /
+  `constraint_fold_stats` ([dvfopt/metrics.py](dvfopt/metrics.py)); the
+  single definition of n_neg / n_below / min / fold-severity. The 2.5D
+  and 3D pipeline `_stats` helpers now delegate to it.
+- **`dvfopt.io.fields`** — field I/O (`.npy`/`.npz` + NIfTI/MetaImage/
+  NRRD) moved out of `dvfopt_gui.io_formats` into the library, with new
+  extension-dispatching `load_dvf` / `save_dvf`. Usable without the
+  `[gui]` extra.
+- **Benchmarks** — cohort 2D-section runner parallelized across
+  processes (`n_workers`, PR #40); interactive multi-constraint HTML
+  report with ROI selection
+  ([benchmarks/interactive_report.py](benchmarks/interactive_report.py),
+  PR #41).
 - **`SLSQPFullGrid3DStrategy`** — full-grid SLSQP for the 6-tet
   constraint ([dvfopt/strategies/slsqp.py](dvfopt/strategies/slsqp.py),
   [dvfopt/core/iterative3d_tet_slsqp.py](dvfopt/core/iterative3d_tet_slsqp.py)).
@@ -43,6 +63,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **GUI menu strategies construct through the dvfopt registry.**
+  `SolverWorker._build_strategy`'s hand-maintained class ladder collapses
+  onto `make_strategy` via a method-id → registry-label table
+  (`_MID_TO_LABEL`); menu ↔ registry parity is test-enforced
+  ([tests/test_gui_strategy_parity.py](tests/test_gui_strategy_parity.py)).
+  The toolbar time budget applies uniformly to any strategy exposing the
+  knob.
 - **Notebook archive sweep.** Moved 6 superseded legacy notebooks to
   `archive/notebooks/` — each was already covered by either
   `notebooks/two-triangle-check/` or a benchmark notebook:
@@ -101,6 +128,12 @@ follows [Semantic Versioning](https://semver.org/).
   `tet_volumes_flat`, `tet_grad_T_v`.
 
 ### Fixed
+- **`SolveResult.info` type annotation** corrected to `SolveInfo` (was
+  `dict`); it has always carried a `SolveInfo` at runtime.
+- **GUI M10Tet raised `ValueError` on selection.** The `m10_tet3d` menu
+  entry passed `time_budget_s` to `HarmonicALMBarrier3DStrategy`, which
+  has no such field. The registry-driven construction applies the budget
+  only when the field exists.
 - **CI test failure on Ubuntu (torch missing).** `dvfopt/core/iterative2d_barrier.py`
   had an unconditional top-level `import torch`. CI installs only
   `[dev]` (torch is in `[benchmarks]`), so the import failed at module

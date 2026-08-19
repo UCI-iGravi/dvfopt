@@ -110,7 +110,7 @@ The :func:`auto_strategy` helper encodes this routing as a function.
 """
 
 # -- Package metadata -------------------------------------------------------
-__version__ = "0.3.0"  # 6-tet 3D constraint + visualization theme + 2tri default flip
+__version__ = "0.4.0"  # CLI + dvfopt.metrics + dvfopt.io.fields
 
 # -- New API: constraints, objectives, strategies, solver -------------------
 # -- Logging ----------------------------------------------------------------
