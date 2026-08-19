@@ -194,7 +194,7 @@ def plot_jdet_3d(
 
     own_fig = ax is None
     if own_fig:
-        fig = plt.figure(figsize=(8, 6))
+        fig = plt.figure(figsize=(8, 6), constrained_layout=True)
         ax = fig.add_subplot(111, projection="3d")
 
     if pos.any() and max_positive_points > 0:
@@ -288,7 +288,7 @@ def plot_jdet_3d_before_after(jdet_before, jdet_after, title=None, elev=25, azim
     matplotlib.figure.Figure
     """
     apply_theme()
-    fig = plt.figure(figsize=(14, 6))
+    fig = plt.figure(figsize=(14, 6), constrained_layout=True)
     n_neg_b = int((jdet_before <= 0).sum())
     n_neg_a = int((jdet_after <= 0).sum())
 
@@ -324,7 +324,7 @@ def plot_neg_voxels_before_after(jdet_before, jdet_after, title=None, elev=25, a
     matplotlib.figure.Figure
     """
     apply_theme()
-    fig = plt.figure(figsize=(14, 6))
+    fig = plt.figure(figsize=(14, 6), constrained_layout=True)
 
     for idx, (jdet, label) in enumerate([(jdet_before, "Before"), (jdet_after, "After")]):
         ax = fig.add_subplot(1, 2, idx + 1, projection="3d")
@@ -421,7 +421,7 @@ def plot_deformation_grid_3d(phi, jdet=None, title=None, ax=None, spacing=1, ele
 
     own_fig = ax is None
     if own_fig:
-        fig = plt.figure(figsize=(8, 7))
+        fig = plt.figure(figsize=(8, 7), constrained_layout=True)
         ax = fig.add_subplot(111, projection="3d")
 
     # For each sampled lattice vertex (zi[iz], yi[iy], xi[ix]), compute the
@@ -545,7 +545,7 @@ def plot_grid_before_after_3d(
     n_neg_b = int((jdet_before <= 0).sum())
     n_neg_a = int((jdet_after <= 0).sum())
 
-    fig = plt.figure(figsize=(15, 7))
+    fig = plt.figure(figsize=(15, 7), constrained_layout=True)
 
     ax1 = fig.add_subplot(121, projection="3d")
     plot_deformation_grid_3d(

@@ -44,7 +44,9 @@ def plot_initial_deformation(
 
     norm = _make_jdet_norm([jacobian_initial[0]])
 
-    fig, axs = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"wspace": 0.25})
+    fig, axs = plt.subplots(
+        1, 2, figsize=figsize, gridspec_kw={"wspace": 0.25}, constrained_layout=True
+    )
 
     # Left: Jacobian heatmap
     im = axs[0].imshow(jacobian_initial[0], cmap=CMAP, norm=norm, interpolation=INTERP)
@@ -185,7 +187,11 @@ def plot_deformations(
     norm = _make_jdet_norm([jacobian_initial[0], jacobian_final[0]])
 
     fig, axs = plt.subplots(
-        nrows=2, ncols=2, figsize=figsize, gridspec_kw={"hspace": 0.30, "wspace": 0.25}
+        nrows=2,
+        ncols=2,
+        figsize=figsize,
+        gridspec_kw={"hspace": 0.30, "wspace": 0.25},
+        constrained_layout=True,
     )
 
     # ---- Row 0: Jacobian heatmaps ----
@@ -335,7 +341,11 @@ def plot_jacobians_iteratively(jacobians, msample=None, fsample=None, method_nam
     norm = _make_jdet_norm(all_2d)
 
     fig, axs = plt.subplots(
-        nrows=nrows, ncols=ncols, figsize=(4.5 * ncols, 4 * nrows), squeeze=False
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(4.5 * ncols, 4 * nrows),
+        squeeze=False,
+        constrained_layout=True,
     )
     axs_flat = axs.flatten()
 
@@ -414,7 +424,7 @@ def plot_deformation_field(
     save_path : str or None
     quiver_scale : float or None
     """
-    fig, axs = plt.subplots(1, 2, figsize=figsize)
+    fig, axs = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
 
     J = np.squeeze(_sitk.sitk_jacobian_determinant(deformation))
     neg = int(np.sum(J <= 0))
