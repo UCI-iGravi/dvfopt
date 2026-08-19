@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "project": "dvfopt",
+    "project_url": "https://github.com/UCI-iGravi/dvfopt",
+    "repo": ".",
+    "branches": ["main"],
+    "environment_type": "virtualenv",
+    "show_commit_url": "https://github.com/UCI-iGravi/dvfopt/commit/",
+    "benchmark_dir": "asv_bench/benchmarks",
+    "env_dir": ".asv/env",
+    "results_dir": ".asv/results",
+    "html_dir": ".asv/html",
+    "build_cache_size": 2
+}
