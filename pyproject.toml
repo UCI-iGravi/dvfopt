@@ -79,7 +79,9 @@ xfail_strict = true
 # newer modules and expand as annotations land. Run with `mypy` (no args).
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"            # lowest version CI type-checks on (mypy dropped 3.9)
+# No python_version pin: mypy uses the running interpreter's version, so it
+# parses the installed numpy/... stubs natively. Pinning an older version made
+# mypy choke on numpy's 3.12-syntax stubs (`type X = ...`) on the 3.12 CI leg.
 ignore_missing_imports = true      # numpy/scipy/SimpleITK ship incomplete stubs
 # Only REPORT on the listed files; follow imports for types but stay silent on
 # the (not-yet-annotated) modules they pull in — so this gate covers the clean
