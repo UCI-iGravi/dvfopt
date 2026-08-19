@@ -36,6 +36,32 @@ from dvfopt.strategies.base import (
 )
 
 
+def _run_gpu_untangler(untangle_fn, phi, threshold, verbose=0):
+    """Shared accuracy='max' scaffolding for the 2D and 3D paths: probe
+    torch explicitly (the untanglers import it lazily INSIDE the call, so
+    importing their module succeeds without torch and users would get a
+    raw ModuleNotFoundError from deep inside), run on the default device,
+    and retry once on CPU on CUDA out-of-memory."""
+    import importlib.util
+
+    if importlib.util.find_spec('torch') is None:
+        raise ImportError("accuracy='max' requires PyTorch (pip install torch).")
+    try:
+        return untangle_fn(phi, threshold=threshold, verbose=verbose)
+    except Exception as exc:
+        import torch
+
+        cuda_oom = getattr(torch.cuda, 'OutOfMemoryError', ())
+        if not isinstance(exc, cuda_oom):
+            raise
+        import warnings
+
+        warnings.warn(
+            "accuracy='max' GPU untangler hit CUDA out-of-memory; retrying once on CPU (slower)."
+        )
+        return untangle_fn(phi, threshold=threshold, device='cpu', verbose=verbose)
+
+
 @register_strategy('slp')
 @dataclass
 class SLPStrategy(Strategy):
@@ -89,13 +115,13 @@ class SLPStrategy(Strategy):
     global_seed: str = 'm14'
     cluster_pixel_threshold: int = 5000
     accuracy: str = 'fast'
-    # 3D (6-tet) path knobs. seed_3d='m10' is the research-validated 3D
+    # 3D (6-tet) path knob. seed_3d='m10' is the research-validated 3D
     # default (m14 catastrophically overshoots on dense 3D folds — see
-    # research/strict_feasibility_3d README). n_workers_3d=1 because the
-    # 3D cluster path builds a per-call process pool whose Windows
-    # spawn + JIT warmup tax outweighs parallelism on typical runs.
+    # research/strict_feasibility_3d README). The 3D cluster path runs
+    # serial (its per-call pool was removed on promotion; spawn + JIT
+    # warmup outweighed the parallelism) with a final m14-3D polish as
+    # the feasibility safety net.
     seed_3d: str = 'm10'
-    n_workers_3d: int = 1
 
     supports_3d: bool = True
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage, Tet6Constraint3D)
@@ -145,31 +171,9 @@ class SLPStrategy(Strategy):
         phi_raw = phi
         gpu_seed = None
         if self.accuracy == 'max':
-            import importlib.util
-
-            # Probe torch explicitly: _gpu_untangle imports torch lazily
-            # INSIDE the function, so importing the module itself would
-            # succeed even without torch and users would get a raw
-            # ModuleNotFoundError from deep inside the call.
-            if importlib.util.find_spec('torch') is None:
-                raise ImportError("accuracy='max' requires PyTorch (pip install torch).")
             from dvfopt.core.slp._gpu_untangle import gpu_untangle_alm_2d
 
-            try:
-                gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold)
-            except Exception as exc:
-                import torch
-
-                cuda_oom = getattr(torch.cuda, 'OutOfMemoryError', ())
-                if not isinstance(exc, cuda_oom):
-                    raise
-                import warnings
-
-                warnings.warn(
-                    "accuracy='max' GPU untangler hit CUDA out-of-memory; "
-                    "retrying once on CPU (slower)."
-                )
-                gpu_seed = gpu_untangle_alm_2d(phi, threshold=threshold, device='cpu')
+            gpu_seed = _run_gpu_untangler(gpu_untangle_alm_2d, phi, threshold, verbose=verbose)
 
         if self.cluster_pixel_threshold >= H * W:
             # Global path: anchor L1 to the raw input `phi`; when max, start
@@ -232,27 +236,9 @@ class SLPStrategy(Strategy):
         phi_raw = phi
         gpu_seed = None
         if self.accuracy == 'max':
-            import importlib.util
-
-            if importlib.util.find_spec('torch') is None:
-                raise ImportError("accuracy='max' requires PyTorch (pip install torch).")
             from dvfopt.core.slp._gpu_untangle_3d import gpu_untangle_alm_3d
 
-            try:
-                gpu_seed = gpu_untangle_alm_3d(phi, threshold=threshold, verbose=verbose)
-            except Exception as exc:
-                import torch
-
-                cuda_oom = getattr(torch.cuda, 'OutOfMemoryError', ())
-                if not isinstance(exc, cuda_oom):
-                    raise
-                import warnings
-
-                warnings.warn(
-                    "accuracy='max' GPU untangler hit CUDA out-of-memory; "
-                    'retrying once on CPU (slower).'
-                )
-                gpu_seed = gpu_untangle_alm_3d(phi, threshold=threshold, device='cpu')
+            gpu_seed = _run_gpu_untangler(gpu_untangle_alm_3d, phi, threshold, verbose=verbose)
 
         if self.cluster_pixel_threshold >= D * H * W:
             phi_out, info = slp_iter_3d(
@@ -268,7 +254,6 @@ class SLPStrategy(Strategy):
                 threshold=threshold,
                 inner_seed=self.seed_3d,
                 max_outer_iters=self.max_outer_iters,
-                n_workers=self.n_workers_3d,
                 verbose=verbose,
             )
             info = {**info, 'slp_dispatch': 'cluster_3d'}

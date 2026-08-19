@@ -25,7 +25,7 @@ import numpy as np
 from dvfopt.core.slp.highs_solver import solve_l1_lp_step
 from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
-    six_tet_volumes_3d,
+    six_tet_min_volume_3d,
     tet_volumes_flat,
 )
 
@@ -47,93 +47,58 @@ def _flat_to_phi3dhw(phi_flat: np.ndarray, D: int, H: int, W: int) -> np.ndarray
 
 
 def _exact_min_T(phi_3dhw: np.ndarray) -> float:
-    V = six_tet_volumes_3d(phi_3dhw)
-    return float(V.min())
+    # Fused per-cell-min kernel (never materialises the (6, ...) array).
+    return float(six_tet_min_volume_3d(phi_3dhw).min())
 
 
 # ---------- seeds ----------
 
 
-def _m14_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
-    """Feasible seed via the 3D M14 pipeline
-    (``HarmonicALMRefineRepair3DStrategy``). Closest-to-phi_in feasible
-    point the package can produce — the SLP outer loop polishes L1
-    further from there."""
-    from dvfopt import (
-        HarmonicALMRefineRepair3DStrategy,
-        L1Objective,
-        Solver,
-        Tet6Constraint3D,
-    )
+def _tet_seed(phi_in_3dhw: np.ndarray, threshold: float, strategy) -> np.ndarray:
+    """Feasible seed via a 3D wallbreaker pipeline (one helper for every
+    seed kind — the recipe lives in ONE place)."""
+    from dvfopt import L1Objective, Solver, Tet6Constraint3D
 
     D, H, W = phi_in_3dhw.shape[1:]
     solver = Solver(
         constraint=Tet6Constraint3D(shape=(D, H, W)),
         objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMRefineRepair3DStrategy(),
+        strategy=strategy,
         threshold=threshold,
     )
     return solver.fit(phi_in_3dhw).corrected
 
 
-def _m10_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
-    """Cheaper feasible seed via the 3D M10 pipeline
-    (``HarmonicALMBarrier3DStrategy``). Skips L2-refine."""
-    from dvfopt import (
-        HarmonicALMBarrier3DStrategy,
-        L1Objective,
-        Solver,
-        Tet6Constraint3D,
-    )
+def _seed_strategy(kind: str):
+    """Strategy instance for a named seed kind.
 
-    D, H, W = phi_in_3dhw.shape[1:]
-    solver = Solver(
-        constraint=Tet6Constraint3D(shape=(D, H, W)),
-        objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMBarrier3DStrategy(),
-        threshold=threshold,
-    )
-    return solver.fit(phi_in_3dhw).corrected
+    * ``'m10'`` — harmonic + ALM + barrier polish (the validated 3D
+      default; m14 catastrophically overshoots on dense 3D folds).
+    * ``'m10_fast'`` — m10 without the barrier polish (~50% of m10 wall
+      on small crops; the outer SLP re-polishes L1 anyway).
+    * ``'m14'`` — full refine-repair pipeline (closest-to-input seed).
+    """
+    from dvfopt import HarmonicALMBarrier3DStrategy, HarmonicALMRefineRepair3DStrategy
 
-
-def _m10_fast_tet_seed(phi_in_3dhw: np.ndarray, threshold: float) -> np.ndarray:
-    """Cheaper m10 variant that disables the barrier polish stage.
-
-    Equivalent to harmonic + ALM only, no log-barrier interior-point
-    polish. Saves the 100-200-iter polish loop, which is ~50% of m10
-    wall on small cluster crops where the outer SLP polishes L1
-    anyway. Mirrors the 2D `m14_fast` pattern used by `cluster_slp`."""
-    from dvfopt import (
-        HarmonicALMBarrier3DStrategy,
-        L1Objective,
-        Solver,
-        Tet6Constraint3D,
-    )
-
-    D, H, W = phi_in_3dhw.shape[1:]
-    solver = Solver(
-        constraint=Tet6Constraint3D(shape=(D, H, W)),
-        objective=L1Objective(eps=1e-4),
-        strategy=HarmonicALMBarrier3DStrategy(polish=False),
-        threshold=threshold,
-    )
-    return solver.fit(phi_in_3dhw).corrected
+    return {
+        'm10': HarmonicALMBarrier3DStrategy(),
+        'm10_fast': HarmonicALMBarrier3DStrategy(polish=False),
+        'm14': HarmonicALMRefineRepair3DStrategy(),
+    }[kind]
 
 
 def _build_seed(phi_in_3dhw: np.ndarray, threshold: float, seed) -> np.ndarray:
     if isinstance(seed, np.ndarray):
         if seed.shape != phi_in_3dhw.shape:
             raise ValueError(f'seed shape {seed.shape} != phi_in shape {phi_in_3dhw.shape}')
-        return seed.astype(np.float64).copy()
-    if seed == 'm10':
-        return _m10_tet_seed(phi_in_3dhw, threshold)
-    if seed == 'm10_fast':
-        return _m10_fast_tet_seed(phi_in_3dhw, threshold)
-    if seed == 'm14':
-        return _m14_tet_seed(phi_in_3dhw, threshold)
+        return seed.astype(np.float64)  # astype always copies
     if seed == 'zero':
         return np.zeros_like(phi_in_3dhw)
-    raise ValueError(f'unknown seed: {seed!r}')
+    try:
+        strategy = _seed_strategy(seed)
+    except KeyError:
+        raise ValueError(f'unknown seed: {seed!r}') from None
+    return _tet_seed(phi_in_3dhw, threshold, strategy)
 
 
 # ---------- LP / SLP public API ----------

@@ -160,12 +160,52 @@ def iterative_3d(
 
         return np.minimum(jac, injectivity_quality_3d(phi) - inj_lb + threshold)
 
+    def _quality_patch(quality, jac, center, size):
+        """Patch-local quality refresh after a window solve.
+
+        Mirrors ``_patch_jacobian_3d``'s windowed-update design instead
+        of recomputing the injectivity map over the whole volume every
+        outer iteration: phi changed only inside the window, Jdet only
+        in window±1, and the gap spread reaches one voxel further — so
+        quality changes are confined to window±2. The gaps of that
+        region are computed exactly from a window±3 crop.
+        """
+        if not enforce_injectivity:
+            return jac
+        from dvfopt._defaults import _unpack_size_3d
+        from dvfopt.jacobian.monotonicity import injectivity_quality_3d
+
+        cz_, cy_, cx_ = center
+        sz_, sy_, sx_ = _unpack_size_3d(size)
+        hz_, hy_, hx_ = sz_ // 2, sy_ // 2, sx_ // 2
+        z0, z1 = max(cz_ - hz_ - 2, 0), min(cz_ + (sz_ - hz_) + 2, D)
+        y0, y1 = max(cy_ - hy_ - 2, 0), min(cy_ + (sy_ - hy_) + 2, H)
+        x0, x1 = max(cx_ - hx_ - 2, 0), min(cx_ + (sx_ - hx_) + 2, W)
+        mz0, mz1 = max(z0 - 1, 0), min(z1 + 1, D)
+        my0, my1 = max(y0 - 1, 0), min(y1 + 1, H)
+        mx0, mx1 = max(x0 - 1, 0), min(x1 + 1, W)
+        q = injectivity_quality_3d(phi[:, mz0:mz1, my0:my1, mx0:mx1])
+        q = q[
+            z0 - mz0 : z0 - mz0 + (z1 - z0),
+            y0 - my0 : y0 - my0 + (y1 - y0),
+            x0 - mx0 : x0 - mx0 + (x1 - x0),
+        ]
+        quality[z0:z1, y0:y1, x0:x1] = np.minimum(jac[z0:z1, y0:y1, x0:x1], q - inj_lb + threshold)
+        # Outside the affected region jac may not have changed but the
+        # stored quality there is already correct; refresh only jac-min.
+        return quality
+
     quality_matrix = _quality(jacobian_matrix)
+    # Stall/escalation counters must track the same metric the loop
+    # gates on: with injectivity active the quality-violation count can
+    # differ wildly from the Jdet count (init_neg), and seeding from the
+    # wrong scale misfires the escalation heuristics from iteration 1.
+    init_gate_neg = int((quality_matrix <= threshold - err_tol).sum())
 
     _log(verbose, 1, f"[init] Neg-Jdet voxels: {init_neg}  |  min Jdet: {init_min:.6f}")
 
     iteration = 0
-    prev_neg = init_neg
+    prev_neg = init_gate_neg
     global_min_window = (3, 3, 3)
     stall_counts = {}
     consecutive_improving = 0
@@ -177,7 +217,7 @@ def iterative_3d(
     # SLSQP livelock where neg oscillates (e.g. 12 -> 13 -> 12) without
     # either direction being sustained "progress".
     cur_voxel_cap = max_window_voxels
-    best_neg_seen = init_neg
+    best_neg_seen = init_gate_neg
     iters_since_best = 0
     _escalate_cap = (
         max_window_voxels is not None
@@ -236,7 +276,11 @@ def iterative_3d(
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
         )
-        quality_matrix = _quality(jacobian_matrix)
+        quality_matrix = (
+            _quality_patch(quality_matrix, jacobian_matrix, (_cz, _cy, _cx), subvolume_size)
+            if enforce_injectivity
+            else jacobian_matrix
+        )
 
         sz, sy, sx = _unpack_size_3d(subvolume_size)
         cur_neg = int((quality_matrix <= threshold - err_tol).sum())

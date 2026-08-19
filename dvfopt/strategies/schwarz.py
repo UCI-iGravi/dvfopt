@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from dvfopt.constraints import TriConstraint2D, TriConstraint2DFullCoverage
-from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
+from dvfopt.strategies.base import Strategy, register_strategy
 
 
 @register_strategy('schwarz')
@@ -32,10 +32,7 @@ class SchwarzStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        if record_history:
-            phi_out, hist = out
-            return phi_out, _build_solve_info('SchwarzStrategy', {'history': hist}, threshold)
-        return out, _build_solve_info('SchwarzStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold, wrap_history=True)
 
 
 __all__ = ['SchwarzStrategy']

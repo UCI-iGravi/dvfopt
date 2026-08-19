@@ -69,18 +69,24 @@ def plot_solve_info(
             va='center',
             transform=ax_t.transAxes,
         )
-        ax_n.set_xlabel('wall time [s]')
+        ax_n.set_xlabel('phase')
         if title or getattr(info, 'strategy_name', ''):
             fig.suptitle(title or info.strategy_name)
         return fig
 
-    wall = np.cumsum([max(float(p.wall_s), 0.0) for p in phases])
+    # X-axis is the PHASE INDEX, not accumulated wall_s: producers are
+    # inconsistent about wall_s semantics (the barrier core records
+    # per-step durations, several wallbreaker stage dicts record
+    # cumulative elapsed-since-start), so summing them would inflate the
+    # axis for some strategies. Each phase's own wall_s is shown in its
+    # tick label instead.
+    x = np.arange(len(phases))
     min_t = np.array([float(p.min_T) for p in phases])
     n_neg = np.array([float(p.n_neg) for p in phases])
-    names = [str(p.name) for p in phases]
+    labels = [f'{p.name}\n{float(p.wall_s):.2g}s' for p in phases]
 
     # ---- min_T panel -------------------------------------------------
-    ax_t.plot(wall, min_t, marker='o', color=PALETTE.blue, label='min T')
+    ax_t.plot(x, min_t, marker='o', color=PALETTE.blue, label='min T')
     if threshold is not None:
         ax_t.axhline(threshold, color=PALETTE.feasible, linestyle='--', label=f'thr={threshold:g}')
     ax_t.axhline(0.0, color=PALETTE.gray, linewidth=0.6)
@@ -90,34 +96,18 @@ def plot_solve_info(
 
     # ---- n_neg panel -------------------------------------------------
     known = n_neg >= 0  # -1 = "not recorded for this phase"
-    ax_n.plot(wall[known], n_neg[known], marker='o', color=PALETTE.red, label='n_neg')
+    ax_n.plot(x[known], n_neg[known], marker='o', color=PALETTE.red, label='n_neg')
     ax_n.set_yscale('symlog', linthresh=1)
     ax_n.set_ylim(bottom=-0.5)
     ax_n.set_ylabel('violated cells')
-    ax_n.set_xlabel('wall time [s]')
+    ax_n.set_xlabel('phase')
+    ax_n.set_xticks(x)
+    ax_n.set_xticklabels(labels, fontsize='xx-small', rotation=30, ha='right')
     ax_n.grid(True, axis='y')
 
-    # ---- phase boundaries + labels ----------------------------------
-    for ax in (ax_t, ax_n):
-        for w in wall:
-            ax.axvline(w, color=PALETTE.gray, linewidth=0.4, alpha=0.4)
-    # Label each phase at its segment midpoint on the top panel.
-    prev = 0.0
-    for w, name in zip(wall, names):
-        ax_t.annotate(
-            name,
-            xy=((prev + w) / 2, 1.0),
-            xycoords=('data', 'axes fraction'),
-            ha='center',
-            va='bottom',
-            fontsize='xx-small',
-            rotation=30,
-        )
-        prev = w
-
     feas_idx = getattr(info, 'feasible_after_phase', -1)
-    if 0 <= feas_idx < len(wall):
-        ax_n.axvline(wall[feas_idx], color=PALETTE.feasible, linewidth=1.2, label='first feasible')
+    if 0 <= feas_idx < len(x):
+        ax_n.axvline(x[feas_idx], color=PALETTE.feasible, linewidth=1.2, label='first feasible')
         ax_n.legend(loc='upper right')
 
     fig.suptitle(title or getattr(info, 'strategy_name', ''))

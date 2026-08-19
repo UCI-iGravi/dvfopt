@@ -57,10 +57,7 @@ class SLSQPFullGridStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        if record_history:
-            phi_out, hist = out
-            return phi_out, _build_solve_info('SLSQPFullGridStrategy', {'history': hist}, threshold)
-        return out, _build_solve_info('SLSQPFullGridStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold, wrap_history=True)
 
 
 @register_strategy('slsqp_windowed')
@@ -89,10 +86,13 @@ class SLSQPWindowedStrategy(Strategy):
 
     max_iterations: int = 80
     max_minimize_iter: int = 120
-    # Extra constraint modes (Jdet constraints only). 2D supports both
-    # flags; 3D supports enforce_injectivity (axial monotonicity,
-    # linear rows). The 3D analogue of enforce_shoelace is the 6-tet
-    # constraint family.
+    # Extra constraint modes. 2D supports both flags; 3D supports
+    # enforce_injectivity (axial monotonicity, linear rows). The 3D
+    # analogue of enforce_shoelace is the 6-tet constraint family.
+    # NOTE on injectivity_threshold=None semantics: the 2D path runs the
+    # adaptive tau-doubling loop (doubling until globally injective);
+    # the 3D path simply defaults the gap bound to `threshold` — no
+    # adaptive loop and no global-injectivity certificate.
     enforce_shoelace: bool = False
     enforce_injectivity: bool = False
     injectivity_threshold: float | None = None
@@ -166,6 +166,9 @@ class SLSQPWindowedStrategy(Strategy):
                 max_iterations=self.max_iterations,
                 max_minimize_iter=self.max_minimize_iter,
                 enforce_triangles=True,
+                enforce_shoelace=self.enforce_shoelace,
+                enforce_injectivity=self.enforce_injectivity,
+                injectivity_threshold=self.injectivity_threshold,
             )
             return self._coerce_2d(out), _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         raise TypeError(
@@ -231,12 +234,7 @@ class SLSQPFullGrid3DStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        if record_history:
-            phi_out, hist = out
-            return phi_out, _build_solve_info(
-                'SLSQPFullGrid3DStrategy', {'history': hist}, threshold
-            )
-        return out, _build_solve_info('SLSQPFullGrid3DStrategy', {}, threshold)
+        return self._finish(out, record_history, threshold, wrap_history=True)
 
 
 __all__ = ['SLSQPFullGrid3DStrategy', 'SLSQPFullGridStrategy', 'SLSQPWindowedStrategy']

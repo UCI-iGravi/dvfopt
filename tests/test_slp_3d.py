@@ -53,7 +53,7 @@ class TestClusterSlpIter3D:
         from dvfopt.core.slp import cluster_slp_iter_3d
 
         phi = _folded_volume()
-        phi_out, info = cluster_slp_iter_3d(phi, threshold=THRESHOLD, inner_seed='m10', n_workers=1)
+        phi_out, info = cluster_slp_iter_3d(phi, threshold=THRESHOLD, inner_seed='m10')
         V = six_tet_volumes_3d(phi_out)
         assert float(V.min()) >= THRESHOLD - 1e-5, f'min_T={V.min():.6f}'
         assert info['total_cluster_solves'] >= 1

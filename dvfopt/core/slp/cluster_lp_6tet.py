@@ -16,7 +16,6 @@ Same architecture as the 2D version, but with 3D bboxes, 3D dilation,
 from __future__ import annotations
 
 import time
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from scipy.ndimage import binary_dilation, find_objects
@@ -24,55 +23,11 @@ from scipy.ndimage import label as cc_label
 
 from dvfopt._logging import log_info, log_warning
 from dvfopt.core.slp.lp_direct_6tet import slp_iter
-from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
+from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d, six_tet_volumes_3d
 
 BBOX_PAD = 3  # voxel-units of padding around each cluster's bbox (3D)
 MERGE_DILATION_BASE = 2
 MAX_OUTER_ITERS = 3
-DEFAULT_PARALLEL_WORKERS = 1
-
-
-def _solve_cluster_worker(args):
-    """Top-level (picklable) worker for ProcessPoolExecutor parallelism."""
-    phi_crop, inner_threshold, inner_trust_radius_0, inner_max_iter, inner_seed = args
-    phi_corr, _ = slp_iter(
-        phi_crop,
-        threshold=inner_threshold,
-        trust_radius_0=inner_trust_radius_0,
-        max_iter=inner_max_iter,
-        seed=inner_seed,
-    )
-    return phi_corr
-
-
-def _partition_clusters_nonoverlapping(clusters):
-    """Greedy graph-colour: pack clusters into rounds where no two in
-    the same round have overlapping or adjacent bboxes. 3D version of
-    the 2D non-overlap check."""
-    rounds = []
-    for c in clusters:
-        z0, z1, y0, y1, x0, x1 = c['z0'], c['z1'], c['y0'], c['y1'], c['x0'], c['x1']
-        placed = False
-        for r in rounds:
-            ok = True
-            for c2 in r:
-                if not (
-                    z1 < c2['z0']
-                    or c2['z1'] < z0
-                    or y1 < c2['y0']
-                    or c2['y1'] < y0
-                    or x1 < c2['x0']
-                    or c2['x1'] < x0
-                ):
-                    ok = False
-                    break
-            if ok:
-                r.append(c)
-                placed = True
-                break
-        if not placed:
-            rounds.append([c])
-    return rounds
 
 
 def _fold_clusters_3d(
@@ -82,8 +37,9 @@ def _fold_clusters_3d(
 ):
     """Return list of 3D cluster dicts for every connected component of
     cells where ``min_tet(T_k) < target_threshold``."""
-    V = six_tet_volumes_3d(phi_3dhw)  # (6, D-1, H-1, W-1)
-    cell_min = V.min(axis=0)
+    # Fused per-cell min kernel — never materialises the (6, ...) array
+    # (~32x faster than six_tet_volumes_3d(...).min(axis=0)).
+    cell_min = six_tet_min_volume_3d(phi_3dhw)  # (D-1, H-1, W-1)
     fold_mask = cell_min < target_threshold
     if not fold_mask.any():
         return []
@@ -182,8 +138,7 @@ def cluster_slp_iter_3d(
     inner_trust_radius_0: float = 0.5,
     max_outer_iters: int = MAX_OUTER_ITERS,
     merge_dilation: int = MERGE_DILATION_BASE,
-    final_global_polish: bool = False,
-    n_workers: int = DEFAULT_PARALLEL_WORKERS,
+    final_global_polish: bool = True,
     polish_below_threshold: bool = False,
     verbose: int = 0,
 ):
@@ -191,7 +146,15 @@ def cluster_slp_iter_3d(
 
     Repeatedly: enumerate fold clusters, solve SLP on each cluster's
     padded crop, splice interior back. Outer loop terminates when no
-    folds remain or no progress.
+    folds remain or no progress. When *final_global_polish* is true
+    (default, mirroring the 2D cluster solver) and the outer rounds
+    stall below threshold, a global RefineRepair-3D (m14-3D) polish
+    runs as the feasibility safety net.
+
+    Serial only: the promoted parallel branch (per-call process pool)
+    was removed — its Windows spawn + JIT warmup tax outweighed the
+    parallelism on every measured configuration. The coarse-grained
+    win belongs in the orchestrator (parallel z-bands), not here.
 
     Default inner_seed is 'm10' (not 'm14' as in 2D): on 3D B0039 m14
     catastrophically overshoots on dense folds, while m10 reaches
@@ -203,13 +166,12 @@ def cluster_slp_iter_3d(
     info : dict with per-round + per-cluster bookkeeping.
     """
     t0 = time.time()
-    phi_out = phi_in_3dhw.astype(np.float64).copy()
+    phi_out = phi_in_3dhw.astype(np.float64)  # astype always copies
     info = {
         'rounds': [],
         'inner_seed': inner_seed,
         'total_cluster_solves': 0,
     }
-    pool = ProcessPoolExecutor(max_workers=n_workers) if n_workers > 1 else None
 
     for outer_it in range(max_outer_iters):
         # Round 0: by default target only actual folds. With
@@ -234,58 +196,29 @@ def cluster_slp_iter_3d(
 
         inner_threshold = threshold + 1e-4
 
-        if n_workers > 1:
-            sub_rounds = _partition_clusters_nonoverlapping(clusters)
-            for sub_round in sub_rounds:
-                arg_list = []
-                for c in sub_round:
-                    phi_crop = phi_out[
-                        :,
-                        c['z0'] : c['z1'] + 1,
-                        c['y0'] : c['y1'] + 1,
-                        c['x0'] : c['x1'] + 1,
-                    ].copy()
-                    arg_list.append(
-                        (
-                            phi_crop,
-                            inner_threshold,
-                            inner_trust_radius_0,
-                            inner_max_iter,
-                            inner_seed,
-                        )
-                    )
-                if len(sub_round) > 1:
-                    results = list(pool.map(_solve_cluster_worker, arg_list))
-                else:
-                    results = [_solve_cluster_worker(arg_list[0])]
-                for c, phi_corr in zip(sub_round, results):
-                    _splice_interior_3d(phi_out, c, phi_corr)
-                    info['total_cluster_solves'] += 1
-                    round_runs.append({**c})
-        else:
-            for c in clusters:
-                phi_crop = phi_out[
-                    :,
-                    c['z0'] : c['z1'] + 1,
-                    c['y0'] : c['y1'] + 1,
-                    c['x0'] : c['x1'] + 1,
-                ].copy()
-                t_c = time.time()
-                try:
-                    phi_corr, _ = slp_iter(
-                        phi_crop,
-                        threshold=inner_threshold,
-                        trust_radius_0=inner_trust_radius_0,
-                        max_iter=inner_max_iter,
-                        seed=inner_seed,
-                    )
-                except Exception as exc:
-                    log_warning(f'3D cluster solve FAILED: {type(exc).__name__}: {exc}')
-                    round_runs.append({**c, 'error': f'{type(exc).__name__}: {exc}'})
-                    continue
-                _splice_interior_3d(phi_out, c, phi_corr)
-                info['total_cluster_solves'] += 1
-                round_runs.append({**c, 'wall': time.time() - t_c})
+        for c in clusters:
+            phi_crop = phi_out[
+                :,
+                c['z0'] : c['z1'] + 1,
+                c['y0'] : c['y1'] + 1,
+                c['x0'] : c['x1'] + 1,
+            ].copy()
+            t_c = time.time()
+            try:
+                phi_corr, _ = slp_iter(
+                    phi_crop,
+                    threshold=inner_threshold,
+                    trust_radius_0=inner_trust_radius_0,
+                    max_iter=inner_max_iter,
+                    seed=inner_seed,
+                )
+            except Exception as exc:
+                log_warning(f'3D cluster solve FAILED: {type(exc).__name__}: {exc}')
+                round_runs.append({**c, 'error': f'{type(exc).__name__}: {exc}'})
+                continue
+            _splice_interior_3d(phi_out, c, phi_corr)
+            info['total_cluster_solves'] += 1
+            round_runs.append({**c, 'wall': time.time() - t_c})
 
         V = six_tet_volumes_3d(phi_out)
         post_n_neg = int((V <= 0).sum())
@@ -316,10 +249,27 @@ def cluster_slp_iter_3d(
             if merge_dilation > MERGE_DILATION_BASE + 3:
                 break
 
-    if pool is not None:
-        pool.shutdown(wait=True)
+    # Feasibility safety net (2D parity): a global RefineRepair-3D pass
+    # when the cluster rounds stalled below the strict threshold.
+    final_min = float(six_tet_min_volume_3d(phi_out).min())
+    if final_global_polish and final_min < threshold - 1e-5:
+        if verbose:
+            log_info(f'[final-polish] min_T={final_min:+.5f} < threshold — running global m14-3D')
+        from dvfopt.core.wallbreakers._refine_repair_3d import (
+            iterative_3d_tet_refine_repair,
+        )
 
-    info['final_min_T_exact'] = float(six_tet_volumes_3d(phi_out).min())
+        t_p = time.time()
+        phi_out = iterative_3d_tet_refine_repair(
+            phi_out, threshold=threshold, verbose=max(0, verbose - 1)
+        )
+        info['final_polish'] = {
+            'fired': True,
+            'pre_min_T': final_min,
+            'wall_s': time.time() - t_p,
+        }
+
+    info['final_min_T_exact'] = float(six_tet_min_volume_3d(phi_out).min())
     info['L1_dev'] = float(np.abs(phi_out - phi_in_3dhw).sum())
     info['wall_s'] = time.time() - t0
     return phi_out, info

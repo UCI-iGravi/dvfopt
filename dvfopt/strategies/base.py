@@ -107,18 +107,23 @@ class Strategy(ABC):
         """
 
     # ---- return-normalization helper used by subclasses --------------
-    def _finish(self, out, record_history: bool, threshold: float):
+    def _finish(self, out, record_history: bool, threshold: float, *, wrap_history: bool = False):
         """Normalize an implementation's return into ``(phi_out, SolveInfo)``.
 
         Implementations return ``(phi_out, info)`` when
         ``record_history`` and bare ``phi_out`` otherwise; every
         strategy's ``solve`` ends with the same unpack +
         :func:`_build_solve_info` dance. The strategy name is taken from
-        the concrete class.
+        the concrete class. ``wrap_history=True`` is for implementations
+        whose history payload is a bare list — it is wrapped as
+        ``{'history': ...}`` so the adapter takes the legacy-history
+        path with extras support.
         """
         name = type(self).__name__
         if record_history:
             phi_out, info = out
+            if wrap_history:
+                info = {'history': info}
             return phi_out, _build_solve_info(name, info, threshold)
         return out, _build_solve_info(name, {}, threshold)
 

@@ -36,6 +36,13 @@ jobs:
           key: numba-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('dvfopt/**/*.py') }}
           restore-keys: |
             numba-${{ runner.os }}-py${{ matrix.python-version }}-
+      # Numba validates cache entries against the source file's
+      # (mtime, size) stamp, and actions/checkout rewrites mtimes on
+      # every run — without normalization the restored cache is always
+      # judged stale and every kernel recompiles anyway. Pin all source
+      # mtimes to a constant so the stamps match across runs.
+      - name: Normalize source mtimes for the Numba cache
+        run: git ls-files -z '*.py' | xargs -0 touch -d '2000-01-01T00:00:00Z'
       - name: Run test suite
         # GUI tests importorskip PyQt5; torch-gated tests skip without torch;
         # research worst-case tests skip without the optional data folders.

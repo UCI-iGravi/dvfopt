@@ -19,7 +19,7 @@ pip install -e ".[benchmarks]"
 pip install -r requirements-dev.txt
 ```
 
-Solver progress output routes through the `dvfopt` logger (`dvfopt/_logging.py` — `vlog`/`log_info`/`log_warning`; `verbose=` semantics unchanged, auto-installs a stderr handler only when the caller has no logging configured). Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
+Solver progress output routes through the `dvfopt` logger (`dvfopt/_logging.py` — `vlog`/`log_info`/`log_warning`; `verbose=` semantics unchanged). A live-stdout handler is auto-installed (and propagation disabled, so lines print exactly once) only when no handler is attached to the `dvfopt` logger; attach your own handler to that logger to take over routing. Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
 
 ```bash
 # Run all tests

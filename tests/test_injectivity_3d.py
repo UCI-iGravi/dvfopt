@@ -135,3 +135,28 @@ class TestStrategySurface:
                 strategy=SLSQPWindowedStrategy(enforce_shoelace=True),
                 threshold=THRESHOLD,
             ).fit(phi)
+
+
+class TestInjectivityOnlyRepair:
+    """Regression: an injectivity-only violation in a Jdet-healthy region
+    must be repairable. The first implementation's accept/rollback gate
+    measured only the local Jdet, so the fix was reverted whenever it
+    nudged a still-healthy Jdet down by any epsilon — livelocking the
+    outer loop until max_iterations with the crossing intact."""
+
+    def test_no_livelock_on_jdet_feasible_crossing(self):
+        from dvfopt.core.slsqp.iterative3d import iterative_3d
+
+        phi = np.zeros((3, 5, 8, 8))
+        phi[2, :, :, 3] = -1.05  # x-gap col 2->3 = -0.05; Jdet stays feasible
+        phi[1, 2, 4:7, 4] = [-0.95, -1.90, -0.95]  # healthy-but-low Jdet spot
+        assert (jacobian_det3D(phi) > 0).all(), 'fixture must be Jdet-feasible'
+        out = iterative_3d(
+            phi,
+            threshold=THRESHOLD,
+            verbose=0,
+            enforce_injectivity=True,
+            max_iterations=100,
+        )
+        q = injectivity_quality_3d(out)
+        assert float(q.min()) >= THRESHOLD - 1e-4, f'gap min {q.min():.5f} — livelock regression'

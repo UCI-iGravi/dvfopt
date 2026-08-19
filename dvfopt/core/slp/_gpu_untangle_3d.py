@@ -12,12 +12,11 @@ Channel convention: ``phi (3, D, H, W) = [dz, dy, dx]`` (the package-wide
 3D array convention). ALL THREE channels are free — this is true 3D, no
 ``dz == 0`` restriction.
 
-The torch tet-volume kernel :func:`_tet_volumes_torch` matches
-``dvfopt.jacobian.tetrahedron_sign.six_tet_volumes_3d`` EXACTLY — same
-``_TET_VERTICES`` / ``_TET_SIGN`` tables (imported from that module as the
-single source of truth), same scalar-triple-product expansion in (z, y, x)
-component order. Parity is checked to 1e-10 against the numpy kernel by the
-torch-gated tests in ``tests/test_tetrahedron_sign.py``.
+The tet volumes come from the canonical torch kernel
+:func:`dvfopt.jacobian.tetrahedron_sign_torch.six_tet_volumes_3d_torch`
+(the single torch-side source of the Kuhn decomposition), whose parity
+with the numpy kernel is pinned to 1e-13 by the torch-gated tests in
+``tests/test_tetrahedron_sign.py``.
 
 Intended as a low-L1 *seed* for the exact-feasibility 3D pipeline
 (``correct_dvf_3d``) on dense chunks: like its 2D sibling it clears the
@@ -35,62 +34,21 @@ import numpy as np
 # Single source of truth for the Kuhn decomposition: same tables the numpy
 # kernel uses. NOT re-derived here.
 from dvfopt._logging import log_info
-from dvfopt.jacobian.tetrahedron_sign import _TET_SIGN, _TET_VERTICES
 
 
 def _tet_volumes_torch(dz, dy, dx, torch):
     """Per-cell six signed Kuhn tet volumes, matching six_tet_volumes_3d.
 
-    Parameters
-    ----------
-    dz, dy, dx : torch.Tensor, shape ``(D, H, W)``
-        Displacement channels (autograd-capable).
-
-    Returns
-    -------
-    torch.Tensor, shape ``(6, D-1, H-1, W-1)``
-        ``V[k]`` = signed volume of tet k of every cell. Identity field →
-        every entry ``+1/6``.
+    Thin delegate to the canonical torch kernel
+    :func:`dvfopt.jacobian.tetrahedron_sign_torch.six_tet_volumes_3d_torch`
+    (single source of the Kuhn decomposition on the torch side — parity
+    with the numpy kernel is pinned by the torch-gated tests in
+    ``tests/test_tetrahedron_sign.py``). ``torch.stack`` preserves
+    autograd through the channel leaves.
     """
-    D, H, W = dz.shape
-    zz = torch.arange(D, device=dz.device, dtype=dz.dtype)[:, None, None]
-    yy = torch.arange(H, device=dz.device, dtype=dz.dtype)[None, :, None]
-    xx = torch.arange(W, device=dz.device, dtype=dz.dtype)[None, None, :]
-    Z = zz + dz
-    Y = yy + dy
-    X = xx + dx
+    from dvfopt.jacobian.tetrahedron_sign_torch import six_tet_volumes_3d_torch
 
-    # Warped positions of the 8 cube corners of every cell, as slice views
-    # (no in-place writes — autograd-friendly and allocation-light).
-    # Corner i has offsets (oz, oy, ox) = ((i>>2)&1, (i>>1)&1, i&1) — the
-    # exact convention of _voxel_corner_positions in tetrahedron_sign.py.
-    P = []
-    for i in range(8):
-        oz = (i >> 2) & 1
-        oy = (i >> 1) & 1
-        ox = i & 1
-        sl = (slice(oz, D - 1 + oz), slice(oy, H - 1 + oy), slice(ox, W - 1 + ox))
-        P.append((Z[sl], Y[sl], X[sl]))
-
-    vols = []
-    for k in range(6):
-        i0, i1, i2, i3 = (int(v) for v in _TET_VERTICES[k])
-        Az, Ay, Ax = P[i0]
-        Bz, By, Bx = P[i1]
-        Cz, Cy, Cx = P[i2]
-        Dz_, Dy_, Dx_ = P[i3]
-        ABz, ABy, ABx = Bz - Az, By - Ay, Bx - Ax
-        ACz, ACy, ACx = Cz - Az, Cy - Ay, Cx - Ax
-        ADz, ADy, ADx = Dz_ - Az, Dy_ - Ay, Dx_ - Ax
-        # det of [AB, AC, AD] columns, expanded along the first row —
-        # component order (z, y, x), identical to _tet_volume_from_vertices.
-        det = (
-            ABz * (ACy * ADx - ACx * ADy)
-            - ABy * (ACz * ADx - ACx * ADz)
-            + ABx * (ACz * ADy - ACy * ADz)
-        )
-        vols.append(float(_TET_SIGN[k]) * det / 6.0)
-    return torch.stack(vols, dim=0)
+    return six_tet_volumes_3d_torch(torch.stack([dz, dy, dx]))
 
 
 def gpu_untangle_alm_3d(
