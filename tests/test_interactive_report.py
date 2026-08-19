@@ -89,3 +89,50 @@ def test_build_report_never_raises_on_bad_payload(tmp_path):
 def test_build_report_empty_is_warn(tmp_path):
     p = ir.build_interactive_report(tmp_path / "e.html", {"threshold": 0.01}, [])
     assert "No fields processed" in p.read_text(encoding="utf-8")
+
+
+def _base_payload(**extra):
+    p = {
+        "id": "f0",
+        "label": "T/z0",
+        "w": 4,
+        "h": 4,
+        "threshold": 0.01,
+        "vmax": 2.0,
+        "jdet_before": ir.b64_floats(np.full((4, 4), -1.0)),
+        "jdet_after": ir.b64_floats(np.ones((4, 4))),
+        "dy_before": ir.b64_floats(np.zeros((4, 4))),
+        "dx_before": ir.b64_floats(np.zeros((4, 4))),
+        "dy_after": ir.b64_floats(np.zeros((4, 4))),
+        "dx_after": ir.b64_floats(np.zeros((4, 4))),
+        "rois": [],
+        "families": [("Jdet", 16, 0, -1.0, 1.0)],
+    }
+    p.update(extra)
+    return p
+
+
+def test_report_with_traj_has_play_controls(tmp_path):
+    frames = [ir.b64_floats(np.full((4, 4), v)) for v in (-1.0, 0.2, 1.0)]
+    payload = _base_payload(traj=frames, traj_labels=["input", "iter 1", "final"])
+    doc = ir.build_interactive_report(
+        tmp_path / "r.html", {"threshold": 0.01}, [payload]
+    ).read_text(encoding="utf-8")
+    assert "Play iterations" in doc and "class=traj" in doc  # play button + slider
+    assert all(f in doc for f in frames)  # frames embedded
+    assert "http://" not in doc and "https://" not in doc  # still self-contained
+
+
+def test_report_without_traj_has_no_play(tmp_path):
+    # The button/slider live only in the field block; `data-act=play` also
+    # appears in the shared JS, so key on the field-block-only markup.
+    doc = ir.build_interactive_report(
+        tmp_path / "r.html", {"threshold": 0.01}, [_base_payload()]
+    ).read_text(encoding="utf-8")
+    assert "Play iterations" not in doc and "class=traj" not in doc
+
+
+def test_js_has_trajectory_logic():
+    # Guard the viewer wiring so a refactor can't silently drop the animation.
+    for token in ("curImg", "imgTraj", "trajF32", "playTimer"):
+        assert token in ir._JS

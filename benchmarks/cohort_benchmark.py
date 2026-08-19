@@ -46,15 +46,61 @@ from dvfopt import jacobian_det2D, jacobian_det3D
 
 
 def make_25d_corrector(**kw):
-    """Return a ``corrector(phi) -> phi`` wrapping ``correct_dvf_25d`` (needs dz==0)."""
+    """Return a ``corrector(phi, frames=None) -> phi`` wrapping ``correct_dvf_25d``.
+
+    ``frames`` (optional list): when given, the solver's ``progress_callback``
+    appends a copy of each intermediate ``(3, D, H, W)`` volume so the report can
+    animate the solver trajectory. Passing it is opt-in; the default
+    ``corrector(phi)`` call is unchanged.
+    """
     from dvfopt import correct_dvf_25d
 
-    def _corrector(phi):
-        out, _report = correct_dvf_25d(phi, **kw)
+    def _corrector(phi, frames=None):
+        kw2 = dict(kw)
+        if frames is not None:
+
+            def _pcb(state, _sink=frames):
+                ph = state.get("phi") if isinstance(state, dict) else None
+                if ph is not None:
+                    _sink.append(np.asarray(ph).copy())
+
+            kw2["progress_callback"] = _pcb
+        out, _report = correct_dvf_25d(phi, **kw2)
         return out
 
     _corrector.label = "correct_dvf_25d(" + ", ".join(f"{k}={v}" for k, v in kw.items()) + ")"
     return _corrector
+
+
+def _sample_trajectory(volumes, phi_init, phi_out, zc, threshold, k=8):
+    """K evenly-sampled trajectory frames for the displayed z-slice ``zc``.
+
+    Prepends the input and appends the output so the animation always spans
+    input → final. Each frame is ``{"jdet": base64-float16 of jacobian_det3D(v)[zc],
+    "n_neg": folds in that slice, "label": short tag}``. Returns ``[]`` when no
+    intermediate ``volumes`` were captured (solver didn't stream) — the report then
+    shows the plain before/after viewer.
+    """
+    if not volumes:
+        return []
+    seq = [phi_init, *volumes, phi_out]
+    n = len(seq)
+    if n > k:
+        # even sample of the interior; always keep first + last
+        idx = sorted({0, n - 1, *(round(i * (n - 1) / (k - 1)) for i in range(k))})
+        seq = [seq[i] for i in idx]
+    frames = []
+    for j, vol in enumerate(seq):
+        jslice = jacobian_det3D(np.asarray(vol, dtype=np.float64))[zc]
+        tag = "input" if j == 0 else "final" if j == len(seq) - 1 else f"iter {j}"
+        frames.append(
+            {
+                "jdet": ir.b64_floats(jslice),
+                "n_neg": int((jslice < threshold).sum()),
+                "label": tag,
+            }
+        )
+    return frames
 
 
 # ---------------------------------------------------------------------------
@@ -148,16 +194,31 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
 
 
 def _build_3d_payload(
-    vid, label, field_init, field_out, jac_init3d, jac_final3d, m, threshold, mp=None, fp=None
+    vid,
+    label,
+    field_init,
+    field_out,
+    jac_init3d,
+    jac_final3d,
+    m,
+    threshold,
+    mp=None,
+    fp=None,
+    frames=None,
 ):
     """3D interactive payload: worst z-slice viewer + volume-wide ROI (z,y,x).
 
     Embedding the whole volume would be extreme (~GBs); the viewer shows the
     worst-folding slice at full resolution, and the ROI table ranks fold clusters
     across the entire volume (each carries its z).
+
+    ``frames`` (optional): intermediate ``(3, D, H, W)`` volumes captured from the
+    solver; when present the payload gains a ``traj`` (K sampled Jdet frames of the
+    shown slice) so the viewer can animate the solver trajectory.
     """
     folds_per_z = (jac_init3d < threshold).reshape(jac_init3d.shape[0], -1).sum(axis=1)
     zc = int(np.argmax(folds_per_z))
+    traj = _sample_trajectory(frames or [], field_init, field_out, zc, threshold)
     jb, ja = jac_init3d[zc], jac_final3d[zc]
     mp_s, fp_s = ca.slice_correspondences(mp, fp, zc)
     corr = (
@@ -173,7 +234,7 @@ def _build_3d_payload(
         families.append(
             ("6-tet", m["n_tet_init"], m["n_tet_final"], m["tet_min_init"], m["tet_min_final"])
         )
-    return {
+    payload = {
         **_corr_payload(corr),
         "id": vid,
         "label": f"{label}  (viewer: worst z={zc})",
@@ -192,6 +253,10 @@ def _build_3d_payload(
         "note": f"3D volume — viewer embeds the worst z-slice (z={zc}); ROI table spans the "
         "whole volume (click a row whose z matches the shown slice to locate it).",
     }
+    if traj:
+        payload["traj"] = [f["jdet"] for f in traj]
+        payload["traj_labels"] = [f"{f['label']} · {f['n_neg']} folds" for f in traj]
+    return payload
 
 
 def _measure(phi_init, phi, elapsed, threshold):
@@ -563,6 +628,14 @@ def run_cohort_benchmark(
     if corrector is None:
         corrector = make_25d_corrector(threshold=threshold)
     corrector_label = getattr(corrector, "label", getattr(corrector, "__name__", "corrector"))
+    # Only capture the solver trajectory when the report is interactive AND the
+    # corrector opts in by accepting a ``frames`` sink (make_25d_corrector does).
+    import inspect
+
+    try:
+        _accepts_frames = interactive and "frames" in inspect.signature(corrector).parameters
+    except (TypeError, ValueError):
+        _accepts_frames = False
 
     # Resolve the (label, brain, variant, loader) work list.
     if fields is not None:
@@ -587,7 +660,12 @@ def run_cohort_benchmark(
             print(f"[cohort] {label} ...", flush=True)
         phi_init = np.asarray(load()).astype(np.float64)
         t0 = time.perf_counter()
-        phi = corrector(phi_init.copy())
+        frames_vol = [] if _accepts_frames else None
+        phi = (
+            corrector(phi_init.copy(), frames=frames_vol)
+            if _accepts_frames
+            else corrector(phi_init.copy())
+        )
         elapsed = time.perf_counter() - t0
         m = _measure(phi_init, phi, elapsed, threshold)
         jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
@@ -605,7 +683,17 @@ def run_cohort_benchmark(
             )
             payloads.append(
                 _build_3d_payload(
-                    vid, label, phi_init, phi, jac_init, jac_final, m, threshold, mp=mp, fp=fp
+                    vid,
+                    label,
+                    phi_init,
+                    phi,
+                    jac_init,
+                    jac_final,
+                    m,
+                    threshold,
+                    mp=mp,
+                    fp=fp,
+                    frames=frames_vol,
                 )
             )
         elif static_figs:

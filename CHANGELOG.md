@@ -8,6 +8,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Interactive report — solver-trajectory animation.** The cohort's
+  interactive report viewer gains a play/scrub timeline that animates how a
+  field's Jacobian-determinant map deforms across the solver's iterations
+  (not just before → after). Frames are captured from `correct_dvf_25d`'s
+  `progress_callback` (`make_25d_corrector` now takes an opt-in `frames`
+  sink), sampled to K ≤ 8 Jdet slices, and embedded (self-contained). Solvers
+  that don't stream intermediate fields (e.g. `slp`/`slsqp`) show before/after
+  as before.
 - **Developer tooling.** `[tool.pytest.ini_options]` scopes collection to
   `tests/` (bare `pytest` no longer over-collects the notebook scratch
   scripts); `pytest-randomly` (order-shuffling), `pytest-xdist`
