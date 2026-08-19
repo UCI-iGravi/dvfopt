@@ -1,7 +1,30 @@
 """Shared fixtures for dvfopt unit tests."""
 
+import logging
+
 import numpy as np
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_dvfopt_logger():
+    """Snapshot/restore the ``dvfopt`` logger around every test.
+
+    The logger carries process-global state (handlers, level, propagate) that
+    solver-verbosity emits through (``dvfopt._logging``). Without isolation a
+    test that installs a handler or raises the level leaks into later tests —
+    e.g. the ``verbose=`` capsys tests then see no ``[init]`` line. Rolling the
+    logger back after each test keeps ordering-independent.
+    """
+    lg = logging.getLogger("dvfopt")
+    saved = (lg.handlers[:], lg.level, lg.propagate, lg.disabled)
+    try:
+        yield
+    finally:
+        lg.handlers[:] = saved[0]
+        lg.setLevel(saved[1])
+        lg.propagate = saved[2]
+        lg.disabled = saved[3]
 
 
 @pytest.fixture
