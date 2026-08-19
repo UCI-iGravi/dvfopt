@@ -89,6 +89,13 @@ class SLSQPWindowedStrategy(Strategy):
 
     max_iterations: int = 80
     max_minimize_iter: int = 120
+    # Extra constraint modes (Jdet constraints only). 2D supports both
+    # flags; 3D supports enforce_injectivity (axial monotonicity,
+    # linear rows). The 3D analogue of enforce_shoelace is the 6-tet
+    # constraint family.
+    enforce_shoelace: bool = False
+    enforce_injectivity: bool = False
+    injectivity_threshold: float | None = None
 
     supports_3d: bool = True
 
@@ -117,6 +124,9 @@ class SLSQPWindowedStrategy(Strategy):
                 max_iterations=self.max_iterations,
                 max_minimize_iter=self.max_minimize_iter,
                 enforce_triangles=False,
+                enforce_shoelace=self.enforce_shoelace,
+                enforce_injectivity=self.enforce_injectivity,
+                injectivity_threshold=self.injectivity_threshold,
             )
             return self._coerce_2d(out), _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         if isinstance(constraint, JdetConstraint3D):
@@ -127,12 +137,19 @@ class SLSQPWindowedStrategy(Strategy):
             deformation[0] = phi_in[0]
             deformation[1] = phi_in[1]
             deformation[2] = phi_in[2]
+            if self.enforce_shoelace:
+                raise ValueError(
+                    'enforce_shoelace is 2D-only; in 3D the geometric cell-volume '
+                    "condition is served by the 6-tet constraint family ('6tet')."
+                )
             out = iterative_3d(
                 deformation,
                 threshold=threshold,
                 verbose=verbose,
                 max_iterations=self.max_iterations,
                 max_minimize_iter=self.max_minimize_iter,
+                enforce_injectivity=self.enforce_injectivity,
+                injectivity_threshold=self.injectivity_threshold,
             )
             return out, _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         if isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage)):

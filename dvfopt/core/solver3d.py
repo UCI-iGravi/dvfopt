@@ -146,6 +146,8 @@ def _optimize_single_window_3d(
     method_name,
     window_reached_max=False,
     patch_ctx=None,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``.
 
@@ -163,7 +165,13 @@ def _optimize_single_window_3d(
         assert patch_ctx is not None, 'max-window solve requires patch_ctx'
         patch_flat, patch_size, win_start = patch_ctx
         constraints = _build_constraints_3d_maxwindow(
-            patch_flat, patch_size, win_start, subvolume_size, threshold
+            patch_flat,
+            patch_size,
+            win_start,
+            subvolume_size,
+            threshold,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
     else:
         constraints = _build_constraints_3d(
@@ -172,6 +180,8 @@ def _optimize_single_window_3d(
             freeze_mask,
             threshold,
             window_reached_max=False,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
 
     t0 = time.time()
@@ -256,6 +266,8 @@ def _serial_fix_voxel(
     min_window=(3, 3, 3),
     labeled_array=None,
     max_window_voxels=None,
+    enforce_injectivity=False,
+    injectivity_threshold=None,
 ):
     """Fix a single voxel using the serial adaptive-window inner loop.
 
@@ -372,6 +384,8 @@ def _serial_fix_voxel(
             method_name,
             window_reached_max=window_reached_max,
             patch_ctx=patch_ctx,
+            enforce_injectivity=enforce_injectivity,
+            injectivity_threshold=injectivity_threshold,
         )
         iter_times.append(elapsed)
         if not opt_success:

@@ -33,6 +33,53 @@ def _diagonal_monotonicity_diffs_2d(dy, dx):
     return d1, d2
 
 
+def _monotonicity_diffs_3d(dz, dy, dx):
+    """Forward-difference monotonicity of deformed coordinates in 3D.
+
+    The deformed coordinate along each axis is ``axis_index + displacement``,
+    so the gap between neighbours is ``1 + diff(displacement)``.
+
+    Returns ``(z_mono, y_mono, x_mono)`` with shapes ``(D-1, H, W)``,
+    ``(D, H-1, W)`` and ``(D, H, W-1)``.
+    """
+    z_mono = 1.0 + np.diff(dz, axis=0)
+    y_mono = 1.0 + np.diff(dy, axis=1)
+    x_mono = 1.0 + np.diff(dx, axis=2)
+    return z_mono, y_mono, x_mono
+
+
+def injectivity_quality_3d(phi):
+    """Per-voxel minimum axial monotonicity gap, spread to both endpoints.
+
+    3D analogue of the 2D injectivity quality spread: each axial gap value
+    is assigned to both voxels it separates and the element-wise minimum
+    is taken, giving a ``(D, H, W)`` map whose low entries mark voxels
+    involved in a (near-)crossing.
+
+    .. note::
+        Deliberately **axial-only** — the 2D version adds anti-diagonal
+        terms that make each quad cell provably convex; the corresponding
+        3D closure would need the face- and space-diagonal families.
+        These axial gaps are necessary separation conditions (deformed
+        coordinate ordering along each axis), not a full 3D injectivity
+        certificate.
+
+    Parameters
+    ----------
+    phi : ndarray, shape ``(3, D, H, W)`` with channels ``[dz, dy, dx]``.
+    """
+    dz, dy, dx = phi[0], phi[1], phi[2]
+    z_mono, y_mono, x_mono = _monotonicity_diffs_3d(dz, dy, dx)
+    q = np.full(dz.shape, np.inf)
+    q[:-1] = np.minimum(q[:-1], z_mono)
+    q[1:] = np.minimum(q[1:], z_mono)
+    q[:, :-1] = np.minimum(q[:, :-1], y_mono)
+    q[:, 1:] = np.minimum(q[:, 1:], y_mono)
+    q[:, :, :-1] = np.minimum(q[:, :, :-1], x_mono)
+    q[:, :, 1:] = np.minimum(q[:, :, 1:], x_mono)
+    return q
+
+
 def injectivity_constraint(phi_xy, submatrix_size, exclude_boundaries=True):
     """Return flattened monotonicity diffs for the SLSQP injectivity constraint.
 
