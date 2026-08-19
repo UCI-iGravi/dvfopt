@@ -657,7 +657,10 @@ def run_cohort_2d_sections(
         Sections run in parallel processes when > 1. Each section is an
         independent multi-minute solve, so this scales near-linearly with cores.
         Requires a *picklable* corrector (the defaults are); a lambda/closure
-        raises. Serial (n_workers=1) accepts any callable.
+        raises. Serial (n_workers=1) accepts any callable. On spawn platforms
+        (Windows/macOS) a script calling this with n_workers>1 MUST guard the
+        call under ``if __name__ == "__main__":`` — workers re-import the caller
+        module, and an unguarded top-level call re-spawns recursively.
     variant, run_name, out_base, threshold, make_figures, verbose
         Run knobs.
     """
@@ -692,16 +695,22 @@ def run_cohort_2d_sections(
 
     t_run = time.perf_counter()
     if n_workers > 1 and len(work) > 1:
-        from concurrent.futures import ProcessPoolExecutor
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
         if verbose:
             print(f"[2d] {len(work)} sections across {n_workers} workers ...", flush=True)
         with ProcessPoolExecutor(max_workers=n_workers) as ex:
-            futures = [
-                ex.submit(_process_section, corrector, b, z, sec, threshold, make_figures)
+            fut_id = {
+                ex.submit(_process_section, corrector, b, z, sec, threshold, make_figures): (b, z)
                 for (b, z, sec) in work
-            ]
-            results = [f.result() for f in futures]
+            }
+            done = {}
+            for fut in as_completed(fut_id):
+                b, z = fut_id[fut]
+                done[(b, z)] = fut.result()
+                if verbose:
+                    print(f"[2d] {b}/z{z} done ({len(done)}/{len(work)})", flush=True)
+            results = [done[(b, z)] for (b, z, _sec) in work]  # restore submission order
     else:
         results = []
         for b, z, sec in work:
