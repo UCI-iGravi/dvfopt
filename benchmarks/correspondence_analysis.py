@@ -29,10 +29,18 @@ def analyze_slice(sec_init, sec_out, mp_slice, fp_slice, top=25, k_neighbors=8):
     *sec_init* / *sec_out* are ``(3, 1, H, W)`` before/after fields; *mp_slice* /
     *fp_slice* are the ``(M, 3)`` ``[z, y, x]`` correspondences on this slice.
     """
-    m = len(fp_slice)
-    if m == 0:
+    if len(fp_slice) == 0:
         return None
+    h, w = sec_init.shape[2:]
     fy, fx = fp_slice[:, 1].astype(int), fp_slice[:, 2].astype(int)
+    # Drop correspondences whose FIXED point is outside the grid (residual indexes
+    # the field there); a stray/out-of-res coord would otherwise crash or wrap.
+    keep = (fy >= 0) & (fy < h) & (fx >= 0) & (fx < w)
+    if not keep.any():
+        return None
+    fp_slice, mp_slice = fp_slice[keep], mp_slice[keep]
+    fy, fx = fy[keep], fx[keep]
+    m = len(fp_slice)
     my, mx = mp_slice[:, 1].astype(int), mp_slice[:, 2].astype(int)
     pdy = (mp_slice[:, 1] - fp_slice[:, 1]).astype(np.float64)  # prescribed dy = moving_y-fixed_y
     pdx = (mp_slice[:, 2] - fp_slice[:, 2]).astype(np.float64)
@@ -43,8 +51,10 @@ def analyze_slice(sec_init, sec_out, mp_slice, fp_slice, top=25, k_neighbors=8):
 
     r_before, r_after = resid(sec_init.astype(np.float64)), resid(sec_out.astype(np.float64))
 
+    # Floor the MAD at ~half a voxel so a near-uniform slice (mad ~ 0) does not
+    # flag every correspondence a floating-point ulp above the median.
     med_m, mad_m = _mad(disp_mag)
-    mag_out = disp_mag > med_m + 3 * mad_m
+    mag_out = disp_mag > med_m + 3 * max(mad_m, 0.5)
     med_r, mad_r = _mad(r_after)
     # BCs are honored to ~0.03 px before correction; flag only real breaks.
     resid_out = r_after > max(1.0, med_r + 5 * mad_r)
@@ -60,7 +70,7 @@ def analyze_slice(sec_init, sec_out, mp_slice, fp_slice, top=25, k_neighbors=8):
         nb_mean = vec[idx[:, 1:]].mean(axis=1)  # exclude self (col 0)
         dev = np.linalg.norm(vec - nb_mean, axis=1)
         med_d, mad_d = _mad(dev)
-        incoh = dev > med_d + 4 * mad_d
+        incoh = dev > med_d + 4 * max(mad_d, 0.5)
 
     is_out = mag_out | resid_out | incoh
 

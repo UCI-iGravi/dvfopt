@@ -219,16 +219,16 @@ function Viewer(root, data){
   if (corrBtn) corrBtn.addEventListener('click', e=>{
     showCorr=!showCorr; e.target.classList.toggle('on', showCorr); draw(); });
   root.querySelector('[data-act=reset]').addEventListener('click', ()=>{ scale=1; ox=0; oy=0; roiBox=null; draw(); });
-  function locate(cx, cy, half){
+  function centerOn(cx, cy, half){  // set zoom+pan to frame a region; caller sets roiBox
     const pad=half*1.5+8; scale=Math.max(1, Math.min(60, cv.width/(2*pad)));
-    roiBox=[cx-half, cy-half, 2*half, 2*half];
     ox=cv.width/2 - cx*scale; oy=cv.height/2 - cy*scale; draw();
   }
   root.querySelectorAll('.roi tr[data-bbox]').forEach(tr=>{
     tr.addEventListener('click', ()=>{
       root.querySelectorAll('.roi tr').forEach(t=>t.classList.remove('sel')); tr.classList.add('sel');
       const bb=JSON.parse(tr.getAttribute('data-bbox'));  // [y0,y1,x0,x1]
-      locate(bb[2]+(bb[3]-bb[2])/2, bb[0]+(bb[1]-bb[0])/2, Math.max(bb[3]-bb[2], bb[1]-bb[0]));
+      const w=bb[3]-bb[2], h=bb[1]-bb[0]; roiBox=[bb[2], bb[0], w, h];  // exact bbox
+      centerOn(bb[2]+w/2, bb[0]+h/2, Math.max(w, h));
     });
   });
   root.querySelectorAll('.roi tr[data-loc]').forEach(tr=>{
@@ -236,7 +236,7 @@ function Viewer(root, data){
       root.querySelectorAll('.roi tr').forEach(t=>t.classList.remove('sel')); tr.classList.add('sel');
       const yx=JSON.parse(tr.getAttribute('data-loc'));  // [y,x]
       if (corrBtn && !showCorr){ showCorr=true; corrBtn.classList.add('on'); }
-      locate(yx[1], yx[0], 14);
+      roiBox=[yx[1]-6, yx[0]-6, 12, 12]; centerOn(yx[1], yx[0], 14);
     });
   });
   draw();
@@ -313,8 +313,11 @@ def _corr_stats_html(s):
 def _corr_outlier_table(outliers):
     if not outliers:
         return ""
+    # Only single-value numeric columns get sorting; multi-value cells (move y,x,
+    # resid b->a) and text would sort on a mangled concatenated number.
+    sortable = {"#", "y", "x", "disp"}
     head = "".join(
-        f"<th onclick='sortTable(this)'>{h}</th>"
+        (f"<th onclick='sortTable(this)'>{h}</th>" if h in sortable else f"<th>{h}</th>")
         for h in ("#", "y", "x", "move y,x", "disp", "resid b&rarr;a", "type")
     )
     body = []

@@ -54,6 +54,27 @@ def test_empty_slice_returns_none():
     assert ca.analyze_slice(np.zeros((3, 1, 5, 5)), np.zeros((3, 1, 5, 5)), empty, empty) is None
 
 
+def test_out_of_bounds_fixed_points_are_dropped_not_crashed():
+    fp = np.array([[0, 3, 3], [0, 99, 99]])  # second is out of a 10x10 grid
+    mp = fp.copy()
+    mp[:, 1] += 1
+    r = ca.analyze_slice(np.zeros((3, 1, 10, 10)), np.zeros((3, 1, 10, 10)), mp, fp)
+    assert r["stats"]["n"] == 1  # only the in-bounds one survives
+
+
+def test_uniform_slice_flags_no_false_outliers():
+    n = 50
+    fy = np.arange(n) % 9 + 1
+    fx = (np.arange(n) * 2) % 9 + 1
+    fp = np.stack([np.zeros(n, int), fy, fx], 1)
+    mp = fp.copy()
+    mp[:, 1] += 1  # perfectly coherent dy=+1 everywhere
+    sec = np.zeros((3, 1, 12, 12))
+    sec[1, 0, fy, fx] = 1
+    r = ca.analyze_slice(sec, sec, mp, fp)
+    assert r["stats"]["n_large"] == 0 and r["stats"]["n_incoherent"] == 0
+
+
 def test_slice_correspondences_filters_by_fixed_z():
     fp = np.array([[1, 2, 3], [2, 4, 5], [1, 6, 7]])
     mp = fp + 1

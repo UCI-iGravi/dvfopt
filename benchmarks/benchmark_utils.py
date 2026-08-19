@@ -77,7 +77,12 @@ def load_cohort_correspondences(brain, variant="laplacian_exterior"):
     mp, fp = d / "mpoints.npz", d / "fpoints.npz"
     if not (mp.is_file() and fp.is_file()):
         return None, None
-    return np.load(mp)["arr"], np.load(fp)["arr"]
+
+    def _first(path):  # tolerate any single-array key ('arr', 'arr_0', ...)
+        z = np.load(path)
+        return z[z.files[0]]
+
+    return _first(mp), _first(fp)
 
 
 # ---------------------------------------------------------------------------
