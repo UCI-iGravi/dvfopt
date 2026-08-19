@@ -151,6 +151,29 @@ def test_2d_sections_interactive_report(tmp_path, monkeypatch):
     assert "n_tri_init" in header
 
 
+def test_2d_interactive_with_correspondences(tmp_path, monkeypatch):
+    import benchmark_utils as bu
+
+    vol = _folded_volume(0, d=4)
+    # synthetic correspondences on slice z=1 (fixed z==1)
+    rng = np.random.default_rng(1)
+    n = 40
+    fy = rng.integers(1, 9, n)
+    fx = rng.integers(1, 9, n)
+    fp = np.stack([np.ones(n, int), fy, fx], 1)
+    mp = fp + rng.integers(-2, 3, (n, 3)) * np.array([0, 1, 1])  # keep z, move y/x
+    monkeypatch.setattr(bu, "load_cohort_field", lambda b, variant="x": vol)
+    monkeypatch.setattr(bu, "load_cohort_correspondences", lambda b, variant="x": (mp, fp))
+    rd = cb.run_cohort_2d_sections(
+        corrector=lambda s: s,
+        sections=[("B0", 1)],
+        interactive=True,
+        out_base=str(tmp_path / "corr"),
+    )
+    doc = (rd / "report.html").read_text(encoding="utf-8")
+    assert "data-act=corr" in doc and "corr_fx" in doc and "registration residual" in doc
+
+
 def test_3d_interactive_report(tmp_path):
     rd = cb.run_cohort_benchmark(
         corrector=lambda p: p,

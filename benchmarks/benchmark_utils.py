@@ -65,6 +65,26 @@ def load_cohort_section(brain, z, variant="laplacian_exterior"):
     return load_cohort_field(brain, variant)[:, z : z + 1].copy()
 
 
+def load_cohort_correspondences(brain, variant="laplacian_exterior"):
+    """Return ``(mpoints, fpoints)`` — the Laplacian boundary conditions.
+
+    Each is ``(N, 3)`` in ``[z, y, x]`` voxel coords, paired 1:1. Convention
+    (verified empirically): the deformation field at a *fixed* point equals
+    ``moving - fixed`` (backward mapping). Returns ``(None, None)`` if the
+    (gitignored) correspondence files are absent.
+    """
+    d = cohort_dir() / brain / variant
+    mp, fp = d / "mpoints.npz", d / "fpoints.npz"
+    if not (mp.is_file() and fp.is_file()):
+        return None, None
+
+    def _first(path):  # tolerate any single-array key ('arr', 'arr_0', ...)
+        z = np.load(path)
+        return z[z.files[0]]
+
+    return _first(mp), _first(fp)
+
+
 # ---------------------------------------------------------------------------
 # Output directory management
 # ---------------------------------------------------------------------------
