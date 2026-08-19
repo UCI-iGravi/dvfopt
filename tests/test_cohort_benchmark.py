@@ -54,6 +54,17 @@ def test_summary_and_report_content(tmp_path):
     assert "data:image/png;base64," in doc  # figures embedded, self-contained
 
 
+def test_default_output_is_timestamped_subfolder_of_output(tmp_path, monkeypatch):
+    # No out_base given -> a single timestamped subfolder under ./output/.
+    monkeypatch.chdir(tmp_path)
+    rd = cb.run_cohort_benchmark(
+        corrector=lambda p: p, fields={"A": _folded_volume(0, d=3)}, make_figures=False
+    )
+    assert rd.parent.name == "output"  # timestamped folder sits directly under output/
+    assert (tmp_path / rd / "summary.json").is_file()
+    assert rd.name.split("_")[0].isdigit()  # folder name is <timestamp>_<run_name>
+
+
 def test_corrector_that_zeroes_is_feasible(tmp_path):
     rd = cb.run_cohort_benchmark(
         corrector=lambda p: np.zeros_like(p),  # identity field: zero folds
