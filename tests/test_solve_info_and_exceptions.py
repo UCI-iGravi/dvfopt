@@ -9,11 +9,9 @@ import pytest
 
 from dvfopt import (
     BarrierStrategy,
-    BudgetExhaustedError,
     DVFopt,
     DVFoptConfig,
     DVFoptError,
-    FeasibilityError,
     IncompatibleConstraintError,
     JdetConstraint2D,
     L1Objective,
@@ -93,6 +91,7 @@ class TestSolveInfo:
     def test_history_df_still_works_through_dvfopt(self):
         """The DVFopt.Result.history_df() helper should still produce a
         sensible dataframe even after the SolveInfo wiring."""
+        pytest.importorskip('pandas')  # history_df() lazily imports pandas (optional dep)
         rng = np.random.default_rng(7)
         phi = np.stack([rng.normal(0, 0.4, (8, 8)), rng.normal(0, 0.4, (8, 8))])
         with warnings.catch_warnings():
@@ -153,10 +152,3 @@ class TestExceptions:
         SolverConfigError."""
         with pytest.raises(SolverConfigError):
             DVFopt(DVFoptConfig(solver=42))
-
-    def test_feasibility_error_subclass_relationships(self):
-        """``BudgetExhaustedError`` is a more specific
-        ``FeasibilityError`` (catching the broader one still works)."""
-        e = BudgetExhaustedError('hit max_iter')
-        assert isinstance(e, FeasibilityError)
-        assert isinstance(e, DVFoptError)

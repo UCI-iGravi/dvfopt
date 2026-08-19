@@ -288,12 +288,6 @@ class TestWindowedStrategyObjectiveWarning:
         with pytest.warns(UserWarning, match='L2 objective.*ignored'):
             self._solve(L1Objective())
 
-    def test_composite_objective_warns(self):
-        from dvfopt.objectives import L1Objective, L2Objective
-
-        with pytest.warns(UserWarning, match='ignored'):
-            self._solve(L1Objective() + L2Objective())
-
     def test_l2_objective_does_not_warn(self):
         from dvfopt.objectives import L2Objective
 

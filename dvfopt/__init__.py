@@ -142,9 +142,7 @@ from dvfopt.dvf import (
 
 # -- Exceptions --------------------------------------------------------------
 from dvfopt.exceptions import (
-    BudgetExhaustedError,
     DVFoptError,
-    FeasibilityError,
     IncompatibleConstraintError,
     SolverConfigError,
 )
@@ -168,8 +166,6 @@ from dvfopt.objectives import (
     L2Objective,
     NoneObjective,
     Objective,
-    ScaledObjective,
-    SumObjective,
     make_objective,
 )
 from dvfopt.pipeline_3d import Correct3DReport, correct_dvf_3d
@@ -243,7 +239,6 @@ __all__ = [
     'ActiveBandALM3DStrategy',
     'BarrierStrategy',
     'BarrierTet3DTorchStrategy',
-    'BudgetExhaustedError',
     'Constraint',
     'Correct3DReport',
     'Correct25DReport',
@@ -251,7 +246,6 @@ __all__ = [
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
-    'FeasibilityError',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
     'HarmonicALMBarrierStrategy',
@@ -278,7 +272,6 @@ __all__ = [
     'SLSQPFullGrid3DStrategy',
     'SLSQPFullGridStrategy',
     'SLSQPWindowedStrategy',
-    'ScaledObjective',
     'SchwarzHarmonicALMRefineRepair3DStrategy',
     'SchwarzHarmonicALMRefineRepairStrategy',
     'SchwarzStrategy',
@@ -289,7 +282,6 @@ __all__ = [
     'Solver',
     'SolverConfigError',
     'Strategy',
-    'SumObjective',
     'Tet6Constraint3D',
     'TriConstraint2D',
     'TriConstraint2DFullCoverage',

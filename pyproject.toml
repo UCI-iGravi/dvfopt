@@ -9,7 +9,6 @@ dependencies = [
     "SimpleITK",
     "nibabel",
     "matplotlib",
-    "seaborn",
     "scikit-image",
     "joblib",
     "tqdm",
