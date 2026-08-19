@@ -98,8 +98,10 @@ def _tet_stats_3d(field, threshold, max_voxels=8_000_000):
 
         c = Tet6Constraint3D(shape=(d, h, w))
         vals = np.asarray(c.values(c.flatten(field)))
+        if vals.size == 0:  # degenerate dim (D/H/W == 1) -> no tets
+            return None, None
         return int((vals < threshold).sum()), float(vals.min())
-    except MemoryError:
+    except (MemoryError, ValueError):
         return None, None
 
 
@@ -119,14 +121,16 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
         "vmax": vmax,
         "jdet_before": ir.b64_floats(jac_init),
         "jdet_after": ir.b64_floats(jac_final),
-        "dy": ir.b64_floats(sec_init[1, 0]),
-        "dx": ir.b64_floats(sec_init[2, 0]),
+        "dy_before": ir.b64_floats(sec_init[1, 0]),
+        "dx_before": ir.b64_floats(sec_init[2, 0]),
+        "dy_after": ir.b64_floats(sec_out[1, 0]),
+        "dx_after": ir.b64_floats(sec_out[2, 0]),
         "rois": ir.fold_clusters_2d(jac_init, threshold),
         "families": families,
     }
 
 
-def _build_3d_payload(vid, label, field_init, jac_init3d, jac_final3d, m, threshold):
+def _build_3d_payload(vid, label, field_init, field_out, jac_init3d, jac_final3d, m, threshold):
     """3D interactive payload: worst z-slice viewer + volume-wide ROI (z,y,x).
 
     Embedding the whole volume would be extreme (~GBs); the viewer shows the
@@ -153,8 +157,10 @@ def _build_3d_payload(vid, label, field_init, jac_init3d, jac_final3d, m, thresh
         "vmax": vmax,
         "jdet_before": ir.b64_floats(jb),
         "jdet_after": ir.b64_floats(ja),
-        "dy": ir.b64_floats(field_init[1, zc]),
-        "dx": ir.b64_floats(field_init[2, zc]),
+        "dy_before": ir.b64_floats(field_init[1, zc]),
+        "dx_before": ir.b64_floats(field_init[2, zc]),
+        "dy_after": ir.b64_floats(field_out[1, zc]),
+        "dx_after": ir.b64_floats(field_out[2, zc]),
         "rois": ir.fold_clusters_3d(jac_init3d, threshold),
         "families": families,
         "note": f"3D volume — viewer embeds the worst z-slice (z={zc}); ROI table spans the "
@@ -559,14 +565,15 @@ def run_cohort_benchmark(
         elapsed = time.perf_counter() - t0
         m = _measure(phi_init, phi, elapsed, threshold)
         jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
-        m["n_tet_init"], m["tet_min_init"] = _tet_stats_3d(phi_init, threshold)
-        m["n_tet_final"], m["tet_min_final"] = _tet_stats_3d(phi, threshold)
+        if interactive:  # 6-tet is heavy (materializes ~6 volumes) — only when reported
+            m["n_tet_init"], m["tet_min_init"] = _tet_stats_3d(phi_init, threshold)
+            m["n_tet_final"], m["tet_min_final"] = _tet_stats_3d(phi, threshold)
 
         fig_uri = None
         if interactive:
             vid = label.replace("/", "__")
             payloads.append(
-                _build_3d_payload(vid, label, phi_init, jac_init, jac_final, m, threshold)
+                _build_3d_payload(vid, label, phi_init, phi, jac_init, jac_final, m, threshold)
             )
         elif static_figs:
             png = _field_figure(label, jac_init, jac_final, threshold)

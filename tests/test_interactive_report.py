@@ -50,8 +50,10 @@ def test_build_report_is_self_contained_and_has_viewer(tmp_path):
         "vmax": 2.0,
         "jdet_before": ir.b64_floats(np.full((4, 4), -1.0)),
         "jdet_after": ir.b64_floats(np.ones((4, 4))),
-        "dy": ir.b64_floats(np.zeros((4, 4))),
-        "dx": ir.b64_floats(np.zeros((4, 4))),
+        "dy_before": ir.b64_floats(np.zeros((4, 4))),
+        "dx_before": ir.b64_floats(np.zeros((4, 4))),
+        "dy_after": ir.b64_floats(np.zeros((4, 4))),
+        "dx_after": ir.b64_floats(np.zeros((4, 4))),
         "rois": ir.fold_clusters_2d(np.full((4, 4), -1.0), 0.01),
         "families": [("Jdet", 16, 0, -1.0, 1.0)],
     }

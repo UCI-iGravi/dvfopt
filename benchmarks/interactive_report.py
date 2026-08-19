@@ -19,7 +19,7 @@ import html
 import json
 
 import numpy as np
-from scipy.ndimage import center_of_mass, find_objects, label
+from scipy import ndimage as ndi
 
 
 def b64_floats(arr):
@@ -34,25 +34,25 @@ def _clusters(mask, jac, threshold, top, ndim):
     cluster's folded voxels); ties broken by voxel count. Centroid keys are
     (y, x) for 2D and (z, y, x) for 3D.
     """
-    lbl, n = label(mask)
+    lbl, n = ndi.label(mask)
     if n == 0:
         return []
-    slices = find_objects(lbl)
-    coms = center_of_mass(mask, lbl, range(1, n + 1))
+    idx = np.arange(1, n + 1)
+    # All per-label stats in one vectorized pass each (O(volume), not O(n*volume)).
+    sizes = ndi.sum(mask, lbl, idx)
+    mins = ndi.minimum(jac, lbl, idx)
+    neg = ndi.sum(np.clip(threshold - jac, 0.0, None), lbl, idx)
+    coms = ndi.center_of_mass(mask, lbl, idx)
+    slices = ndi.find_objects(lbl)
     out = []
-    for i in range(1, n + 1):
-        region = lbl == i
-        depth = float(np.clip(threshold - jac[region], 0.0, None).sum())
-        size = int(region.sum())
-        com = coms[i - 1]
-        bbox = slices[i - 1]
+    for i in range(n):
         entry = {
-            "size": size,
-            "neg_vol": depth,
-            "min_jdet": float(jac[region].min()),
-            "bbox": [[int(s.start), int(s.stop)] for s in bbox],
+            "size": int(sizes[i]),
+            "neg_vol": float(neg[i]),
+            "min_jdet": float(mins[i]),
+            "bbox": [[int(s.start), int(s.stop)] for s in slices[i]],
         }
-        coords = [int(v) for v in np.round(com)]
+        coords = [int(v) for v in np.round(coms[i])]
         if ndim == 2:
             entry["y"], entry["x"] = coords
         else:
@@ -145,11 +145,12 @@ function buildImage(f32, W, H, thr, vmax){
 function Viewer(root, data){
   const W=data.w, H=data.h, thr=data.threshold, vmax=data.vmax;
   const jb=b64ToF32(data.jdet_before), ja=b64ToF32(data.jdet_after);
-  const dy=b64ToF32(data.dy), dx=b64ToF32(data.dx);
+  const dyB=b64ToF32(data.dy_before), dxB=b64ToF32(data.dx_before);
+  const dyA=b64ToF32(data.dy_after), dxA=b64ToF32(data.dx_after);
   const cv=root.querySelector('canvas'), ctx=cv.getContext('2d');
   const tip=root.querySelector('.tip');
   const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d');
-  let showAfter=false, showQuiver=false, cur=jb;
+  let showAfter=false, showQuiver=false;
   const imgB=buildImage(jb,W,H,thr,vmax), imgA=buildImage(ja,W,H,thr,vmax);
   cv.width=W; cv.height=H;  // internal res = data res; CSS scales to fit
   let scale=1, ox=0, oy=0, roiBox=null;
@@ -160,6 +161,7 @@ function Viewer(root, data){
     ctx.setTransform(scale,0,0,scale,ox,oy);
     ctx.drawImage(off,0,0);
     if (showQuiver){
+      const dy=showAfter?dyA:dyB, dx=showAfter?dxA:dxB;  // vectors match the shown view
       const stride=Math.max(1, Math.round(10/scale)); ctx.lineWidth=Math.max(0.4,0.8/scale);
       ctx.strokeStyle='rgba(255,220,0,.8)'; ctx.beginPath();
       for (let y=0;y<H;y+=stride) for (let x=0;x<W;x+=stride){
@@ -188,8 +190,9 @@ function Viewer(root, data){
     const [px,py]=toPix(e); const x=Math.floor(px), y=Math.floor(py);
     if (x<0||y<0||x>=W||y>=H){ tip.style.display='none'; return; }
     const i=y*W+x; const jv=(showAfter?ja:jb)[i];
+    const hdy=(showAfter?dyA:dyB)[i], hdx=(showAfter?dxA:dxB)[i];
     tip.textContent='y='+y+' x='+x+'\nJdet '+jv.toFixed(4)+(jv<thr?'  (FOLD)':'')+
-                    '\ndy='+dy[i].toFixed(3)+' dx='+dx[i].toFixed(3);
+                    '\ndy='+hdy.toFixed(3)+' dx='+hdx.toFixed(3);
     const r=cv.getBoundingClientRect();
     tip.style.left=(e.clientX-r.left+12)+'px'; tip.style.top=(e.clientY-r.top+12)+'px'; tip.style.display='block';
   });
@@ -291,8 +294,10 @@ def _field_block(p):
             "vmax": p["vmax"],
             "jdet_before": p["jdet_before"],
             "jdet_after": p["jdet_after"],
-            "dy": p["dy"],
-            "dx": p["dx"],
+            "dy_before": p["dy_before"],
+            "dx_before": p["dx_before"],
+            "dy_after": p["dy_after"],
+            "dx_after": p["dx_after"],
         }
     )
     note = f'<p class="sub">{_esc(p["note"])}</p>' if p.get("note") else ""
