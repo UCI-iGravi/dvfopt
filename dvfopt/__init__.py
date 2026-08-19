@@ -161,6 +161,7 @@ from dvfopt.jacobian import (
     triangle_constraint,
     triangle_det2D,
 )
+from dvfopt.metrics import FoldStats, constraint_fold_stats, fold_stats
 from dvfopt.objectives import (
     L1Objective,
     L2Objective,
@@ -246,6 +247,7 @@ __all__ = [
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
+    'FoldStats',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
     'HarmonicALMBarrierStrategy',
@@ -287,10 +289,12 @@ __all__ = [
     'TriConstraint2DFullCoverage',
     'auto_strategy',
     'coerce_to_ndarray',
+    'constraint_fold_stats',
     'correct_dvf',
     'correct_dvf_3d',
     'correct_dvf_25d',
     'enable_default_handler',
+    'fold_stats',
     'generate_random_dvf',
     'generate_random_dvf_3d',
     'injectivity_constraint',
