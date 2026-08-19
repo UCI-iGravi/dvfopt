@@ -48,4 +48,11 @@ jobs:
         # research worst-case tests skip without the optional data folders.
         env:
           NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba_cache
+          # Hypothesis test for the numba leg's 4-5x slowdown vs the
+          # numba-less leg (~30 min vs 6-8 min; the JIT cache restored
+          # successfully on PR #36 and moved nothing, so compile time is
+          # NOT the cost). Suspect: prange thread sync/spin overhead on
+          # the tiny test arrays x 4-vCPU runners. threads=1 removes all
+          # parallel-region overhead; compare this run's timing.
+          NUMBA_NUM_THREADS: '1'
         run: python -m pytest tests/ -q
