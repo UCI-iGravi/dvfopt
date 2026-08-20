@@ -38,19 +38,46 @@ from scipy import ndimage
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import slsqp_variants as sv
 
-from dvfopt.constraints import JdetConstraint2D
+from dvfopt.constraints import JdetConstraint2D, TriConstraint2D
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
 # Frozen-ring width per family: how far in from an interior patch edge a pixel must
 # be before every constraint it influences is enforceable with the correct
-# (global-matching) evaluation. Jdet needs 2 (central-diff row must itself be 1 in
-# from the edge, and a free pixel's influenced rows are its 4 neighbours).
-_RING = {"jdet": 2}
+# (global-matching) evaluation.
+#   jdet: 2 — central-diff rows must be 1 in from the edge, and a free pixel's
+#            influenced rows are its 4 neighbours (finite-difference support).
+#   2tri: 1 — cell areas are EXACT (no finite-diff), and a free pixel's influenced
+#            cells are its <=4 corner cells, all in-patch once it is 1 in.
+_RING = {"jdet": 2, "2tri": 1}
 
 
 def _constraint(family, shape):
     if family == "jdet":
         return JdetConstraint2D(shape=shape)
+    if family == "2tri":
+        return TriConstraint2D(shape=shape)
+    raise ValueError(f"unknown family {family!r}")
+
+
+def min_field(family, phi_dydx):
+    """Per-location constraint value on the ``(H, W)`` pixel grid (folds are where
+    it is ``< threshold``).
+
+    - jdet: the pixel Jacobian determinant.
+    - 2tri: each cell ``(i, j)``'s min triangle area, placed at pixel ``(i, j)``;
+      the last pixel row/col have no cell and are set to ``+inf``.
+    """
+    H, W = phi_dydx.shape[1:]
+    if family == "jdet":
+        return _numpy_jdet_2d(phi_dydx[0], phi_dydx[1])
+    if family == "2tri":
+        c = TriConstraint2D(shape=(H, W))
+        vals = np.asarray(c.values(c.flatten(phi_dydx)))
+        m = (H - 1) * (W - 1)
+        cellmin = np.minimum(vals[:m], vals[m:]).reshape(H - 1, W - 1)
+        out = np.full((H, W), np.inf)
+        out[: H - 1, : W - 1] = cellmin
+        return out
     raise ValueError(f"unknown family {family!r}")
 
 
@@ -71,10 +98,8 @@ def _cached_coloring(family, c, shape):
 
 
 def pixel_fold_mask(family, phi_dydx, threshold):
-    """Boolean ``(H, W)`` mask of folded pixels (Jdet < threshold)."""
-    if family == "jdet":
-        return _numpy_jdet_2d(phi_dydx[0], phi_dydx[1]) < threshold
-    raise ValueError(f"unknown family {family!r}")
+    """Boolean ``(H, W)`` pixel mask of folds (constraint value < threshold)."""
+    return min_field(family, phi_dydx) < threshold
 
 
 def _eval_valid_jdet(ph, pw, at_top, at_bot, at_left, at_right):
@@ -136,6 +161,42 @@ def _objective_fns(flat0, objective, eps):
     raise ValueError(f"unknown objective {objective!r}")
 
 
+def _enforced_rows_and_jac(family, c, free_mask, ph, pw, borders):
+    """Return ``(enforced_idx, jac_of)`` for a patch.
+
+    ``enforced_idx`` are the constraint rows a free pixel influences AND that
+    evaluate correctly (grid + finite-difference rules differ per family).
+    ``jac_of(f)`` returns the full sparse CSR Jacobian (rows sliced by the caller).
+    """
+    cross = ndimage.generate_binary_structure(2, 1)
+    if family == "jdet":
+        valid = _eval_valid_jdet(ph, pw, *borders)
+        influenced = ndimage.binary_dilation(free_mask, cross)  # Jdet row depends on 4 neighbours
+        enforced_idx = np.nonzero((influenced & valid).ravel())[0]  # row = pixel raveled
+        coloring = _cached_coloring(family, c, (ph, pw))
+
+        def jac_of(f):
+            return sv.colored_jacobian(c, f, *coloring).tocsr()
+
+        return enforced_idx, jac_of
+
+    if family == "2tri":
+        # cell (i,j) is influenced iff any of its 4 corner pixels is free; cell areas
+        # are exact so every cell evaluates correctly (no image-border special case).
+        fm = free_mask
+        cell = fm[:-1, :-1] | fm[1:, :-1] | fm[:-1, 1:] | fm[1:, 1:]  # (ph-1, pw-1)
+        cell_flat = np.nonzero(cell.ravel())[0]
+        m = (ph - 1) * (pw - 1)
+        enforced_idx = np.concatenate([cell_flat, m + cell_flat])  # T1 and T2 rows
+
+        def jac_of(f):
+            return c.jacobian(f).tocsr()  # native analytic sparse — no coloring
+
+        return enforced_idx, jac_of
+
+    raise ValueError(f"unknown family {family!r}")
+
+
 def build_subproblem(
     family, phi_dydx, free_box, threshold, objective="l2", eps=1e-2, margin_delta=1e-3
 ):
@@ -163,26 +224,21 @@ def build_subproblem(
     free_mask = np.zeros((ph, pw), bool)
     free_mask[fy0 - py0 : fy1 - py0, fx0 - px0 : fx1 - px0] = True
 
-    # constraint rows that evaluate correctly on this patch
-    valid = _eval_valid_jdet(ph, pw, py0 == 0, py1 == H, px0 == 0, px1 == W)
-    # rows influenced by a free pixel: a Jdet row depends on its 4 neighbours, so a
-    # row is influenced by the free set iff it is 4-adjacent to a free pixel.
-    influenced = ndimage.binary_dilation(free_mask, ndimage.generate_binary_structure(2, 1))
-    enforced = influenced & valid
-    enforced_idx = np.nonzero(enforced.ravel())[0]  # Jdet row = pixel raveled (ph,pw)
+    enforced_idx, jac_of = _enforced_rows_and_jac(
+        family, c, free_mask, ph, pw, (py0 == 0, py1 == H, px0 == 0, px1 == W)
+    )
 
     # free variable indices in the constraint's own pack (never hand-packed)
     free_phi = np.stack([free_mask, free_mask]).astype(float)
     free_idx = np.nonzero(np.asarray(c.flatten(free_phi)) > 0.5)[0]
 
-    coloring = _cached_coloring(family, c, (ph, pw))
     target = threshold + margin_delta
 
     def cons(f):
         return (np.asarray(c.values(f)) - target)[enforced_idx]
 
     def cons_jac(f):  # sparse (n_enforced, n_vars) — enforced rows only
-        return sv.colored_jacobian(c, f, *coloring).tocsr()[enforced_idx]
+        return jac_of(f)[enforced_idx]
 
     obj, grad, hess = _objective_fns(flat0, objective, eps)
     return _Sub(
@@ -250,6 +306,11 @@ class SliceReport:
     # left inside a window because that solve did not fully converge).
     damage: int = 0
     residual_in_window: int = 0
+    # windows whose free area exceeded max_window_area and were left unsolved: a
+    # single elastic QP over tens of thousands of free vars is effectively full-grid
+    # and defeats the point of windowing. These need overlapping-tile (Schwarz)
+    # decomposition — the deferred v2. Reported so residual isn't mistaken for damage.
+    skipped_giant: int = 0
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -266,13 +327,19 @@ def windowed_correct(
     max_rounds=4,
     z=-1,
     margin_delta=1e-3,
+    max_window_area=3000,
 ):
     """Correct a full ``(2, H, W)`` slice by solving one small window per fold
-    cluster. Returns ``(phi_out, SliceReport)``."""
+    cluster. Returns ``(phi_out, SliceReport)``.
+
+    ``max_window_area`` caps a window's free-box area; larger merged clusters are
+    left unsolved (counted in ``report.skipped_giant``) rather than driven through
+    an intractable near-full-grid QP — those await the Schwarz-tiling v2.
+    """
     phi = np.array(phi_dydx, dtype=np.float64, copy=True)
     ring = _RING[family]
     H, W = phi.shape[1:]
-    j0 = _numpy_jdet_2d(phi[0], phi[1])
+    j0 = min_field(family, phi)
     orig_fold = j0 < threshold
     rep = SliceReport(folds_before=int(orig_fold.sum()), min_before=float(j0.min()))
     touched = np.zeros((H, W), bool)  # union of all free regions solved
@@ -290,6 +357,9 @@ def windowed_correct(
         rep.rounds += 1
         for box in find_windows(mask, margin, ring):
             fy0, fy1, fx0, fx1 = box
+            if (fy1 - fy0) * (fx1 - fx0) > max_window_area:
+                rep.skipped_giant += 1  # too big for a single QP — needs tiling (v2)
+                continue
             touched[fy0:fy1, fx0:fx1] = True
             _solve_window(
                 phi,
@@ -305,7 +375,7 @@ def windowed_correct(
                 margin_delta=margin_delta,
             )
 
-    jf = _numpy_jdet_2d(phi[0], phi[1])
+    jf = min_field(family, phi)
     after_fold = jf < threshold
     new = after_fold & ~orig_fold
     rep.folds_after = int(after_fold.sum())
@@ -343,7 +413,7 @@ def _solve_window(
     dst = phi[:, py0:py1, px0:px1]
     dst[:, fm] = patch_out[:, fm]
 
-    jpatch = _numpy_jdet_2d(phi[0, py0:py1, px0:px1], phi[1, py0:py1, px0:px1])
+    jpatch = min_field(family, phi[:, py0:py1, px0:px1])
     rec = WindowRec(
         z=z,
         fy0=box[0],

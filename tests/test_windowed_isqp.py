@@ -57,3 +57,15 @@ def test_no_damage_holds_for_l1():
     phi = _sparse_folds(seed=5)
     _, rep = wi.windowed_correct(phi, family="jdet", objective="l1", eps=1e-2)
     assert rep.damage == 0
+
+
+@pytest.mark.parametrize("objective", ["l2", "l1"])
+def test_2tri_no_damage_and_full_clear(objective):
+    """The 2-triangle metric (cell grid, exact areas, ring=1) clears folds with
+    zero damage, same invariant as Jdet."""
+    phi = _sparse_folds(seed=3)
+    n0 = int((wi.min_field("2tri", phi) < 0.01).sum())
+    _, rep = wi.windowed_correct(phi, family="2tri", objective=objective, eps=1e-2)
+    assert n0 > 0
+    assert rep.damage == 0
+    assert rep.folds_after == 0
