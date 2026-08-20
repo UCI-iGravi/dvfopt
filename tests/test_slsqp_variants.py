@@ -44,3 +44,18 @@ def test_pyslsqp_eliminates_folds_when_available():
     patch = _folded(seed=1)
     out, _ = sv.full_grid_correct(patch, "pyslsqp", maxiter=100)
     assert int((_numpy_jdet_2d(out[0], out[1]) < 0.0).sum()) == 0
+
+
+def test_isqp_proto_eliminates_folds_when_available():
+    if "isqp-proto" not in sv.available_solvers():
+        import pytest
+
+        pytest.skip("quadprog not installed")
+    from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
+
+    # The elastic-QP prototype reaches feasibility on a small dense field without
+    # SLSQP's bouncing (its whole point). Small size keeps the dense QP fast.
+    patch = _folded(h=14, w=14, seed=2)
+    out, info = sv.full_grid_correct(patch, "isqp-proto", maxiter=60)
+    assert info["success"]  # no strictly-negative determinants remain
+    assert int((_numpy_jdet_2d(out[0], out[1]) < 0.0).sum()) == 0

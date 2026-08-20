@@ -21,13 +21,19 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp")
+SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto")
+
+# Extra module each solver needs beyond scipy (None => scipy builtin, always available).
+_SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog"}
 
 
 def available_solvers():
-    """Solvers importable in this environment (pyslsqp needs a py<=3.12 wheel)."""
+    """Solvers importable in this environment (pyslsqp needs a py<=3.12 wheel;
+    isqp-proto needs quadprog)."""
     return tuple(
-        s for s in SOLVERS if s.startswith("scipy") or importlib.util.find_spec(s) is not None
+        s
+        for s in SOLVERS
+        if s not in _SOLVER_DEP or importlib.util.find_spec(_SOLVER_DEP[s]) is not None
     )
 
 
@@ -63,6 +69,55 @@ def _problem(phi_dydx, threshold):
         return 2.0 * (f - flat0)
 
     return c, flat0, cons, cons_jac, obj, obj_grad, (h, w)
+
+
+def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
+    """Gauss-Newton SQP with an elastic-QP subproblem — the I-SLSQP-style prototype.
+
+    Objective is ``||x - x0||^2`` so the Hessian is exactly ``2I`` (no BFGS needed).
+    Each iteration solves a QP for a step ``d`` plus non-negative slack ``s`` that
+    is ALWAYS feasible (the slack absorbs constraint inconsistency, penalized by
+    ``rho``), so the method never bounces on an infeasible linearized subproblem —
+    the failure mode that makes plain SLSQP oscillate. The QP is solved by quadprog
+    (Goldfarb-Idnani dual active-set), replacing Kraft's fragile dual-LSQ.
+    """
+    import quadprog
+
+    x = np.asarray(flat0, dtype=np.float64).copy()
+    n = x.size
+    g_hess = 2.0 * np.eye(n)
+
+    def merit(y):
+        return float((y - flat0) @ (y - flat0)) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+
+    it = 0
+    while it < maxiter:
+        it += 1
+        c = np.asarray(cons(x))  # want >= 0
+        j = np.asarray(cons_jac(x))  # (m, n)
+        m = c.size
+        # QP over z = [d (n); s (m)]:  min 1/2 z^T G z - a^T z  s.t.  C^T z >= b
+        big = np.zeros((n + m, n + m))
+        big[:n, :n] = g_hess
+        big[n:, n:] = 1e-6 * np.eye(m)  # tiny reg so G is positive-definite for quadprog
+        a = np.concatenate([-obj_grad(x), -rho * np.ones(m)])
+        cmat = np.zeros((n + m, 2 * m))
+        cmat[:n, :m] = j.T
+        cmat[n:, :m] = np.eye(m)  # J d + s >= -c
+        cmat[n:, m:] = np.eye(m)  # s >= 0
+        b = np.concatenate([-c, np.zeros(m)])
+        try:
+            d = quadprog.solve_qp(big, a, cmat, b, 0)[0][:n]
+        except ValueError:
+            break  # QP failed (should be rare with the elastic slack)
+        if np.linalg.norm(d) < tol:
+            break
+        phi0, alpha = merit(x), 1.0
+        while alpha > 1e-4 and merit(x + alpha * d) >= phi0:
+            alpha *= 0.5
+        x = x + alpha * d
+    feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
+    return x, it, feasible
 
 
 def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
@@ -114,6 +169,8 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         )
         out = np.asarray(r["x"])
         nit, ok = int(r.get("num_majiter", -1)), bool(r.get("success", True))
+    elif solver == "isqp-proto":
+        out, nit, ok = _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter)
     else:
         raise ValueError(f"unknown solver {solver!r}")
 
