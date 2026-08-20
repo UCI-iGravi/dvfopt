@@ -54,6 +54,22 @@ def _constraint(family, shape):
     raise ValueError(f"unknown family {family!r}")
 
 
+_COLORING_CACHE = {}  # (family, ph, pw) -> (pattern, colors, stride)
+
+
+def _cached_coloring(family, c, shape):
+    """CPR coloring for a patch shape. The Jacobian sparsity pattern depends only on
+    the shape (not the field values), so it is computed once per shape and reused —
+    shapes recur constantly across a volume, so this turns the ~4-dense-build probe
+    setup from per-window into per-shape."""
+    key = (family, *shape)
+    hit = _COLORING_CACHE.get(key)
+    if hit is None:
+        hit = sv.jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
+        _COLORING_CACHE[key] = hit
+    return hit
+
+
 def pixel_fold_mask(family, phi_dydx, threshold):
     """Boolean ``(H, W)`` mask of folded pixels (Jdet < threshold)."""
     if family == "jdet":
@@ -159,7 +175,7 @@ def build_subproblem(
     free_phi = np.stack([free_mask, free_mask]).astype(float)
     free_idx = np.nonzero(np.asarray(c.flatten(free_phi)) > 0.5)[0]
 
-    coloring = sv.jacobian_coloring(c, flat0)
+    coloring = _cached_coloring(family, c, (ph, pw))
     target = threshold + margin_delta
 
     def cons(f):
