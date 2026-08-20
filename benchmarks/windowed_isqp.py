@@ -306,11 +306,10 @@ class SliceReport:
     # left inside a window because that solve did not fully converge).
     damage: int = 0
     residual_in_window: int = 0
-    # windows whose free area exceeded max_window_area and were left unsolved: a
-    # single elastic QP over tens of thousands of free vars is effectively full-grid
-    # and defeats the point of windowing. These need overlapping-tile (Schwarz)
-    # decomposition — the deferred v2. Reported so residual isn't mistaken for damage.
-    skipped_giant: int = 0
+    # connected fold regions too big for a single QP (> max_window_area) that were
+    # cleared by overlapping-tile Schwarz decomposition instead. Reported so the
+    # cost/quality of the tiled path can be tracked separately from single windows.
+    giant_regions: int = 0
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -357,10 +356,13 @@ def windowed_correct(
         rep.rounds += 1
         for box in find_windows(mask, margin, ring):
             fy0, fy1, fx0, fx1 = box
-            if (fy1 - fy0) * (fx1 - fx0) > max_window_area:
-                rep.skipped_giant += 1  # too big for a single QP — needs tiling (v2)
-                continue
             touched[fy0:fy1, fx0:fx1] = True
+            if (fy1 - fy0) * (fx1 - fx0) > max_window_area:
+                # too big for one QP -> overlapping-tile Schwarz decomposition
+                rep.giant_regions += 1
+                _solve_giant_schwarz(phi, family, box, threshold, objective, eps, maxiter,
+                                     ring, z, rep, margin_delta)
+                continue
             _solve_window(
                 phi,
                 family,
@@ -387,10 +389,44 @@ def windowed_correct(
     return phi, rep
 
 
-def _solve_window(
-    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, _grow=0, margin_delta=1e-3
+def _solve_giant_schwarz(
+    phi, family, giant_box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta,
+    tile=32, max_sweeps=8,
 ):
-    """Solve one window; on infeasibility grow the blocked sides once and retry."""
+    """Clear a large connected fold region by overlapping-tile (additive Schwarz)
+    decomposition. Each tile is an ordinary window (frozen ring = current iterate);
+    tiles overlap so a fold on one tile's seam is interior to a neighbour, and
+    repeated sweeps propagate the correction across the whole region. The giant's
+    OUTER ring stays frozen fold-free context throughout, so damage=0 is preserved;
+    only the interior iterates. Returns folds remaining in the region."""
+    fy0, fy1, fx0, fx1 = giant_box
+    overlap = 2 * ring + 2  # free regions must overlap so seams are some tile's interior
+    step = max(1, tile - overlap)
+    tiles = [
+        (ty, min(ty + tile, fy1), tx, min(tx + tile, fx1))
+        for ty in range(fy0, fy1, step)
+        for tx in range(fx0, fx1, step)
+    ]
+    prev = None
+    for _sweep in range(max_sweeps):
+        for tb in tiles:
+            if tb[1] > tb[0] and tb[3] > tb[2]:
+                _solve_window(phi, family, tb, threshold, objective, eps, maxiter, ring, z, rep,
+                              margin_delta=margin_delta, allow_grow=False)
+        nf = int((min_field(family, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
+        if nf == 0 or (prev is not None and nf >= prev):
+            return nf  # cleared, or no further progress (geometric floor)
+        prev = nf
+    return prev if prev is not None else 0
+
+
+def _solve_window(
+    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, _grow=0, margin_delta=1e-3,
+    allow_grow=True,
+):
+    """Solve one window; on infeasibility grow the blocked sides once and retry.
+    Returns the inner solver's feasibility flag. ``allow_grow=False`` (used by the
+    Schwarz tiler) keeps a tile at fixed size — growing a tile defeats tiling."""
     H, W = phi.shape[1:]
     sub = build_subproblem(family, phi, box, threshold, objective, eps, margin_delta)
     t = time.perf_counter()
@@ -431,12 +467,12 @@ def _solve_window(
     rep.windows.append(rec)
 
     # grow-on-failure: if still infeasible and the window can expand, widen and retry
-    if not ok and _grow < 2:
+    if allow_grow and not ok and _grow < 2:
         fy0, fy1, fx0, fx1 = box
         gy0, gy1 = max(0, fy0 - 4), min(H, fy1 + 4)
         gx0, gx1 = max(0, fx0 - 4), min(W, fx1 + 4)
         if (gy0, gy1, gx0, gx1) != box:
-            _solve_window(
+            return _solve_window(
                 phi,
                 family,
                 (gy0, gy1, gx0, gx1),
@@ -450,3 +486,4 @@ def _solve_window(
                 _grow + 1,
                 margin_delta,
             )
+    return bool(ok)

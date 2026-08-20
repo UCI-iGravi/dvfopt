@@ -59,6 +59,21 @@ def test_no_damage_holds_for_l1():
     assert rep.damage == 0
 
 
+@pytest.mark.parametrize("family", ["jdet", "2tri"])
+def test_schwarz_tiling_clears_giant_connected_region(family):
+    """A large CONNECTED fold region exceeds max_window_area and is cleared by
+    overlapping-tile Schwarz decomposition — still with zero damage."""
+    rng = np.random.default_rng(7)
+    H = W = 140
+    phi = np.zeros((2, H, W))
+    phi[0, 35:105, 35:105] = rng.normal(0, 1.2, (70, 70))
+    phi[1, 35:105, 35:105] = rng.normal(0, 1.2, (70, 70))
+    _, rep = wi.windowed_correct(phi, family=family, objective="l2")
+    assert rep.giant_regions >= 1  # the region tripped the tiler
+    assert rep.damage == 0
+    assert rep.folds_after == 0  # tiling fully cleared it
+
+
 @pytest.mark.parametrize("objective", ["l2", "l1"])
 def test_2tri_no_damage_and_full_clear(objective):
     """The 2-triangle metric (cell grid, exact areas, ring=1) clears folds with
