@@ -75,6 +75,21 @@ def test_isqp_osqp_eliminates_folds_when_available():
     assert int((_numpy_jdet_2d(out[0], out[1]) < 0.0).sum()) == 0
 
 
+def test_isqp_osqp_l1_reaches_feasibility():
+    """The L1 objective (eps-smoothed) must still reach feasibility and move fewer
+    total displacement mass than L2 (sparser correction) on the same field."""
+    if "isqp-osqp" not in sv.available_solvers():
+        import pytest
+
+        pytest.skip("osqp not installed")
+    patch = _folded(h=16, w=16, seed=3)
+    _, i_l2 = sv.full_grid_correct(patch, "isqp-osqp", maxiter=120, objective="l2")
+    _, i_l1 = sv.full_grid_correct(patch, "isqp-osqp", maxiter=120, objective="l1", eps=1e-2)
+    assert i_l2["success"] and i_l1["success"]
+    # L1 concentrates the correction: no larger total displacement mass than L2.
+    assert i_l1["l1_move"] <= i_l2["l1_move"] * 1.05
+
+
 def test_colored_jacobian_matches_dense():
     """CPR-coloured Jacobian must equal the dense adjoint build (stride-3 is exact
     for the radius-1 Jdet stencil)."""

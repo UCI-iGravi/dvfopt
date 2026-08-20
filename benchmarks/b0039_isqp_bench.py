@@ -36,81 +36,117 @@ def _folds(dy, dx, thr=0.0):
     return int((j < thr).sum()), float(j.min())
 
 
-def run(vol_path, stride, size, maxiter, threshold, solvers, out_csv):
+HEADER = [
+    "z",
+    "objective",
+    "solver",
+    "crop_folds",
+    "crop_min",
+    "folds_after",
+    "min_after",
+    "success",
+    "n_iter",
+    "l1_move",
+    "l2_move",
+    "n_moved",
+    "time_s",
+]
+
+
+def run(vol_path, stride, size, maxiter, threshold, solvers, objectives, out_csv):
     vol = np.load(vol_path).astype(np.float64)  # (3, D, H, W)
     d = vol.shape[1]
     rows = []
-    header = [
-        "z",
-        "folds0",
-        "min0",
-        "solver",
-        "folds_after",
-        "min_after",
-        "success",
-        "n_iter",
-        "time_s",
-    ]
-    print(f"volume {vol_path} shape={vol.shape} | stride={stride} size={size} solvers={solvers}")
+    print(
+        f"volume {vol_path} shape={vol.shape} | stride={stride} size={size} "
+        f"objectives={objectives} solvers={solvers}"
+    )
     for z in range(0, d, stride):
         sl = vol[:, z : z + 1]  # (3,1,H,W)
-        n0, mn0 = _folds(sl[1, 0], sl[2, 0], thr=threshold)
+        n0, _ = _folds(sl[1, 0], sl[2, 0], thr=threshold)
         if n0 == 0:
             continue
         crop = sv.crop_fold_region(sl, size=size, threshold=threshold)
         cn0, cmn0 = _folds(crop[0], crop[1], thr=threshold)  # folds inside the crop
-        line = [f"z={z:3d} slice-folds={n0:5d} crop-folds={cn0:4d} min={cmn0:8.3f}"]
-        for s in solvers:
-            t = time.perf_counter()
-            try:
-                _, info = sv.full_grid_correct(crop, s, threshold=threshold, maxiter=maxiter)
-                dt = time.perf_counter() - t
-                rows.append(
-                    [
-                        z,
-                        cn0,
-                        cmn0,
-                        s,
-                        info["folds_after"],
-                        info["min_after"],
-                        int(info["success"]),
-                        info["n_iter"],
-                        round(dt, 2),
-                    ]
-                )
-                line.append(
-                    f"{s}:{info['folds_after']}f/{info['min_after']:+.3f}/{dt:.1f}s"
-                    + ("" if info["success"] else "!")
-                )
-            except Exception as e:
-                dt = time.perf_counter() - t
-                rows.append([z, cn0, cmn0, s, -1, float("nan"), 0, -1, round(dt, 2)])
-                line.append(f"{s}:ERR({type(e).__name__})")
-        print("  " + " | ".join(line))
-        sys.stdout.flush()
+        for obj in objectives:
+            line = [f"z={z:3d} {obj} crop-folds={cn0:4d} min={cmn0:8.3f}"]
+            for s in solvers:
+                t = time.perf_counter()
+                try:
+                    _, info = sv.full_grid_correct(
+                        crop, s, threshold=threshold, maxiter=maxiter, objective=obj
+                    )
+                    dt = time.perf_counter() - t
+                    rows.append(
+                        [
+                            z,
+                            obj,
+                            s,
+                            cn0,
+                            cmn0,
+                            info["folds_after"],
+                            info["min_after"],
+                            int(info["success"]),
+                            info["n_iter"],
+                            round(info["l1_move"], 4),
+                            round(info["l2_move"], 4),
+                            info["n_moved"],
+                            round(dt, 2),
+                        ]
+                    )
+                    line.append(
+                        f"{s}:{info['min_after']:+.3f}/L1={info['l1_move']:.2f}/{dt:.1f}s"
+                        + ("" if info["success"] else "!")
+                    )
+                except Exception as e:
+                    dt = time.perf_counter() - t
+                    rows.append(
+                        [
+                            z,
+                            obj,
+                            s,
+                            cn0,
+                            cmn0,
+                            -1,
+                            float("nan"),
+                            0,
+                            -1,
+                            float("nan"),
+                            float("nan"),
+                            -1,
+                            round(dt, 2),
+                        ]
+                    )
+                    line.append(f"{s}:ERR({type(e).__name__})")
+            print("  " + " | ".join(line))
+            sys.stdout.flush()
 
     with open(out_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(header)
+        w.writerow(HEADER)
         w.writerows(rows)
 
-    # ---- summary ----
-    print("\n=== summary ===")
-    by = {s: [r for r in rows if r[3] == s] for s in solvers}
+    # ---- summary: per (objective, solver) feasibility, speed, and correction footprint ----
+    print("\n=== summary (feasible = no negative dets; L1/L2-move = correction footprint) ===")
     n_probs = len({r[0] for r in rows})
     print(f"problems (slices with folds): {n_probs}")
-    for s in solvers:
-        rs = by[s]
-        if not rs:
-            continue
-        succ = sum(r[6] for r in rs)
-        tt = sum(r[8] for r in rs if r[8] >= 0)
-        med = float(np.median([r[8] for r in rs if r[8] >= 0])) if rs else float("nan")
-        worst_min = min((r[5] for r in rs if np.isfinite(r[5])), default=float("nan"))
-        print(
-            f"  {s:20s} feasible {succ:3d}/{len(rs):3d} | total {tt:7.1f}s | median {med:5.2f}s | "
-            f"worst min_after {worst_min:+.4f}"
-        )
+    for obj in objectives:
+        print(f"[{obj} objective]")
+        for s in solvers:
+            rs = [r for r in rows if r[1] == obj and r[2] == s]
+            if not rs:
+                continue
+            succ = sum(r[7] for r in rs)
+            med_t = float(np.median([r[12] for r in rs if r[12] >= 0]))
+            med_l1 = float(np.median([r[9] for r in rs if np.isfinite(r[9])]))
+            med_l2 = float(np.median([r[10] for r in rs if np.isfinite(r[10])]))
+            med_nm = float(np.median([r[11] for r in rs if r[11] >= 0]))
+            worst_min = min((r[6] for r in rs if np.isfinite(r[6])), default=float("nan"))
+            print(
+                f"  {s:20s} feasible {succ:3d}/{len(rs):3d} | median {med_t:5.2f}s | "
+                f"L1-move {med_l1:8.3f} | L2-move {med_l2:7.3f} | pixels-moved {med_nm:6.0f} | "
+                f"worst min {worst_min:+.4f}"
+            )
     print(f"\ncsv -> {out_csv}")
 
 
@@ -121,10 +157,12 @@ if __name__ == "__main__":
     ap.add_argument("--size", type=int, default=48)
     ap.add_argument("--maxiter", type=int, default=200)
     ap.add_argument("--threshold", type=float, default=0.01)
+    ap.add_argument("--objective", choices=["l1", "l2", "both"], default="both")
     ap.add_argument("--include-proto", action="store_true", help="also run the dense quadprog POC")
     ap.add_argument("--out", default="benchmarks/output/b0039_isqp_bench.csv")
     a = ap.parse_args()
     solvers = list(SWEEP_SOLVERS) + (["isqp-proto"] if a.include_proto else [])
     solvers = [s for s in solvers if s in sv.available_solvers()]
+    objectives = ["l2", "l1"] if a.objective == "both" else [a.objective]
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    run(a.vol, a.stride, a.size, a.maxiter, a.threshold, solvers, a.out)
+    run(a.vol, a.stride, a.size, a.maxiter, a.threshold, solvers, objectives, a.out)

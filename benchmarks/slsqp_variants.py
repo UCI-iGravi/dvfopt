@@ -102,11 +102,26 @@ def jacobian_coloring(constraint, flat0, stride=3, probes=4, seed=0):
     return pattern, colors, stride
 
 
-def _problem(phi_dydx, threshold):
-    """Build (constraint, flat0, cons_fn, cons_jac_fn, obj, obj_grad) for a (2,H,W) field."""
+def _problem(phi_dydx, threshold, objective="l2", eps=1e-4):
+    """Build the correction problem for a ``(2,H,W)`` field.
+
+    Returns ``(constraint, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h,w))``.
+    ``objective`` picks the minimal-displacement metric minimised subject to the
+    per-cell Jdet constraint:
+
+    - ``"l2"``: ``||f-f0||^2`` — Hessian is the constant ``2I`` (smooth corrections).
+    - ``"l1"``: the eps-smoothed L1 ``sum(sqrt(d^2+eps^2)-eps)`` (matching dvfopt's
+      :class:`L1Objective`) — differentiable, so every gradient solver handles it;
+      its Gauss-Newton diagonal Hessian is ``eps^2/(d^2+eps^2)^{3/2}``. L1 favours
+      SPARSE corrections (few pixels moved a lot) vs L2's spread-out smoothing.
+
+    ``hess_diag(f)`` returns the length-n diagonal of the (Gauss-Newton) objective
+    Hessian, consumed by the elastic-QP solvers.
+    """
     h, w = phi_dydx.shape[1:]
     c = JdetConstraint2D(shape=(h, w))
     flat0 = np.asarray(c.flatten(phi_dydx), dtype=np.float64)
+    n = flat0.size
 
     def cons(f):  # >= 0
         return np.asarray(c.values(f)) - threshold
@@ -114,20 +129,67 @@ def _problem(phi_dydx, threshold):
     def cons_jac(f):  # dense (m, n) — row i = grad of constraint i
         return dense_jacobian(c, f)
 
-    def obj(f):
-        d = f - flat0
-        return float(d @ d)
+    if objective == "l2":
 
-    def obj_grad(f):
-        return 2.0 * (f - flat0)
+        def obj(f):
+            d = f - flat0
+            return float(d @ d)
 
-    return c, flat0, cons, cons_jac, obj, obj_grad, (h, w)
+        def obj_grad(f):
+            return 2.0 * (f - flat0)
+
+        def hess_diag(f):
+            return np.full(n, 2.0)
+
+    elif objective == "l1":
+
+        def obj(f):
+            d = f - flat0
+            return float((np.sqrt(d * d + eps * eps) - eps).sum())
+
+        def obj_grad(f):
+            d = f - flat0
+            return d / np.sqrt(d * d + eps * eps)
+
+        def hess_diag(f):
+            # Gauss-Newton diagonal, floored to a proximal/trust-region term: the
+            # true GN curvature collapses to ~0 for |d|>>eps, leaving the elastic
+            # QP under-determined so the step doesn't reduce the merit and the
+            # solver stalls before feasibility. The floor only regularizes the
+            # STEP; the L1-shaped gradient still drives sparse corrections.
+            d = f - flat0
+            return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
+
+    else:
+        raise ValueError(f"unknown objective {objective!r} (use 'l1' or 'l2')")
+
+    return c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w)
 
 
-def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
+def _backtrack(merit, x, d, phi0, alpha_min=1e-4):
+    """Backtracking line search on *merit* along *d*. Returns ``(x_new, stepped)``.
+
+    Only accepts a step that strictly decreases the merit; if backtracking bottoms
+    out without descent it returns ``(x, False)`` so the caller can stop — never
+    take a non-improving step (an L1 QP with near-zero curvature can hand back a
+    divergent direction, and stepping regardless sends the iterate to infinity).
+    """
+    alpha = 1.0
+    while alpha > alpha_min:
+        if merit(x + alpha * d) < phi0:
+            return x + alpha * d, True
+        alpha *= 0.5
+    return x, False
+
+
+def _isqp_solve(
+    flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7, obj=None, hess_diag=None
+):
     """Gauss-Newton SQP with an elastic-QP subproblem — the I-SLSQP-style prototype.
 
-    Objective is ``||x - x0||^2`` so the Hessian is exactly ``2I`` (no BFGS needed).
+    The QP curvature comes from ``hess_diag`` (the objective's Gauss-Newton
+    diagonal Hessian — constant ``2`` for L2, ``eps^2/(d^2+eps^2)^{3/2}`` for the
+    smoothed L1) and the merit uses ``obj``; both default to the L2 case.
     Each iteration solves a QP for a step ``d`` plus non-negative slack ``s`` that
     is ALWAYS feasible (the slack absorbs constraint inconsistency, penalized by
     ``rho``), so the method never bounces on an infeasible linearized subproblem —
@@ -138,10 +200,18 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
 
     x = np.asarray(flat0, dtype=np.float64).copy()
     n = x.size
-    g_hess = 2.0 * np.eye(n)
+    if hess_diag is None:
+
+        def hess_diag(_f):
+            return np.full(n, 2.0)
+
+    if obj is None:
+
+        def obj(y):
+            return float((y - flat0) @ (y - flat0))
 
     def merit(y):
-        return float((y - flat0) @ (y - flat0)) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+        return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
 
     it = 0
     while it < maxiter:
@@ -151,7 +221,7 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
         m = c.size
         # QP over z = [d (n); s (m)]:  min 1/2 z^T G z - a^T z  s.t.  C^T z >= b
         big = np.zeros((n + m, n + m))
-        big[:n, :n] = g_hess
+        big[:n, :n] = np.diag(np.maximum(hess_diag(x), 1e-6))  # quadprog needs SPD
         big[n:, n:] = 1e-6 * np.eye(m)  # tiny reg so G is positive-definite for quadprog
         a = np.concatenate([-obj_grad(x), -rho * np.ones(m)])
         cmat = np.zeros((n + m, 2 * m))
@@ -165,15 +235,25 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
             break  # QP failed (should be rare with the elastic slack)
         if np.linalg.norm(d) < tol:
             break
-        phi0, alpha = merit(x), 1.0
-        while alpha > 1e-4 and merit(x + alpha * d) >= phi0:
-            alpha *= 0.5
-        x = x + alpha * d
+        x, stepped = _backtrack(merit, x, d, merit(x))
+        if not stepped:
+            break
     feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
     return x, it, feasible
 
 
-def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7, constraint=None):
+def _isqp_solve_osqp(
+    flat0,
+    cons,
+    cons_jac,
+    obj_grad,
+    maxiter,
+    rho=1e3,
+    tol=1e-7,
+    constraint=None,
+    obj=None,
+    hess_diag=None,
+):
     """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
     solved by OSQP over a SPARSE system with a warm-started iterate, and the
     constraint Jacobian is rebuilt by CPR coloring (``stride**2`` adjoint calls,
@@ -191,6 +271,15 @@ def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7
     x = np.asarray(flat0, dtype=np.float64).copy()
     n = x.size
     coloring = jacobian_coloring(constraint, flat0) if constraint is not None else None
+    if hess_diag is None:
+
+        def hess_diag(_f):
+            return np.full(n, 2.0)
+
+    if obj is None:
+
+        def obj(y):
+            return float((y - flat0) @ (y - flat0))
 
     def build_j(f):
         if coloring is not None:
@@ -198,7 +287,7 @@ def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7
         return sparse.csc_matrix(np.asarray(cons_jac(f)))
 
     def merit(y):
-        return float((y - flat0) @ (y - flat0)) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+        return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
 
     warm = None  # (z, y) primal/dual to seed the next QP
     it = 0
@@ -209,7 +298,8 @@ def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7
         m = c.size
         eye_m = sparse.eye(m, format="csc")
         # z = [d (n); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
-        p = sparse.block_diag([2.0 * sparse.eye(n), sparse.csc_matrix((m, m))], format="csc")
+        hd = sparse.diags(hess_diag(x))  # objective curvature (2 for L2, GN diag for L1)
+        p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
         q = np.concatenate([obj_grad(x), rho * np.ones(m)])
         a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
         lo = np.concatenate([-c, np.zeros(m)])
@@ -228,17 +318,23 @@ def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7
         d = z[:n]
         if np.linalg.norm(d) < tol:
             break
-        phi0, alpha = merit(x), 1.0
-        while alpha > 1e-4 and merit(x + alpha * d) >= phi0:
-            alpha *= 0.5
-        x = x + alpha * d
+        x, stepped = _backtrack(merit, x, d, merit(x))
+        if not stepped:
+            break
     feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
     return x, it, feasible
 
 
-def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
-    """Correct a small ``(2, H, W)`` field with *solver*. Returns (phi_out, info)."""
-    c, flat0, cons, cons_jac, obj, obj_grad, (h, w) = _problem(phi_dydx, threshold)
+def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200, objective="l2", eps=1e-4):
+    """Correct a small ``(2, H, W)`` field with *solver*. Returns (phi_out, info).
+
+    ``objective`` is ``"l2"`` (smooth) or ``"l1"`` (eps-smoothed, sparse) — see
+    :func:`_problem`. ``info`` records both ``l1_move`` and ``l2_move`` so the two
+    objectives' correction footprints can be compared directly.
+    """
+    c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w) = _problem(
+        phi_dydx, threshold, objective=objective, eps=eps
+    )
     t = time.perf_counter()
     if solver == "scipy-slsqp":
         from scipy.optimize import minimize
@@ -286,22 +382,42 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         out = np.asarray(r["x"])
         nit, ok = int(r.get("num_majiter", -1)), bool(r.get("success", True))
     elif solver == "isqp-proto":
-        out, nit, ok = _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter)
+        # L1's weak curvature needs a heavier feasibility penalty; L2 solves the
+        # hardest dense crops better at the lighter default.
+        rho = 1e4 if objective == "l1" else 1e3
+        out, nit, ok = _isqp_solve(
+            flat0, cons, cons_jac, obj_grad, maxiter, rho=rho, obj=obj, hess_diag=hess_diag
+        )
     elif solver == "isqp-osqp":
-        out, nit, ok = _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, constraint=c)
+        rho = 1e4 if objective == "l1" else 1e3
+        out, nit, ok = _isqp_solve_osqp(
+            flat0,
+            cons,
+            cons_jac,
+            obj_grad,
+            maxiter,
+            rho=rho,
+            constraint=c,
+            obj=obj,
+            hess_diag=hess_diag,
+        )
     else:
         raise ValueError(f"unknown solver {solver!r}")
 
     dt = time.perf_counter() - t
     jac_after = np.asarray(c.values(out))
     jac_before = np.asarray(c.values(flat0))
+    move = out - flat0
     info = {
         "solver": solver,
+        "objective": objective,
         "folds_before": int((jac_before < threshold).sum()),
         "folds_after": int((jac_after < threshold).sum()),
         "min_before": float(jac_before.min()),
         "min_after": float(jac_after.min()),
-        "l2_move": float(np.linalg.norm(out - flat0)),
+        "l2_move": float(np.linalg.norm(move)),  # spread of the correction
+        "l1_move": float(np.abs(move).sum()),  # total displacement mass (sparsity proxy)
+        "n_moved": int((np.abs(move) > 1e-6).sum()),  # how many variables actually changed
         "n_iter": nit,
         # feasibility (no strictly-negative determinants) is the real goal; a
         # feasible result at maxiter shouldn't read as a failure.
