@@ -49,22 +49,23 @@ def dense_jacobian(constraint, flat):
     return np.stack([constraint.adjoint(flat, eye[i]) for i in range(m)])
 
 
-def colored_jacobian(constraint, flat, pattern, colors, stride):
-    """Sparse (m, n) constraint Jacobian via CPR coloring — ``stride**2`` adjoint
-    calls instead of ``m``.
+def colored_jacobian(constraint, flat, pattern, colors, stride=None):
+    """Sparse (m, n) constraint Jacobian via CPR coloring — one adjoint call per
+    COLOUR instead of one per row.
 
-    The Jdet stencil has radius 1, so constraints that are ``>=stride`` apart in
-    both axes have DISJOINT variable supports. Probing the adjoint with the sum of
-    all constraints of one colour returns each of their rows superposed on
-    non-overlapping columns, so ``colvals[pattern[r]]`` recovers row ``r`` exactly.
-    ``pattern``/``colors`` are precomputed once per grid shape (see
-    :func:`jacobian_coloring`). Returns a ``scipy.sparse`` CSC matrix.
+    Constraints sharing a colour have DISJOINT variable supports, so probing the
+    adjoint with their indicator returns each of their rows superposed on
+    non-overlapping columns, and ``colvals[pattern[r]]`` recovers row ``r`` exactly.
+    ``pattern``/``colors`` are precomputed once per grid shape (Jdet: pixel grid,
+    ``(i%3)*3+j%3``; 2-tri: cell grid, ``triangle*4 + (i%2)*2 + j%2``). ``stride`` is
+    accepted for back-compat but ignored — the colour count is ``colors.max()+1``.
+    Returns a ``scipy.sparse`` CSC matrix.
     """
     from scipy import sparse
 
     m, n = constraint.n_constraints, constraint.n_variables
     rows, cols, vals = [], [], []
-    for cid in range(stride * stride):
+    for cid in range(int(colors.max()) + 1):
         grp = np.nonzero(colors == cid)[0]
         if grp.size == 0:
             continue
