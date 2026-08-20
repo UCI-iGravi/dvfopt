@@ -21,7 +21,14 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto", "isqp-osqp")
+SOLVERS = (
+    "scipy-slsqp",
+    "scipy-trust-constr",
+    "scipy-slsqp+trust-constr",  # escalation: SLSQP, fall back to trust-constr on a leftover fold
+    "pyslsqp",
+    "isqp-proto",
+    "isqp-osqp",
+)
 
 # Extra module each solver needs beyond scipy (None => scipy builtin, always available).
 _SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog", "isqp-osqp": "osqp"}
@@ -359,32 +366,54 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200, objective="
     c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w) = _problem(
         phi_dydx, threshold, objective=objective, eps=eps
     )
-    t = time.perf_counter()
-    if solver == "scipy-slsqp":
+
+    def _run_slsqp(x0):
         from scipy.optimize import minimize
 
         r = minimize(
             obj,
-            flat0,
+            x0,
             jac=obj_grad,
             method="SLSQP",
             constraints=[{"type": "ineq", "fun": cons, "jac": cons_jac}],
             options={"maxiter": maxiter, "ftol": 1e-8},
         )
-        out, nit, ok = r.x, int(r.nit), bool(r.success)
-    elif solver == "scipy-trust-constr":
+        return r.x, int(r.nit), bool(r.success)
+
+    def _run_trust(x0):
         from scipy.optimize import NonlinearConstraint, minimize
 
         nlc = NonlinearConstraint(cons, 0.0, np.inf, jac=cons_jac)
         r = minimize(
             obj,
-            flat0,
+            x0,
             jac=obj_grad,
             method="trust-constr",
             constraints=[nlc],
             options={"maxiter": maxiter, "gtol": 1e-8, "xtol": 1e-10},
         )
-        out, nit, ok = r.x, int(r.niter), bool(r.status in (1, 2))
+        return r.x, int(r.niter), bool(r.status in (1, 2))
+
+    def _infeasible(x):  # any strictly-negative determinant left?
+        return bool((np.asarray(c.values(x)) < 0.0).any())
+
+    t = time.perf_counter()
+    if solver == "scipy-slsqp":
+        out, nit, ok = _run_slsqp(flat0)
+    elif solver == "scipy-trust-constr":
+        out, nit, ok = _run_trust(flat0)
+    elif solver == "scipy-slsqp+trust-constr":
+        # escalation: fast SLSQP first; only if it leaves a fold fall back to the
+        # robust (but slow) trust-constr from the original field, then keep whichever
+        # is LESS folded (trust-constr can also fail to converge at a low maxiter, so
+        # the hybrid must never do worse than SLSQP alone). SLSQP speed on the easy
+        # majority, trust-constr robustness on the hard cases.
+        out, nit, ok = _run_slsqp(flat0)
+        if _infeasible(out):
+            out2, nit2, ok2 = _run_trust(flat0)
+            nit += nit2
+            if np.asarray(c.values(out2)).min() > np.asarray(c.values(out)).min():
+                out, ok = out2, ok2
     elif solver == "pyslsqp":  # original Kraft Fortran + QoL (py<=3.12 wheels only)
         import os
 
