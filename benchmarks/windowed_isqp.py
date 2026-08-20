@@ -81,18 +81,38 @@ def min_field(family, phi_dydx):
     raise ValueError(f"unknown family {family!r}")
 
 
-_COLORING_CACHE = {}  # (family, ph, pw) -> (pattern, colors, stride)
+_COLORING_CACHE = {}  # (family, ph, pw) -> (pattern, colors, None)
+
+
+def _pattern_union(c, probes=4, seed=0):
+    """Sparsity pattern of ``c``'s Jacobian, as the union of nonzeros over ``probes``
+    random points (a single point can zero a structurally-nonzero entry)."""
+    rng = np.random.default_rng(seed)
+    flat0 = rng.normal(0, 0.5, c.n_variables)
+    acc = None
+    for _ in range(probes):
+        b = np.abs(sv.dense_jacobian(c, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
+        acc = b if acc is None else (acc | b)
+    return [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
 
 
 def _cached_coloring(family, c, shape):
-    """CPR coloring for a patch shape. The Jacobian sparsity pattern depends only on
-    the shape (not the field values), so it is computed once per shape and reused —
-    shapes recur constantly across a volume, so this turns the ~4-dense-build probe
-    setup from per-window into per-shape."""
+    """CPR coloring ``(pattern, colors, None)`` for a patch shape, cached (the
+    Jacobian sparsity pattern depends only on the shape, and shapes recur across a
+    volume). Jdet uses the pixel-grid stride-3 colouring; 2-tri uses a cell-grid
+    ``triangle*4 + (i%2)*2 + j%2`` colouring (8 colours) — both give one adjoint
+    call per colour instead of one per constraint row, exact for their stencils."""
     key = (family, *shape)
     hit = _COLORING_CACHE.get(key)
     if hit is None:
-        hit = sv.jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
+        if family == "jdet":
+            hit = sv.jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
+        else:  # 2tri: cell grid, 2 triangles per cell share a 2x2-corner support
+            ph, pw = shape
+            ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing="ij")
+            cellcol = ((ii % 2) * 2 + (jj % 2)).ravel()
+            colors = np.concatenate([cellcol, 4 + cellcol])  # T1: 0-3, T2: 4-7
+            hit = (_pattern_union(c), colors, None)
         _COLORING_CACHE[key] = hit
     return hit
 
@@ -188,9 +208,12 @@ def _enforced_rows_and_jac(family, c, free_mask, ph, pw, borders):
         cell_flat = np.nonzero(cell.ravel())[0]
         m = (ph - 1) * (pw - 1)
         enforced_idx = np.concatenate([cell_flat, m + cell_flat])  # T1 and T2 rows
+        coloring = _cached_coloring(family, c, (ph, pw))
 
         def jac_of(f):
-            return c.jacobian(f).tocsr()  # native analytic sparse — no coloring
+            # coloring: 8 adjoint calls, not a full dense (2M x 2N) rebuild per iter
+            # (the native jacobian() densifies — ~43% of a 2-tri window's time).
+            return sv.colored_jacobian(c, f, *coloring).tocsr()
 
         return enforced_idx, jac_of
 
@@ -333,7 +356,7 @@ def windowed_correct(
     margin=3,
     maxiter=400,
     eps=1e-2,
-    max_rounds=4,
+    max_rounds=8,
     z=-1,
     margin_delta=1e-3,
     max_window_area=3000,
