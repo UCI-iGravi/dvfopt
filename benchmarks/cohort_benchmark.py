@@ -120,6 +120,34 @@ def _n_clusters(jac, threshold):
     return int(label(jac < threshold)[1])
 
 
+def _local_cond(dy, dx, threshold, crop=24):
+    """Condition number of the Jdet constraint Jacobian on a *crop* around the worst fold.
+
+    A difficulty diagnostic for the fold sub-problem: ~30 (mild) to ~370 (dense);
+    well-conditioned throughout (SQP's sweet spot), rising with local fold density.
+    Returns None when the field is smaller than *crop* (nothing meaningful to report).
+    """
+    from slsqp_variants import dense_jacobian
+
+    from dvfopt.constraints import JdetConstraint2D
+    from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
+
+    h, w = dy.shape
+    # Purely diagnostic — degrade to None on anything unusual, never abort a run.
+    if h < crop or w < crop or not (np.isfinite(dy).all() and np.isfinite(dx).all()):
+        return None
+    jac = _numpy_jdet_2d(dy, dx)
+    yy, xx = np.unravel_index(int(np.argmin(jac)), jac.shape)
+    y0 = int(np.clip(yy - crop // 2, 0, h - crop))
+    x0 = int(np.clip(xx - crop // 2, 0, w - crop))
+    patch = np.stack([dy[y0 : y0 + crop, x0 : x0 + crop], dx[y0 : y0 + crop, x0 : x0 + crop]])
+    c = JdetConstraint2D(shape=(crop, crop))
+    jmat = dense_jacobian(c, np.asarray(c.flatten(patch), dtype=np.float64))
+    s = np.linalg.svd(jmat, compute_uv=False)
+    s = s[s > 1e-12 * s.max()]
+    return float(s.max() / s.min()) if s.size else None
+
+
 def _tri_stats_2d(section, threshold):
     """2-triangle fold count + min triangle area for a (3, 1, H, W) 2D section."""
     from dvfopt.core.tri_primitives import tri_areas_flat
@@ -190,6 +218,7 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
         "dx_after": ir.b64_floats(sec_out[2, 0]),
         "rois": ir.fold_clusters_2d(jac_init, threshold),
         "families": families,
+        "cond": m.get("cond"),
     }
 
 
@@ -250,6 +279,7 @@ def _build_3d_payload(
         "dx_after": ir.b64_floats(field_out[2, zc]),
         "rois": ir.fold_clusters_3d(jac_init3d, threshold),
         "families": families,
+        "cond": m.get("cond"),
         "note": f"3D volume — viewer embeds the worst z-slice (z={zc}); ROI table spans the "
         "whole volume (click a row whose z matches the shown slice to locate it).",
     }
@@ -439,6 +469,7 @@ def _summary_table(rows):
         "neg volume",
         "clusters",
         "min Jdet",
+        "cond(J)",
         "L2 move",
         "time (s)",
     )
@@ -447,6 +478,7 @@ def _summary_table(rows):
         ni, nf = r["n_neg_init"], r["n_neg_final"]
         pct = 100.0 * (ni - nf) / ni if ni else 0.0
         feas = "feasible" if nf == 0 else "infeasible"
+        cond = r.get("cond")
         body.append(
             f'<tr class="{feas}"><td>{_esc(r["label"])}</td>'
             f'<td class="status">{_arrow(ni, nf)}</td>'
@@ -454,6 +486,7 @@ def _summary_table(rows):
             f"<td>{_arrow(r['neg_vol_init'], r['neg_vol_final'], 1)}</td>"
             f"<td>{_arrow(r['n_clusters_init'], r['n_clusters_final'])}</td>"
             f"<td>{_arrow(r['min_jdet_init'], r['min_jdet_final'], 3)}</td>"
+            f"<td>{_fmt(cond, 0) if cond is not None else 'n/a'}</td>"
             f"<td>{_fmt(r['l2_err'], 2)}</td>"
             f"<td>{_fmt(r['time_s'], 1)}</td></tr>"
         )
@@ -588,6 +621,7 @@ _CSV_COLS = [
     "n_tet_final",
     "tet_min_init",
     "tet_min_final",
+    "cond",
     "l2_err",
     "time_s",
 ]
@@ -669,6 +703,8 @@ def run_cohort_benchmark(
         elapsed = time.perf_counter() - t0
         m = _measure(phi_init, phi, elapsed, threshold)
         jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
+        zc = int(np.argmax((jac_init < threshold).reshape(jac_init.shape[0], -1).sum(axis=1)))
+        m["cond"] = _local_cond(phi_init[1, zc], phi_init[2, zc], threshold)
         if interactive:  # 6-tet is heavy (materializes ~6 volumes) — only when reported
             m["n_tet_init"], m["tet_min_init"] = _tet_stats_3d(phi_init, threshold)
             m["n_tet_final"], m["tet_min_final"] = _tet_stats_3d(phi, threshold)
@@ -875,6 +911,7 @@ def _process_section(
     jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
     m["n_tri_init"], m["tri_min_init"] = _tri_stats_2d(sec_init, threshold)
     m["n_tri_final"], m["tri_min_final"] = _tri_stats_2d(sec_out, threshold)
+    m["cond"] = _local_cond(sec_init[1, 0], sec_init[2, 0], threshold)
 
     extra = None
     if interactive:

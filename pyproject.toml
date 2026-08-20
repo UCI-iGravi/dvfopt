@@ -24,6 +24,10 @@ benchmarks = [
     "timm",
     "torch",
     "voxelmorph",
+    "nlopt",                 # SQP-variant comparison (benchmarks/slsqp_variants.py)
+    # pyslsqp is intentionally omitted: it ships wheels only for Python <=3.12,
+    # so declaring it would break installs on 3.13+. Install it manually in a
+    # py<=3.12 env to enable the 'pyslsqp' solver option.
 ]
 dev = [
     "pytest>=7",

@@ -135,6 +135,16 @@ def test_2d_measure_matches_jacobian(tmp_path):
     assert m["n_neg_init"] == m["n_neg_final"]  # same field in and out
 
 
+def test_local_cond():
+    rng = np.random.default_rng(0)
+    dy = rng.normal(0, 0.8, (30, 30))
+    dx = rng.normal(0, 0.8, (30, 30))
+    cond = cb._local_cond(dy, dx, 0.01)
+    assert cond is not None and 1.0 < cond < 1e4  # well-conditioned, finite
+    # too-small fields return None (nothing meaningful)
+    assert cb._local_cond(dy[:10, :10], dx[:10, :10], 0.01) is None
+
+
 def test_tri_and_tet_stats():
     sec = _folded_section(3)
     n_tri, min_tri = cb._tri_stats_2d(sec, 0.01)

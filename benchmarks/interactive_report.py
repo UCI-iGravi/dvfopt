@@ -447,9 +447,16 @@ def _field_block(p):
     data_json = json.dumps(data)
     note = f'<p class="sub">{_esc(p["note"])}</p>' if p.get("note") else ""
     corr_stats = _corr_stats_html(p["corr_stats"]) if has_corr else ""
+    cond = p.get("cond")
+    cond_html = (
+        f'<p class="sub">Fold sub-problem conditioning: cond(J) &approx; <b>{cond:.0f}'
+        "</b> (well-conditioned ≪10³; rises with local fold density)</p>"
+        if cond is not None
+        else ""
+    )
     return (
         f'<div class="field" data-viewer="{vid}"><h3>{_esc(p["label"])}</h3>'
-        f'<div class="metrics">{_metrics_table(p["families"])}</div>{note}{corr_stats}'
+        f'<div class="metrics">{_metrics_table(p["families"])}</div>{note}{cond_html}{corr_stats}'
         f"{controls}"
         f'<div class="viewer-row">{viewer}</div>'
         f'<script type="application/json" id="data-{vid}">{data_json}</script></div>'
