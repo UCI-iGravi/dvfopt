@@ -21,10 +21,10 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto")
+SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto", "isqp-osqp")
 
 # Extra module each solver needs beyond scipy (None => scipy builtin, always available).
-_SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog"}
+_SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog", "isqp-osqp": "osqp"}
 
 
 def available_solvers():
@@ -47,6 +47,59 @@ def dense_jacobian(constraint, flat):
     m = constraint.n_constraints
     eye = np.eye(m)
     return np.stack([constraint.adjoint(flat, eye[i]) for i in range(m)])
+
+
+def colored_jacobian(constraint, flat, pattern, colors, stride):
+    """Sparse (m, n) constraint Jacobian via CPR coloring — ``stride**2`` adjoint
+    calls instead of ``m``.
+
+    The Jdet stencil has radius 1, so constraints that are ``>=stride`` apart in
+    both axes have DISJOINT variable supports. Probing the adjoint with the sum of
+    all constraints of one colour returns each of their rows superposed on
+    non-overlapping columns, so ``colvals[pattern[r]]`` recovers row ``r`` exactly.
+    ``pattern``/``colors`` are precomputed once per grid shape (see
+    :func:`jacobian_coloring`). Returns a ``scipy.sparse`` CSC matrix.
+    """
+    from scipy import sparse
+
+    m, n = constraint.n_constraints, constraint.n_variables
+    rows, cols, vals = [], [], []
+    for cid in range(stride * stride):
+        grp = np.nonzero(colors == cid)[0]
+        if grp.size == 0:
+            continue
+        v = np.zeros(m)
+        v[grp] = 1.0
+        colvals = constraint.adjoint(flat, v)  # length n; disjoint supports per grp
+        for r in grp:
+            pr = pattern[r]
+            rows.append(np.full(pr.size, r))
+            cols.append(pr)
+            vals.append(colvals[pr])
+    return sparse.csc_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(m, n)
+    )
+
+
+def jacobian_coloring(constraint, flat0, stride=3, probes=4, seed=0):
+    """Precompute (pattern, colors, stride) for :func:`colored_jacobian`.
+
+    ``pattern[r]`` = the nonzero column indices of Jacobian row ``r``, taken as the
+    UNION of nonzeros over ``probes`` random perturbations of ``flat0`` (a single
+    point can accidentally zero a structurally-nonzero entry, which then corrupts
+    the coloring). ``colors[r]`` = ``(i%stride)*stride + j%stride`` over the
+    ``H*W`` constraint grid. stride 3 is exact for the radius-1 Jdet stencil.
+    """
+    h, w = constraint.shape
+    rng = np.random.default_rng(seed)
+    acc = None
+    for _ in range(probes):
+        b = np.abs(dense_jacobian(constraint, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
+        acc = b if acc is None else (acc | b)
+    pattern = [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
+    ii, jj = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
+    colors = ((ii % stride) * stride + (jj % stride)).ravel()
+    return pattern, colors, stride
 
 
 def _problem(phi_dydx, threshold):
@@ -120,6 +173,69 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
     return x, it, feasible
 
 
+def _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7, constraint=None):
+    """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
+    solved by OSQP over a SPARSE system with a warm-started iterate, and the
+    constraint Jacobian is rebuilt by CPR coloring (``stride**2`` adjoint calls,
+    not ``m``) when a ``constraint`` is supplied.
+
+    quadprog is dense O((n+m)^3); OSQP exploits that the constraint Jacobian is
+    ~99% zeros (each Jdet cell touches a small stencil) and reuses the previous
+    step as an ADMM warm start, so consecutive near-identical subproblems solve
+    far faster. Same merit line search, same convergence behaviour — only the QP
+    backend and Jacobian assembly change.
+    """
+    import osqp
+    from scipy import sparse
+
+    x = np.asarray(flat0, dtype=np.float64).copy()
+    n = x.size
+    coloring = jacobian_coloring(constraint, flat0) if constraint is not None else None
+
+    def build_j(f):
+        if coloring is not None:
+            return colored_jacobian(constraint, f, *coloring)
+        return sparse.csc_matrix(np.asarray(cons_jac(f)))
+
+    def merit(y):
+        return float((y - flat0) @ (y - flat0)) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+
+    warm = None  # (z, y) primal/dual to seed the next QP
+    it = 0
+    while it < maxiter:
+        it += 1
+        c = np.asarray(cons(x))  # want >= 0
+        j = build_j(x)  # (m, n), sparse
+        m = c.size
+        eye_m = sparse.eye(m, format="csc")
+        # z = [d (n); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
+        p = sparse.block_diag([2.0 * sparse.eye(n), sparse.csc_matrix((m, m))], format="csc")
+        q = np.concatenate([obj_grad(x), rho * np.ones(m)])
+        a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
+        lo = np.concatenate([-c, np.zeros(m)])
+        up = np.full(2 * m, np.inf)
+        prob = osqp.OSQP()
+        prob.setup(
+            p, q, a, lo, up, verbose=False, warm_starting=True, polishing=True, max_iter=8000
+        )
+        if warm is not None:
+            prob.warm_start(x=warm[0], y=warm[1])
+        res = prob.solve()
+        z = np.asarray(res.x)
+        if not np.all(np.isfinite(z)):
+            break
+        warm = (z, np.asarray(res.y))
+        d = z[:n]
+        if np.linalg.norm(d) < tol:
+            break
+        phi0, alpha = merit(x), 1.0
+        while alpha > 1e-4 and merit(x + alpha * d) >= phi0:
+            alpha *= 0.5
+        x = x + alpha * d
+    feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
+    return x, it, feasible
+
+
 def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
     """Correct a small ``(2, H, W)`` field with *solver*. Returns (phi_out, info)."""
     c, flat0, cons, cons_jac, obj, obj_grad, (h, w) = _problem(phi_dydx, threshold)
@@ -171,6 +287,8 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         nit, ok = int(r.get("num_majiter", -1)), bool(r.get("success", True))
     elif solver == "isqp-proto":
         out, nit, ok = _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter)
+    elif solver == "isqp-osqp":
+        out, nit, ok = _isqp_solve_osqp(flat0, cons, cons_jac, obj_grad, maxiter, constraint=c)
     else:
         raise ValueError(f"unknown solver {solver!r}")
 
