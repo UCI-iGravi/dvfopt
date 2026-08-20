@@ -253,6 +253,7 @@ def _isqp_solve_osqp(
     constraint=None,
     obj=None,
     hess_diag=None,
+    free_idx=None,
 ):
     """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
     solved by OSQP over a SPARSE system with a warm-started iterate, and the
@@ -264,12 +265,18 @@ def _isqp_solve_osqp(
     step as an ADMM warm start, so consecutive near-identical subproblems solve
     far faster. Same merit line search, same convergence behaviour — only the QP
     backend and Jacobian assembly change.
+
+    ``free_idx`` (optional) restricts the optimisation to those variable indices —
+    every other variable is frozen at ``flat0``. The windowed driver uses this to
+    hold a patch's context ring fixed while only its interior moves; ``cons`` /
+    ``cons_jac`` should already be restricted to the enforced constraint rows.
     """
     import osqp
     from scipy import sparse
 
     x = np.asarray(flat0, dtype=np.float64).copy()
     n = x.size
+    free = np.arange(n) if free_idx is None else np.asarray(free_idx)
     coloring = jacobian_coloring(constraint, flat0) if constraint is not None else None
     if hess_diag is None:
 
@@ -283,8 +290,11 @@ def _isqp_solve_osqp(
 
     def build_j(f):
         if coloring is not None:
-            return colored_jacobian(constraint, f, *coloring)
-        return sparse.csc_matrix(np.asarray(cons_jac(f)))
+            j = colored_jacobian(constraint, f, *coloring)
+        else:
+            jj = cons_jac(f)  # windowed path may already return a sparse enforced-row jac
+            j = jj if sparse.issparse(jj) else sparse.csc_matrix(np.asarray(jj))
+        return j[:, free] if free_idx is not None else j  # restrict to free columns
 
     def merit(y):
         return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
@@ -294,13 +304,14 @@ def _isqp_solve_osqp(
     while it < maxiter:
         it += 1
         c = np.asarray(cons(x))  # want >= 0
-        j = build_j(x)  # (m, n), sparse
+        j = build_j(x)  # (m, n_free), sparse
         m = c.size
+        nf = j.shape[1]
         eye_m = sparse.eye(m, format="csc")
-        # z = [d (n); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
-        hd = sparse.diags(hess_diag(x))  # objective curvature (2 for L2, GN diag for L1)
+        # z = [d (n_free); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
+        hd = sparse.diags(hess_diag(x)[free])  # objective curvature over free vars
         p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
-        q = np.concatenate([obj_grad(x), rho * np.ones(m)])
+        q = np.concatenate([obj_grad(x)[free], rho * np.ones(m)])
         a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
         lo = np.concatenate([-c, np.zeros(m)])
         up = np.full(2 * m, np.inf)
@@ -315,7 +326,8 @@ def _isqp_solve_osqp(
         if not np.all(np.isfinite(z)):
             break
         warm = (z, np.asarray(res.y))
-        d = z[:n]
+        d = np.zeros(n)
+        d[free] = z[:nf]  # scatter the free-var step back into the full vector
         if np.linalg.norm(d) < tol:
             break
         x, stepped = _backtrack(merit, x, d, merit(x))
