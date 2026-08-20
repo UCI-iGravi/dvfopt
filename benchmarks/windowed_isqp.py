@@ -343,6 +343,12 @@ class SliceReport:
     # cleared by overlapping-tile Schwarz decomposition instead. Reported so the
     # cost/quality of the tiled path can be tracked separately from single windows.
     giant_regions: int = 0
+    # terminal "mop" pass: after the round loop plateaus, the residual (which the
+    # B0039 z=0 diagnostic showed is boundary-stuck INSIDE giants — a big frozen-
+    # exterior window clears what a small one can't) is re-windowed with a large
+    # margin. mop_windows counts those solves; mop_cleared = folds cleared by them.
+    mop_windows: int = 0
+    mop_cleared: int = 0
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -360,6 +366,7 @@ def windowed_correct(
     z=-1,
     margin_delta=1e-3,
     max_window_area=3000,
+    mop_margin=25,
 ):
     """Correct a full ``(2, H, W)`` slice by solving one small window per fold
     cluster. Returns ``(phi_out, SliceReport)``.
@@ -368,6 +375,12 @@ def windowed_correct(
     cleared by overlapping-tile Schwarz decomposition (``report.giant_regions``)
     instead of an intractable near-full-grid QP. ``margin`` is clamped to at least
     the family ring (the frozen inset band must stay fold-free).
+
+    After the round loop plateaus, a terminal **mop** pass re-windows any residual
+    with ``mop_margin`` (>> ``margin``): the diagnostic on the densest slices shows
+    the plateau is boundary-stuck folds inside the giants that a small window's
+    tight frozen boundary can't clear but a large frozen-exterior window can (the
+    analogue of the 2.5D pipeline's ``mop_interior_3d``). ``mop_margin=0`` disables.
     """
     phi = np.array(phi_dydx, dtype=np.float64, copy=True)
     ring = _RING[family]
@@ -419,6 +432,27 @@ def windowed_correct(
                 margin_delta=margin_delta,
             )
 
+    # terminal mop: clear the boundary-stuck residual the round loop plateaued on
+    if mop_margin > 0:
+        before_mop = int(pixel_fold_mask(family, phi, threshold).sum())
+        if before_mop > 0:
+            _mop_pass(
+                phi,
+                family,
+                threshold,
+                objective,
+                eps,
+                maxiter,
+                ring,
+                z,
+                rep,
+                margin_delta,
+                touched,
+                mop_margin,
+                max_window_area,
+            )
+            rep.mop_cleared = before_mop - int(pixel_fold_mask(family, phi, threshold).sum())
+
     jf = min_field(family, phi)
     after_fold = jf < threshold
     new = after_fold & ~orig_fold
@@ -431,6 +465,65 @@ def windowed_correct(
     rep.n_windows = len(rep.windows)
     rep.time_s = time.perf_counter() - t0
     return phi, rep
+
+
+def _mop_pass(
+    phi,
+    family,
+    threshold,
+    objective,
+    eps,
+    maxiter,
+    ring,
+    z,
+    rep,
+    margin_delta,
+    touched,
+    mop_margin,
+    max_window_area,
+    max_sweeps=3,
+):
+    """Clear the boundary-stuck residual the round loop plateaued on. Each residual
+    cluster is re-solved with a LARGE margin so its neighbourhood is free — no tight
+    interior frozen boundary near the fold, the condition the z=0 diagnostic showed
+    clears folds a small window can't. Solved WHOLE (tiling would just re-introduce
+    the frozen boundaries) up to a generous cap; the rare over-cap cluster falls back
+    to Schwarz. Big windows may overlap — harmless, each enforces its own footprint.
+    Sweeps until no further progress, i.e. the genuine local floor."""
+    H, W = phi.shape[1:]
+    whole_cap = 4 * max_window_area  # the mop is allowed much larger single QPs
+    for _sweep in range(max_sweeps):
+        mask = pixel_fold_mask(family, phi, threshold)
+        n = int(mask.sum())
+        if n == 0:
+            break
+        lbl, _ = ndimage.label(mask)  # raw residual clusters (per connected component)
+        for sy, sx in ndimage.find_objects(lbl):
+            fy0, fy1 = max(0, sy.start - mop_margin), min(H, sy.stop + mop_margin)
+            fx0, fx1 = max(0, sx.start - mop_margin), min(W, sx.stop + mop_margin)
+            box = (fy0, fy1, fx0, fx1)
+            touched[max(0, fy0 - ring) : fy1 + ring, max(0, fx0 - ring) : fx1 + ring] = True
+            rep.mop_windows += 1
+            if (fy1 - fy0) * (fx1 - fx0) > whole_cap:
+                _solve_giant_schwarz(
+                    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta
+                )
+            else:
+                _solve_window(
+                    phi,
+                    family,
+                    box,
+                    threshold,
+                    objective,
+                    eps,
+                    maxiter,
+                    ring,
+                    z,
+                    rep,
+                    margin_delta=margin_delta,
+                )
+        if int(pixel_fold_mask(family, phi, threshold).sum()) >= n:
+            break  # no progress -> genuine local floor
 
 
 def _solve_giant_schwarz(
