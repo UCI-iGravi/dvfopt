@@ -305,6 +305,8 @@ class SliceReport:
     # ring) never damages untouched area. Distinct from in-window residual (a fold
     # left inside a window because that solve did not fully converge).
     damage: int = 0
+    damage_coords: list = field(default_factory=list)  # (y,x) of damage folds — debug
+    giant_boxes: list = field(default_factory=list)  # free boxes routed to the tiler
     residual_in_window: int = 0
     # connected fold regions too big for a single QP (> max_window_area) that were
     # cleared by overlapping-tile Schwarz decomposition instead. Reported so the
@@ -360,6 +362,7 @@ def windowed_correct(
             if (fy1 - fy0) * (fx1 - fx0) > max_window_area:
                 # too big for one QP -> overlapping-tile Schwarz decomposition
                 rep.giant_regions += 1
+                rep.giant_boxes.append(box)
                 _solve_giant_schwarz(phi, family, box, threshold, objective, eps, maxiter,
                                      ring, z, rep, margin_delta)
                 continue
@@ -382,7 +385,9 @@ def windowed_correct(
     new = after_fold & ~orig_fold
     rep.folds_after = int(after_fold.sum())
     rep.min_after = float(jf.min())
-    rep.damage = int((new & ~touched).sum())  # invariant: MUST be 0
+    damage_mask = new & ~touched
+    rep.damage = int(damage_mask.sum())  # invariant: MUST be 0
+    rep.damage_coords = [tuple(int(v) for v in c) for c in np.argwhere(damage_mask)[:20]]
     rep.residual_in_window = int((after_fold & touched).sum())
     rep.n_windows = len(rep.windows)
     rep.time_s = time.perf_counter() - t0
@@ -396,16 +401,28 @@ def _solve_giant_schwarz(
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
     tiles overlap so a fold on one tile's seam is interior to a neighbour, and
-    repeated sweeps propagate the correction across the whole region. The giant's
-    OUTER ring stays frozen fold-free context throughout, so damage=0 is preserved;
-    only the interior iterates. Returns folds remaining in the region."""
+    repeated sweeps propagate the correction across the whole region. Returns folds
+    remaining in the region.
+
+    No-damage by construction: the tiled region is INSET by ``ring`` from each
+    interior giant edge, so a tile-free pixel can only influence constraints inside
+    the giant box (= ``touched``); nothing outside can be changed, let alone folded.
+    The inset band is fold-free margin (needs ``margin >= ring``), so insetting
+    leaves no fold unfixed. Image-border edges are not inset — no "outside" there.
+    Without the inset, an infeasible edge-tile solve can leave a boundary guard row
+    just outside the giant violated -> a damage fold (observed on B0039 z=0)."""
+    H, W = phi.shape[1:]
     fy0, fy1, fx0, fx1 = giant_box
+    iy0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
+    iy1 = fy1 - (ring if fy1 < H else 0)
+    ix0 = fx0 + (ring if fx0 > 0 else 0)
+    ix1 = fx1 - (ring if fx1 < W else 0)
     overlap = 2 * ring + 2  # free regions must overlap so seams are some tile's interior
     step = max(1, tile - overlap)
     tiles = [
-        (ty, min(ty + tile, fy1), tx, min(tx + tile, fx1))
-        for ty in range(fy0, fy1, step)
-        for tx in range(fx0, fx1, step)
+        (ty, min(ty + tile, iy1), tx, min(tx + tile, ix1))
+        for ty in range(iy0, iy1, step)
+        for tx in range(ix0, ix1, step)
     ]
     prev = None
     for _sweep in range(max_sweeps):
