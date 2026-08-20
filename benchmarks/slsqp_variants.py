@@ -95,6 +95,8 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         )
         out, nit, ok = r.x, int(r.niter), bool(r.status in (1, 2))
     elif solver == "pyslsqp":  # original Kraft Fortran + QoL (py<=3.12 wheels only)
+        import os
+
         from pyslsqp import optimize
 
         r = optimize(
@@ -107,8 +109,8 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
             maxiter=maxiter,
             acc=1e-8,
             iprint=0,
-            summary_filename=None,
-            save_filename=None,
+            save_itr=None,  # no per-iteration HDF5 recorder
+            summary_filename=os.devnull,  # discard the summary file
         )
         out = np.asarray(r["x"])
         nit, ok = int(r.get("num_majiter", -1)), bool(r.get("success", True))
