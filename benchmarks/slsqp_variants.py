@@ -21,10 +21,10 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto")
+SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto", "isqp-osqp")
 
 # Extra module each solver needs beyond scipy (None => scipy builtin, always available).
-_SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog"}
+_SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog", "isqp-osqp": "osqp"}
 
 
 def available_solvers():
@@ -49,11 +49,79 @@ def dense_jacobian(constraint, flat):
     return np.stack([constraint.adjoint(flat, eye[i]) for i in range(m)])
 
 
-def _problem(phi_dydx, threshold):
-    """Build (constraint, flat0, cons_fn, cons_jac_fn, obj, obj_grad) for a (2,H,W) field."""
+def colored_jacobian(constraint, flat, pattern, colors, stride):
+    """Sparse (m, n) constraint Jacobian via CPR coloring — ``stride**2`` adjoint
+    calls instead of ``m``.
+
+    The Jdet stencil has radius 1, so constraints that are ``>=stride`` apart in
+    both axes have DISJOINT variable supports. Probing the adjoint with the sum of
+    all constraints of one colour returns each of their rows superposed on
+    non-overlapping columns, so ``colvals[pattern[r]]`` recovers row ``r`` exactly.
+    ``pattern``/``colors`` are precomputed once per grid shape (see
+    :func:`jacobian_coloring`). Returns a ``scipy.sparse`` CSC matrix.
+    """
+    from scipy import sparse
+
+    m, n = constraint.n_constraints, constraint.n_variables
+    rows, cols, vals = [], [], []
+    for cid in range(stride * stride):
+        grp = np.nonzero(colors == cid)[0]
+        if grp.size == 0:
+            continue
+        v = np.zeros(m)
+        v[grp] = 1.0
+        colvals = constraint.adjoint(flat, v)  # length n; disjoint supports per grp
+        for r in grp:
+            pr = pattern[r]
+            rows.append(np.full(pr.size, r))
+            cols.append(pr)
+            vals.append(colvals[pr])
+    return sparse.csc_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(m, n)
+    )
+
+
+def jacobian_coloring(constraint, flat0, stride=3, probes=4, seed=0):
+    """Precompute (pattern, colors, stride) for :func:`colored_jacobian`.
+
+    ``pattern[r]`` = the nonzero column indices of Jacobian row ``r``, taken as the
+    UNION of nonzeros over ``probes`` random perturbations of ``flat0`` (a single
+    point can accidentally zero a structurally-nonzero entry, which then corrupts
+    the coloring). ``colors[r]`` = ``(i%stride)*stride + j%stride`` over the
+    ``H*W`` constraint grid. stride 3 is exact for the radius-1 Jdet stencil.
+    """
+    h, w = constraint.shape
+    rng = np.random.default_rng(seed)
+    acc = None
+    for _ in range(probes):
+        b = np.abs(dense_jacobian(constraint, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
+        acc = b if acc is None else (acc | b)
+    pattern = [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
+    ii, jj = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
+    colors = ((ii % stride) * stride + (jj % stride)).ravel()
+    return pattern, colors, stride
+
+
+def _problem(phi_dydx, threshold, objective="l2", eps=1e-4):
+    """Build the correction problem for a ``(2,H,W)`` field.
+
+    Returns ``(constraint, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h,w))``.
+    ``objective`` picks the minimal-displacement metric minimised subject to the
+    per-cell Jdet constraint:
+
+    - ``"l2"``: ``||f-f0||^2`` — Hessian is the constant ``2I`` (smooth corrections).
+    - ``"l1"``: the eps-smoothed L1 ``sum(sqrt(d^2+eps^2)-eps)`` (matching dvfopt's
+      :class:`L1Objective`) — differentiable, so every gradient solver handles it;
+      its Gauss-Newton diagonal Hessian is ``eps^2/(d^2+eps^2)^{3/2}``. L1 favours
+      SPARSE corrections (few pixels moved a lot) vs L2's spread-out smoothing.
+
+    ``hess_diag(f)`` returns the length-n diagonal of the (Gauss-Newton) objective
+    Hessian, consumed by the elastic-QP solvers.
+    """
     h, w = phi_dydx.shape[1:]
     c = JdetConstraint2D(shape=(h, w))
     flat0 = np.asarray(c.flatten(phi_dydx), dtype=np.float64)
+    n = flat0.size
 
     def cons(f):  # >= 0
         return np.asarray(c.values(f)) - threshold
@@ -61,20 +129,67 @@ def _problem(phi_dydx, threshold):
     def cons_jac(f):  # dense (m, n) — row i = grad of constraint i
         return dense_jacobian(c, f)
 
-    def obj(f):
-        d = f - flat0
-        return float(d @ d)
+    if objective == "l2":
 
-    def obj_grad(f):
-        return 2.0 * (f - flat0)
+        def obj(f):
+            d = f - flat0
+            return float(d @ d)
 
-    return c, flat0, cons, cons_jac, obj, obj_grad, (h, w)
+        def obj_grad(f):
+            return 2.0 * (f - flat0)
+
+        def hess_diag(f):
+            return np.full(n, 2.0)
+
+    elif objective == "l1":
+
+        def obj(f):
+            d = f - flat0
+            return float((np.sqrt(d * d + eps * eps) - eps).sum())
+
+        def obj_grad(f):
+            d = f - flat0
+            return d / np.sqrt(d * d + eps * eps)
+
+        def hess_diag(f):
+            # Gauss-Newton diagonal, floored to a proximal/trust-region term: the
+            # true GN curvature collapses to ~0 for |d|>>eps, leaving the elastic
+            # QP under-determined so the step doesn't reduce the merit and the
+            # solver stalls before feasibility. The floor only regularizes the
+            # STEP; the L1-shaped gradient still drives sparse corrections.
+            d = f - flat0
+            return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
+
+    else:
+        raise ValueError(f"unknown objective {objective!r} (use 'l1' or 'l2')")
+
+    return c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w)
 
 
-def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
+def _backtrack(merit, x, d, phi0, alpha_min=1e-4):
+    """Backtracking line search on *merit* along *d*. Returns ``(x_new, stepped)``.
+
+    Only accepts a step that strictly decreases the merit; if backtracking bottoms
+    out without descent it returns ``(x, False)`` so the caller can stop — never
+    take a non-improving step (an L1 QP with near-zero curvature can hand back a
+    divergent direction, and stepping regardless sends the iterate to infinity).
+    """
+    alpha = 1.0
+    while alpha > alpha_min:
+        if merit(x + alpha * d) < phi0:
+            return x + alpha * d, True
+        alpha *= 0.5
+    return x, False
+
+
+def _isqp_solve(
+    flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7, obj=None, hess_diag=None
+):
     """Gauss-Newton SQP with an elastic-QP subproblem — the I-SLSQP-style prototype.
 
-    Objective is ``||x - x0||^2`` so the Hessian is exactly ``2I`` (no BFGS needed).
+    The QP curvature comes from ``hess_diag`` (the objective's Gauss-Newton
+    diagonal Hessian — constant ``2`` for L2, ``eps^2/(d^2+eps^2)^{3/2}`` for the
+    smoothed L1) and the merit uses ``obj``; both default to the L2 case.
     Each iteration solves a QP for a step ``d`` plus non-negative slack ``s`` that
     is ALWAYS feasible (the slack absorbs constraint inconsistency, penalized by
     ``rho``), so the method never bounces on an infeasible linearized subproblem —
@@ -85,10 +200,18 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
 
     x = np.asarray(flat0, dtype=np.float64).copy()
     n = x.size
-    g_hess = 2.0 * np.eye(n)
+    if hess_diag is None:
+
+        def hess_diag(_f):
+            return np.full(n, 2.0)
+
+    if obj is None:
+
+        def obj(y):
+            return float((y - flat0) @ (y - flat0))
 
     def merit(y):
-        return float((y - flat0) @ (y - flat0)) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+        return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
 
     it = 0
     while it < maxiter:
@@ -98,7 +221,7 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
         m = c.size
         # QP over z = [d (n); s (m)]:  min 1/2 z^T G z - a^T z  s.t.  C^T z >= b
         big = np.zeros((n + m, n + m))
-        big[:n, :n] = g_hess
+        big[:n, :n] = np.diag(np.maximum(hess_diag(x), 1e-6))  # quadprog needs SPD
         big[n:, n:] = 1e-6 * np.eye(m)  # tiny reg so G is positive-definite for quadprog
         a = np.concatenate([-obj_grad(x), -rho * np.ones(m)])
         cmat = np.zeros((n + m, 2 * m))
@@ -112,17 +235,129 @@ def _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter, rho=1e3, tol=1e-7):
             break  # QP failed (should be rare with the elastic slack)
         if np.linalg.norm(d) < tol:
             break
-        phi0, alpha = merit(x), 1.0
-        while alpha > 1e-4 and merit(x + alpha * d) >= phi0:
-            alpha *= 0.5
-        x = x + alpha * d
+        x, stepped = _backtrack(merit, x, d, merit(x))
+        if not stepped:
+            break
     feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
     return x, it, feasible
 
 
-def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
-    """Correct a small ``(2, H, W)`` field with *solver*. Returns (phi_out, info)."""
-    c, flat0, cons, cons_jac, obj, obj_grad, (h, w) = _problem(phi_dydx, threshold)
+def _isqp_solve_osqp(
+    flat0,
+    cons,
+    cons_jac,
+    obj_grad,
+    maxiter,
+    rho=1e3,
+    tol=1e-7,
+    constraint=None,
+    obj=None,
+    hess_diag=None,
+    free_idx=None,
+):
+    """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
+    solved by OSQP over a SPARSE system with a warm-started iterate, and the
+    constraint Jacobian is rebuilt by CPR coloring (``stride**2`` adjoint calls,
+    not ``m``) when a ``constraint`` is supplied.
+
+    quadprog is dense O((n+m)^3); OSQP exploits that the constraint Jacobian is
+    ~99% zeros (each Jdet cell touches a small stencil) and reuses the previous
+    step as an ADMM warm start, so consecutive near-identical subproblems solve
+    far faster. Same merit line search, same convergence behaviour — only the QP
+    backend and Jacobian assembly change.
+
+    ``free_idx`` (optional) restricts the optimisation to those variable indices —
+    every other variable is frozen at ``flat0``. The windowed driver uses this to
+    hold a patch's context ring fixed while only its interior moves; ``cons`` /
+    ``cons_jac`` should already be restricted to the enforced constraint rows.
+    """
+    import osqp
+    from scipy import sparse
+
+    x = np.asarray(flat0, dtype=np.float64).copy()
+    n = x.size
+    free = np.arange(n) if free_idx is None else np.asarray(free_idx)
+    coloring = jacobian_coloring(constraint, flat0) if constraint is not None else None
+    if hess_diag is None:
+
+        def hess_diag(_f):
+            return np.full(n, 2.0)
+
+    if obj is None:
+
+        def obj(y):
+            return float((y - flat0) @ (y - flat0))
+
+    def build_j(f):
+        if coloring is not None:
+            j = colored_jacobian(constraint, f, *coloring)
+        else:
+            jj = cons_jac(f)  # windowed path may already return a sparse enforced-row jac
+            j = jj if sparse.issparse(jj) else sparse.csc_matrix(np.asarray(jj))
+        return j[:, free] if free_idx is not None else j  # restrict to free columns
+
+    def merit(y):
+        return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+
+    prob = None  # reused across SQP iterations (setup once, then update in place)
+    a_pat = None  # (indptr, indices) of A at setup — guards the in-place update
+    it = 0
+    while it < maxiter:
+        it += 1
+        c = np.asarray(cons(x))  # want >= 0
+        j = build_j(x)  # (m, n_free), sparse
+        m = c.size
+        nf = j.shape[1]
+        eye_m = sparse.eye(m, format="csc")
+        # z = [d (n_free); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
+        hd = sparse.diags(hess_diag(x)[free])  # objective curvature over free vars
+        p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
+        q = np.concatenate([obj_grad(x)[free], rho * np.ones(m)])
+        a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
+        lo = np.concatenate([-c, np.zeros(m)])
+        up = np.full(2 * m, np.inf)
+        # The Jacobian sparsity pattern is fixed across SQP iterations (the stencil
+        # and free set don't change), so factor the KKT once and update values in
+        # place — a big saving in the windowed regime (hundreds of small solves).
+        same_pattern = (
+            a_pat is not None
+            and a.indices.shape == a_pat[1].shape
+            and (a.indptr == a_pat[0]).all()
+            and (a.indices == a_pat[1]).all()
+        )
+        if prob is not None and same_pattern:
+            prob.update(q=q, l=lo, Px=p.data, Ax=a.data)
+        else:
+            prob = osqp.OSQP()
+            prob.setup(
+                p, q, a, lo, up, verbose=False, warm_starting=True, polishing=True, max_iter=8000
+            )
+            a_pat = (a.indptr.copy(), a.indices.copy())
+        res = prob.solve()  # OSQP retains the last solution -> auto warm start on update
+        z = np.asarray(res.x)
+        if not np.all(np.isfinite(z)):
+            break
+        d = np.zeros(n)
+        d[free] = z[:nf]  # scatter the free-var step back into the full vector
+        if np.linalg.norm(d) < tol:
+            break
+        x, stepped = _backtrack(merit, x, d, merit(x))
+        if not stepped:
+            break
+    feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
+    return x, it, feasible
+
+
+def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200, objective="l2", eps=1e-4):
+    """Correct a small ``(2, H, W)`` field with *solver*. Returns (phi_out, info).
+
+    ``objective`` is ``"l2"`` (smooth) or ``"l1"`` (eps-smoothed, sparse) — see
+    :func:`_problem`. ``info`` records both ``l1_move`` and ``l2_move`` so the two
+    objectives' correction footprints can be compared directly.
+    """
+    c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w) = _problem(
+        phi_dydx, threshold, objective=objective, eps=eps
+    )
     t = time.perf_counter()
     if solver == "scipy-slsqp":
         from scipy.optimize import minimize
@@ -170,20 +405,42 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         out = np.asarray(r["x"])
         nit, ok = int(r.get("num_majiter", -1)), bool(r.get("success", True))
     elif solver == "isqp-proto":
-        out, nit, ok = _isqp_solve(flat0, cons, cons_jac, obj_grad, maxiter)
+        # L1's weak curvature needs a heavier feasibility penalty; L2 solves the
+        # hardest dense crops better at the lighter default.
+        rho = 1e4 if objective == "l1" else 1e3
+        out, nit, ok = _isqp_solve(
+            flat0, cons, cons_jac, obj_grad, maxiter, rho=rho, obj=obj, hess_diag=hess_diag
+        )
+    elif solver == "isqp-osqp":
+        rho = 1e4 if objective == "l1" else 1e3
+        out, nit, ok = _isqp_solve_osqp(
+            flat0,
+            cons,
+            cons_jac,
+            obj_grad,
+            maxiter,
+            rho=rho,
+            constraint=c,
+            obj=obj,
+            hess_diag=hess_diag,
+        )
     else:
         raise ValueError(f"unknown solver {solver!r}")
 
     dt = time.perf_counter() - t
     jac_after = np.asarray(c.values(out))
     jac_before = np.asarray(c.values(flat0))
+    move = out - flat0
     info = {
         "solver": solver,
+        "objective": objective,
         "folds_before": int((jac_before < threshold).sum()),
         "folds_after": int((jac_after < threshold).sum()),
         "min_before": float(jac_before.min()),
         "min_after": float(jac_after.min()),
-        "l2_move": float(np.linalg.norm(out - flat0)),
+        "l2_move": float(np.linalg.norm(move)),  # spread of the correction
+        "l1_move": float(np.abs(move).sum()),  # total displacement mass (sparsity proxy)
+        "n_moved": int((np.abs(move) > 1e-6).sum()),  # how many variables actually changed
         "n_iter": nit,
         # feasibility (no strictly-negative determinants) is the real goal; a
         # feasible result at maxiter shouldn't read as a failure.
