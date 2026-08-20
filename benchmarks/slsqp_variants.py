@@ -33,19 +33,29 @@ def available_solvers():
     )
 
 
+def dense_jacobian(constraint, flat):
+    """Dense (m, n) constraint Jacobian at *flat*: row i = adjoint(flat, e_i).
+
+    dvfopt exposes the constraint's adjoint (Jᵀv) but not J itself; applying it to
+    each unit constraint vector recovers the exact rows. Only tractable for small
+    constraint counts (crops / windows).
+    """
+    m = constraint.n_constraints
+    eye = np.eye(m)
+    return np.stack([constraint.adjoint(flat, eye[i]) for i in range(m)])
+
+
 def _problem(phi_dydx, threshold):
     """Build (constraint, flat0, cons_fn, cons_jac_fn, obj, obj_grad) for a (2,H,W) field."""
     h, w = phi_dydx.shape[1:]
     c = JdetConstraint2D(shape=(h, w))
     flat0 = np.asarray(c.flatten(phi_dydx), dtype=np.float64)
-    m = c.n_constraints
-    eye = np.eye(m)
 
     def cons(f):  # >= 0
         return np.asarray(c.values(f)) - threshold
 
-    def cons_jac(f):  # dense (m, n) — row i = adjoint(f, e_i) = grad of constraint i
-        return np.stack([c.adjoint(f, eye[i]) for i in range(m)])
+    def cons_jac(f):  # dense (m, n) — row i = grad of constraint i
+        return dense_jacobian(c, f)
 
     def obj(f):
         d = f - flat0
@@ -139,7 +149,10 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
         "min_after": float(jac_after.min()),
         "l2_move": float(np.linalg.norm(out - flat0)),
         "n_iter": nit,
-        "success": ok,
+        # feasibility (no strictly-negative determinants) is the real goal; a
+        # feasible result at maxiter shouldn't read as a failure.
+        "success": int((jac_after < 0.0).sum()) == 0,
+        "converged": bool(ok),  # the solver's own termination flag
         "time_s": dt,
     }
     return c.unflatten(out), info

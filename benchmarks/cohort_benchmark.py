@@ -81,11 +81,14 @@ def _local_cond(dy, dx, threshold, crop=24):
     well-conditioned throughout (SQP's sweet spot), rising with local fold density.
     Returns None when the field is smaller than *crop* (nothing meaningful to report).
     """
+    from slsqp_variants import dense_jacobian
+
     from dvfopt.constraints import JdetConstraint2D
     from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
     h, w = dy.shape
-    if h < crop or w < crop:
+    # Purely diagnostic — degrade to None on anything unusual, never abort a run.
+    if h < crop or w < crop or not (np.isfinite(dy).all() and np.isfinite(dx).all()):
         return None
     jac = _numpy_jdet_2d(dy, dx)
     yy, xx = np.unravel_index(int(np.argmin(jac)), jac.shape)
@@ -93,10 +96,7 @@ def _local_cond(dy, dx, threshold, crop=24):
     x0 = int(np.clip(xx - crop // 2, 0, w - crop))
     patch = np.stack([dy[y0 : y0 + crop, x0 : x0 + crop], dx[y0 : y0 + crop, x0 : x0 + crop]])
     c = JdetConstraint2D(shape=(crop, crop))
-    flat = np.asarray(c.flatten(patch), dtype=np.float64)
-    m = c.n_constraints
-    eye = np.eye(m)
-    jmat = np.stack([c.adjoint(flat, eye[i]) for i in range(m)])
+    jmat = dense_jacobian(c, np.asarray(c.flatten(patch), dtype=np.float64))
     s = np.linalg.svd(jmat, compute_uv=False)
     s = s[s > 1e-12 * s.max()]
     return float(s.max() / s.min()) if s.size else None
