@@ -84,3 +84,32 @@ def test_2tri_no_damage_and_full_clear(objective):
     assert n0 > 0
     assert rep.damage == 0
     assert rep.folds_after == 0
+
+
+def test_border_folds_are_corrected():
+    """Folds ON the image border must be fixed, not frozen. find_windows must not
+    inset a side that reached the image edge (regression: it used to freeze the
+    ring-wide border band, silently leaving border folds uncorrected)."""
+    rng = np.random.default_rng(11)
+    H = W = 60
+    phi = np.zeros((2, H, W))
+    phi[0, 0:5, 20:32] += rng.normal(0, 1.5, (5, 12))  # cluster touching top border
+    phi[1, 0:5, 20:32] += rng.normal(0, 1.5, (5, 12))
+    assert (wi.min_field("jdet", phi)[0] < 0.01).any()  # folds ON row 0 exist
+    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2")
+    assert rep.damage == 0
+    assert rep.folds_after == 0  # border folds cleared, not left frozen
+
+
+def test_no_damage_on_severe_field():
+    """The no-damage invariant holds even on a severe field where some windows may
+    not fully clear — damage must be 0 regardless of feasibility (touched covers
+    the full enforced footprint, not just the free box)."""
+    rng = np.random.default_rng(13)
+    H = W = 90
+    phi = np.zeros((2, H, W))
+    for cy, cx in [(25, 25), (25, 65), (65, 30), (66, 66)]:
+        phi[0, cy - 3 : cy + 4, cx - 3 : cx + 4] += rng.normal(0, 4.0, (7, 7))  # amp 4 = hard
+        phi[1, cy - 3 : cy + 4, cx - 3 : cx + 4] += rng.normal(0, 4.0, (7, 7))
+    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2")
+    assert rep.damage == 0

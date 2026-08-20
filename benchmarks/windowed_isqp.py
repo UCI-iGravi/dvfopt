@@ -259,9 +259,16 @@ def build_subproblem(
 def find_windows(mask, margin, ring):
     """Free boxes ``(fy0, fy1, fx0, fx1)`` around fold clusters.
 
-    Dilating the fold mask by ``margin+ring`` before labelling merges any clusters
-    whose (free box + ring) regions could touch, so the resulting windows are
-    independent — no window's free set falls in another's context ring.
+    Dilating the fold mask by ``margin+ring`` before labelling merges clusters whose
+    (free box + ring) regions could touch, so a window's free set does not fall in
+    another's context ring. (Two diagonally-offset clusters can still yield
+    overlapping bounding boxes and hence overlapping free boxes — that only causes
+    redundant/overwritten work, never damage, since each window enforces its full
+    influence set; see the module invariant.)
+
+    The dilated bbox is inset by ``ring`` to recover the ``cluster + margin`` free
+    box — but NOT on a side that reached the image border, where the fold sits on
+    the border line and must stay free (mirrors the Schwarz tiler's border guard).
     """
     grow = margin + ring
     dil = ndimage.binary_dilation(mask, iterations=grow)
@@ -269,9 +276,10 @@ def find_windows(mask, margin, ring):
     boxes = []
     H, W = mask.shape
     for sy, sx in ndimage.find_objects(lbl):
-        # free box = fold cluster's bbox + margin (the dilated bbox minus the ring)
-        fy0, fy1 = max(0, sy.start + ring), min(H, sy.stop - ring)
-        fx0, fx1 = max(0, sx.start + ring), min(W, sx.stop - ring)
+        fy0 = sy.start + ring if sy.start > 0 else 0  # keep image-border folds free
+        fy1 = sy.stop - ring if sy.stop < H else H
+        fx0 = sx.start + ring if sx.start > 0 else 0
+        fx1 = sx.stop - ring if sx.stop < W else W
         boxes.append((fy0, fy1, fx0, fx1))
     return boxes
 
@@ -334,16 +342,18 @@ def windowed_correct(
     cluster. Returns ``(phi_out, SliceReport)``.
 
     ``max_window_area`` caps a window's free-box area; larger merged clusters are
-    left unsolved (counted in ``report.skipped_giant``) rather than driven through
-    an intractable near-full-grid QP — those await the Schwarz-tiling v2.
+    cleared by overlapping-tile Schwarz decomposition (``report.giant_regions``)
+    instead of an intractable near-full-grid QP. ``margin`` is clamped to at least
+    the family ring (the frozen inset band must stay fold-free).
     """
     phi = np.array(phi_dydx, dtype=np.float64, copy=True)
     ring = _RING[family]
+    margin = max(margin, ring)  # inset band must be fold-free margin, never < ring
     H, W = phi.shape[1:]
     j0 = min_field(family, phi)
     orig_fold = j0 < threshold
     rep = SliceReport(folds_before=int(orig_fold.sum()), min_before=float(j0.min()))
-    touched = np.zeros((H, W), bool)  # union of all free regions solved
+    touched = np.zeros((H, W), bool)  # union of every window's ENFORCED footprint
     t0 = time.perf_counter()
 
     prev_nfold = None
@@ -358,7 +368,12 @@ def windowed_correct(
         rep.rounds += 1
         for box in find_windows(mask, margin, ring):
             fy0, fy1, fx0, fx1 = box
-            touched[fy0:fy1, fx0:fx1] = True
+            # touched = the ENFORCED footprint (free box dilated by ring), not the
+            # bare free box: a free pixel influences constraints up to `ring` beyond
+            # the free box, so an infeasible solve could leave a violated row there.
+            # Marking it touched makes any such residual count as residual, never
+            # damage — so damage=0 is by construction, not merely for feasible solves.
+            touched[max(0, fy0 - ring) : fy1 + ring, max(0, fx0 - ring) : fx1 + ring] = True
             if (fy1 - fy0) * (fx1 - fx0) > max_window_area:
                 # too big for one QP -> overlapping-tile Schwarz decomposition
                 rep.giant_regions += 1
