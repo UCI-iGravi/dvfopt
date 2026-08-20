@@ -356,7 +356,7 @@ def windowed_correct(
     margin=3,
     maxiter=400,
     eps=1e-2,
-    max_rounds=4,
+    max_rounds=8,
     z=-1,
     margin_delta=1e-3,
     max_window_area=3000,
