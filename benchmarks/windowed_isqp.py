@@ -363,8 +363,9 @@ def windowed_correct(
                 # too big for one QP -> overlapping-tile Schwarz decomposition
                 rep.giant_regions += 1
                 rep.giant_boxes.append(box)
-                _solve_giant_schwarz(phi, family, box, threshold, objective, eps, maxiter,
-                                     ring, z, rep, margin_delta)
+                _solve_giant_schwarz(
+                    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta
+                )
                 continue
             _solve_window(
                 phi,
@@ -395,8 +396,19 @@ def windowed_correct(
 
 
 def _solve_giant_schwarz(
-    phi, family, giant_box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta,
-    tile=32, max_sweeps=8,
+    phi,
+    family,
+    giant_box,
+    threshold,
+    objective,
+    eps,
+    maxiter,
+    ring,
+    z,
+    rep,
+    margin_delta,
+    tile=32,
+    max_sweeps=8,
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
@@ -428,8 +440,20 @@ def _solve_giant_schwarz(
     for _sweep in range(max_sweeps):
         for tb in tiles:
             if tb[1] > tb[0] and tb[3] > tb[2]:
-                _solve_window(phi, family, tb, threshold, objective, eps, maxiter, ring, z, rep,
-                              margin_delta=margin_delta, allow_grow=False)
+                _solve_window(
+                    phi,
+                    family,
+                    tb,
+                    threshold,
+                    objective,
+                    eps,
+                    maxiter,
+                    ring,
+                    z,
+                    rep,
+                    margin_delta=margin_delta,
+                    allow_grow=False,
+                )
         nf = int((min_field(family, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
         if nf == 0 or (prev is not None and nf >= prev):
             return nf  # cleared, or no further progress (geometric floor)
@@ -438,7 +462,18 @@ def _solve_giant_schwarz(
 
 
 def _solve_window(
-    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, _grow=0, margin_delta=1e-3,
+    phi,
+    family,
+    box,
+    threshold,
+    objective,
+    eps,
+    maxiter,
+    ring,
+    z,
+    rep,
+    _grow=0,
+    margin_delta=1e-3,
     allow_grow=True,
 ):
     """Solve one window; on infeasibility grow the blocked sides once and retry.
