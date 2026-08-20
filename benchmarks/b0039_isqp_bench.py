@@ -53,8 +53,11 @@ HEADER = [
 ]
 
 
-def run(vol_path, stride, size, maxiter, threshold, solvers, objectives, out_csv):
-    vol = np.load(vol_path).astype(np.float64)  # (3, D, H, W)
+def run(vol_path, stride, size, maxiter, threshold, solvers, objectives, out_csv, eps=1e-2):
+    # Keep the (3,D,H,W) volume in its native dtype (float32 ~= 0.6 GB); each tiny
+    # crop is cast to float64 inside _problem. Casting the whole volume to float64
+    # up front is ~1.85 GB and pointless (only the crop is solved).
+    vol = np.load(vol_path)
     d = vol.shape[1]
     rows = []
     print(
@@ -74,7 +77,7 @@ def run(vol_path, stride, size, maxiter, threshold, solvers, objectives, out_csv
                 t = time.perf_counter()
                 try:
                     _, info = sv.full_grid_correct(
-                        crop, s, threshold=threshold, maxiter=maxiter, objective=obj
+                        crop, s, threshold=threshold, maxiter=maxiter, objective=obj, eps=eps
                     )
                     dt = time.perf_counter() - t
                     rows.append(
@@ -158,6 +161,9 @@ if __name__ == "__main__":
     ap.add_argument("--maxiter", type=int, default=200)
     ap.add_argument("--threshold", type=float, default=0.01)
     ap.add_argument("--objective", choices=["l1", "l2", "both"], default="both")
+    ap.add_argument(
+        "--eps", type=float, default=1e-2, help="smoothed-L1 eps (1e-4 collapses curvature)"
+    )
     ap.add_argument("--include-proto", action="store_true", help="also run the dense quadprog POC")
     ap.add_argument("--out", default="benchmarks/output/b0039_isqp_bench.csv")
     a = ap.parse_args()
@@ -165,4 +171,4 @@ if __name__ == "__main__":
     solvers = [s for s in solvers if s in sv.available_solvers()]
     objectives = ["l2", "l1"] if a.objective == "both" else [a.objective]
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    run(a.vol, a.stride, a.size, a.maxiter, a.threshold, solvers, objectives, a.out)
+    run(a.vol, a.stride, a.size, a.maxiter, a.threshold, solvers, objectives, a.out, eps=a.eps)
