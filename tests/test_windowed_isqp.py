@@ -101,6 +101,21 @@ def test_border_folds_are_corrected():
     assert rep.folds_after == 0  # border folds cleared, not left frozen
 
 
+def test_mop_only_helps_and_never_damages():
+    """The terminal mop pass (large-margin re-window of the round-loop residual) must
+    never increase folds or cause damage — it only clears the boundary-stuck residual
+    a small window can't. Verified against the same field with the mop disabled."""
+    rng = np.random.default_rng(21)
+    H = W = 120
+    phi = np.zeros((2, H, W))
+    phi[0, 30:90, 30:90] = rng.normal(0, 2.2, (60, 60))  # large, high-amplitude region
+    phi[1, 30:90, 30:90] = rng.normal(0, 2.2, (60, 60))
+    _, no_mop = wi.windowed_correct(phi, family="jdet", objective="l2", mop_margin=0)
+    _, with_mop = wi.windowed_correct(phi, family="jdet", objective="l2")  # default mop=25
+    assert no_mop.damage == 0 and with_mop.damage == 0
+    assert with_mop.folds_after <= no_mop.folds_after  # the mop only helps
+
+
 def test_no_damage_on_severe_field():
     """The no-damage invariant holds even on a severe field where some windows may
     not fully clear — damage must be 0 regardless of feasibility (touched covers
