@@ -8,10 +8,10 @@ comparison). Full-grid is only tractable on SMALL grids (~<=40x40); that is why
 the real solver windows. Use ``crop_fold_region`` to carve a tractable patch out
 of a moderate real slice.
 
-Solvers: ``scipy-slsqp`` (scipy 1.16+ C rewrite of Kraft), ``scipy-trust-constr``
-(trust-region SQP), ``nlopt-slsqp`` (independent C port of Kraft), and ``pyslsqp``
-(the original Kraft Fortran + QoL). PySLSQP ships wheels only for Python <=3.12, so
-it is available only where importable — ``available_solvers()`` reflects that.
+Solvers: ``scipy-slsqp`` (scipy 1.16+ C rewrite of Kraft — the canonical base),
+``scipy-trust-constr`` (trust-region SQP), and ``pyslsqp`` (the original Kraft
+Fortran + QoL). PySLSQP ships wheels only for Python <=3.12, so it is available
+only where importable — ``available_solvers()`` reflects that.
 """
 
 import importlib.util
@@ -21,15 +21,13 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "nlopt-slsqp", "pyslsqp")
+SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp")
 
 
 def available_solvers():
     """Solvers importable in this environment (pyslsqp needs a py<=3.12 wheel)."""
     return tuple(
-        s
-        for s in SOLVERS
-        if s.startswith("scipy") or importlib.util.find_spec(s.split("-")[0]) is not None
+        s for s in SOLVERS if s.startswith("scipy") or importlib.util.find_spec(s) is not None
     )
 
 
@@ -96,27 +94,6 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200):
             options={"maxiter": maxiter, "gtol": 1e-8, "xtol": 1e-10},
         )
         out, nit, ok = r.x, int(r.niter), bool(r.status in (1, 2))
-    elif solver == "nlopt-slsqp":
-        import nlopt
-
-        opt = nlopt.opt(nlopt.LD_SLSQP, flat0.size)
-
-        def f_obj(x, grad):
-            if grad.size:
-                grad[:] = obj_grad(x)
-            return obj(x)
-
-        def f_con(res, x, grad):
-            res[:] = threshold - np.asarray(c.values(x))  # <= 0
-            if grad.size:
-                grad[:] = -cons_jac(x)
-
-        opt.set_min_objective(f_obj)
-        opt.add_inequality_mconstraint(f_con, np.full(c.n_constraints, 1e-8))
-        opt.set_maxeval(maxiter * 40)
-        opt.set_ftol_rel(1e-8)
-        out = opt.optimize(flat0.copy())
-        nit, ok = opt.get_numevals(), opt.last_optimize_result() > 0
     elif solver == "pyslsqp":  # original Kraft Fortran + QoL (py<=3.12 wheels only)
         from pyslsqp import optimize
 
