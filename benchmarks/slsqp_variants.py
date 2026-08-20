@@ -299,7 +299,8 @@ def _isqp_solve_osqp(
     def merit(y):
         return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
 
-    warm = None  # (z, y) primal/dual to seed the next QP
+    prob = None  # reused across SQP iterations (setup once, then update in place)
+    a_pat = None  # (indptr, indices) of A at setup — guards the in-place update
     it = 0
     while it < maxiter:
         it += 1
@@ -315,17 +316,27 @@ def _isqp_solve_osqp(
         a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
         lo = np.concatenate([-c, np.zeros(m)])
         up = np.full(2 * m, np.inf)
-        prob = osqp.OSQP()
-        prob.setup(
-            p, q, a, lo, up, verbose=False, warm_starting=True, polishing=True, max_iter=8000
+        # The Jacobian sparsity pattern is fixed across SQP iterations (the stencil
+        # and free set don't change), so factor the KKT once and update values in
+        # place — a big saving in the windowed regime (hundreds of small solves).
+        same_pattern = (
+            a_pat is not None
+            and a.indices.shape == a_pat[1].shape
+            and (a.indptr == a_pat[0]).all()
+            and (a.indices == a_pat[1]).all()
         )
-        if warm is not None:
-            prob.warm_start(x=warm[0], y=warm[1])
-        res = prob.solve()
+        if prob is not None and same_pattern:
+            prob.update(q=q, l=lo, Px=p.data, Ax=a.data)
+        else:
+            prob = osqp.OSQP()
+            prob.setup(
+                p, q, a, lo, up, verbose=False, warm_starting=True, polishing=True, max_iter=8000
+            )
+            a_pat = (a.indptr.copy(), a.indices.copy())
+        res = prob.solve()  # OSQP retains the last solution -> auto warm start on update
         z = np.asarray(res.x)
         if not np.all(np.isfinite(z)):
             break
-        warm = (z, np.asarray(res.y))
         d = np.zeros(n)
         d[free] = z[:nf]  # scatter the free-var step back into the full vector
         if np.linalg.norm(d) < tol:
