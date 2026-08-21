@@ -146,7 +146,7 @@ def _line(d):
     )
 
 
-def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False):
+def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0):
     """Return ``(tasks, n_sampled)``: one task per (folded z, family, inner, objective).
 
     A sampled ``z`` is "folded" if ANY family folds it; unfolded slices are skipped.
@@ -159,7 +159,7 @@ def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False):
     (days). jdet/finite (few, small windows) run all three inners.
     """
     d = vol.shape[1]
-    sampled = list(range(0, d, stride))
+    sampled = list(range(start, d, stride))
     tasks = []
     n_folded = 0
     for z in sampled:
@@ -315,6 +315,7 @@ def main():
     ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     ap.add_argument("--threshold", type=float, default=0.01)
     ap.add_argument("--limit", type=int, default=0, help="cap number of folded slices (0 = all)")
+    ap.add_argument("--start", type=int, default=0, help="first slice index (e.g. 32 to skip z=0)")
     ap.add_argument(
         "--slow-2tri",
         action="store_true",
@@ -334,7 +335,9 @@ def main():
         f"workers={a.workers} threshold={a.threshold} limit={a.limit or 'all'}"
     )
     print(f"inners={INNERS} families={FAMILIES} objectives={OBJECTIVES}")
-    tasks, n_sampled = build_tasks(vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri)
+    tasks, n_sampled = build_tasks(
+        vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri, a.start
+    )
     print(f"{len(tasks)} tasks over {n_sampled} sampled slices")
     records = run_tasks(tasks, a.workers)
 
