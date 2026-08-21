@@ -146,12 +146,17 @@ def _line(d):
     )
 
 
-def build_tasks(vol, stride, threshold, maxiter, limit):
+def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False):
     """Return ``(tasks, n_sampled)``: one task per (folded z, family, inner, objective).
 
     A sampled ``z`` is "folded" if ANY family folds it; unfolded slices are skipped.
     ``limit > 0`` caps the number of folded slices sampled (0 = all). Each folded z is
     read once and its ``(2, H, W)`` slice shared across that z's tasks.
+
+    Unless ``slow_2tri`` is set, the ``2tri`` family runs ONLY the isqp-osqp inner:
+    the scipy inners solve a dense reduced sub-problem per window and 2-tri has many
+    windows + tiling + mop, so 2tri x scipy-inner on dense slices is intractable
+    (days). jdet/finite (few, small windows) run all three inners.
     """
     d = vol.shape[1]
     sampled = list(range(0, d, stride))
@@ -168,6 +173,8 @@ def build_tasks(vol, stride, threshold, maxiter, limit):
             break
         for family in fam_folded:
             for inner in INNERS:
+                if family == "2tri" and inner != "isqp-osqp" and not slow_2tri:
+                    continue
                 for objective in OBJECTIVES:
                     tasks.append((z, family, inner, objective, phi, threshold, maxiter))
     return tasks, len(sampled)
@@ -308,6 +315,11 @@ def main():
     ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     ap.add_argument("--threshold", type=float, default=0.01)
     ap.add_argument("--limit", type=int, default=0, help="cap number of folded slices (0 = all)")
+    ap.add_argument(
+        "--slow-2tri",
+        action="store_true",
+        help="also run 2tri x scipy inners (intractable on dense slices; days)",
+    )
     ap.add_argument("--out-dir", default=None)
     a = ap.parse_args()
 
@@ -322,7 +334,7 @@ def main():
         f"workers={a.workers} threshold={a.threshold} limit={a.limit or 'all'}"
     )
     print(f"inners={INNERS} families={FAMILIES} objectives={OBJECTIVES}")
-    tasks, n_sampled = build_tasks(vol, a.stride, a.threshold, a.maxiter, a.limit)
+    tasks, n_sampled = build_tasks(vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri)
     print(f"{len(tasks)} tasks over {n_sampled} sampled slices")
     records = run_tasks(tasks, a.workers)
 
