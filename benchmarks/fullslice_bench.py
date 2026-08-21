@@ -153,70 +153,109 @@ def _line(d):
     )
 
 
-def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0, inners=None):
-    """Return ``(tasks, n_sampled)``: one task per (folded z, family, inner, objective).
+# Relative solver cost per family (from B0039 timings: finite ~60s, jdet ~500s, 2tri
+# hours on a dense slice). Drives cost-ascending task order so the tractable metrics
+# finish across the whole volume before 2-tri grinds the dense tail.
+_FAM_COST = {"finite": 0, "jdet": 1, "2tri": 2}
+
+
+def build_tasks(
+    vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0, inners=None, tri_stride=0
+):
+    """Return ``(tasks, n_sampled)``: one task per (folded z, family, inner, objective),
+    ordered cheapest-first.
 
     A sampled ``z`` is "folded" if ANY family folds it; unfolded slices are skipped.
     ``limit > 0`` caps the number of folded slices sampled (0 = all). Each folded z is
     read once and its ``(2, H, W)`` slice shared across that z's tasks.
 
-    Unless ``slow_2tri`` is set, the ``2tri`` family runs ONLY the isqp-osqp inner:
-    the scipy inners solve a dense reduced sub-problem per window and 2-tri has many
-    windows + tiling + mop, so 2tri x scipy-inner on dense slices is intractable
-    (days). jdet/finite (few, small windows) run all three inners.
+    ``tri_stride > 0`` subsamples the ``2tri`` family to every N-th folded slice while
+    jdet/finite still cover all sampled slices — because every B0039 slice is densely
+    folded (min 696, median 2594 2-tri folds), full-volume 2-tri (0.5-3h per slice) is
+    months, whereas finite/jdet (minutes) run the whole volume in ~10h.
+
+    Tasks are returned sorted by ``(family cost, 2-tri fold count)`` so finite finishes
+    volume-wide first, then jdet, then 2-tri light->heavy — maximising representative
+    partial coverage (results.csv is written incrementally).
+
+    Unless ``slow_2tri`` is set, the ``2tri``/``finite`` families run ONLY the isqp-osqp
+    inner: the scipy inners solve a dense reduced sub-problem per window and those
+    families have many windows + tiling + mop, so scipy-inner on dense slices is
+    intractable (days). jdet (few, small windows) runs all requested inners.
     """
     inners = inners or INNERS
     d = vol.shape[1]
     sampled = list(range(start, d, stride))
-    tasks = []
+    keyed = []  # (sort_key, task_tuple)
     n_folded = 0
     for z in sampled:
         phi = _slice_phi(vol, z)
-        fam_folded = [f for f in FAMILIES if wi.pixel_fold_mask(f, phi, threshold).any()]
+        masks = {f: wi.pixel_fold_mask(f, phi, threshold) for f in FAMILIES}
+        fam_folded = [f for f in FAMILIES if masks[f].any()]
         if not fam_folded:
             print(f"z={z:>3}: 0 folds before -> skip")
             continue
+        tri_cost = int(masks["2tri"].sum())  # dominant cost driver + sort tiebreak
+        folded_idx = n_folded  # 0-based rank among folded slices (for tri-stride)
         n_folded += 1
         if limit > 0 and n_folded > limit:
             break
         for family in fam_folded:
+            # 2-tri subsampling: keep only every tri_stride-th folded slice.
+            if family == "2tri" and tri_stride > 0 and folded_idx % tri_stride != 0:
+                continue
             for inner in inners:
-                # scipy inners are 3-59x slower per window and escalation is >25min on
-                # a moderate slice; on the many-window families (finite, 2tri) they are
-                # intractable, so restrict them to jdet unless --slow-2tri opts back in.
                 if family in ("finite", "2tri") and inner != "isqp-osqp" and not slow_2tri:
                     continue
                 for objective in OBJECTIVES:
-                    tasks.append((z, family, inner, objective, phi, threshold, maxiter))
-    return tasks, len(sampled)
+                    key = (_FAM_COST[family], tri_cost)
+                    keyed.append((key, (z, family, inner, objective, phi, threshold, maxiter)))
+    keyed.sort(key=lambda kt: kt[0])
+    return [t for _, t in keyed], len(sampled)
 
 
-def run_tasks(tasks, workers):
-    """Run tasks (serial if ``workers == 1``, else a process pool), printing each
-    result as it lands. Returns the collected record dicts."""
+def run_tasks(tasks, workers, csv_path=None):
+    """Run tasks (serial if ``workers == 1``, else a process pool), printing each result
+    as it lands and appending it to ``csv_path`` (flushed per row) so a multi-hour run
+    survives interruption and partial averages can be read live. Returns the records."""
     records = []
-    if workers == 1:
-        for t in tasks:
-            d = _run_task(*t)
-            records.append(d)
-            print("  " + _line(d))
-            sys.stdout.flush()
+    fh = writer = None
+    if csv_path is not None:
+        # long-lived handle appended across the whole run; closed in the finally below
+        fh = open(csv_path, "w", newline="")  # noqa: SIM115
+        writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        fh.flush()
+
+    def _emit(d):
+        records.append(d)
+        print("  " + _line(d))
+        sys.stdout.flush()
+        if writer is not None:
+            writer.writerow(d)
+            fh.flush()
+
+    try:
+        if workers == 1:
+            for t in tasks:
+                _emit(_run_task(*t))
+            return records
+
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            fut_meta = {ex.submit(_run_task, *t): t[:4] for t in tasks}
+            for fut in as_completed(fut_meta):
+                z, family, inner, objective = fut_meta[fut]
+                try:
+                    d = fut.result()
+                except Exception as e:  # backstop if a worker process crashed outright
+                    d = _err_rec(z, family, inner, objective, f"{type(e).__name__}: {e}")
+                _emit(d)
         return records
-
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-
-    with ProcessPoolExecutor(max_workers=workers) as ex:
-        fut_meta = {ex.submit(_run_task, *t): t[:4] for t in tasks}
-        for fut in as_completed(fut_meta):
-            z, family, inner, objective = fut_meta[fut]
-            try:
-                d = fut.result()
-            except Exception as e:  # backstop if a worker process crashed outright
-                d = _err_rec(z, family, inner, objective, f"{type(e).__name__}: {e}")
-            records.append(d)
-            print("  " + _line(d))
-            sys.stdout.flush()
-    return records
+    finally:
+        if fh is not None:
+            fh.close()
 
 
 def write_csv(path, records):
@@ -274,6 +313,10 @@ def write_report(path, records, cfg):
         "",
         f"Volume `{cfg['vol']}` | stride {cfg['stride']} | maxiter {cfg['maxiter']} | "
         f"threshold {cfg['threshold']} | sampled z: {cfg['n_sampled']} (folded: {n_folded})",
+        "",
+        f"**2-tri coverage:** tri-stride {cfg.get('tri_stride') or 'all'} — every B0039 slice "
+        "is densely folded (min 696, median 2594 2-tri folds), so full-volume 2-tri is months; "
+        "the `slices` column below shows each test's actual per-slice sample size.",
         "",
         f"Inners: {', '.join(INNERS)} | Families: {', '.join(FAMILIES)} | "
         f"Objectives: {', '.join(OBJECTIVES)}",
@@ -333,6 +376,13 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first slice index (e.g. 32 to skip z=0)")
     ap.add_argument("--inners", default=None, help="comma list overriding the inner solvers")
     ap.add_argument(
+        "--tri-stride",
+        type=int,
+        default=0,
+        help="subsample the 2tri family to every N-th folded slice (0 = all); "
+        "jdet/finite still cover every sampled slice. Full-volume 2tri is months.",
+    )
+    ap.add_argument(
         "--slow-2tri",
         action="store_true",
         help="also run 2tri x scipy inners (intractable on dense slices; days)",
@@ -353,19 +403,24 @@ def main():
     print(f"inners={INNERS} families={FAMILIES} objectives={OBJECTIVES}")
     inners = [s.strip() for s in a.inners.split(",")] if a.inners else None
     tasks, n_sampled = build_tasks(
-        vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri, a.start, inners
+        vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri, a.start, inners, a.tri_stride
     )
-    print(f"{len(tasks)} tasks over {n_sampled} sampled slices")
-    records = run_tasks(tasks, a.workers)
-
+    n_tri = sum(1 for t in tasks if t[1] == "2tri" and t[3] == "l2")
+    print(
+        f"{len(tasks)} tasks over {n_sampled} sampled slices "
+        f"(2tri on {n_tri} slices, tri-stride={a.tri_stride or 'all'})"
+    )
     csv_path, report_path = out_dir / "results.csv", out_dir / "report.md"
-    write_csv(csv_path, records)
+    records = run_tasks(tasks, a.workers, csv_path)  # incremental append; final rewrite below
+
+    write_csv(csv_path, records)  # final sorted rewrite
     cfg = {
         "vol": a.vol,
         "stride": a.stride,
         "maxiter": a.maxiter,
         "n_sampled": n_sampled,
         "threshold": a.threshold,
+        "tri_stride": a.tri_stride,
     }
     write_report(report_path, records, cfg)
     print(f"\nrows: {len(records)} | out dir -> {out_dir}")
