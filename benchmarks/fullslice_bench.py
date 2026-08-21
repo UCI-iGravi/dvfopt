@@ -56,6 +56,8 @@ CSV_FIELDS = [
     "central_after",
     "finite_after",
     "tri_after",
+    "l1_move",
+    "l2_move",
     "giant_regions",
     "mop_windows",
     "rounds",
@@ -81,7 +83,7 @@ def _cross_metric_folds(phi_out, threshold):
     return central, finite, tri
 
 
-def _rec(z, family, inner, objective, rep, cross):
+def _rec(z, family, inner, objective, rep, cross, l1_move, l2_move):
     """Flatten a :class:`windowed_isqp.SliceReport` + cross-scores into a record dict."""
     central, finite, tri = cross
     return {
@@ -95,6 +97,8 @@ def _rec(z, family, inner, objective, rep, cross):
         "central_after": central,
         "finite_after": finite,
         "tri_after": tri,
+        "l1_move": round(l1_move, 3),
+        "l2_move": round(l2_move, 4),
         "giant_regions": rep.giant_regions,
         "mop_windows": rep.mop_windows,
         "rounds": rep.rounds,
@@ -129,7 +133,10 @@ def _run_task(z, family, inner, objective, phi, threshold, maxiter):
             z=z,
         )
         cross = _cross_metric_folds(phi_out, threshold)
-        return _rec(z, family, inner, objective, rep, cross)
+        move = phi_out - phi  # correction footprint
+        l1_move = float(np.abs(move).sum())
+        l2_move = float(np.linalg.norm(move))
+        return _rec(z, family, inner, objective, rep, cross, l1_move, l2_move)
     except Exception as e:  # deliberately never let one bad task crash the whole run
         return _err_rec(z, family, inner, objective, f"{type(e).__name__}: {e}")
 
@@ -241,6 +248,9 @@ def _group_stats(group):
         "med_central": _med(ok, "central_after"),
         "med_finite": _med(ok, "finite_after"),
         "med_tri": _med(ok, "tri_after"),
+        # average correction footprint per slice (the L1 / L2 "score" of each test)
+        "avg_l1": float(np.mean([r["l1_move"] for r in ok])) if ok else float("nan"),
+        "avg_l2": float(np.mean([r["l2_move"] for r in ok])) if ok else float("nan"),
         "pct": 100.0 if tfb == 0 else (tfb - tfa) / tfb * 100.0,
     }
 
@@ -275,8 +285,8 @@ def write_report(path, records, cfg):
         "## Summary",
         "",
         "| family | inner | obj | slices | before | after | %cleared | worst_damage | "
-        "median_time_s | med_central | med_finite | med_tri |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "median_time_s | avg_L1_move | avg_L2_move | med_central | med_finite | med_tri |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
 
     verdicts = []
@@ -297,6 +307,7 @@ def write_report(path, records, cfg):
                 lines.append(
                     f"| {family} | {inner} | {objective} | {s['n_ok']} | {s['tfb']} | "
                     f"{s['tfa']} | {s['pct']:.1f} | {wd_cell} | {mt} | "
+                    f"{s['avg_l1']:.2f} | {s['avg_l2']:.3f} | "
                     f"{s['med_central']:.0f} | {s['med_finite']:.0f} | {s['med_tri']:.0f} |"
                 )
                 dmg = "damage=0" if wd == 0 else f"**damage={wd} — INVARIANT VIOLATED**"
