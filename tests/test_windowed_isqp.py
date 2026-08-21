@@ -86,6 +86,27 @@ def test_2tri_no_damage_and_full_clear(objective):
     assert rep.folds_after == 0
 
 
+@pytest.mark.parametrize("objective", ["l2", "l1"])
+def test_finite_no_damage_and_full_clear(objective):
+    """The forward-diff Jdet metric (cell grid, exact det, ring=1, one row/cell)
+    clears folds with zero damage, same invariant as 2tri/Jdet."""
+    phi = _sparse_folds(seed=3)
+    n0 = int((wi.min_field("finite", phi) < 0.01).sum())
+    _, rep = wi.windowed_correct(phi, family="finite", objective=objective, eps=1e-2)
+    assert n0 > 0
+    assert rep.damage == 0
+    assert rep.folds_after == 0
+
+
+@pytest.mark.parametrize("inner", ["scipy-slsqp", "scipy-slsqp+trust-constr"])
+def test_pluggable_inner_preserves_no_damage(inner):
+    """Swapping the inner solver must not break the no-damage invariant: every inner
+    only moves the window's free pixels, so folds outside every window stay 0."""
+    phi = _sparse_folds()
+    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2", inner=inner)
+    assert rep.damage == 0
+
+
 def test_border_folds_are_corrected():
     """Folds ON the image border must be fixed, not frozen. find_windows must not
     inset a side that reached the image edge (regression: it used to freeze the
