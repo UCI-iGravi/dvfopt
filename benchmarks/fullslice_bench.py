@@ -146,7 +146,7 @@ def _line(d):
     )
 
 
-def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0):
+def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0, inners=None):
     """Return ``(tasks, n_sampled)``: one task per (folded z, family, inner, objective).
 
     A sampled ``z`` is "folded" if ANY family folds it; unfolded slices are skipped.
@@ -158,6 +158,7 @@ def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0
     windows + tiling + mop, so 2tri x scipy-inner on dense slices is intractable
     (days). jdet/finite (few, small windows) run all three inners.
     """
+    inners = inners or INNERS
     d = vol.shape[1]
     sampled = list(range(start, d, stride))
     tasks = []
@@ -172,8 +173,11 @@ def build_tasks(vol, stride, threshold, maxiter, limit, slow_2tri=False, start=0
         if limit > 0 and n_folded > limit:
             break
         for family in fam_folded:
-            for inner in INNERS:
-                if family == "2tri" and inner != "isqp-osqp" and not slow_2tri:
+            for inner in inners:
+                # scipy inners are 3-59x slower per window and escalation is >25min on
+                # a moderate slice; on the many-window families (finite, 2tri) they are
+                # intractable, so restrict them to jdet unless --slow-2tri opts back in.
+                if family in ("finite", "2tri") and inner != "isqp-osqp" and not slow_2tri:
                     continue
                 for objective in OBJECTIVES:
                     tasks.append((z, family, inner, objective, phi, threshold, maxiter))
@@ -316,6 +320,7 @@ def main():
     ap.add_argument("--threshold", type=float, default=0.01)
     ap.add_argument("--limit", type=int, default=0, help="cap number of folded slices (0 = all)")
     ap.add_argument("--start", type=int, default=0, help="first slice index (e.g. 32 to skip z=0)")
+    ap.add_argument("--inners", default=None, help="comma list overriding the inner solvers")
     ap.add_argument(
         "--slow-2tri",
         action="store_true",
@@ -335,8 +340,9 @@ def main():
         f"workers={a.workers} threshold={a.threshold} limit={a.limit or 'all'}"
     )
     print(f"inners={INNERS} families={FAMILIES} objectives={OBJECTIVES}")
+    inners = [s.strip() for s in a.inners.split(",")] if a.inners else None
     tasks, n_sampled = build_tasks(
-        vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri, a.start
+        vol, a.stride, a.threshold, a.maxiter, a.limit, a.slow_2tri, a.start, inners
     )
     print(f"{len(tasks)} tasks over {n_sampled} sampled slices")
     records = run_tasks(tasks, a.workers)
