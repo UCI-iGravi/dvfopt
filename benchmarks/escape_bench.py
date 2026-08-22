@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windowed_escape as we  # noqa: E402
 
 
-def run_field(path, family, objective, threshold, margin, maxiter, taper, modes):
+def run_field(path, family, objective, threshold, margin, maxiter, taper, modes, max_passes):
     """Run every mode on one residual field; return a list of report dicts (+ tag)."""
     phi = np.load(path)
     if phi.ndim == 4:  # accept a (3,1,H,W) or (2,1,H,W) array too
@@ -50,6 +50,7 @@ def run_field(path, family, objective, threshold, margin, maxiter, taper, modes)
             margin=margin,
             maxiter=maxiter,
             taper=taper,
+            max_passes=max_passes,
         )
         rep["field"] = tag
         rows.append(rep)
@@ -141,6 +142,7 @@ def main():
     ap.add_argument("--margin", type=int, default=20)
     ap.add_argument("--maxiter", type=int, default=600)
     ap.add_argument("--taper", type=float, default=6.0)
+    ap.add_argument("--max-passes", type=int, default=3, help="residual re-window passes per mode")
     ap.add_argument(
         "--modes", default="baseline,twophase,weighted,penalty", help="comma list of escape modes"
     )
@@ -158,7 +160,7 @@ def main():
     for f in a.fields:
         print(f"field {f}:")
         rows += run_field(
-            f, a.family, a.objective, a.threshold, a.margin, a.maxiter, a.taper, modes
+            f, a.family, a.objective, a.threshold, a.margin, a.maxiter, a.taper, modes, a.max_passes
         )
 
     cfg = {
