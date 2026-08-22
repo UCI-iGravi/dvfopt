@@ -262,11 +262,29 @@ def _isqp_solve_osqp(
     obj=None,
     hess_diag=None,
     free_idx=None,
+    trace=None,
+    trust_region=True,
 ):
     """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
     solved by OSQP over a SPARSE system with a warm-started iterate, and the
     constraint Jacobian is rebuilt by CPR coloring (``stride**2`` adjoint calls,
     not ``m``) when a ``constraint`` is supplied.
+
+    ``trust_region`` (default on) bounds the step inside the QP (``|d_i| <= delta``)
+    and adapts ``delta`` by the actual-vs-predicted merit reduction. The z=0 stall
+    trace showed why this is needed: the unbounded QP proposes |d|~2-4 steps whose
+    linearization is only valid at a fraction of that length, so the backtracking
+    line search crawls (~0.03% merit/iter) and then dies on the first direction with
+    no decreasing alpha — a backtrack can only SHORTEN a stale direction, while a
+    trust region RE-COMPUTES it under the bound and shrinks instead of quitting.
+    ``trust_region=False`` restores the legacy backtracking behaviour.
+
+    ``trace`` (optional dict) turns on pyslsqp-style convergence tracking: it is
+    filled with ``iters`` (per-iteration ``max_viol`` / ``n_viol`` / ``merit`` /
+    ``step_norm`` / ``osqp_status`` / ``delta`` / ``ratio`` / ``stepped``), the
+    ``exit`` reason (``osqp-nonfinite`` / ``step-tol`` / ``linesearch-stall`` /
+    ``tr-collapse`` / ``maxiter``), ``feasible`` and ``nit`` — so a stall is
+    attributable, not silent.
 
     quadprog is dense O((n+m)^3); OSQP exploits that the constraint Jacobian is
     ~99% zeros (each Jdet cell touches a small stencil) and reuses the previous
@@ -310,6 +328,10 @@ def _isqp_solve_osqp(
     prob = None  # reused across SQP iterations (setup once, then update in place)
     a_pat = None  # (indptr, indices) of A at setup — guards the in-place update
     it = 0
+    exit_reason = "maxiter"
+    tr_delta, tr_min, tr_max = 2.0, 1e-6, 16.0  # trust-region radius (grid units)
+    if trace is not None:
+        trace["iters"] = []
     while it < maxiter:
         it += 1
         c = np.asarray(cons(x))  # want >= 0
@@ -318,12 +340,22 @@ def _isqp_solve_osqp(
         nf = j.shape[1]
         eye_m = sparse.eye(m, format="csc")
         # z = [d (n_free); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
-        hd = sparse.diags(hess_diag(x)[free])  # objective curvature over free vars
+        hdv = hess_diag(x)[free]  # objective curvature over free vars
+        hd = sparse.diags(hdv)
         p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
-        q = np.concatenate([obj_grad(x)[free], rho * np.ones(m)])
-        a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
-        lo = np.concatenate([-c, np.zeros(m)])
-        up = np.full(2 * m, np.inf)
+        gx = obj_grad(x)[free]
+        q = np.concatenate([gx, rho * np.ones(m)])
+        if trust_region:
+            # extra identity rows box the step: -delta <= d_i <= delta (see docstring)
+            a = sparse.bmat(
+                [[j, eye_m], [None, eye_m], [sparse.eye(nf, format="csc"), None]], format="csc"
+            )
+            lo = np.concatenate([-c, np.zeros(m), np.full(nf, -tr_delta)])
+            up = np.concatenate([np.full(2 * m, np.inf), np.full(nf, tr_delta)])
+        else:
+            a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
+            lo = np.concatenate([-c, np.zeros(m)])
+            up = np.full(2 * m, np.inf)
         # The Jacobian sparsity pattern is fixed across SQP iterations (the stencil
         # and free set don't change), so factor the KKT once and update values in
         # place — a big saving in the windowed regime (hundreds of small solves).
@@ -334,7 +366,7 @@ def _isqp_solve_osqp(
             and (a.indices == a_pat[1]).all()
         )
         if prob is not None and same_pattern:
-            prob.update(q=q, l=lo, Px=p.data, Ax=a.data)
+            prob.update(q=q, l=lo, u=up, Px=p.data, Ax=a.data)
         else:
             prob = osqp.OSQP()
             prob.setup(
@@ -344,15 +376,80 @@ def _isqp_solve_osqp(
         res = prob.solve()  # OSQP retains the last solution -> auto warm start on update
         z = np.asarray(res.x)
         if not np.all(np.isfinite(z)):
+            exit_reason = "osqp-nonfinite"
             break
         d = np.zeros(n)
         d[free] = z[:nf]  # scatter the free-var step back into the full vector
-        if np.linalg.norm(d) < tol:
+        dn = float(np.linalg.norm(d))
+        viol = np.clip(-c, 0.0, None)
+        ph0 = obj(x) + rho * float(viol.sum())  # merit(x), reusing the computed c
+        rec = {
+            "it": it,
+            "max_viol": float(viol.max(initial=0.0)),
+            "n_viol": int((c < -1e-9).sum()),
+            "merit": ph0,
+            "step_norm": dn,
+            "osqp_status": str(getattr(res.info, "status", "?")).strip(),
+            "delta": (tr_delta if trust_region else None),
+        }
+        if dn < tol:
+            rec["stepped"] = False
+            if trace is not None:
+                trace["iters"].append(rec)
+            exit_reason = "step-tol"
             break
-        x, stepped = _backtrack(merit, x, d, merit(x))
-        if not stepped:
-            break
-    feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
+        if trust_region:
+            # ratio test: predicted merit reduction from the QP model (at d=0 the
+            # feasible slack is the current violation, so q(0) = rho*sum(viol))
+            # vs the ACTUAL nonlinear merit reduction at the full bounded step.
+            s_slack = z[nf : nf + m]
+            pred = rho * float(viol.sum()) - (
+                float(gx @ z[:nf])
+                + 0.5 * float(z[:nf] @ (hdv * z[:nf]))
+                + rho * float(s_slack.sum())
+            )
+            act = ph0 - merit(x + d)
+            ratio = act / pred if pred > 1e-12 else float("nan")
+            rec["ratio"] = ratio
+            if pred <= 1e-8:
+                # model-flat regime (at/near the subproblem optimum): the ratio test
+                # is numerical noise there, so polish along d with the legacy
+                # backtracking and stop once even that cannot decrease the merit.
+                x, stepped = _backtrack(merit, x, d, ph0)
+                if not stepped:
+                    exit_reason = "model-flat"
+            else:
+                stepped = act > 0.0 and ratio > 1e-3
+                if stepped:
+                    x = x + d
+                    if ratio > 0.75 and dn >= 0.9 * tr_delta:
+                        tr_delta = min(tr_delta * 2.0, tr_max)
+                    elif ratio < 0.25:
+                        tr_delta = max(tr_delta * 0.5, tr_min)
+                else:
+                    tr_delta *= 0.25  # reject: shrink and RE-SOLVE a new direction
+                    if tr_delta < tr_min:
+                        exit_reason = "tr-collapse"
+            rec["stepped"] = bool(stepped)
+            if trace is not None:
+                trace["iters"].append(rec)
+            if exit_reason in ("model-flat", "tr-collapse"):
+                break
+        else:
+            x, stepped = _backtrack(merit, x, d, ph0)
+            rec["stepped"] = bool(stepped)
+            if trace is not None:
+                trace["iters"].append(rec)
+            if not stepped:
+                exit_reason = "linesearch-stall"
+                break
+    # 1e-6 matches OSQP's practical subproblem accuracy; callers enforce folds via a
+    # margin_delta (>=1e-3) shifted target, so this is 3+ orders inside that slack.
+    feasible = bool((np.asarray(cons(x)) >= -1e-6).all())
+    if trace is not None:
+        trace["exit"] = exit_reason
+        trace["feasible"] = feasible
+        trace["nit"] = it
     return x, it, feasible
 
 
