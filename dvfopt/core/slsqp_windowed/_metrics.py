@@ -12,7 +12,7 @@ for backward compatibility.
 import numpy as np
 
 from dvfopt._defaults import _unpack_size
-from dvfopt.core.slsqp.constraints import _quality_map
+from dvfopt.core.slsqp_windowed.constraints import _quality_map
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d, jacobian_det2D
 
 

@@ -17,7 +17,7 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from dvfopt import jacobian_det2D
-from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 from dvfopt.jacobian import _monotonicity_diffs_2d, shoelace_det2D
 from test_cases import SYNTHETIC_CASES, make_deformation
 

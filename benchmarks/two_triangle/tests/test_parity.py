@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from benchmarks.two_triangle import registry
-from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 
 
 @pytest.mark.parametrize(

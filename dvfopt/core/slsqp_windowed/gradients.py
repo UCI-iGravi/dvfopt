@@ -27,7 +27,7 @@ sparse hstacks instead of a per-pixel Python loop.
 import numpy as np
 import scipy.sparse
 
-from dvfopt.core.slsqp._grad_op import gradient_operator, scale_rows
+from dvfopt.core.slsqp_windowed._grad_op import gradient_operator, scale_rows
 
 
 def _interior_keep_mask(sy, sx, exclude_boundaries):

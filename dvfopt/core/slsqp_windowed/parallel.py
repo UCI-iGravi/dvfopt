@@ -8,14 +8,8 @@ import numpy as np
 from scipy.ndimage import label as _scipy_label
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _resolve_params, _unpack_size
-from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
-from dvfopt.core.slsqp.spatial import (
-    _edge_flags,
-    _select_non_overlapping,
-    get_phi_sub_flat_padded,
-    neg_jdet_bounding_window,
-)
-from dvfopt.core.solver import (
+from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _patch_quality_2d
+from dvfopt.core.slsqp_windowed.coordinator import (
     _adaptive_injectivity_loop,
     _apply_result,
     _init_phi,
@@ -25,6 +19,12 @@ from dvfopt.core.solver import (
     _serial_fix_pixel,
     _setup_accumulators,
     _update_metrics,
+)
+from dvfopt.core.slsqp_windowed.spatial import (
+    _edge_flags,
+    _select_non_overlapping,
+    get_phi_sub_flat_padded,
+    neg_jdet_bounding_window,
 )
 
 

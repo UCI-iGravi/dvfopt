@@ -39,8 +39,8 @@ if _REPO_ROOT not in sys.path:
 from dvfopt import jacobian_det2D
 from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.parallel import iterative_parallel
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from dvfopt.unified import DVFopt, DVFoptConfig
 

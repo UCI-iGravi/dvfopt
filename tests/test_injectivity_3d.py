@@ -45,7 +45,7 @@ class TestMonotonicityDiffs3D:
 
 class TestLinearConstraintBuilder:
     def test_row_count_and_values(self):
-        from dvfopt.core.slsqp.constraints3d import _injectivity_linear_constraint_3d
+        from dvfopt.core.slsqp_windowed.constraints3d import _injectivity_linear_constraint_3d
 
         sz = sy = sx = 3
         lc = _injectivity_linear_constraint_3d((sz, sy, sx), inj_lb=THRESHOLD)
@@ -60,7 +60,7 @@ class TestLinearConstraintBuilder:
         np.testing.assert_allclose(lc.A @ phi_flat + 1.0, expected, atol=1e-12)
 
     def test_fully_frozen_boundary_returns_none(self):
-        from dvfopt.core.slsqp.constraints3d import _injectivity_linear_constraint_3d
+        from dvfopt.core.slsqp_windowed.constraints3d import _injectivity_linear_constraint_3d
 
         freeze = np.ones((3, 3, 3), dtype=bool)
         freeze[1, 1, 1] = False  # single free voxel — no free pair exists
@@ -78,7 +78,7 @@ def _folded_volume():
 
 class TestIterative3DInjectivity:
     def test_end_to_end_both_metrics_feasible(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         phi = _folded_volume()
         out = iterative_3d(
@@ -94,7 +94,7 @@ class TestIterative3DInjectivity:
         assert float(q.min()) >= THRESHOLD - 1e-4, f'gap min {q.min():.5f}'
 
     def test_custom_injectivity_threshold(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         phi = _folded_volume()
         inj_lb = 0.15
@@ -145,7 +145,7 @@ class TestInjectivityOnlyRepair:
     outer loop until max_iterations with the crossing intact."""
 
     def test_no_livelock_on_jdet_feasible_crossing(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         phi = np.zeros((3, 5, 8, 8))
         phi[2, :, :, 3] = -1.05  # x-gap col 2->3 = -0.05; Jdet stays feasible

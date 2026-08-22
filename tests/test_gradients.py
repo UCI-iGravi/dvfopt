@@ -7,8 +7,8 @@ analytical Jacobian matrix matches a numerical finite-difference approximation.
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints import jacobian_constraint
-from dvfopt.core.slsqp.gradients import (
+from dvfopt.core.slsqp_windowed.constraints import jacobian_constraint
+from dvfopt.core.slsqp_windowed.gradients import (
     injectivity_constraint_jacobian_2d,
     jdet_constraint_jacobian_2d,
     shoelace_constraint_jacobian_2d,

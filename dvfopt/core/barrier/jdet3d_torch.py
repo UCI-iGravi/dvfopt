@@ -28,7 +28,11 @@ except ImportError:
     torch = None
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
+from dvfopt.core.slsqp_windowed.coordinator import (
+    _print_summary,
+    _save_results,
+    _setup_accumulators,
+)
 
 
 def _build_active_mask_3d(j, target, radius):

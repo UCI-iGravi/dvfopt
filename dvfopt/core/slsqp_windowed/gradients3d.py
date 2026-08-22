@@ -30,7 +30,7 @@ inner SLSQP loop is now dominated by scipy native code.
 import numpy as np
 import scipy.sparse
 
-from dvfopt.core.slsqp._grad_op import gradient_operator, scale_rows
+from dvfopt.core.slsqp_windowed._grad_op import gradient_operator, scale_rows
 
 
 def _gradient_stencil(idx, n):

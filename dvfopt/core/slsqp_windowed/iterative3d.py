@@ -6,13 +6,17 @@ import numpy as np
 from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size_3d
-from dvfopt.core.slsqp.spatial3d import argmin_worst_voxel
-from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
-from dvfopt.core.solver3d import (
+from dvfopt.core.slsqp_windowed.coordinator import (
+    _print_summary,
+    _save_results,
+    _setup_accumulators,
+)
+from dvfopt.core.slsqp_windowed.coordinator3d import (
     _init_phi_3d,
     _serial_fix_voxel,
     _update_metrics_3d,
 )
+from dvfopt.core.slsqp_windowed.spatial3d import argmin_worst_voxel
 
 
 def iterative_3d(

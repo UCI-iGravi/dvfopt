@@ -18,9 +18,9 @@ import warnings
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.iterative3d import iterative_3d
-from dvfopt.core.slsqp.parallel import iterative_parallel
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
+from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
 
 
@@ -77,7 +77,7 @@ class TestFrozenEdgeReleaseAtMaxWindow3D:
     def test_builder_drops_freeze_at_max_window(self):
         from scipy.optimize import LinearConstraint
 
-        from dvfopt.core.slsqp.constraints3d import _build_constraints_3d
+        from dvfopt.core.slsqp_windowed.constraints3d import _build_constraints_3d
 
         sz, sy, sx = 4, 4, 4
         phi_flat = np.zeros(3 * sz * sy * sx)
@@ -141,8 +141,8 @@ class TestPatchQuality2D:
         ],
     )
     def test_matches_full_quality_map(self, shoe, inj, tri):
-        from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _patch_quality_2d
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(7)
         phi = rng.standard_normal((2, 14, 14)) * 0.3
@@ -162,8 +162,8 @@ class TestPatchQuality2D:
         np.testing.assert_allclose(qual, qual_full, atol=1e-12)
 
     def test_matches_at_grid_corner(self):
-        from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _patch_quality_2d
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(11)
         phi = rng.standard_normal((2, 9, 9)) * 0.25
@@ -181,8 +181,8 @@ class TestPatchQuality2D:
 
     def test_update_metrics_quality_patch_path(self):
         """_update_metrics with quality_matrix= must equal the legacy path."""
-        from dvfopt.core._internal.metrics import _update_metrics
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _update_metrics
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(3)
         phi = rng.standard_normal((2, 12, 12)) * 0.3
@@ -219,7 +219,7 @@ class TestPatchQuality2D:
 class TestRollbackWorseResults:
     def test_serial_garbage_result_is_rolled_back(self, monkeypatch):
         """When every sub-solve returns garbage, phi must come back unchanged."""
-        import dvfopt.core.solver as solver_mod
+        import dvfopt.core.slsqp_windowed.coordinator as solver_mod
 
         rng = np.random.default_rng(0)
 
@@ -238,7 +238,7 @@ class TestRollbackWorseResults:
         np.testing.assert_array_equal(phi[1], d[2, 0])
 
     def test_serial_garbage_result_3d_is_rolled_back(self, monkeypatch):
-        import dvfopt.core.solver3d as solver3d_mod
+        import dvfopt.core.slsqp_windowed.coordinator3d as solver3d_mod
 
         rng = np.random.default_rng(1)
 

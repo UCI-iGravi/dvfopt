@@ -64,7 +64,7 @@ cells.append(
         "from dvfopt.jacobian import triangle_sign_areas2D\n"
         "from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d\n"
         "from dvfopt.jacobian.triangle_sign import _triangle_areas_2d\n"
-        "from dvfopt.core.objective import objective_euc\n"
+        "from dvfopt.core.slsqp_windowed._objective import objective_euc\n"
         "\n"
         "from test_cases import make_deformation\n"
         "\n"

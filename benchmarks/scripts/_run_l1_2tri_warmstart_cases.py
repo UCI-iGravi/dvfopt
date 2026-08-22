@@ -37,7 +37,7 @@ if _REPO_ROOT not in sys.path:
 
 from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
 from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
-from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 from dvfopt.jacobian.triangle_sign import (
     _corner_patch_areas_2d,
     _triangle_areas_2d,

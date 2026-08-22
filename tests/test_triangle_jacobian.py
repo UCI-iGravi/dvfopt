@@ -14,7 +14,7 @@ Covers two things:
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.gradients import triangle_constraint_jacobian_2d
+from dvfopt.core.slsqp_windowed.gradients import triangle_constraint_jacobian_2d
 from dvfopt.jacobian.shoelace import triangle_constraint
 
 

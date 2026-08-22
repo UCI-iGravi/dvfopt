@@ -93,7 +93,7 @@ def neg_jdet_bounding_window_3d(
     size : tuple of int ``(sz, sy, sx)``
     bbox_center : tuple of int ``(z, y, x)``
     """
-    from dvfopt.core.slsqp.spatial import _bbox_window_nd
+    from dvfopt.core.slsqp_windowed.spatial import _bbox_window_nd
 
     neg_field = jacobian_matrix <= threshold - err_tol
     return _bbox_window_nd(

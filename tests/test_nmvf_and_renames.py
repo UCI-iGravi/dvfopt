@@ -175,7 +175,7 @@ class TestNMVFStrategy:
         with an EMPTY work list, burning ``max_iter`` no-op full-slice
         iterations and reporting converged=False. The work list must
         treat J == 0 cells as folds so the smoother can act on them."""
-        from dvfopt.core._nmvf import nmvf_correct_2d
+        from dvfopt.core.nmvf import nmvf_correct_2d
 
         H, W = 9, 9
         cy, cx = 4, 4

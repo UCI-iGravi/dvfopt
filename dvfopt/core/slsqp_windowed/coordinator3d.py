@@ -6,13 +6,13 @@ import numpy as np
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size_3d
-from dvfopt.core.objective import objective_euc
-from dvfopt.core.slsqp.constraints3d import (
+from dvfopt.core.slsqp_windowed._objective import objective_euc
+from dvfopt.core.slsqp_windowed.constraints3d import (
     _build_constraints_3d,
     _build_constraints_3d_maxwindow,
 )
-from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d
-from dvfopt.core.slsqp.spatial3d import (
+from dvfopt.core.slsqp_windowed.gradients3d import jdet_constraint_jacobian_3d
+from dvfopt.core.slsqp_windowed.spatial3d import (
     _clamp_to_voxel_budget,
     _edge_flags_3d,
     _frozen_boundary_mask_3d,

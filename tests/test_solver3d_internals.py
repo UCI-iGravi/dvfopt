@@ -1,11 +1,11 @@
-"""Tests for dvfopt.core.solver3d — 3D solver internal helper functions."""
+"""Tests for dvfopt.core.slsqp_windowed.coordinator3d — 3D solver internal helper functions."""
 
 from collections import defaultdict
 
 import numpy as np
 import pytest
 
-from dvfopt.core.solver3d import (
+from dvfopt.core.slsqp_windowed.coordinator3d import (
     _apply_result_3d,
     _init_phi_3d,
     _patch_jacobian_3d,
@@ -143,7 +143,7 @@ class TestUpdateMetrics3D:
 class TestSerialFixVoxel3D:
     def test_voxel_budget_blocked_growth_runs_optimizer(self, monkeypatch):
         """A growth-blocked dirty rim must fall through to optimization."""
-        from dvfopt.core import solver3d as s3
+        from dvfopt.core.slsqp_windowed import coordinator3d as s3
 
         phi = np.zeros((3, 5, 5, 5), dtype=np.float64)
         phi_init = phi.copy()

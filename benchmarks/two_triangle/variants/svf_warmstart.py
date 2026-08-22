@@ -24,7 +24,7 @@ from benchmarks.two_triangle.metrics import (
 )
 from benchmarks.two_triangle.registry import register_variant
 from benchmarks.two_triangle.result import SolverResult
-from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 
 
 def _is_3d(dvf):

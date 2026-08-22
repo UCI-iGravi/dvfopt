@@ -5,7 +5,7 @@ import scipy.sparse
 from scipy.optimize import LinearConstraint, NonlinearConstraint
 
 from dvfopt._defaults import _unpack_size
-from dvfopt.core.slsqp.gradients import (
+from dvfopt.core.slsqp_windowed.gradients import (
     injectivity_constraint_jacobian_2d,
     jdet_constraint_jacobian_2d,
     shoelace_constraint_jacobian_2d,

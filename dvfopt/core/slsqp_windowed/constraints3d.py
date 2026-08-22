@@ -5,7 +5,7 @@ import scipy.sparse
 from scipy.optimize import LinearConstraint, NonlinearConstraint
 
 from dvfopt._defaults import _unpack_size_3d
-from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d
+from dvfopt.core.slsqp_windowed.gradients3d import jdet_constraint_jacobian_3d
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_3d
 
 
@@ -108,7 +108,7 @@ def _build_constraints_3d(
     When *window_reached_max* is ``True`` the window cannot grow any
     further, so no frozen edges apply (mirroring the 2D
     ``exclude_bounds = not is_at_edge and not window_reached_max``
-    semantics in :func:`dvfopt.core.slsqp.constraints._build_constraints`):
+    semantics in :func:`dvfopt.core.slsqp_windowed.constraints._build_constraints`):
     the boundary equality constraints are dropped and the Jacobian
     constraint covers **all** voxels, including the rim.  Without this
     release, a fold component larger than the maximum window keeps its

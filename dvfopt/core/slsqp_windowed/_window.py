@@ -14,8 +14,8 @@ import numpy as np
 from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import _log, _unpack_size
-from dvfopt.core.objective import objective_euc
-from dvfopt.core.slsqp.constraints import _build_constraints
+from dvfopt.core.slsqp_windowed._objective import objective_euc
+from dvfopt.core.slsqp_windowed.constraints import _build_constraints
 from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d, _shoelace_areas_2d

@@ -503,7 +503,7 @@ class TestReviewRound3:
             captured.update(kwargs)
             return np.stack([deformation[1, 0], deformation[2, 0]])
 
-        import dvfopt.core.slsqp.iterative as it_mod
+        import dvfopt.core.slsqp_windowed.iterative as it_mod
 
         monkeypatch.setattr(it_mod, 'iterative_serial', fake_serial)
         w = SolverWorker(

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from dvfopt._defaults import _unpack_size
-from dvfopt.core.slsqp.spatial import (
+from dvfopt.core.slsqp_windowed.spatial import (
     _edge_flags,
     _frozen_edges_clean,
     _select_non_overlapping,

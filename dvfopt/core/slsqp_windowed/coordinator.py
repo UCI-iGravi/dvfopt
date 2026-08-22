@@ -2,36 +2,36 @@
 
 The lower-level building blocks have moved into focused submodules:
 
-* :mod:`dvfopt.core._io`       — setup helpers, summary print, save_results, init_phi
-* :mod:`dvfopt.core._metrics`  — `_update_metrics`, `_patch_jacobian_2d`
-* :mod:`dvfopt.core._window`   — `_full_grid_step`, `_optimize_single_window`, `_apply_result`
+* :mod:`dvfopt.core.slsqp_windowed._io`       — setup helpers, summary print, save_results, init_phi
+* :mod:`dvfopt.core.slsqp_windowed._metrics`  — `_update_metrics`, `_patch_jacobian_2d`
+* :mod:`dvfopt.core.slsqp_windowed._window`   — `_full_grid_step`, `_optimize_single_window`, `_apply_result`
 
 They are re-exported from this module so existing imports
-``from dvfopt.core.solver import ...`` keep working.
+``from dvfopt.core.slsqp_windowed.coordinator import ...`` keep working.
 """
 
 import numpy as np
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size
 
-# Re-exported building blocks. The actual implementations moved under
-# :mod:`dvfopt.core._internal` to signal their private nature; this
-# module continues to surface them for back-compat with existing import
-# sites (callers should migrate to ``dvfopt.core._internal`` directly).
-from dvfopt.core._internal.io import (
+# Re-exported building blocks. The actual implementations live in
+# :mod:`dvfopt.core.slsqp_windowed._io`, ``._metrics``, and ``._window``;
+# this module continues to surface them for back-compat with existing
+# import sites (callers should migrate to those submodules directly).
+from dvfopt.core.slsqp_windowed._io import (
     _init_phi,
     _print_summary,
     _save_results,
     _setup_accumulators,
 )
-from dvfopt.core._internal.metrics import _patch_jacobian_2d, _update_metrics
-from dvfopt.core._internal.window import (
+from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _update_metrics
+from dvfopt.core.slsqp_windowed._window import (
     _apply_result,
     _full_grid_step,
     _optimize_single_window,
 )
-from dvfopt.core.slsqp.constraints import _quality_map
-from dvfopt.core.slsqp.spatial import (
+from dvfopt.core.slsqp_windowed.constraints import _quality_map
+from dvfopt.core.slsqp_windowed.spatial import (
     _edge_flags,
     _frozen_edges_clean,
     get_nearest_center,

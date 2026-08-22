@@ -12,8 +12,8 @@ entire-field folds, boundary-only folds, and adversarial patterns.
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.parallel import iterative_parallel
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 THRESHOLD = 0.01

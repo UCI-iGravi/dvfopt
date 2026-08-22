@@ -1,4 +1,4 @@
-"""Tests for dvfopt.core.objective — squared L2 objective function.
+"""Tests for dvfopt.core.slsqp_windowed._objective — squared L2 objective function.
 
 objective_euc computes 0.5 * ||phi - phi_init||^2 with gradient (phi - phi_init).
 """
@@ -6,7 +6,7 @@ objective_euc computes 0.5 * ||phi - phi_init||^2 with gradient (phi - phi_init)
 import numpy as np
 import pytest
 
-from dvfopt.core.objective import objective_euc
+from dvfopt.core.slsqp_windowed._objective import objective_euc
 
 
 class TestObjectiveEuc:

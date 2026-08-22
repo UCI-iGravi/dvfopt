@@ -6,13 +6,7 @@ import numpy as np
 from scipy.ndimage import label as _scipy_label
 
 from dvfopt._defaults import _log, _resolve_params, _unpack_size
-from dvfopt.core.slsqp.spatial import (
-    _edge_flags,
-    argmin_quality,
-    get_nearest_center,
-    neg_jdet_bounding_window,
-)
-from dvfopt.core.solver import (
+from dvfopt.core.slsqp_windowed.coordinator import (
     _adaptive_injectivity_loop,
     _init_phi,
     _print_summary,
@@ -20,6 +14,12 @@ from dvfopt.core.solver import (
     _serial_fix_pixel,
     _setup_accumulators,
     _update_metrics,
+)
+from dvfopt.core.slsqp_windowed.spatial import (
+    _edge_flags,
+    argmin_quality,
+    get_nearest_center,
+    neg_jdet_bounding_window,
 )
 
 

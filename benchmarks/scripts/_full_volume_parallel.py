@@ -5,7 +5,7 @@ which uses spawn and serialises the target callable across processes.
 """
 
 from dvfopt import jacobian_det3D
-from dvfopt.core.slsqp.iterative3d import iterative_3d
+from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
 
 def solve_group(args):

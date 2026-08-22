@@ -59,7 +59,7 @@ cells.append(
         "from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d\n"
         "from dvfopt.jacobian.triangle_sign import _triangle_areas_2d\n"
         "from dvfopt.jacobian.intersection import has_quad_self_intersections, _quads_intersect\n"
-        "from dvfopt.core.objective import objective_euc\n"
+        "from dvfopt.core.slsqp_windowed._objective import objective_euc\n"
         "from dvfopt.viz.triangle_debug import find_problematic_pixels\n"
         "from dvfopt.viz import plot_triangle_debug\n"
         "\n"
