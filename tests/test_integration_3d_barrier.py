@@ -146,7 +146,7 @@ class TestBarrier3DTorch:
         """F10(c) regression: the module used to hard-import torch at the
         top level. It must be importable without torch, with the public
         entry raising a friendly ImportError at call time."""
-        from dvfopt.core import iterative3d_barrier_torch as mod
+        from dvfopt.core.barrier import jdet3d_torch as mod
 
         original = mod.torch
         mod.torch = None

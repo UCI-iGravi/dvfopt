@@ -80,7 +80,7 @@ def _import_smoke_no_torch(py: str) -> bool:
         _NO_TORCH_SIM_PY
         + '\nimport dvfopt\n'
         + 'from dvfopt.constraints import JdetConstraint2D\n'
-        + 'from dvfopt.core import iterative2d_barrier  # was the regression site\n'
+        + 'from dvfopt.core.barrier import jdet2d  # was the regression site\n'
         + 'print("OK")\n'
     )
     proc = subprocess.run([py, '-c', code], capture_output=True, text=True)

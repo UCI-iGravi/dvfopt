@@ -872,7 +872,7 @@ class TestTetBarrierTorch:
         ImportError with a clear message. Simulate via a temporary
         monkeypatch (we already know torch is installed if this test
         runs, but we can still test the guard at the module level)."""
-        from dvfopt.core import iterative3d_tet_barrier_torch as mod
+        from dvfopt.core.barrier import tet3d_torch as mod
 
         # Save then null-out the module's torch reference; restore after.
         original = mod.torch
