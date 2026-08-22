@@ -19,6 +19,14 @@ pip install -e ".[benchmarks]"
 pip install -r requirements-dev.txt
 ```
 
+`uv` is the faster path (10-100x on the heavy torch/itk legs) and is what CI
+uses. `uv pip install --system -e ".[dev]"` is a drop-in for the pip lines
+above. `uv.lock` pins a full resolution (`uv sync --extra dev` reproduces the
+exact env; `uv lock --check` verifies the lock still matches pyproject's
+constraints — CI's test leg runs this, the coverage leg installs from the lock
+via `uv sync --locked`). pyproject deps stay unpinned; the lock is the opt-in
+reproducible snapshot. Re-lock after editing dependency constraints (`uv lock`).
+
 The install exposes a `dvfopt` CLI (`dvfopt {info, correct, gui}`, also `python -m dvfopt`) over the library — see [dvfopt/cli.py](dvfopt/cli.py); `correct` drives the solver / per-slice sweep / 2.5D / 3D pipelines and writes `summary.json` + `convergence.png` reports. Exit codes: 0 feasible / 1 folds remain / 2 usage errors.
 
 Solver progress output routes through the `dvfopt` logger (`dvfopt/_logging.py` — `vlog`/`log_info`/`log_warning`; `verbose=` semantics unchanged). A live-stdout handler is auto-installed (and propagation disabled, so lines print exactly once) only when no handler is attached to the `dvfopt` logger; attach your own handler to that logger to take over routing. Tests live in `tests/` and are run with `pytest` (`[tool.pytest.ini_options]` in pyproject scopes collection to `tests/`, so a bare `pytest` never over-collects the `notebooks/experiments/_run_*_test.py` scratch scripts). CI: `.github/workflows/ci.yml` runs the numba-tuned suite on Python 3.11/3.12; `.github/workflows/test.yml` runs Python 3.10/3.11/3.12 with `ruff check` + `ruff format --check` + `mypy` + the pytest suite + an installed-CLI smoke, plus a coverage job and a benchmark-import smoke. Additional validation is done through Jupyter notebooks.

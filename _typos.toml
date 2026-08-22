@@ -1,0 +1,24 @@
+# Config for the `typos` spell-checker (pre-commit hook).
+# The default dictionary only flags known misspellings, but this repo's
+# math/solver shorthand and non-canonical scratch dirs trip it, so we scope
+# it to the canonical source + prose and allowlist domain tokens.
+
+[files]
+extend-exclude = [
+    "*.ipynb",       # notebook base64 output blobs read as garbled words
+    "writing/**",    # bibliography: journal abbrevs + author surnames
+    "archive/**",    # historical, non-canonical
+    "research/**",   # scratch/exploratory runners (mirrors ruff's scope)
+    "docs/**",       # specs/prose with their own abbreviations
+    "scripts/**",    # doc-image generation scratch scripts
+]
+
+[default.extend-words]
+# "strategy" shorthand, used pervasively across the solver/strategy layer.
+strat = "strat"
+STRAT = "STRAT"
+# Short identifiers / abbreviations that are correct in context:
+fo = "fo"            # field-out test variable
+ba = "ba"            # before/after test variable
+ths = "ths"          # joined <th> cells in HTML report builders
+mis = "mis"          # "mis-shaped" hyphenation split

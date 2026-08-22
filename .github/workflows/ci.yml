@@ -18,11 +18,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+      # uv replaces pip here: 10-100x faster installs (matters on the heavy
+      # torch/itk legs), with its own dependency cache via enable-cache.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Install package (core + numba)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[fast]" pytest
+        run: uv pip install --system -e ".[fast]" pytest
       # Persist Numba's on-disk JIT cache across runs so @njit kernels
       # load precompiled instead of recompiling per run/worker. Measured
       # effect is minor — the leg's historical 30-min cost was prange

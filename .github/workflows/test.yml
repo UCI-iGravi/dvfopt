@@ -22,13 +22,20 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Guard: fail if uv.lock has drifted from pyproject's declared
+      # constraints (won't trip on routine unpinned-dep releases, only on
+      # constraint edits that weren't re-locked).
+      - name: Check lockfile is up to date
+        run: uv lock --check
 
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          # Editable install with dev extras (pytest, ruff, hypothesis).
-          pip install -e ".[dev]"
+        # Editable install with dev extras (pytest, ruff, hypothesis).
+        run: uv pip install --system -e ".[dev]"
 
       - name: Lint
         run: python -m ruff check dvfopt dvfopt_gui tests benchmarks
@@ -53,18 +60,21 @@ jobs:
 
   coverage:
     # Coverage report (single Python; non-blocking — no threshold gate yet).
+    # This leg installs from uv.lock (`uv sync --locked`) so the committed
+    # lockfile is actually exercised in CI, not just carried along.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-          cache: pip
-      - run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Sync locked env (dev extra)
+        run: uv sync --locked --extra dev
       - name: Tests with coverage
-        run: python -m pytest tests/ -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
+        run: uv run pytest tests/ -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
@@ -81,8 +91,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-          cache: pip
-      - run: pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv pip install --system -e ".[dev]"
       - name: Import each benchmark script
         run: |
           # Legacy run scripts live under benchmarks/scripts/ after the
