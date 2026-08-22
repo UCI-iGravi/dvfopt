@@ -18,6 +18,11 @@ import pytest  # noqa: E402
 import windowed_escape as we  # noqa: E402
 from windowed_isqp import min_field  # noqa: E402
 
+# Every escape mode runs the OSQP elastic-QP inner; skip cleanly where the optional
+# osqp wheel is absent (the CI core matrix installs no solver extras) — mirrors the
+# osqp guards in test_slsqp_variants.py.
+pytest.importorskip("osqp", reason="escape modes require the osqp elastic-QP inner")
+
 
 def _one_inverted_cell(h=40, w=40):
     """A smooth (feasible) field with a single deeply-inverted interior cell: move one

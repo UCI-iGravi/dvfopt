@@ -105,7 +105,9 @@ if __name__ == "__main__":  # self-check: analytic jacobian == numerical, values
         # identity field -> all determinants exactly 1
         ident = np.zeros(c.n_variables)
         v_id = np.asarray(c.values(ident))
-        print(f"shape {(h, w)}: max|Jac_analytic - Jac_numeric|={err:.2e} | "
-              f"identity min/max det = {v_id.min():.3f}/{v_id.max():.3f}")
+        print(
+            f"shape {(h, w)}: max|Jac_analytic - Jac_numeric|={err:.2e} | "
+            f"identity min/max det = {v_id.min():.3f}/{v_id.max():.3f}"
+        )
         assert err < 1e-5 and np.allclose(v_id, 1.0)
     print("finite-jdet self-check OK")

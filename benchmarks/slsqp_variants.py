@@ -441,6 +441,7 @@ def _isqp_solve_osqp(
 
         def mfun(y, _w=rho_vec):  # this iteration's weighted merit
             return merit_w(y, _w)
+
         rec = {
             "it": it,
             "max_viol": float(viol.max(initial=0.0)),
@@ -461,9 +462,7 @@ def _isqp_solve_osqp(
             # vs the ACTUAL nonlinear merit reduction at the full bounded step.
             s_slack = z[nf : nf + m]
             pred = float(rho_vec @ viol) - (
-                float(gx @ z[:nf])
-                + 0.5 * float(z[:nf] @ (hdv * z[:nf]))
-                + float(rho_vec @ s_slack)
+                float(gx @ z[:nf]) + 0.5 * float(z[:nf] @ (hdv * z[:nf])) + float(rho_vec @ s_slack)
             )
             act = ph0 - mfun(x + d)
             ratio = act / pred if pred > 1e-12 else float("nan")
