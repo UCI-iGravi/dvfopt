@@ -33,11 +33,3 @@ repos:
         # Strip notebook outputs on commit. Comment out if you want the
         # outputs in version control.
         files: '\.ipynb$'
-
-  # Fast Rust spell-checker for code, comments, and docs. Conservative by
-  # default (only known misspellings, not arbitrary non-dictionary words);
-  # domain terms it wrongly flags go in _typos.toml [default.extend-words].
-  - repo: https://github.com/crate-ci/typos
-    rev: v1.49.0
-    hooks:
-      - id: typos
