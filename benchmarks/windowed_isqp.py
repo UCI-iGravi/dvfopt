@@ -191,6 +191,15 @@ def _objective_fns(flat0, objective, eps):
             return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
 
         return obj, grad, hess
+    if objective == "none":
+        # Pure feasibility: no distance anchor, only the elastic-QP constraint drive.
+        # The flat unit Hessian keeps the QP positive-definite. Use this to clear an
+        # objective-basin trap the distance objective pins (see the z=16 analysis).
+        return (
+            lambda f: 0.0,
+            lambda f: np.zeros_like(f),
+            lambda f: np.full(f.size, 2.0),
+        )
     raise ValueError(f"unknown objective {objective!r}")
 
 
@@ -616,15 +625,15 @@ def _solve_giant_schwarz(
     just outside the giant violated -> a damage fold (observed on B0039 z=0)."""
     H, W = phi.shape[1:]
     fy0, fy1, fx0, fx1 = giant_box
-    iy0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
-    iy1 = fy1 - (ring if fy1 < H else 0)
+    it0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
+    it1 = fy1 - (ring if fy1 < H else 0)
     ix0 = fx0 + (ring if fx0 > 0 else 0)
     ix1 = fx1 - (ring if fx1 < W else 0)
     overlap = 2 * ring + 2  # free regions must overlap so seams are some tile's interior
     step = max(1, tile - overlap)
     tiles = [
-        (ty, min(ty + tile, iy1), tx, min(tx + tile, ix1))
-        for ty in range(iy0, iy1, step)
+        (ty, min(ty + tile, it1), tx, min(tx + tile, ix1))
+        for ty in range(it0, it1, step)
         for tx in range(ix0, ix1, step)
     ]
     prev = None
@@ -653,17 +662,26 @@ def _solve_giant_schwarz(
     return prev if prev is not None else 0
 
 
-def _inner_solve(sub, inner, maxiter):
+def _inner_solve(sub, inner, maxiter, trace=None):
     """Solve a built window sub-problem with the chosen inner solver, returning
     ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
 
     - ``"isqp-osqp"`` (default): the tuned elastic-QP SQP over the free vars,
       UNCHANGED — the path every existing test and the no-damage invariant assume.
-    - ``"scipy-slsqp"`` / ``"scipy-slsqp+trust-constr"``: scipy on the REDUCED
-      free-variable problem (frozen vars pinned at ``sub.flat0``, so no-damage still
-      holds by construction). ``+trust-constr`` escalates to trust-constr only when
-      SLSQP leaves an enforced row folded, and keeps whichever iterate reaches the
-      higher constraint minimum (never worse than SLSQP alone).
+    - ``"scipy-slsqp"`` / ``"scipy-slsqp+trust-constr"``: the SLSQP leg runs through
+      ``slsqp_traced.minimize_slsqp_traced`` — scipy's own C-core driver (verified
+      byte-identical to ``minimize(method='SLSQP')``; see
+      ``benchmarks/trace_parity_check.py``) with optional pyslsqp-style tracing —
+      on the REDUCED free-variable problem (frozen vars pinned at ``sub.flat0``, so
+      no-damage still holds by construction). ``+trust-constr`` escalates to scipy
+      trust-constr only when SLSQP leaves an enforced row folded, and keeps
+      whichever iterate reaches the higher constraint minimum (never worse than
+      SLSQP alone).
+
+    ``trace`` (optional dict) is threaded to the inner solver — ``isqp-osqp`` and
+    the traced SLSQP leg both fill it with per-iteration records + an explicit
+    exit reason (house style: ``trace['iters']`` / ``trace['exit']``). Default
+    ``None`` keeps behavior byte-identical to the untraced path.
     """
     if inner == "isqp-osqp":
         return sv._isqp_solve_osqp(
@@ -676,11 +694,12 @@ def _inner_solve(sub, inner, maxiter):
             obj=sub.obj,
             hess_diag=sub.hess_diag,
             free_idx=sub.free_idx,
+            trace=trace,
         )
     if inner not in ("scipy-slsqp", "scipy-slsqp+trust-constr"):
         raise ValueError(f"unknown inner {inner!r}")
 
-    from scipy.optimize import minimize
+    from slsqp_traced import minimize_slsqp_traced
 
     free = np.asarray(sub.free_idx)
     x0 = sub.flat0.copy()
@@ -705,17 +724,18 @@ def _inner_solve(sub, inner, maxiter):
         return sub.obj_grad(embed(zf))[free]
 
     z0 = x0[free]
-    r = minimize(
+    r = minimize_slsqp_traced(
         obj_z,
         z0,
         jac=grad_z,
-        method="SLSQP",
         constraints=[{"type": "ineq", "fun": cons_z, "jac": jac_z_dense}],
-        options={"maxiter": maxiter, "ftol": 1e-8},
+        maxiter=maxiter,
+        ftol=1e-8,
+        trace=trace,
     )
     zf = r.x
     if inner == "scipy-slsqp+trust-constr" and cons_z(zf).min() < 0:
-        from scipy.optimize import NonlinearConstraint
+        from scipy.optimize import NonlinearConstraint, minimize
 
         r2 = minimize(
             obj_z,
