@@ -132,7 +132,7 @@ def validate_dvf(
     -------
     ndarray
         Canonical ``(C, *spatial)`` ``float64`` array. Always a fresh
-        writeable copy; mutating the return value does not aliase the
+        writeable copy; mutating the return value does not alias the
         caller's input.
 
     Raises

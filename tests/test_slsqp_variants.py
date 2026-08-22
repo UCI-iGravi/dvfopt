@@ -34,6 +34,20 @@ def test_scipy_slsqp_reduces_true_folds():
     assert n0 > 0
 
 
+def test_slsqp_trust_escalation_never_worse_than_slsqp():
+    """The escalation solver (SLSQP -> trust-constr on failure, keep the best) must
+    never leave more folds than SLSQP alone."""
+    from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
+
+    assert "scipy-slsqp+trust-constr" in sv.SOLVERS
+    patch = _folded(seed=4)
+    out_s, _ = sv.full_grid_correct(patch, "scipy-slsqp", maxiter=100)
+    out_e, _ = sv.full_grid_correct(patch, "scipy-slsqp+trust-constr", maxiter=100)
+    folds_s = int((_numpy_jdet_2d(out_s[0], out_s[1]) < 0.0).sum())
+    folds_e = int((_numpy_jdet_2d(out_e[0], out_e[1]) < 0.0).sum())
+    assert folds_e <= folds_s
+
+
 def test_pyslsqp_eliminates_folds_when_available():
     if "pyslsqp" not in sv.available_solvers():
         import pytest

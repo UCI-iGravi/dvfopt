@@ -36,6 +36,7 @@ import numpy as np
 from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import finite_jdet as fj
 import slsqp_variants as sv
 
 from dvfopt.constraints import JdetConstraint2D, TriConstraint2D
@@ -48,7 +49,9 @@ from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 #            influenced rows are its 4 neighbours (finite-difference support).
 #   2tri: 1 — cell areas are EXACT (no finite-diff), and a free pixel's influenced
 #            cells are its <=4 corner cells, all in-patch once it is 1 in.
-_RING = {"jdet": 2, "2tri": 1}
+#   finite: 1 — forward-diff cell det is EXACT and depends on 3 corners; a free
+#            pixel's <=3 influenced cells are all in-patch once it is 1 in (like 2tri).
+_RING = {"jdet": 2, "2tri": 1, "finite": 1}
 
 
 def _constraint(family, shape):
@@ -56,6 +59,8 @@ def _constraint(family, shape):
         return JdetConstraint2D(shape=shape)
     if family == "2tri":
         return TriConstraint2D(shape=shape)
+    if family == "finite":
+        return fj.FiniteJdetConstraint2D(shape)
     raise ValueError(f"unknown family {family!r}")
 
 
@@ -66,6 +71,8 @@ def min_field(family, phi_dydx):
     - jdet: the pixel Jacobian determinant.
     - 2tri: each cell ``(i, j)``'s min triangle area, placed at pixel ``(i, j)``;
       the last pixel row/col have no cell and are set to ``+inf``.
+    - finite: each cell ``(i, j)``'s forward-diff determinant, placed at pixel
+      ``(i, j)``; the last pixel row/col have no cell and are set to ``+inf``.
     """
     H, W = phi_dydx.shape[1:]
     if family == "jdet":
@@ -77,6 +84,12 @@ def min_field(family, phi_dydx):
         cellmin = np.minimum(vals[:m], vals[m:]).reshape(H - 1, W - 1)
         out = np.full((H, W), np.inf)
         out[: H - 1, : W - 1] = cellmin
+        return out
+    if family == "finite":
+        c = fj.FiniteJdetConstraint2D((H, W))
+        vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(H - 1, W - 1)
+        out = np.full((H, W), np.inf)
+        out[: H - 1, : W - 1] = vals
         return out
     raise ValueError(f"unknown family {family!r}")
 
@@ -178,6 +191,15 @@ def _objective_fns(flat0, objective, eps):
             return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
 
         return obj, grad, hess
+    if objective == "none":
+        # Pure feasibility: no distance anchor, only the elastic-QP constraint drive.
+        # The flat unit Hessian keeps the QP positive-definite. Use this to clear an
+        # objective-basin trap the distance objective pins (see the z=16 analysis).
+        return (
+            lambda f: 0.0,
+            lambda f: np.zeros_like(f),
+            lambda f: np.full(f.size, 2.0),
+        )
     raise ValueError(f"unknown objective {objective!r}")
 
 
@@ -214,6 +236,20 @@ def _enforced_rows_and_jac(family, c, free_mask, ph, pw, borders):
             # coloring: 8 adjoint calls, not a full dense (2M x 2N) rebuild per iter
             # (the native jacobian() densifies — ~43% of a 2-tri window's time).
             return sv.colored_jacobian(c, f, *coloring).tocsr()
+
+        return enforced_idx, jac_of
+
+    if family == "finite":
+        # forward-diff cell (i,j) depends on its 3 forward corners (i,j),(i,j+1),
+        # (i+1,j); influenced iff any is free. One row per cell (row = cell raveled
+        # C-order, matching FiniteJdetConstraint2D.values). The analytic sparse
+        # jacobian is cheap — no coloring needed.
+        fm = free_mask
+        cell = fm[:-1, :-1] | fm[:-1, 1:] | fm[1:, :-1]  # (ph-1, pw-1)
+        enforced_idx = np.nonzero(cell.ravel())[0]
+
+        def jac_of(f):
+            return c.jacobian(f).tocsr()
 
         return enforced_idx, jac_of
 
@@ -367,6 +403,7 @@ def windowed_correct(
     margin_delta=1e-3,
     max_window_area=3000,
     mop_margin=25,
+    inner="isqp-osqp",
 ):
     """Correct a full ``(2, H, W)`` slice by solving one small window per fold
     cluster. Returns ``(phi_out, SliceReport)``.
@@ -375,6 +412,11 @@ def windowed_correct(
     cleared by overlapping-tile Schwarz decomposition (``report.giant_regions``)
     instead of an intractable near-full-grid QP. ``margin`` is clamped to at least
     the family ring (the frozen inset band must stay fold-free).
+
+    ``inner`` selects the per-window solver — ``"isqp-osqp"`` (default, the tuned
+    elastic-QP SQP), ``"scipy-slsqp"``, or ``"scipy-slsqp+trust-constr"``. All
+    inners only move the window's free pixels, so the no-damage invariant holds
+    regardless of the choice.
 
     After the round loop plateaus, a terminal **mop** pass re-windows any residual
     with ``mop_margin`` (>> ``margin``): the diagnostic on the densest slices shows
@@ -415,7 +457,18 @@ def windowed_correct(
                 rep.giant_regions += 1
                 rep.giant_boxes.append(box)
                 _solve_giant_schwarz(
-                    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta
+                    phi,
+                    family,
+                    box,
+                    threshold,
+                    objective,
+                    eps,
+                    maxiter,
+                    ring,
+                    z,
+                    rep,
+                    margin_delta,
+                    inner=inner,
                 )
                 continue
             _solve_window(
@@ -430,6 +483,7 @@ def windowed_correct(
                 z,
                 rep,
                 margin_delta=margin_delta,
+                inner=inner,
             )
 
     # terminal mop: clear the boundary-stuck residual the round loop plateaued on
@@ -450,6 +504,7 @@ def windowed_correct(
                 touched,
                 mop_margin,
                 max_window_area,
+                inner=inner,
             )
             rep.mop_cleared = before_mop - int(pixel_fold_mask(family, phi, threshold).sum())
 
@@ -482,6 +537,7 @@ def _mop_pass(
     mop_margin,
     max_window_area,
     max_sweeps=3,
+    inner="isqp-osqp",
 ):
     """Clear the boundary-stuck residual the round loop plateaued on. Each residual
     cluster is re-solved with a LARGE margin so its neighbourhood is free — no tight
@@ -506,7 +562,18 @@ def _mop_pass(
             rep.mop_windows += 1
             if (fy1 - fy0) * (fx1 - fx0) > whole_cap:
                 _solve_giant_schwarz(
-                    phi, family, box, threshold, objective, eps, maxiter, ring, z, rep, margin_delta
+                    phi,
+                    family,
+                    box,
+                    threshold,
+                    objective,
+                    eps,
+                    maxiter,
+                    ring,
+                    z,
+                    rep,
+                    margin_delta,
+                    inner=inner,
                 )
             else:
                 _solve_window(
@@ -521,6 +588,7 @@ def _mop_pass(
                     z,
                     rep,
                     margin_delta=margin_delta,
+                    inner=inner,
                 )
         if int(pixel_fold_mask(family, phi, threshold).sum()) >= n:
             break  # no progress -> genuine local floor
@@ -540,6 +608,7 @@ def _solve_giant_schwarz(
     margin_delta,
     tile=32,
     max_sweeps=8,
+    inner="isqp-osqp",
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
@@ -556,15 +625,15 @@ def _solve_giant_schwarz(
     just outside the giant violated -> a damage fold (observed on B0039 z=0)."""
     H, W = phi.shape[1:]
     fy0, fy1, fx0, fx1 = giant_box
-    iy0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
-    iy1 = fy1 - (ring if fy1 < H else 0)
+    it0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
+    it1 = fy1 - (ring if fy1 < H else 0)
     ix0 = fx0 + (ring if fx0 > 0 else 0)
     ix1 = fx1 - (ring if fx1 < W else 0)
     overlap = 2 * ring + 2  # free regions must overlap so seams are some tile's interior
     step = max(1, tile - overlap)
     tiles = [
-        (ty, min(ty + tile, iy1), tx, min(tx + tile, ix1))
-        for ty in range(iy0, iy1, step)
+        (ty, min(ty + tile, it1), tx, min(tx + tile, ix1))
+        for ty in range(it0, it1, step)
         for tx in range(ix0, ix1, step)
     ]
     prev = None
@@ -584,12 +653,102 @@ def _solve_giant_schwarz(
                     rep,
                     margin_delta=margin_delta,
                     allow_grow=False,
+                    inner=inner,
                 )
         nf = int((min_field(family, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
         if nf == 0 or (prev is not None and nf >= prev):
             return nf  # cleared, or no further progress (geometric floor)
         prev = nf
     return prev if prev is not None else 0
+
+
+def _inner_solve(sub, inner, maxiter, trace=None):
+    """Solve a built window sub-problem with the chosen inner solver, returning
+    ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
+
+    - ``"isqp-osqp"`` (default): the tuned elastic-QP SQP over the free vars,
+      UNCHANGED — the path every existing test and the no-damage invariant assume.
+    - ``"scipy-slsqp"`` / ``"scipy-slsqp+trust-constr"``: the SLSQP leg runs through
+      ``slsqp_traced.minimize_slsqp_traced`` — scipy's own C-core driver (verified
+      byte-identical to ``minimize(method='SLSQP')``; see
+      ``benchmarks/trace_parity_check.py``) with optional pyslsqp-style tracing —
+      on the REDUCED free-variable problem (frozen vars pinned at ``sub.flat0``, so
+      no-damage still holds by construction). ``+trust-constr`` escalates to scipy
+      trust-constr only when SLSQP leaves an enforced row folded, and keeps
+      whichever iterate reaches the higher constraint minimum (never worse than
+      SLSQP alone).
+
+    ``trace`` (optional dict) is threaded to the inner solver — ``isqp-osqp`` and
+    the traced SLSQP leg both fill it with per-iteration records + an explicit
+    exit reason (house style: ``trace['iters']`` / ``trace['exit']``). Default
+    ``None`` keeps behavior byte-identical to the untraced path.
+    """
+    if inner == "isqp-osqp":
+        return sv._isqp_solve_osqp(
+            sub.flat0,
+            sub.cons,
+            sub.cons_jac,
+            sub.obj_grad,
+            maxiter,
+            constraint=None,
+            obj=sub.obj,
+            hess_diag=sub.hess_diag,
+            free_idx=sub.free_idx,
+            trace=trace,
+        )
+    if inner not in ("scipy-slsqp", "scipy-slsqp+trust-constr"):
+        raise ValueError(f"unknown inner {inner!r}")
+
+    from slsqp_traced import minimize_slsqp_traced
+
+    free = np.asarray(sub.free_idx)
+    x0 = sub.flat0.copy()
+    if free.size == 0 or sub.n_enforced == 0:
+        return x0, 0, True  # nothing to move / no enforced row -> already done
+
+    def embed(zf):
+        x = x0.copy()
+        x[free] = zf
+        return x
+
+    def cons_z(zf):
+        return sub.cons(embed(zf))  # enforced rows only (built restricted)
+
+    def jac_z_dense(zf):
+        return sub.cons_jac(embed(zf))[:, free].toarray()  # enforced rows, free cols
+
+    def obj_z(zf):
+        return sub.obj(embed(zf))
+
+    def grad_z(zf):
+        return sub.obj_grad(embed(zf))[free]
+
+    z0 = x0[free]
+    r = minimize_slsqp_traced(
+        obj_z,
+        z0,
+        jac=grad_z,
+        constraints=[{"type": "ineq", "fun": cons_z, "jac": jac_z_dense}],
+        maxiter=maxiter,
+        ftol=1e-8,
+        trace=trace,
+    )
+    zf = r.x
+    if inner == "scipy-slsqp+trust-constr" and cons_z(zf).min() < 0:
+        from scipy.optimize import NonlinearConstraint, minimize
+
+        r2 = minimize(
+            obj_z,
+            zf,  # warm-start the escalation from SLSQP's (closest-to-feasible) iterate
+            jac=grad_z,
+            method="trust-constr",
+            constraints=[NonlinearConstraint(cons_z, 0.0, np.inf, jac=jac_z_dense)],
+            options={"maxiter": maxiter, "xtol": 1e-10},
+        )
+        if cons_z(r2.x).min() > cons_z(zf).min():  # keep the better; never worse
+            zf = r2.x
+    x = embed(zf)
+    return x, 0, bool(sub.cons(x).min() >= -1e-9)
 
 
 def _solve_window(
@@ -606,24 +765,16 @@ def _solve_window(
     _grow=0,
     margin_delta=1e-3,
     allow_grow=True,
+    inner="isqp-osqp",
 ):
     """Solve one window; on infeasibility grow the blocked sides once and retry.
     Returns the inner solver's feasibility flag. ``allow_grow=False`` (used by the
-    Schwarz tiler) keeps a tile at fixed size — growing a tile defeats tiling."""
+    Schwarz tiler) keeps a tile at fixed size — growing a tile defeats tiling.
+    ``inner`` picks the per-window solver (see :func:`_inner_solve`)."""
     H, W = phi.shape[1:]
     sub = build_subproblem(family, phi, box, threshold, objective, eps, margin_delta)
     t = time.perf_counter()
-    x, nit, ok = sv._isqp_solve_osqp(
-        sub.flat0,
-        sub.cons,
-        sub.cons_jac,
-        sub.obj_grad,
-        maxiter,
-        constraint=None,
-        obj=sub.obj,
-        hess_diag=sub.hess_diag,
-        free_idx=sub.free_idx,
-    )
+    x, nit, ok = _inner_solve(sub, inner, maxiter)
     dt = time.perf_counter() - t
     patch_out = np.asarray(sub.constraint.unflatten(x))
     py0, py1, px0, px1 = sub.patch_box
@@ -668,5 +819,6 @@ def _solve_window(
                 rep,
                 _grow + 1,
                 margin_delta,
+                inner=inner,
             )
     return bool(ok)

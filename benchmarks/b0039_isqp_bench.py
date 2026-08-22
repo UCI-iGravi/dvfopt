@@ -28,7 +28,12 @@ import slsqp_variants as sv
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
 DEFAULT_VOL = "data/dvfs/b0039/b0039_laplacian_deformation_field.npy"
-SWEEP_SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "isqp-osqp")
+SWEEP_SOLVERS = (
+    "isqp-osqp",
+    "scipy-slsqp",
+    "scipy-trust-constr",
+    "scipy-slsqp+trust-constr",  # escalation hybrid
+)
 
 
 def _folds(dy, dx, thr=0.0):

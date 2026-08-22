@@ -21,7 +21,15 @@ import numpy as np
 
 from dvfopt.constraints import JdetConstraint2D
 
-SOLVERS = ("scipy-slsqp", "scipy-trust-constr", "pyslsqp", "isqp-proto", "isqp-osqp")
+SOLVERS = (
+    "scipy-slsqp",
+    "slsqp-traced",  # vendored scipy C driver + pyslsqp-style tracing (slsqp_traced.py)
+    "scipy-trust-constr",
+    "scipy-slsqp+trust-constr",  # escalation: SLSQP, fall back to trust-constr on a leftover fold
+    "pyslsqp",
+    "isqp-proto",
+    "isqp-osqp",
+)
 
 # Extra module each solver needs beyond scipy (None => scipy builtin, always available).
 _SOLVER_DEP = {"pyslsqp": "pyslsqp", "isqp-proto": "quadprog", "isqp-osqp": "osqp"}
@@ -255,11 +263,50 @@ def _isqp_solve_osqp(
     obj=None,
     hess_diag=None,
     free_idx=None,
+    trace=None,
+    trust_region=True,
+    protect=1.0,
+    osqp_eps=None,
+    monotone=False,
+    log_every=0,
 ):
     """Optimized I-SLSQP: the same elastic-QP SQP as ``_isqp_solve`` but the QP is
     solved by OSQP over a SPARSE system with a warm-started iterate, and the
     constraint Jacobian is rebuilt by CPR coloring (``stride**2`` adjoint calls,
     not ``m``) when a ``constraint`` is supplied.
+
+    ``protect`` (>1 to enable) multiplies the slack cost of rows that are currently
+    SATISFIED: with a uniform elastic cost the QP happily digs one deep new fold
+    (cost rho*depth) to fill dozens of shallow shortfalls (gain rho*sum) — the
+    whack-a-mole seen on the z=0 dense cluster is built into the uniform
+    formulation. Asymmetric costs (SNOPT-style elastic: relax only what is already
+    broken) forbid that trade to first order. ``osqp_eps`` tightens the OSQP
+    subproblem tolerances (default ~1e-3 leaves a ~1e-5 violation noise floor).
+
+    ``monotone=True`` caps each slack at that row's CURRENT violation
+    (``s_i <= viol_i + eps``): linearly, no row may get worse — a per-row hard
+    filter (Fletcher-Leyffer style). This subsumes ``protect`` (satisfied rows get
+    a hard floor at 0) and closes its leak (sign-based protection leaves
+    already-slightly-violated rows as a cheap dumping ground the QP drives deep).
+
+    ``log_every=N`` prints a live progress line every N iterations (and on every
+    rejected step) so long solves are observable mid-run, not only post-mortem.
+
+    ``trust_region`` (default on) bounds the step inside the QP (``|d_i| <= delta``)
+    and adapts ``delta`` by the actual-vs-predicted merit reduction. The z=0 stall
+    trace showed why this is needed: the unbounded QP proposes |d|~2-4 steps whose
+    linearization is only valid at a fraction of that length, so the backtracking
+    line search crawls (~0.03% merit/iter) and then dies on the first direction with
+    no decreasing alpha — a backtrack can only SHORTEN a stale direction, while a
+    trust region RE-COMPUTES it under the bound and shrinks instead of quitting.
+    ``trust_region=False`` restores the legacy backtracking behaviour.
+
+    ``trace`` (optional dict) turns on pyslsqp-style convergence tracking: it is
+    filled with ``iters`` (per-iteration ``max_viol`` / ``n_viol`` / ``merit`` /
+    ``step_norm`` / ``osqp_status`` / ``delta`` / ``ratio`` / ``stepped``), the
+    ``exit`` reason (``osqp-nonfinite`` / ``step-tol`` / ``linesearch-stall`` /
+    ``tr-collapse`` / ``maxiter``), ``feasible`` and ``nit`` — so a stall is
+    attributable, not silent.
 
     quadprog is dense O((n+m)^3); OSQP exploits that the constraint Jacobian is
     ~99% zeros (each Jdet cell touches a small stencil) and reuses the previous
@@ -297,26 +344,64 @@ def _isqp_solve_osqp(
             j = jj if sparse.issparse(jj) else sparse.csc_matrix(np.asarray(jj))
         return j[:, free] if free_idx is not None else j  # restrict to free columns
 
-    def merit(y):
-        return obj(y) + rho * np.clip(-np.asarray(cons(y)), 0, None).sum()
+    def merit_w(y, w):
+        return obj(y) + float(w @ np.clip(-np.asarray(cons(y)), 0, None))
+
+    def _emit(rec):
+        """Record + optionally live-log one iteration (every Nth, and every reject)."""
+        if trace is not None:
+            trace["iters"].append(rec)
+        if log_every and (rec["it"] % log_every == 0 or not rec.get("stepped", True)):
+            ratio = rec.get("ratio")
+            fd = f"{rec['delta']:.3g}" if rec.get("delta") is not None else "-"
+            fr = f"{ratio:.2f}" if isinstance(ratio, float) and np.isfinite(ratio) else "-"
+            print(
+                f"    [isqp] it={rec['it']:4d} viol={rec['max_viol']:.5f} "
+                f"n_viol={rec['n_viol']} |d|={rec['step_norm']:.2e} "
+                f"delta={fd} ratio={fr} stepped={rec.get('stepped')}",
+                flush=True,
+            )
 
     prob = None  # reused across SQP iterations (setup once, then update in place)
     a_pat = None  # (indptr, indices) of A at setup — guards the in-place update
     it = 0
+    exit_reason = "maxiter"
+    tr_delta, tr_min, tr_max = 2.0, 1e-6, 16.0  # trust-region radius (grid units)
+    if trace is not None:
+        trace["iters"] = []
     while it < maxiter:
         it += 1
         c = np.asarray(cons(x))  # want >= 0
+        viol = np.clip(-c, 0.0, None)
         j = build_j(x)  # (m, n_free), sparse
         m = c.size
         nf = j.shape[1]
+        # slack upper bound: inf (classic elastic) or current violation (monotone —
+        # linearly no row may get worse; 1e-6 headroom avoids degenerate blocking)
+        s_up = (viol + 1e-6) if monotone else np.full(m, np.inf)
         eye_m = sparse.eye(m, format="csc")
         # z = [d (n_free); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
-        hd = sparse.diags(hess_diag(x)[free])  # objective curvature over free vars
+        hdv = hess_diag(x)[free]  # objective curvature over free vars
+        hd = sparse.diags(hdv)
         p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
-        q = np.concatenate([obj_grad(x)[free], rho * np.ones(m)])
-        a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
-        lo = np.concatenate([-c, np.zeros(m)])
-        up = np.full(2 * m, np.inf)
+        gx = obj_grad(x)[free]
+        rho_vec = np.full(m, float(rho))
+        if protect != 1.0:
+            # asymmetric elastic: currently-satisfied rows are expensive to break, so
+            # the QP cannot fund shallow fills by digging new deep folds (whack-a-mole)
+            rho_vec[c >= 0.0] = rho * protect
+        q = np.concatenate([gx, rho_vec])
+        if trust_region:
+            # extra identity rows box the step: -delta <= d_i <= delta (see docstring)
+            a = sparse.bmat(
+                [[j, eye_m], [None, eye_m], [sparse.eye(nf, format="csc"), None]], format="csc"
+            )
+            lo = np.concatenate([-c, np.zeros(m), np.full(nf, -tr_delta)])
+            up = np.concatenate([np.full(m, np.inf), s_up, np.full(nf, tr_delta)])
+        else:
+            a = sparse.bmat([[j, eye_m], [None, eye_m]], format="csc")  # [Jd+s ; s]
+            lo = np.concatenate([-c, np.zeros(m)])
+            up = np.concatenate([np.full(m, np.inf), s_up])
         # The Jacobian sparsity pattern is fixed across SQP iterations (the stencil
         # and free set don't change), so factor the KKT once and update values in
         # place — a big saving in the windowed regime (hundreds of small solves).
@@ -327,25 +412,98 @@ def _isqp_solve_osqp(
             and (a.indices == a_pat[1]).all()
         )
         if prob is not None and same_pattern:
-            prob.update(q=q, l=lo, Px=p.data, Ax=a.data)
+            prob.update(q=q, l=lo, u=up, Px=p.data, Ax=a.data)
         else:
             prob = osqp.OSQP()
+            eps_kw = {} if osqp_eps is None else {"eps_abs": osqp_eps, "eps_rel": osqp_eps}
             prob.setup(
-                p, q, a, lo, up, verbose=False, warm_starting=True, polishing=True, max_iter=8000
+                p,
+                q,
+                a,
+                lo,
+                up,
+                verbose=False,
+                warm_starting=True,
+                polishing=True,
+                max_iter=8000,
+                **eps_kw,
             )
             a_pat = (a.indptr.copy(), a.indices.copy())
         res = prob.solve()  # OSQP retains the last solution -> auto warm start on update
         z = np.asarray(res.x)
         if not np.all(np.isfinite(z)):
+            exit_reason = "osqp-nonfinite"
             break
         d = np.zeros(n)
         d[free] = z[:nf]  # scatter the free-var step back into the full vector
-        if np.linalg.norm(d) < tol:
+        dn = float(np.linalg.norm(d))
+        ph0 = obj(x) + float(rho_vec @ viol)  # merit(x), reusing the computed c
+
+        def mfun(y, _w=rho_vec):  # this iteration's weighted merit
+            return merit_w(y, _w)
+
+        rec = {
+            "it": it,
+            "max_viol": float(viol.max(initial=0.0)),
+            "n_viol": int((c < -1e-9).sum()),
+            "merit": ph0,
+            "step_norm": dn,
+            "osqp_status": str(getattr(res.info, "status", "?")).strip(),
+            "delta": (tr_delta if trust_region else None),
+        }
+        if dn < tol:
+            rec["stepped"] = False
+            _emit(rec)
+            exit_reason = "step-tol"
             break
-        x, stepped = _backtrack(merit, x, d, merit(x))
-        if not stepped:
-            break
-    feasible = bool((np.asarray(cons(x)) >= -1e-9).all())
+        if trust_region:
+            # ratio test: predicted merit reduction from the QP model (at d=0 the
+            # feasible slack is the current violation, so q(0) = rho*sum(viol))
+            # vs the ACTUAL nonlinear merit reduction at the full bounded step.
+            s_slack = z[nf : nf + m]
+            pred = float(rho_vec @ viol) - (
+                float(gx @ z[:nf]) + 0.5 * float(z[:nf] @ (hdv * z[:nf])) + float(rho_vec @ s_slack)
+            )
+            act = ph0 - mfun(x + d)
+            ratio = act / pred if pred > 1e-12 else float("nan")
+            rec["ratio"] = ratio
+            if pred <= 1e-8:
+                # model-flat regime (at/near the subproblem optimum): the ratio test
+                # is numerical noise there, so polish along d with the legacy
+                # backtracking and stop once even that cannot decrease the merit.
+                x, stepped = _backtrack(mfun, x, d, ph0)
+                if not stepped:
+                    exit_reason = "model-flat"
+            else:
+                stepped = act > 0.0 and ratio > 1e-3
+                if stepped:
+                    x = x + d
+                    if ratio > 0.75 and dn >= 0.9 * tr_delta:
+                        tr_delta = min(tr_delta * 2.0, tr_max)
+                    elif ratio < 0.25:
+                        tr_delta = max(tr_delta * 0.5, tr_min)
+                else:
+                    tr_delta *= 0.25  # reject: shrink and RE-SOLVE a new direction
+                    if tr_delta < tr_min:
+                        exit_reason = "tr-collapse"
+            rec["stepped"] = bool(stepped)
+            _emit(rec)
+            if exit_reason in ("model-flat", "tr-collapse"):
+                break
+        else:
+            x, stepped = _backtrack(mfun, x, d, ph0)
+            rec["stepped"] = bool(stepped)
+            _emit(rec)
+            if not stepped:
+                exit_reason = "linesearch-stall"
+                break
+    # 1e-6 matches OSQP's practical subproblem accuracy; callers enforce folds via a
+    # margin_delta (>=1e-3) shifted target, so this is 3+ orders inside that slack.
+    feasible = bool((np.asarray(cons(x)) >= -1e-6).all())
+    if trace is not None:
+        trace["exit"] = exit_reason
+        trace["feasible"] = feasible
+        trace["nit"] = it
     return x, it, feasible
 
 
@@ -359,32 +517,70 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200, objective="
     c, flat0, cons, cons_jac, obj, obj_grad, hess_diag, (h, w) = _problem(
         phi_dydx, threshold, objective=objective, eps=eps
     )
-    t = time.perf_counter()
-    if solver == "scipy-slsqp":
+
+    def _run_slsqp(x0):
         from scipy.optimize import minimize
 
         r = minimize(
             obj,
-            flat0,
+            x0,
             jac=obj_grad,
             method="SLSQP",
             constraints=[{"type": "ineq", "fun": cons, "jac": cons_jac}],
             options={"maxiter": maxiter, "ftol": 1e-8},
         )
-        out, nit, ok = r.x, int(r.nit), bool(r.success)
-    elif solver == "scipy-trust-constr":
+        return r.x, int(r.nit), bool(r.success)
+
+    def _run_trust(x0):
         from scipy.optimize import NonlinearConstraint, minimize
 
         nlc = NonlinearConstraint(cons, 0.0, np.inf, jac=cons_jac)
         r = minimize(
             obj,
-            flat0,
+            x0,
             jac=obj_grad,
             method="trust-constr",
             constraints=[nlc],
             options={"maxiter": maxiter, "gtol": 1e-8, "xtol": 1e-10},
         )
-        out, nit, ok = r.x, int(r.niter), bool(r.status in (1, 2))
+        return r.x, int(r.niter), bool(r.status in (1, 2))
+
+    def _infeasible(x):  # any strictly-negative determinant left?
+        return bool((np.asarray(c.values(x)) < 0.0).any())
+
+    t = time.perf_counter()
+    if solver == "scipy-slsqp":
+        out, nit, ok = _run_slsqp(flat0)
+    elif solver == "scipy-trust-constr":
+        out, nit, ok = _run_trust(flat0)
+    elif solver == "scipy-slsqp+trust-constr":
+        # escalation: fast SLSQP first; only if it leaves a fold fall back to the
+        # robust (but slow) trust-constr from the original field, then keep whichever
+        # is LESS folded (trust-constr can also fail to converge at a low maxiter, so
+        # the hybrid must never do worse than SLSQP alone). SLSQP speed on the easy
+        # majority, trust-constr robustness on the hard cases.
+        out, nit, ok = _run_slsqp(flat0)
+        if _infeasible(out):
+            out2, nit2, ok2 = _run_trust(flat0)
+            nit += nit2
+            if np.asarray(c.values(out2)).min() > np.asarray(c.values(out)).min():
+                out, ok = out2, ok2
+    elif solver == "slsqp-traced":
+        # vendored scipy C driver + pyslsqp-style tracing, run with tracing ON so
+        # the benchmark charges it the full QoL cost (scipy-slsqp = untracked base)
+        from slsqp_traced import minimize_slsqp_traced
+
+        tr: dict = {}
+        r = minimize_slsqp_traced(
+            obj,
+            flat0,
+            jac=obj_grad,
+            constraints=[{"type": "ineq", "fun": cons, "jac": cons_jac}],
+            maxiter=maxiter,
+            ftol=1e-8,
+            trace=tr,
+        )
+        out, nit, ok = r.x, int(r.nit), bool(r.success)
     elif solver == "pyslsqp":  # original Kraft Fortran + QoL (py<=3.12 wheels only)
         import os
 
