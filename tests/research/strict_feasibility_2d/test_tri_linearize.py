@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 
-from dvfopt.core.tri_primitives import tri_areas_flat, tri_grad_T_v
+from dvfopt.core.primitives.tri import tri_areas_flat, tri_grad_T_v
 from research.strict_feasibility_2d.algorithms.orientation_fix import n_triangles
 from research.strict_feasibility_2d.algorithms.tri_linearize import (
     build_sparse_jacobian_T,

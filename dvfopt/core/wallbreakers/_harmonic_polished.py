@@ -36,7 +36,7 @@ from scipy.optimize import minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info, log_warning
-from dvfopt.core.tri_primitives import tri_areas_flat as _tri_areas_flat
+from dvfopt.core.primitives.tri import tri_areas_flat as _tri_areas_flat
 from dvfopt.core.wallbreakers._alm import augmented_lagrangian_2d
 from dvfopt.core.wallbreakers._common import (
     barrier_anchored_objective as _barrier_anchored,

@@ -20,10 +20,10 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._logging import log_info
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat as _tri_areas_flat,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v as _tri_grad_T_v,
 )
 

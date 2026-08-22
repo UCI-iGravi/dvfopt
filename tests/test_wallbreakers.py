@@ -343,7 +343,7 @@ def _flat_pair(H, W, seed, scale=0.3):
 
 def _feasible_flat_pair(H, W, seed, threshold):
     """Strictly feasible iterate (tiny displacements keep T ~ 0.5)."""
-    from dvfopt.core.tri_primitives import tri_areas_flat
+    from dvfopt.core.primitives.tri import tri_areas_flat
 
     phi_flat, phi_in_flat = _flat_pair(H, W, seed, scale=0.02)
     assert tri_areas_flat(phi_flat, H, W).min() > threshold
@@ -445,7 +445,7 @@ class TestBarrierObjectiveFusedEquivalence:
         fused path must not silently switch conventions)."""
         H, W = 10, 10
         phi_flat, phi_in_flat = _flat_pair(H, W, 30, scale=0.5)  # folded
-        from dvfopt.core.tri_primitives import tri_areas_flat
+        from dvfopt.core.primitives.tri import tri_areas_flat
 
         assert tri_areas_flat(phi_flat, H, W).min() <= self.THRESH
         f_ref, g_ref = _barrier_anchored_objective_ref(

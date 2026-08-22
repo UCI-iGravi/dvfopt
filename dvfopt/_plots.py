@@ -39,7 +39,7 @@ def _compute_constraint_2d(phi2, kind):
     No corner patches — plot code reshapes T1/T2 onto an (H-1, W-1)
     cell grid, which the patches would break.
     """
-    from dvfopt.core._internal.constraint_values import compute_constraint_values_2d
+    from dvfopt.core.primitives.constraint_values import compute_constraint_values_2d
 
     return compute_constraint_values_2d(phi2, kind, include_patches=False)
 

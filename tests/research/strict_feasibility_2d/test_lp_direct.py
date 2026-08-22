@@ -84,7 +84,7 @@ def test_slp_iter_pinned_reference_no_drift():
     so any change to this value signals silent numerical drift in the
     linearisation / LP-step / seed path — investigate before repinning.
     """
-    from dvfopt.core.tri_primitives import tri_areas_flat
+    from dvfopt.core.primitives.tri import tri_areas_flat
 
     rng = np.random.default_rng(42)
     H, W = 12, 12

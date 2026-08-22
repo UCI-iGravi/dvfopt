@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from dvfopt import L1Objective, SLPStrategy, Solver, TriConstraint2D
-from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.core.primitives.tri import tri_areas_flat
 
 
 def _n_neg(p):

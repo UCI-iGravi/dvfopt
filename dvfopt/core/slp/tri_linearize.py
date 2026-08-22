@@ -1,6 +1,6 @@
 """Sparse Jacobian construction for the 2-triangle constraint.
 
-The existing ``dvfopt.core.tri_primitives.tri_grad_T_v`` returns
+The existing ``dvfopt.core.primitives.tri.tri_grad_T_v`` returns
 ``J^T @ v`` for arbitrary ``v`` via vectorised scatter-add — efficient
 for L-BFGS adjoint products but not the explicit sparse ``J`` the LP
 needs. This module emits ``J`` as a ``scipy.sparse.coo_matrix`` directly,
@@ -21,7 +21,7 @@ from functools import lru_cache
 import numpy as np
 import scipy.sparse as sp
 
-from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.core.primitives.tri import tri_areas_flat
 
 
 @lru_cache(maxsize=32)

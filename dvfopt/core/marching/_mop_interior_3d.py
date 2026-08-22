@@ -28,7 +28,7 @@ from scipy.ndimage import label as cc_label
 from dvfopt._logging import log_info
 from dvfopt.core.marching._elastic_engine import ACTIVE_WINDOW, elastic_trust_solve
 from dvfopt.core.marching._precondition import require_25d_input
-from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.core.primitives.tri import tri_areas_flat
 from dvfopt.jacobian.tetrahedron_sign import (
     build_tet_sparse_jac,
     six_tet_min_volume_3d,

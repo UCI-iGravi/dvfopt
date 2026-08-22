@@ -33,16 +33,16 @@ from dvfopt.core._barrier_core import (
 # The 2-triangle constraint primitives live in tri_primitives.py. Underscore
 # aliases here preserve back-compat for the ~16 callers that still import
 # them from this module under the old private names.
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat as _tri_areas_flat,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat_full_coverage as _tri_areas_flat_full_coverage,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v as _tri_grad_T_v,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v_full_coverage as _tri_grad_T_v_full_coverage,
 )
 

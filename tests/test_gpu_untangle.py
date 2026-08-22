@@ -12,8 +12,8 @@ torch = pytest.importorskip('torch')
 
 import numpy as np
 
+from dvfopt.core.primitives.tri import tri_areas_flat
 from dvfopt.core.slp._gpu_untangle import _areas_torch, gpu_untangle_alm_2d
-from dvfopt.core.tri_primitives import tri_areas_flat
 
 
 def _n_neg(p):
