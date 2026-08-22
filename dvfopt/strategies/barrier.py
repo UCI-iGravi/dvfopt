@@ -2,7 +2,7 @@
 
 The "workhorse" for moderate-density problems. Works for every concrete
 :class:`Constraint` subclass — 2D 2-tri, 2D Jdet, 3D Jdet — because the
-underlying :func:`dvfopt.core._barrier_core.run_penalty_barrier_lbfgs`
+underlying :func:`dvfopt.core.barrier._core.run_penalty_barrier_lbfgs`
 only requires ``constraint.values`` + ``constraint.adjoint``.
 """
 
@@ -43,7 +43,7 @@ class BarrierStrategy(Strategy):
         step_callback=None,
         **_,
     ):
-        from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
+        from dvfopt.core.barrier._core import run_penalty_barrier_lbfgs
 
         self._check_constraint(constraint)
         phi_flat = constraint.flatten(phi_in)
@@ -88,7 +88,7 @@ class BarrierStrategy(Strategy):
 class BarrierTet3DTorchStrategy(Strategy):
     """GPU (CUDA) penalty → log-barrier solver for the 3D 6-tet constraint.
 
-    Wraps :func:`dvfopt.core.iterative3d_tet_barrier_torch.iterative_3d_tet_barrier_torch`
+    Wraps :func:`dvfopt.core.barrier.tet3d_torch.iterative_3d_tet_barrier_torch`
     — an on-device (torch.optim.LBFGS) version of the penalty→barrier
     homotopy. Use it for LARGE dense-fold bands where the active-band crop
     trick can't help (folds span the region) and the CPU barrier is slow.
@@ -140,7 +140,7 @@ class BarrierTet3DTorchStrategy(Strategy):
         import numpy as np
 
         from dvfopt.constraints import Tet6Constraint3D
-        from dvfopt.core.iterative3d_tet_barrier_torch import (
+        from dvfopt.core.barrier.tet3d_torch import (
             iterative_3d_tet_barrier_torch,
         )
 

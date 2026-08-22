@@ -6,7 +6,7 @@ constraint family — every solver in the package accepts an
 ``Objective`` (or its string label via :func:`make_objective`).
 
 The underlying math is the existing ``anchor_term`` in
-:mod:`dvfopt.core._barrier_core`; these classes are a thin OO wrapper,
+:mod:`dvfopt.core.barrier._core`; these classes are a thin OO wrapper,
 1:1 with the three legacy string options ``'l2' / 'l1' / 'none'``.
 Solvers consume an objective by its ``label`` (and ``eps`` for L1).
 """
@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from dvfopt.core._barrier_core import anchor_term
+from dvfopt.core.barrier._core import anchor_term
 
 
 class Objective(ABC):

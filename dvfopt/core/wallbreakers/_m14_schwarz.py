@@ -5,7 +5,7 @@ Thin closure-shim around the generic
 binding ``inner_solve`` to
 :func:`dvfopt.core.wallbreakers._refine_repair.iterative_2d_tri_refine_repair`
 and ``final_polish_fn`` to
-:func:`dvfopt.core.iterative2d_tri_barrier.iterative_2d_tri_barrier`.
+:func:`dvfopt.core.barrier.tri2d.iterative_2d_tri_barrier`.
 
 This file used to host the full schwarz pipeline. Today it just
 constructs the callbacks and hands off to ``cluster_schwarz_2d_tri``
@@ -22,7 +22,7 @@ from typing import Optional
 import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )

@@ -11,7 +11,7 @@ Previously untested module — these guard the public contract:
 import numpy as np
 import pytest
 
-from dvfopt.core.iterative2d_tri_barrier import _tri_areas_flat, iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import _tri_areas_flat, iterative_2d_tri_barrier
 
 
 def _planted_fold(H=12, W=12, seed=0):

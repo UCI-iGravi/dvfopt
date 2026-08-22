@@ -1,7 +1,7 @@
 """Full-grid SLSQP for the 2-triangle constraint, with smoothed-L1 / L2
 anchor and a reactive warm-restart.
 
-A sister to :func:`dvfopt.core.iterative2d_tri_barrier.iterative_2d_tri_barrier`
+A sister to :func:`dvfopt.core.barrier.tri2d.iterative_2d_tri_barrier`
 that uses sequential quadratic programming (``scipy.optimize.minimize``
 with ``method='SLSQP'``) and the two-triangle ``NonlinearConstraint`` —
 the formulation explored in ``notebooks/two-triangle-check/`` (esp.
@@ -53,7 +53,7 @@ from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core._barrier_core import anchor_term
+from dvfopt.core.barrier._core import anchor_term
 from dvfopt.core.primitives.tri import (
     _build_full_grid_tri_jac,
     tri_areas_flat,

@@ -10,7 +10,7 @@ This module provides:
   also reused by the 2D barrier solver.
 
 The actual penalty / log-barrier objective functions and their L-BFGS-B
-homotopy live in :mod:`dvfopt.core._barrier_core` — shared by every CPU
+homotopy live in :mod:`dvfopt.core.barrier._core` — shared by every CPU
 barrier solver in the package.
 """
 

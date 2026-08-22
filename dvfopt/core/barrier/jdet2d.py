@@ -23,7 +23,7 @@ except ImportError:
     torch = None
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
+from dvfopt.core.barrier._core import run_penalty_barrier_lbfgs
 from dvfopt.core.primitives.jdet2d import _jdet_2d_flat, _jdet_grad_T_v_2d
 from dvfopt.core.solver import _print_summary, _setup_accumulators
 

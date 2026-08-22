@@ -30,7 +30,7 @@ class TestTriGradFullCoverageAdjoint:
     def test_matches_numerical_finite_diff(self):
         """Verify the analytical adjoint matches the numerical Jacobian
         of ``_tri_areas_flat_full_coverage`` to ~1e-9."""
-        from dvfopt.core.iterative2d_tri_barrier import (
+        from dvfopt.core.barrier.tri2d import (
             _tri_areas_flat_full_coverage,
             _tri_grad_T_v_full_coverage,
         )

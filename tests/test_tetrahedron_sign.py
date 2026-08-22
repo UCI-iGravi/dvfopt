@@ -720,7 +720,7 @@ class TestTetBarrierTorch:
         pytest.importorskip('torch')
 
     def test_clears_planted_fold(self):
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         phi = np.zeros((3, 4, 4, 4))
@@ -735,7 +735,7 @@ class TestTetBarrierTorch:
     def test_windowed_reaches_feasibility(self):
         """Windowed mode on an 8^3 volume with a single 2-magnitude
         corner fold — verify it converges + parity with full-grid."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
 
         phi = np.zeros((3, 8, 8, 8))
         phi[1, 3, 3, 3] = 2.0
@@ -750,7 +750,7 @@ class TestTetBarrierTorch:
 
     def test_windowed_record_history_uses_min_T(self):
         """Windowed history must follow the canonical schema (min_T)."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
 
         phi = np.zeros((3, 6, 6, 6))
         phi[1, 2, 2, 2] = 1.8
@@ -769,7 +769,7 @@ class TestTetBarrierTorch:
         used the cells count while the final-record used the tets
         count, breaking downstream
         :meth:`SolveInfo.from_legacy_history` consumers."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         phi = np.zeros((3, 6, 6, 6))
@@ -803,7 +803,7 @@ class TestTetBarrierTorch:
         """Both modes should reach feasibility on the same input. L2
         distances may differ slightly (windowed locks more boundary
         corners) but the feasibility verdict should be identical."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
 
         phi = np.zeros((3, 6, 6, 6))
         phi[1, 2, 2, 2] = 1.5
@@ -822,7 +822,7 @@ class TestTetBarrierTorch:
         V > threshold. A field with 0 < min V < threshold skipped the
         graduated lam schedule and fell straight into the emergency
         1e8*viol^2 barrier branch. Post-fix it must run penalty steps."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         # Uniform x-shrink: every tet volume = 0.05/6 ~ 0.0083, strictly
@@ -851,7 +851,7 @@ class TestTetBarrierTorch:
         unfixable — all its corners sat on frozen faces. Post-fix the
         boundary corners are free, the fold source moves, and the run
         reaches feasibility."""
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         phi = np.zeros((3, 4, 4, 4))
@@ -1143,7 +1143,7 @@ class TestHistorySchemaParity:
 
     def test_tet_barrier_torch_history_uses_min_T(self):
         pytest.importorskip('torch')
-        from dvfopt.core.iterative3d_tet_barrier_torch import iterative_3d_tet_barrier_torch
+        from dvfopt.core.barrier.tet3d_torch import iterative_3d_tet_barrier_torch
 
         phi_out, history = iterative_3d_tet_barrier_torch(
             self._phi_planted_fold_3d(), verbose=0, device='cpu', record_history=True

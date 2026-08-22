@@ -14,7 +14,7 @@ frozen edges). The constraint Jacobian J^T @ v is computed analytically
 via vectorised scatter-add (no dense Jacobian materialised), so this
 scales cleanly to full 2D slices.
 
-The penalty/barrier loop itself lives in :mod:`dvfopt.core._barrier_core`
+The penalty/barrier loop itself lives in :mod:`dvfopt.core.barrier._core`
 so the same homotopy is shared with the Jdet barrier solvers.
 """
 
@@ -24,7 +24,7 @@ import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core._barrier_core import (
+from dvfopt.core.barrier._core import (
     DEFAULT_LAM_SCHEDULE,
     DEFAULT_MU_SCHEDULE,
     run_penalty_barrier_lbfgs,

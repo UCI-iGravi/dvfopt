@@ -9,7 +9,7 @@
   Jacobian (built via
   :func:`dvfopt.jacobian.tetrahedron_sign.build_tet_sparse_jac`).
 * A smoothed-L1 or L2 anchor against the input field, computed via
-  :func:`dvfopt.core._barrier_core.anchor_term`.
+  :func:`dvfopt.core.barrier._core.anchor_term`.
 
 Practical note
 --------------
@@ -36,7 +36,7 @@ from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core._barrier_core import anchor_term
+from dvfopt.core.barrier._core import anchor_term
 from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac, tet_volumes_flat
 
 

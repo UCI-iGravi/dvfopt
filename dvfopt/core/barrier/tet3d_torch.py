@@ -25,7 +25,7 @@ Two modes:
   Dirichlet ring, repeat until all folds are cleared. Cuts memory and
   compute drastically when folds are spatially clustered (the common
   case). The pattern is the same one used by
-  :mod:`dvfopt.core.iterative3d_barrier_torch` for the 3D Jdet path.
+  :mod:`dvfopt.core.barrier.jdet3d_torch` for the 3D Jdet path.
 
 The batched-non-overlapping-patches optimization from the Jdet path is
 not yet ported — each patch is optimized independently here.
@@ -253,7 +253,7 @@ def _optimize_patch_3d_tet_torch(
 def _anchor_term_torch(diff, kind, eps_l1):
     """Smoothed anchor objective on a torch tensor.
 
-    Mirrors :func:`dvfopt.core._barrier_core.anchor_term` but returns
+    Mirrors :func:`dvfopt.core.barrier._core.anchor_term` but returns
     just the scalar value (autograd handles the gradient).
     """
     if kind == 'l2':

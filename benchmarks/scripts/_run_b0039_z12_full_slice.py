@@ -35,7 +35,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
 from dvfopt.core.wallbreakers import (
     iterative_2d_tri_harmonic_polished,
     iterative_2d_tri_refine_repair,

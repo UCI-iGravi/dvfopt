@@ -18,7 +18,7 @@ import numpy as np
 from scipy.ndimage import label
 
 from dvfopt._defaults import _log, _resolve_params
-from dvfopt.core._barrier_core import run_penalty_barrier_lbfgs
+from dvfopt.core.barrier._core import run_penalty_barrier_lbfgs
 from dvfopt.core.primitives.jdet3d import _jdet_grad_T_v, jdet_full
 from dvfopt.core.solver import _print_summary, _save_results, _setup_accumulators
 from dvfopt.core.solver3d import _init_phi_3d, _update_metrics_3d
