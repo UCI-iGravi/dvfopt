@@ -353,17 +353,12 @@ def _isqp_solve_osqp(
             trace["iters"].append(rec)
         if log_every and (rec["it"] % log_every == 0 or not rec.get("stepped", True)):
             ratio = rec.get("ratio")
+            fd = f"{rec['delta']:.3g}" if rec.get("delta") is not None else "-"
+            fr = f"{ratio:.2f}" if isinstance(ratio, float) and np.isfinite(ratio) else "-"
             print(
-                "    [isqp] it=%4d viol=%.5f n_viol=%d |d|=%.2e delta=%s ratio=%s stepped=%s"
-                % (
-                    rec["it"],
-                    rec["max_viol"],
-                    rec["n_viol"],
-                    rec["step_norm"],
-                    ("%.3g" % rec["delta"]) if rec.get("delta") is not None else "-",
-                    ("%.2f" % ratio) if isinstance(ratio, float) and np.isfinite(ratio) else "-",
-                    rec.get("stepped"),
-                ),
+                f"    [isqp] it={rec['it']:4d} viol={rec['max_viol']:.5f} "
+                f"n_viol={rec['n_viol']} |d|={rec['step_norm']:.2e} "
+                f"delta={fd} ratio={fr} stepped={rec.get('stepped')}",
                 flush=True,
             )
 
