@@ -188,6 +188,8 @@ exact-feasibility solver with escalating freedom cannot move them.
 |----------|--------|---------|
 | `correct_dvf_3d()` / `Correct3DReport` | `dvfopt.pipeline_3d` | End-to-end true-3D fold-*repair* orchestrator (6-tet feasibility); complements the 2.5D *prevention* pipeline above |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
+| `ift_radius_2d()` / `ift_radius_3d()` / `cell_min_jdet_2d()` | `dvfopt.jacobian.injectivity_radius` | Certified quantitative-IFT injectivity-radius maps (windowed-Lipschitz ladder, saturates at `max_window`; `max_window=0` = legacy pointwise estimate) + exact bilinear cell min-Jdet certificate (2D only — no trilinear analogue, 6-tet covers 3D). References in the module docstring |
+| `injectivity_stats()` / `InjectivityStats` | `dvfopt.metrics` | Sub-pixel injectivity diagnostics over those maps (also `dvfopt info --ift`) |
 | `solveLaplacianFromCorrespondences()` | `dvfopt.laplacian.solver` | Build DVF from correspondences |
 | `sliceToSlice3DLaplacian()` | `dvfopt.laplacian.correspondence` | Full slice-to-slice Laplacian registration pipeline |
 | `make_deformation()` / `make_random_dvf()` / `SYNTHETIC_CASES` | `dvfopt.testdata` | Generate test deformation fields (`from dvfopt.testdata import ...`) |

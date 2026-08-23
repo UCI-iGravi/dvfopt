@@ -42,6 +42,18 @@ def test_info_feasible_field(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)['feasible'] is True
 
 
+def test_info_ift_diagnostics(tmp_path, capsys):
+    p, _ = _save_folded(tmp_path)
+    rc = main(['info', str(p), '--ift'])
+    report = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    inj = report['injectivity']
+    # A 2tri-folded field must also fail the bilinear corner certificate
+    # (each tracked triangle is one of the cell's corner Jdets).
+    assert inj['cell_min_jdet'] <= 0 and inj['n_cells_nonpos'] >= 1
+    assert inj['min_radius'] < 1.0
+
+
 def test_correct_roundtrip_with_report(tmp_path, capsys):
     p, _ = _save_folded(tmp_path)
     out = tmp_path / 'out.npy'

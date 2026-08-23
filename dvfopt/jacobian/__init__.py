@@ -4,6 +4,7 @@ from dvfopt.jacobian.injectivity_radius import (
     cell_min_jdet_2d,
     cell_to_pixel_min,
     ift_radius_2d,
+    ift_radius_3d,
 )
 from dvfopt.jacobian.intersection import has_quad_self_intersections
 from dvfopt.jacobian.monotonicity import (
@@ -69,6 +70,7 @@ __all__ = [
     "cell_to_pixel_min",
     "has_quad_self_intersections",
     "ift_radius_2d",
+    "ift_radius_3d",
     "injectivity_constraint",
     "jacobian_det2D",
     "jacobian_det3D",

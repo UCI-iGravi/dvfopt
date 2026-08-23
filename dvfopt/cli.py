@@ -78,6 +78,10 @@ def _cmd_info(args) -> int:
         **asdict(st),
         'feasible': st.feasible,
     }
+    if args.ift:
+        from dvfopt.metrics import injectivity_stats
+
+        report['injectivity'] = asdict(injectivity_stats(phi))
     print(json.dumps(report, indent=2, default=_json_default))
     return 1 if (args.check and not st.feasible) else 0
 
@@ -241,6 +245,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="'auto' (2tri for 2D, 6tet for 3D) | 2tri | 2tri_standard | jdet | jdet_3d | 6tet",
     )
     pi.add_argument('--check', action='store_true', help='exit 1 when not strictly feasible')
+    pi.add_argument(
+        '--ift',
+        action='store_true',
+        help='add sub-pixel injectivity diagnostics (certified IFT radius; '
+        '2D also bilinear cell min-Jdet). Opt-in: costs a batched SVD on 3D volumes.',
+    )
     _common(pi)
 
     pc = sub.add_parser('correct', help='correct a field and save the result')

@@ -71,3 +71,49 @@ def constraint_fold_stats(
     c = make_constraint(constraint, shape)
     vals = c.values(c.flatten(c.coerce(phi)))
     return constraint, fold_stats(vals, threshold, err_tol)
+
+
+@dataclass(frozen=True)
+class InjectivityStats:
+    """Sub-pixel injectivity diagnostics of a DVF.
+
+    From the quantitative-IFT radius map (and, in 2D, the bilinear cell
+    certificate) in :mod:`dvfopt.jacobian.injectivity_radius` — see that
+    module's docstring for the math and references.
+    """
+
+    min_radius: float  # smallest certified IFT injectivity radius (px/voxels)
+    frac_subpixel: float  # fraction of samples with certified radius < 1
+    cell_min_jdet: Optional[float]  # 2D only: min bilinear cell Jdet (None in 3D)
+    n_cells_nonpos: Optional[int]  # 2D only: folded cells under the bilinear model
+
+
+def injectivity_stats(phi, max_window: int = 8) -> InjectivityStats:
+    """Neighbourhood-injectivity diagnostics for a 2D field or 3D volume.
+
+    Accepts ``(2, H, W)`` ``[dy, dx]`` layouts as well as the canonical
+    ``(3, 1, H, W)`` / ``(3, D, H, W)`` ``[dz, dy, dx]``. 2D fields also get
+    the bilinear cell certificate; 3D volumes report the radius map only —
+    the trilinear Jdet is not multi-affine, so sub-voxel folds are the
+    6-tet constraint family's job (:func:`constraint_fold_stats`).
+    """
+    from dvfopt.jacobian.injectivity_radius import (
+        cell_min_jdet_2d,
+        ift_radius_2d,
+        ift_radius_3d,
+    )
+
+    phi = np.asarray(phi, dtype=np.float64)
+    if phi.ndim == 4 and phi.shape[0] == 3 and phi.shape[1] > 1:
+        r = ift_radius_3d(phi, max_window=max_window)
+        cell_min = None
+    else:
+        phi2 = phi[1:] if phi.shape[0] == 3 else phi  # drop the dz channel
+        r = ift_radius_2d(phi2, max_window=max_window)
+        cell_min = cell_min_jdet_2d(phi2)
+    return InjectivityStats(
+        min_radius=float(r.min()),
+        frac_subpixel=float((r < 1.0).mean()),
+        cell_min_jdet=None if cell_min is None else float(cell_min.min()),
+        n_cells_nonpos=None if cell_min is None else int((cell_min <= 0).sum()),
+    )
