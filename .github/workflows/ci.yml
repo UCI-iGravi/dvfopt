@@ -47,7 +47,7 @@ jobs:
       - name: Normalize source mtimes for the Numba cache
         run: git ls-files -z '*.py' | xargs -0 touch -d '2000-01-01T00:00:00Z'
       - name: Run test suite
-        # GUI tests importorskip PyQt5; torch-gated tests skip without torch;
+        # GUI tests importorskip PySide6; torch-gated tests skip without torch;
         # research worst-case tests skip without the optional data folders.
         env:
           NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba_cache

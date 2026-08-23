@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from dvfopt._logging import logger as _dvfopt_logger
 
@@ -41,7 +41,7 @@ _LEVELS = [
 class _LogEmitter(QtCore.QObject):
     """Qt signal relay owned by the dock (dies with it)."""
 
-    flush = QtCore.pyqtSignal()  # "records pending — drain the buffer"
+    flush = QtCore.Signal()  # "records pending — drain the buffer"
 
 
 class _QtLogHandler(logging.Handler):
@@ -94,7 +94,7 @@ class LogDock(QtWidgets.QDockWidget):
 
     #: emitted when the user changes the level; carries the worker
     #: ``verbose`` value the window should use for the NEXT run.
-    verboseChanged = QtCore.pyqtSignal(int)
+    verboseChanged = QtCore.Signal(int)
 
     def __init__(self, parent=None):
         super().__init__('Solver log', parent)

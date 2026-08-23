@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 import math
 
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 from dvfopt._defaults import DEFAULT_PARAMS as _DVFOPT_DEFAULTS
 

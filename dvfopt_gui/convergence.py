@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtCore
+from PySide6 import QtCore
 
 # Deliberately NOT red: the central Jdet heatmap uses red = positive =
 # feasible (per the project's preferred reading), so a red fold-count

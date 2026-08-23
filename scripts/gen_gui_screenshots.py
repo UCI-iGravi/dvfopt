@@ -20,7 +20,7 @@ import time
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import numpy as np
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 from dvfopt_gui.app import VIEW_2TRI, VIEW_GRID, VIEW_JDET, LiveSolverWindow
 from dvfopt_gui.demo import _bowtie_fixture, _synthetic_3d_volume
