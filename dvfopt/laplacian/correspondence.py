@@ -6,7 +6,7 @@ normals, computing 2D correspondences, and performing slice-to-slice
 Laplacian registration.
 
 Performance optimizations:
-- Parallel slice processing with joblib
+- Parallel slice processing with ProcessPoolExecutor
 - Batch KD-tree queries for normal estimation
 - CG solver with diagonal (Jacobi) preconditioner (replaces LGMRES)
 - Threaded parallel solves for independent RHS vectors
@@ -16,15 +16,13 @@ import inspect
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import numpy as np
 import scipy
 import skimage
-from joblib import Parallel, delayed
 from scipy.sparse.linalg import cg, lgmres
 from skimage import feature, measure
-from tqdm import tqdm
 
 from .utils import laplacianA3D, propagate_dirichlet_rhs
 
@@ -38,7 +36,7 @@ def _default_log(msg, level='info'):
 
 
 # ============================================================================
-# Parallel helpers (module-level so they are picklable by loky)
+# Parallel helpers (module-level so they are picklable for ProcessPoolExecutor)
 # ============================================================================
 
 
@@ -397,7 +395,7 @@ def sliceToSlice3DLaplacian(
     interpolates them smoothly across the volume.
 
     Performance optimizations over original implementation:
-    - Parallel slice processing with joblib
+    - Parallel slice processing with ProcessPoolExecutor
     - Single boundary array instead of three redundant copies
     - CG solver with AMG preconditioner (5-20x faster than LGMRES)
     - Threaded parallel solves for independent RHS vectors
@@ -503,10 +501,16 @@ def sliceToSlice3DLaplacian(
         slice_pairs.append((sno, template_slice, data_slice))
     del fdata, mdata
 
-    results = Parallel(n_jobs=-2)(
-        delayed(_find_slice_correspondences)(sno, tpl, dat)
-        for sno, tpl, dat in tqdm(slice_pairs, desc="Finding correspondences")
-    )
+    # All CPUs but one (leaves headroom for the main process).
+    n_workers = max(1, (os.cpu_count() or 1) - 1)
+    log_every = max(1, n_slices // 20)
+    results = []
+    if slice_pairs:
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            for i, r in enumerate(ex.map(_find_slice_correspondences, *zip(*slice_pairs)), start=1):
+                results.append(r)
+                if i % log_every == 0 or i == n_slices:
+                    log(f"  correspondences: {i}/{n_slices} slices done", 'progress')
     del slice_pairs
 
     # Collect valid results

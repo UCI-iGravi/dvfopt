@@ -473,8 +473,8 @@ class TestM14Schwarz3DStrategy:
         V = six_tet_volumes_3d(result.corrected)
         assert (V <= 0).sum() == 0
         assert V.min() >= 0.01 - 1e-5
-        # The stage-keyed info dict from iterative_3d_tet_refine_repair_schwarz
-        # gets converted to SolveInfo.phases via _build_solve_info — each
+        # The stage-keyed info dict from cluster_schwarz_3d_tet gets
+        # converted to SolveInfo.phases via _build_solve_info — each
         # top-level key becomes a phase. Expect both 'init' and 'final'.
         phase_names = [p.name for p in result.info.phases]
         assert 'init' in phase_names, f'expected init phase; got {phase_names}'

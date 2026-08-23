@@ -24,3 +24,6 @@ opencv-python-headless
 
 # TransMorph (Swin Transformer backbone)
 timm
+
+# Progress bars — used directly by benchmarks/registration/transmorph-registration.ipynb
+tqdm

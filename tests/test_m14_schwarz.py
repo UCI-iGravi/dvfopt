@@ -1,4 +1,4 @@
-"""Tests for iterative_2d_tri_refine_repair_schwarz (m14-Schwarz)."""
+"""Tests for SchwarzHarmonicALMRefineRepairStrategy (m14-Schwarz)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,19 @@ import warnings
 import numpy as np
 import pytest
 
+from dvfopt import (
+    HarmonicALMRefineRepairStrategy,
+    L2Objective,
+    SchwarzHarmonicALMRefineRepairStrategy,
+    Solver,
+    TriConstraint2D,
+)
 from dvfopt.core.schwarz._common import (
     _fold_clusters_2d as _fold_clusters,
 )
 from dvfopt.core.schwarz._common import (
     _stats_2d as _stats,
 )
-from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from dvfopt.objectives import L1Objective
 
@@ -114,20 +120,25 @@ class TestSmoke:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = np.zeros((2, 8, 8))
-            out = iterative_2d_tri_refine_repair_schwarz(phi, threshold=0.01, verbose=0)
-        np.testing.assert_allclose(out, phi, atol=1e-9)
+            result = Solver(
+                constraint=TriConstraint2D(shape=phi.shape[1:]),
+                objective=L2Objective(),
+                strategy=SchwarzHarmonicALMRefineRepairStrategy(),
+                threshold=0.01,
+            ).fit(phi)
+        np.testing.assert_allclose(result.corrected, phi, atol=1e-9)
 
     def test_sparse_synthetic_reaches_feasibility(self):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
-            out = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(),
-                threshold=0.01,
+            result = Solver(
+                constraint=TriConstraint2D(shape=phi.shape[1:]),
                 objective=L1Objective(),
-                verbose=0,
-                max_outer_iters=2,
-            )
+                strategy=SchwarzHarmonicALMRefineRepairStrategy(max_outer_iters=2),
+                threshold=0.01,
+            ).fit(phi.copy())
+        out = result.corrected
         T1, T2 = _triangle_areas_2d(out[0], out[1])
         n_neg = int((np.minimum(T1, T2) <= 0).sum())
         min_T = float(min(T1.min(), T2.min()))
@@ -138,25 +149,26 @@ class TestSmoke:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
-            _out, info = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(),
-                threshold=0.01,
+            # Three planted clusters at this seed.
+            T1, T2 = _triangle_areas_2d(phi[0], phi[1])
+            assert int((np.minimum(T1, T2) <= 0).sum()) > 0, 'test setup planted no folds'
+            result = Solver(
+                constraint=TriConstraint2D(shape=phi.shape[1:]),
                 objective=L1Objective(),
-                verbose=0,
-                max_outer_iters=2,
-                record_history=True,
-            )
-        # Three planted clusters at this seed.
-        assert info['init']['n_neg'] > 0
-        assert 'cluster_runs' in info
-        assert 'outer_rounds' in info
-        assert 'final' in info
-        assert info['final']['n_neg'] == 0
+                strategy=SchwarzHarmonicALMRefineRepairStrategy(max_outer_iters=2),
+                threshold=0.01,
+            ).fit(phi.copy(), record_history=True)
+        assert result.feasible
+        phase_names = [p.name for p in result.info.phases]
+        assert 'init' in phase_names, f'expected init phase; got {phase_names}'
+        assert 'final' in phase_names, f'expected final phase; got {phase_names}'
 
 
 class TestFallback:
     def test_single_large_cluster_falls_back(self):
         """A near-saturated 8x8 should trigger the size-ratio fallback."""
+        from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
+
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             rng = np.random.default_rng(3)
@@ -165,10 +177,23 @@ class TestFallback:
             n_neg_init = int((np.minimum(T1, T2) <= 0).sum())
             if n_neg_init == 0:
                 pytest.skip('seed produced no folds')
-            out, info = iterative_2d_tri_refine_repair_schwarz(
+
+            inner = HarmonicALMRefineRepairStrategy()
+
+            def inner_solve(phi_crop, time_budget_s=None):
+                out, _info = inner.solve(
+                    phi_crop,
+                    constraint=TriConstraint2D(shape=phi_crop.shape[1:]),
+                    objective=L1Objective(),
+                    threshold=0.01,
+                    verbose=0,
+                )
+                return out
+
+            out, info = cluster_schwarz_2d_tri(
                 phi.copy(),
+                inner_solve,
                 threshold=0.01,
-                objective=L1Objective(),
                 fallback_size_ratio=0.5,
                 verbose=0,
                 record_history=True,

@@ -10,8 +10,6 @@ dependencies = [
     "nibabel",
     "matplotlib",
     "scikit-image",
-    "joblib",
-    "tqdm",
 ]
 
 [project.scripts]
@@ -23,6 +21,7 @@ benchmarks = [
     "opencv-python-headless",
     "timm",
     "torch",
+    "tqdm",           # benchmarks/registration/transmorph-registration.ipynb imports it directly
     "voxelmorph",
     # pyslsqp is intentionally omitted: it ships wheels only for Python <=3.12,
     # so declaring it would break installs on 3.13+. Install it manually in a

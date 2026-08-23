@@ -115,13 +115,6 @@ class TestAnchorModes:
         assert out.shape == phi.shape
         assert np.all(np.isfinite(out))
 
-    def test_invalid_anchor_raises(self):
-        phi = _planted_fold(H=4, W=4)
-        with pytest.raises(ValueError):
-            iterative_2d_tri_slsqp(
-                phi, objective=make_objective('l99'), verbose=0, max_iter=20, warm_max_iter=20
-            )
-
 
 class TestFullCoverageFlag:
     def test_constraint_count_differs(self):

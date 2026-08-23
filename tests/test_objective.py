@@ -6,8 +6,9 @@ uses by default.
 """
 
 import numpy as np
+import pytest
 
-from dvfopt.objectives import L2Objective
+from dvfopt.objectives import L2Objective, make_objective
 
 
 def _l2(phi, phi_init):
@@ -63,3 +64,8 @@ class TestL2Objective:
         val_ab, _ = _l2(a, b)
         val_ba, _ = _l2(b, a)
         np.testing.assert_allclose(val_ab, val_ba)
+
+
+def test_make_objective_invalid_label_raises():
+    with pytest.raises(ValueError):
+        make_objective('l99')

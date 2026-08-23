@@ -10,11 +10,15 @@ crop each with padding, run an *arbitrary* user-supplied
 ``inner_solve(phi_crop) -> phi_corrected`` callable on the crop, splice
 the result back, and (optionally) finish with a global polish.
 
-These functions are what the legacy
-``iterative_2d_tri_refine_repair_schwarz`` /
-``iterative_3d_tet_refine_repair_schwarz`` wrappers delegate to today —
-they are also what the public :class:`SchwarzWrapperStrategy` uses to
-schwarz-wrap any compatible inner strategy.
+These functions are what the dedicated
+:class:`~dvfopt.strategies.wallbreakers.SchwarzHarmonicALMRefineRepairStrategy`
+/ :class:`~dvfopt.strategies.wallbreakers.SchwarzHarmonicALMRefineRepair3DStrategy`
+classes delegate to (each building its own pinned
+``HarmonicALMRefineRepairStrategy``/``HarmonicALMRefineRepair3DStrategy``
+inner from its knobs) — they are also what the generic public
+:class:`~dvfopt.strategies.schwarz_wrapper.SchwarzWrapperStrategy` uses to
+schwarz-wrap any compatible inner strategy. One shared core, reached
+three ways.
 
 The "inner_solve" callback contract
 -----------------------------------

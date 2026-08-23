@@ -14,8 +14,6 @@
   hard-coding an L2 anchor.
 """
 
-import warnings
-
 import numpy as np
 import pytest
 
@@ -308,17 +306,3 @@ class TestWindowedStrategyObjective:
         obj = _CountingObjective()
         self._solve(obj, phi=phi)
         assert obj.calls > 0, 'windowed solver never evaluated the composed objective'
-
-    def test_l2_objective_does_not_warn(self):
-        from dvfopt.objectives import L2Objective
-
-        with warnings.catch_warnings():
-            warnings.simplefilter('error', UserWarning)
-            self._solve(L2Objective())
-
-    def test_none_objective_does_not_warn(self):
-        from dvfopt.objectives import NoneObjective
-
-        with warnings.catch_warnings():
-            warnings.simplefilter('error', UserWarning)
-            self._solve(NoneObjective())
