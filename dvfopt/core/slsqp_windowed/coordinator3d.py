@@ -3,10 +3,11 @@
 import time
 
 import numpy as np
-from scipy.optimize import NonlinearConstraint, minimize
+from scipy.optimize import NonlinearConstraint
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size_3d
 from dvfopt.core.slsqp_windowed._objective import objective_euc
+from dvfopt.core.slsqp_windowed._window import _window_minimize
 from dvfopt.core.slsqp_windowed.constraints3d import (
     _build_constraints_3d,
     _build_constraints_3d_maxwindow,
@@ -214,13 +215,13 @@ def _optimize_single_window_3d(
         )
 
     t0 = time.time()
-    result = minimize(
+    result = _window_minimize(
         lambda phi1: objective_euc(phi1, phi_init_sub_flat),
         phi_sub_flat,
-        jac=True,
-        constraints=constraints,
-        options={"maxiter": max_minimize_iter, "disp": False},
-        method=method_name,
+        constraints,
+        max_minimize_iter,
+        method_name,
+        disp=False,
     )
     elapsed = time.time() - t0
     if not np.all(np.isfinite(result.x)):
@@ -257,13 +258,13 @@ def _full_grid_step_3d(phi, phi_init, D, H, W, threshold, max_minimize_iter, met
 
     _log(verbose, 1, f"  [full-grid] Optimizing entire {D}x{H}x{W} grid ({3 * voxels} variables)")
 
-    result = minimize(
+    result = _window_minimize(
         lambda phi1: objective_euc(phi1, phi_init_flat),
         phi_flat,
-        jac=True,
-        constraints=constraints,
-        options={"maxiter": max_minimize_iter, "disp": verbose >= 2},
-        method=method_name,
+        constraints,
+        max_minimize_iter,
+        method_name,
+        disp=verbose >= 2,
     )
 
     phi[2] = result.x[:voxels].reshape(D, H, W)
