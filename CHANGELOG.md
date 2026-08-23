@@ -60,6 +60,17 @@ the library) plus an over-engineering cleanup.
 
 ### Removed
 
+- **`benchmarks/windowed_isqp.py` + `benchmarks/finite_jdet.py`** — promoted
+  into the library (`dvfopt.core.windowed`, `FiniteJdetConstraint2D`, and
+  `core/primitives/{isqp,coloring,finite_jdet}.py`) and deleted, following
+  the 0.5.0 `slsqp_traced` promote-then-delete precedent. The retained
+  harnesses (`fullslice_bench`, `windowed_bench`, `comprehensive_bench`,
+  `windowed_escape`, `escape_bench`, `b0039_isqp_bench`, `slsqp_variants`,
+  `trace_parity_check`) were repointed at the promoted code — family-string
+  translation lives in the new `benchmarks/_windowed_compat.py`, and
+  `slsqp_variants._isqp_solve_osqp` remains only as a thin back-compat shim
+  over `dvfopt.core.primitives.isqp.isqp_solve` (CLI/printed behaviour of
+  every harness unchanged).
 - `scripts/check_ci.py` (dead — wired into nothing in CI/nox/pyproject).
 - `tools/rewrite_imports.py` (spent one-shot migration tool from the
   0.5.0 reorg).

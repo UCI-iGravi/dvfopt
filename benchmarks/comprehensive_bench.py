@@ -32,11 +32,14 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import finite_jdet as fj  # noqa: E402
+import _windowed_compat as wc  # noqa: E402
 import slsqp_variants as sv  # noqa: E402
-import windowed_isqp as wi  # noqa: E402
 
-from dvfopt.constraints import JdetConstraint2D, TriConstraint2D  # noqa: E402
+from dvfopt.constraints import (  # noqa: E402
+    FiniteJdetConstraint2D,
+    JdetConstraint2D,
+    TriConstraint2D,
+)
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d  # noqa: E402
 
 DEFAULT_VOL = "data/dvfs/b0039/b0039_laplacian_deformation_field.npy"
@@ -50,7 +53,7 @@ def _constraint(metric, shape):
     if metric == "central":
         return JdetConstraint2D(shape=shape)
     if metric == "finite":
-        return fj.FiniteJdetConstraint2D(shape)
+        return FiniteJdetConstraint2D(shape=shape)
     if metric == "2tri":
         return TriConstraint2D(shape=shape)
     raise ValueError(metric)
@@ -61,9 +64,10 @@ def _min_metric(metric, phi):
     if metric == "central":
         return float(_numpy_jdet_2d(phi[0], phi[1]).min())
     if metric == "finite":
-        return fj._min_finite_jdet(phi)
+        c = FiniteJdetConstraint2D(shape=phi.shape[1:])
+        return float(np.asarray(c.values(c.flatten(phi))).min())
     if metric == "2tri":
-        m = wi.min_field("2tri", phi)
+        m = wc.min_field("2tri", phi)
         return float(m[: phi.shape[1] - 1, : phi.shape[2] - 1].min())
     raise ValueError(metric)
 
@@ -72,12 +76,79 @@ def _folds_metric(metric, phi):
     if metric == "central":
         return int((_numpy_jdet_2d(phi[0], phi[1]) < THR).sum())
     if metric == "finite":
-        c = fj.FiniteJdetConstraint2D(phi.shape[1:])
+        c = FiniteJdetConstraint2D(shape=phi.shape[1:])
         return int((np.asarray(c.values(c.flatten(phi))) < THR).sum())
     if metric == "2tri":
-        m = wi.min_field("2tri", phi)
+        m = wc.min_field("2tri", phi)
         return int((m[: phi.shape[1] - 1, : phi.shape[2] - 1] < THR).sum())
     raise ValueError(metric)
+
+
+# ---------------------------------------------------------------------------
+# Local copies of the promoted engine's private helpers. The library versions
+# (dvfopt.core.windowed._locality / _common) key on constraint instances and
+# Objective objects; this harness keeps its historical string API, so it holds
+# its own small string-keyed copies built on the promoted public primitives.
+# ---------------------------------------------------------------------------
+
+_COLORING_CACHE = {}  # (family, ph, pw) -> (pattern, colors, None)
+
+
+def _pattern_union(c, probes=4, seed=0):
+    """Sparsity pattern of ``c``'s Jacobian, as the union of nonzeros over ``probes``
+    random points (a single point can zero a structurally-nonzero entry)."""
+    rng = np.random.default_rng(seed)
+    flat0 = rng.normal(0, 0.5, c.n_variables)
+    acc = None
+    for _ in range(probes):
+        b = np.abs(sv.dense_jacobian(c, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
+        acc = b if acc is None else (acc | b)
+    return [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
+
+
+def _cached_coloring(family, c, shape):
+    """CPR coloring ``(pattern, colors, None)`` for a patch shape, cached (the
+    Jacobian sparsity pattern depends only on the shape). Jdet uses the
+    pixel-grid stride-3 colouring; 2-tri a cell-grid 8-colouring."""
+    key = (family, *shape)
+    hit = _COLORING_CACHE.get(key)
+    if hit is None:
+        if family == "jdet":
+            hit = sv.jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
+        else:  # 2tri: cell grid, 2 triangles per cell share a 2x2-corner support
+            ph, pw = shape
+            ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing="ij")
+            cellcol = ((ii % 2) * 2 + (jj % 2)).ravel()
+            colors = np.concatenate([cellcol, 4 + cellcol])  # T1: 0-3, T2: 4-7
+            hit = (_pattern_union(c), colors, None)
+        _COLORING_CACHE[key] = hit
+    return hit
+
+
+def _objective_fns(flat0, objective, eps):
+    """L1 (eps-smoothed) or L2 obj / grad / GN-diagonal-Hessian over the full patch."""
+    if objective == "l2":
+        return (
+            lambda f: float((f - flat0) @ (f - flat0)),
+            lambda f: 2.0 * (f - flat0),
+            lambda f: np.full(f.size, 2.0),
+        )
+    if objective == "l1":
+
+        def obj(f):
+            d = f - flat0
+            return float((np.sqrt(d * d + eps * eps) - eps).sum())
+
+        def grad(f):
+            d = f - flat0
+            return d / np.sqrt(d * d + eps * eps)
+
+        def hess(f):
+            d = f - flat0
+            return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
+
+        return obj, grad, hess
+    raise ValueError(f"unknown objective {objective!r}")
 
 
 def _sparse_jac(metric, c, shape):
@@ -86,7 +157,7 @@ def _sparse_jac(metric, c, shape):
     if metric == "finite":
         return lambda f: c.jacobian(f)
     fam = "jdet" if metric == "central" else "2tri"
-    coloring = wi._cached_coloring(fam, c, shape)
+    coloring = _cached_coloring(fam, c, shape)
     return lambda f: sv.colored_jacobian(c, f, *coloring).tocsr()
 
 
@@ -101,7 +172,7 @@ def solve_crop(crop, metric, method, objective, maxiter=200, eps=1e-2):
     def cons(f):
         return np.asarray(c.values(f)) - THR
 
-    obj, grad, hess = wi._objective_fns(flat0, objective, eps)
+    obj, grad, hess = _objective_fns(flat0, objective, eps)
 
     def infeasible(x):
         return bool((np.asarray(c.values(x)) < 0.0).any())

@@ -8,7 +8,7 @@ contract + inner-solver dispatch). See :mod:`._common` for the no-damage
 invariant and the inner contract.
 """
 
-from ._common import SliceReport, windowed_correct
+from ._common import SliceReport, build_subproblem, find_windows, windowed_correct
 from ._inners import WindowSub
 from ._locality import LOCALITY, min_field, pixel_fold_mask
 
@@ -16,6 +16,8 @@ __all__ = [
     'LOCALITY',
     'SliceReport',
     'WindowSub',
+    'build_subproblem',
+    'find_windows',
     'min_field',
     'pixel_fold_mask',
     'windowed_correct',

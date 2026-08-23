@@ -1,8 +1,9 @@
 """Benchmark the windowed fold-correction solver across folded slices of B0039.
 
 For every N-th slice of the B0039 Laplacian field that actually contains a fold,
-run :func:`windowed_isqp.windowed_correct` (one small window per fold cluster,
-frozen context ring) for each requested constraint family / objective, and record
+run :func:`dvfopt.core.windowed.windowed_correct` (one small window per fold
+cluster, frozen context ring; called through the `_windowed_compat`
+family-string adapter) for each requested constraint family / objective, and record
 folds cleared, the no-damage invariant (``damage``), giant-region count, window
 count, and wall time. Rows stream to a CSV; a markdown ``report.md`` aggregates
 per (family, objective) with a loud flag if the ``damage`` invariant is ever
@@ -26,7 +27,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import windowed_isqp as wi
+import _windowed_compat as wc
 
 DEFAULT_VOL = "data/dvfs/b0039/b0039_laplacian_deformation_field.npy"
 DEFAULT_WORKERS = min(8, os.cpu_count() or 1)
@@ -50,7 +51,7 @@ CSV_FIELDS = [
 
 
 def _rec(z, family, objective, rep):
-    """Flatten a :class:`windowed_isqp.SliceReport` into a picklable record dict."""
+    """Flatten a :class:`dvfopt.core.windowed.SliceReport` into a picklable record dict."""
     return {
         "z": z,
         "family": family,
@@ -85,7 +86,7 @@ def _run_task(z, family, objective, phi, threshold):
     returned as an error record so one bad slice never kills the run.
     """
     try:
-        _, rep = wi.windowed_correct(
+        _, rep = wc.windowed_correct_compat(
             phi, family=family, objective=objective, threshold=threshold, z=z
         )
         return _rec(z, family, objective, rep)
@@ -122,7 +123,7 @@ def build_tasks(vol, stride, families, objectives, threshold):
     for z in sampled:
         phi = _slice_phi(vol, z)
         for family in families:
-            if int(wi.pixel_fold_mask(family, phi, threshold).sum()) == 0:
+            if int(wc.pixel_fold_mask(family, phi, threshold).sum()) == 0:
                 print(f"z={z:>3} {family}: 0 folds before -> skip")
                 continue
             for objective in objectives:

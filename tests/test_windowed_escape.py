@@ -16,7 +16,7 @@ if str(benchmarks_dir) not in sys.path:
 
 import pytest  # noqa: E402
 import windowed_escape as we  # noqa: E402
-from windowed_isqp import min_field  # noqa: E402
+from windowed_escape import min_field  # noqa: E402
 
 # Every escape mode runs the OSQP elastic-QP inner; skip cleanly where the optional
 # osqp wheel is absent (the CI core matrix installs no solver extras) — mirrors the
