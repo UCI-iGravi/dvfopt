@@ -6,10 +6,40 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Over-engineering cleanup — behaviour is unchanged.
+Windowed-engine promotion (the PR #61–64 benchmark fold-corrector moves into
+the library) plus an over-engineering cleanup.
+
+### Added
+
+- **Windowed engine** — `dvfopt.core.windowed` (`windowed_correct`), the
+  third shared engine: one small frozen-ring window per fold cluster,
+  no-damage by construction, grow-on-failure, overlapping-tile decomposition
+  for giant regions, and a terminal large-margin mop pass. The engine code is
+  byte-identical to the PR #61–64 benchmark implementation (verified by the
+  promotion's identity gates — 57 gate assertions total).
+- **`WindowedWrapperStrategy(inner=<label>)` / `ISQPWindowedStrategy`** —
+  wrapper strategies over the engine (registry labels `'windowed_wrapper'` /
+  `'isqp_windowed'`). The inner is a window-solver *label*
+  (`'isqp'`/`'slsqp'`/`'slsqp+trust-constr'`), not a Strategy — each window
+  is a frozen-ring reduced problem a crop-level `Strategy.fit` cannot
+  express. `ISQPWindowedStrategy` pins the tuned elastic-QP inner
+  (zero-arg constructible; 528/528 B0039 slices cleared, damage = 0 on all
+  2178 benchmark tasks). Also exposed in the GUI's 2-tri and Jdet menus
+  (visible-but-disabled without `osqp`).
+- **`FiniteJdetConstraint2D`** (label `'finite'`) — forward-difference cell
+  determinant as a real registered constraint (analytic sparse Jacobian;
+  math in `core/primitives/finite_jdet.py`), plus the promoted
+  `core/primitives/isqp.py` (elastic-QP SQP, `HAS_OSQP` gate) and
+  `core/primitives/coloring.py` (CPR-coloring Jacobians).
+- **`solvers` extra** — `pip install dvfopt[solvers]` pulls `osqp` (the isqp
+  windowed inner); `osqp` also joins the `dev` extra so CI's `[dev,gui]`
+  legs run the no-damage suite instead of skipping it.
 
 ### Changed
 
+- **`auto_strategy`** — the Jdet mild tier (`n_neg <= 500` and
+  `init_min >= -1`) now prefers `'isqp_windowed'` when `osqp` is installed
+  and the constraint is 2D; otherwise it keeps `'slsqp_windowed'`.
 - **Dependencies** — dropped `joblib` (replaced its one call site,
   `dvfopt.laplacian.correspondence`'s slice-to-slice correspondence
   search, with stdlib `concurrent.futures.ProcessPoolExecutor`) and

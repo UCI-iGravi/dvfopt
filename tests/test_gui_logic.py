@@ -611,7 +611,8 @@ def test_slp_and_auto_dispatch():
     assert wl2.resolved_strategy_label in ('m10', 'barrier', 'slsqp')
     wj = SolverWorker(deformation_i=phi, method_id='auto_jdet', params={'objective_id': 'l1'})
     wj._build_strategy()
-    assert wj.resolved_strategy_label in ('barrier', 'slsqp_windowed')
+    # The 2D Jdet mild tier prefers isqp_windowed when osqp is installed.
+    assert wj.resolved_strategy_label in ('barrier', 'slsqp_windowed', 'isqp_windowed')
 
 
 # ---------------------------------------------------------------------------

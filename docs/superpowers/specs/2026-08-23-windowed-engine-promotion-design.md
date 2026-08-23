@@ -164,10 +164,12 @@ registry), CLAUDE.md (delegation-table + building-blocks rows), CHANGELOG
   with `self._finish(...)`. (Strictly better than `slsqp_windowed`, which
   returns bare `phi` and emits an empty SolveInfo.)
 - `step_callback({'phi': …, 'stage': …})` fired per round / giant / mop;
-  `KeyboardInterrupt` propagates as the documented Stop. (Fixes the two
-  Schwarz-wrapper gaps: callback is forwarded, and per-window isqp traces are
-  lifted to `SolveInfo.extras['isqp_trace']` — a distinct key from
-  `slsqp_trace`, whose record shape is pinned by tests.)
+  `KeyboardInterrupt` propagates as the documented Stop. (Fixes the
+  Schwarz-wrapper gap: the callback is forwarded. Lifting per-window isqp
+  traces to `SolveInfo.extras['isqp_trace']` is **deferred to stage 2** —
+  a slice solves hundreds of windows, and hundreds of per-iteration trace
+  records would bloat SolveInfo; the ponytail note in
+  `core/slsqp_windowed/_window.py` makes the same call.)
 - Per-window failures contained (`log_warning` + continue); logging via
   `dvfopt._logging`; no prints.
 - `time_budget_s` honored at round/window boundaries (GUI toolbar contract).

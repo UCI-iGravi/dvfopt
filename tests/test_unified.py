@@ -26,6 +26,15 @@ def _planted_fold_2d(H=12, W=12, seed=0):
     return np.stack([rng.normal(0, 0.3, (H, W)), rng.normal(0, 0.3, (H, W))])
 
 
+def _jdet_mild_label():
+    """The 2D Jdet mild tier's expected label — install-dependent:
+    ``isqp_windowed`` (windowed isqp engine) when osqp is importable,
+    else the legacy ``slsqp_windowed``."""
+    import importlib.util
+
+    return 'isqp_windowed' if importlib.util.find_spec('osqp') is not None else 'slsqp_windowed'
+
+
 class TestRecordHistoryRoundTrip:
     """Regression: ``record_history=False`` must not corrupt dx."""
 
@@ -71,8 +80,10 @@ class TestAutoStrategy:
 
     def test_jdet_uses_minus_one_threshold(self):
         c = JdetConstraint2D((12, 12))
-        # init_min between -0.25 and -1.0 is still mild for Jdet.
-        assert auto_strategy(c, init_n_neg=5, init_min=-0.5) == "slsqp_windowed"
+        # init_min between -0.25 and -1.0 is still mild for Jdet. The mild
+        # tier prefers the windowed isqp engine when osqp is installed
+        # (2D), and keeps the legacy windowed SLSQP otherwise.
+        assert auto_strategy(c, init_n_neg=5, init_min=-0.5) == _jdet_mild_label()
         assert auto_strategy(c, init_n_neg=5, init_min=-1.5) == "barrier"
 
     def test_count_overrides_min(self):
@@ -165,11 +176,12 @@ class TestAutoStrategySLPRouting:
         )
 
     def test_jdet_l1_never_routes_to_slp(self):
-        """SLP is 2-tri-only; the Jdet family keeps its legacy routing
+        """SLP is 2-tri-only; the Jdet family keeps its own routing
         even for l1."""
         c = JdetConstraint2D((12, 12))
         assert (
-            auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l1') == 'slsqp_windowed'
+            auto_strategy(c, init_n_neg=5, init_min=-0.5, objective_label='l1')
+            == _jdet_mild_label()
         )
         assert auto_strategy(c, init_n_neg=5000, init_min=-1.5, objective_label='l1') == 'barrier'
 

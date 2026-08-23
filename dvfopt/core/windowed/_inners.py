@@ -15,7 +15,9 @@ from dvfopt.core.primitives.isqp import isqp_solve
 _ISQP_LABELS = ("isqp", "isqp-osqp")
 _SLSQP_LABELS = ("slsqp", "scipy-slsqp")
 _SLSQP_TC_LABELS = ("slsqp+trust-constr", "scipy-slsqp+trust-constr")
-_ALL_LABELS = _ISQP_LABELS + _SLSQP_LABELS + _SLSQP_TC_LABELS
+# Public: every accepted inner label (canonical names + aliases), so callers
+# (e.g. WindowedWrapperStrategy) can validate eagerly at construction.
+INNER_LABELS = _ISQP_LABELS + _SLSQP_LABELS + _SLSQP_TC_LABELS
 
 
 @dataclass
@@ -71,7 +73,7 @@ def solve_window_inner(sub, inner, maxiter, trace=None):
             trace=trace,
         )
     if inner not in _SLSQP_LABELS + _SLSQP_TC_LABELS:
-        raise ValueError(f"unknown inner {inner!r}; valid labels: {list(_ALL_LABELS)}")
+        raise ValueError(f"unknown inner {inner!r}; valid labels: {list(INNER_LABELS)}")
 
     from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
 
@@ -125,4 +127,4 @@ def solve_window_inner(sub, inner, maxiter, trace=None):
     return x, 0, bool(sub.cons(x).min() >= -1e-9)
 
 
-__all__ = ['WindowSub', 'solve_window_inner']
+__all__ = ['INNER_LABELS', 'WindowSub', 'solve_window_inner']

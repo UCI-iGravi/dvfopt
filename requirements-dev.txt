@@ -27,3 +27,6 @@ timm
 
 # Progress bars — used directly by benchmarks/registration/transmorph-registration.ipynb
 tqdm
+
+# OSQP — the elastic-QP inner for the windowed engine (dvfopt[solvers])
+osqp

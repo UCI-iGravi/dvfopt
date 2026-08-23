@@ -44,7 +44,7 @@ Imports flow one way. Breaking these is what re-tangles the package.
 - **Method packages are siblings, not a chain.** `core/barrier/`,
   `core/slsqp_windowed/`, `core/slsqp_fullgrid/`, `core/schwarz/`,
   `core/wallbreakers/`, `core/slp/`, `core/nmvf/`, `core/marching/` all depend
-  on `core/primitives/` and on the two shared engines. A **composite** method
+  on `core/primitives/` and on the shared engines. A **composite** method
   may additionally call a sibling's *public* function as an explicit pipeline
   phase or seed — the wallbreakers run `barrier.tri2d` as a polish phase, SLP
   seeds from `wallbreakers`, `marching` reuses `slp.tri_linearize`. What is
@@ -54,11 +54,13 @@ Imports flow one way. Breaking these is what re-tangles the package.
   `_setup_accumulators`, `_print_summary`, `_init_phi_3d`, `_update_metrics_3d` —
   from `slsqp_windowed.coordinator*`. Those are generic run-bookkeeping, not
   windowed-SLSQP logic; they are candidates to move into shared infra.)*
-- **The two shared engines** are `core/barrier/_core.py`
-  (`run_penalty_barrier_lbfgs`, the penalty→barrier homotopy) and
+- **The three shared engines** are `core/barrier/_core.py`
+  (`run_penalty_barrier_lbfgs`, the penalty→barrier homotopy),
   `core/schwarz/_common.py` (`cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet`,
-  the domain decomposition). Any method package may import these; they carry no
-  method logic of their own.
+  the domain decomposition), and `core/windowed/_common.py` (`windowed_correct`,
+  the cluster-windowed no-damage decomposition — frozen-ring windows around fold
+  clusters with a label-selected inner solver). Any method package may import
+  these; they carry no method logic of their own.
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy
@@ -127,6 +129,11 @@ package.
 5. Put the flat constraint evaluation + analytic adjoint in
    `core/primitives/`, not in the constraint class — solvers call the primitive
    directly on hot paths.
+
+*Footnote: support in the windowed engine (`windowed_correct` /
+`ISQPWindowedStrategy`) additionally needs a `WindowLocality` entry in
+`core/windowed/_locality.py` (ring width, fold map, influenced rows). Folding
+that registry into `Constraint` itself is a stage-2 candidate.*
 
 ## Add an objective
 

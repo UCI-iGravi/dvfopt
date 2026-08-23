@@ -62,6 +62,7 @@ from dvfopt_gui._shared import (  # noqa: F401  (re-exported for back-compat)
     _grid_lines,
     _jdet_colormap,
     _min_tri_from_phi,
+    _osqp_available,
     _quiver_lines,
     _toolbar_separator,
     _torch_available,
@@ -966,6 +967,10 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         # GPU barrier needs torch; keep it visible but disabled when absent.
         idx = self._method_combo.findData('barrier_torch')
         if idx >= 0 and not _torch_available():
+            self._method_combo.model().item(idx).setEnabled(False)
+        # ISQP windowed needs osqp; same visible-but-disabled treatment.
+        idx = self._method_combo.findData('isqp_windowed')
+        if idx >= 0 and not _osqp_available():
             self._method_combo.model().item(idx).setEnabled(False)
         # Keep the prior algo selected if the new constraint also supports
         # it (e.g. switching constraint while "barrier" is selected keeps

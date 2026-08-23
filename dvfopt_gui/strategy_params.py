@@ -115,6 +115,8 @@ def strategy_class_for(algo: str):
         # _INCLUDED_FIELDS_BY_ALGO) — the worker threads them into
         # iterative_serial; the toolbar owns the iteration knobs.
         'slsqp_windowed': dvfopt.SLSQPWindowedStrategy,
+        # Same tag in the 2tri and jdet menus — one unqualified key suffices.
+        'isqp_windowed': dvfopt.ISQPWindowedStrategy,
         'm14': dvfopt.HarmonicALMRefineRepairStrategy,
         'm14_schwarz': dvfopt.SchwarzHarmonicALMRefineRepairStrategy,
         'm10': dvfopt.HarmonicALMBarrierStrategy,

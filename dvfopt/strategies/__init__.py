@@ -27,6 +27,7 @@ The strategy hierarchy:
     ├── SLSQPWindowedStrategy                            windowed SLSQP (Jdet + 2-tri)
     ├── SchwarzStrategy                                  overlapping-tile SLSQP/Schwarz
     ├── SchwarzWrapperStrategy                           cluster-Schwarz wrapper around any inner Strategy (2D + 3D)
+    ├── WindowedWrapperStrategy / ISQPWindowedStrategy   no-damage cluster-windowed engine (inner by label; isqp pinned)
     ├── HarmonicALMBarrierStrategy                       (m10) harmonic -> PHR-ALM -> log-barrier polish
     ├── HarmonicALMRefineRepairStrategy                  (m14) m10 seed -> soft-penalty L2 refine -> harmonic repair -> log-barrier polish
     └── SchwarzHarmonicALMRefineRepairStrategy           (m14-schwarz) cluster-localized m14 + global polish (= SchwarzWrapperStrategy(inner=HarmonicALMRefineRepairStrategy()))
@@ -86,6 +87,7 @@ from dvfopt.strategies.wallbreakers import (
     SchwarzHarmonicALMRefineRepair3DStrategy,
     SchwarzHarmonicALMRefineRepairStrategy,
 )
+from dvfopt.strategies.windowed import ISQPWindowedStrategy, WindowedWrapperStrategy
 
 # Names in ``__all__`` are sorted alphabetically (ruff RUF022).
 # Descriptive names live alongside the original ``M*Strategy`` aliases
@@ -102,6 +104,7 @@ __all__ = [
     'HarmonicALMBarrierStrategy',
     'HarmonicALMRefineRepair3DStrategy',
     'HarmonicALMRefineRepairStrategy',
+    'ISQPWindowedStrategy',
     'M10Strategy',
     'M10TetStrategy',
     'M14Schwarz3DStrategy',
@@ -118,6 +121,7 @@ __all__ = [
     'SchwarzStrategy',
     'SchwarzWrapperStrategy',
     'Strategy',
+    'WindowedWrapperStrategy',
     '_build_solve_info',
     'make_strategy',
     'register_strategy',

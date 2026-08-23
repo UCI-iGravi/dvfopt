@@ -483,7 +483,10 @@ def auto_strategy(
     ``barrier``.
 
     For the Jdet family (no wallbreakers, no SLP): barrier above
-    ``n_neg > 500`` or ``init_min < -1``, slsqp below.
+    ``n_neg > 500`` or ``init_min < -1``; the mild tier below that
+    prefers ``isqp_windowed`` (the no-damage windowed elastic-QP
+    engine) when ``osqp`` is installed and the constraint is 2D, else
+    ``slsqp_windowed``.
     """
     from dvfopt.constraints import Tet6Constraint3D
 
@@ -520,6 +523,13 @@ def auto_strategy(
     # Jdet 2D/3D
     if init_n_neg > 500 or init_min < -1.0:
         return 'barrier'
+    import importlib.util
+
+    # Mild tier: the windowed isqp engine (no-damage, 3-5x faster than
+    # scipy-SLSQP) when osqp is available; it is 2D-only, so 3D Jdet
+    # keeps the legacy windowed SLSQP.
+    if constraint.dim == 2 and importlib.util.find_spec('osqp') is not None:
+        return 'isqp_windowed'
     return 'slsqp_windowed'
 
 
