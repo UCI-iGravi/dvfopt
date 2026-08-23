@@ -144,6 +144,7 @@ from dvfopt.dvf import (
 from dvfopt.exceptions import (
     DVFoptError,
     IncompatibleConstraintError,
+    IncompatibleObjectiveError,
     SolverConfigError,
 )
 
@@ -254,6 +255,7 @@ __all__ = [
     'HarmonicALMRefineRepair3DStrategy',
     'HarmonicALMRefineRepairStrategy',
     'IncompatibleConstraintError',
+    'IncompatibleObjectiveError',
     'JdetConstraint2D',
     'JdetConstraint3D',
     'L1Objective',
