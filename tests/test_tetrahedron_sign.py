@@ -1115,7 +1115,7 @@ class TestHistorySchemaParity:
         return phi
 
     def test_slsqp_3d_tet_history_uses_min_T(self):
-        from dvfopt.core.iterative3d_tet_slsqp import iterative_3d_tet_slsqp
+        from dvfopt.core.slsqp_fullgrid.tet3d import iterative_3d_tet_slsqp
 
         phi_out, history = iterative_3d_tet_slsqp(
             self._phi_planted_fold_3d(), verbose=0, record_history=True

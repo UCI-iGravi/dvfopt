@@ -23,7 +23,7 @@ class SLSQPFullGridStrategy(Strategy):
     """Full-grid SLSQP with reactive warm-restart (notebook 14).
 
     2-triangle constraints only; the underlying full-grid Jacobian
-    builder lives in :mod:`dvfopt.core.iterative2d_tri_slsqp` and
+    builder lives in :mod:`dvfopt.core.slsqp_fullgrid.tri2d` and
     assumes the 2-tri constraint structure.
     """
 
@@ -39,7 +39,7 @@ class SLSQPFullGridStrategy(Strategy):
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
     ):
-        from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
+        from dvfopt.core.slsqp_fullgrid.tri2d import iterative_2d_tri_slsqp
 
         self._check_constraint(constraint)
         full_coverage = isinstance(constraint, TriConstraint2DFullCoverage)
@@ -221,7 +221,7 @@ class SLSQPFullGrid3DStrategy(Strategy):
         record_history=False,
         **_,
     ):
-        from dvfopt.core.iterative3d_tet_slsqp import iterative_3d_tet_slsqp
+        from dvfopt.core.slsqp_fullgrid.tet3d import iterative_3d_tet_slsqp
 
         self._check_constraint(constraint)
         out = iterative_3d_tet_slsqp(

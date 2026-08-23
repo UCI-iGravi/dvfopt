@@ -1,4 +1,4 @@
-"""Tests for ``dvfopt.core.iterative2d_tri_slsqp.iterative_2d_tri_slsqp``.
+"""Tests for ``dvfopt.core.slsqp_fullgrid.tri2d.iterative_2d_tri_slsqp``.
 
 This is the package's full-grid SLSQP path for the 2-triangle
 constraint, promoted from the experimental implementation in
@@ -8,7 +8,7 @@ constraint, promoted from the experimental implementation in
 import numpy as np
 import pytest
 
-from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
+from dvfopt.core.slsqp_fullgrid.tri2d import iterative_2d_tri_slsqp
 from dvfopt.jacobian.triangle_sign import (
     _corner_patch_areas_2d,
     _triangle_areas_2d,

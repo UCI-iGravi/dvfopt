@@ -1,6 +1,6 @@
 """Full-grid SLSQP for the 3D 6-tetrahedron constraint.
 
-3D analogue of :mod:`dvfopt.core.iterative2d_tri_slsqp`. Drives
+3D analogue of :mod:`dvfopt.core.slsqp_fullgrid.tri2d`. Drives
 ``scipy.optimize.minimize(method='SLSQP')`` with:
 
 * ``Tet6Constraint3D.values`` as the constraint vector
