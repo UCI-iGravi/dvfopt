@@ -253,22 +253,65 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
         step_callback=None,
         **_,
     ):
-        from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
+        from dataclasses import replace as _replace
+
+        from dvfopt._defaults import DEFAULT_PARAMS
+        from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
+        from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 
         self._check_constraint(constraint)
-        out = iterative_2d_tri_refine_repair_schwarz(
+        if threshold is None:
+            threshold = DEFAULT_PARAMS['threshold']
+
+        # Pinned inner built from this class's own knobs.
+        # HarmonicALMRefineRepairStrategy is a value-transparent wrapper
+        # around iterative_2d_tri_refine_repair (its dataclass defaults
+        # mirror the function's own defaults exactly), so per-cluster
+        # solves here reproduce what the old _m14_schwarz.py shim did —
+        # this class now delegates to the same shared Schwarz core
+        # (cluster_schwarz_2d_tri) that SchwarzWrapperStrategy uses,
+        # instead of a dedicated standalone wrapper function.
+        inner = HarmonicALMRefineRepairStrategy(
+            margin=self.margin, max_grow_iters=self.max_grow_iters
+        )
+
+        def inner_solve(phi_crop, time_budget_s=None):
+            crop_inner = (
+                _replace(inner, time_budget_s=time_budget_s) if time_budget_s is not None else inner
+            )
+            phi_out, _info = crop_inner.solve(
+                phi_crop,
+                constraint=type(constraint)(shape=phi_crop.shape[1:]),
+                objective=objective,
+                threshold=threshold,
+                verbose=0,
+                record_history=False,
+            )
+            return phi_out
+
+        final_polish_fn = None
+        if self.final_polish:
+
+            def final_polish_fn(phi):
+                return iterative_2d_tri_barrier(
+                    phi,
+                    threshold=threshold,
+                    margin=self.margin,
+                    max_minimize_iter=self.final_polish_max_iter,
+                    objective=objective,
+                    verbose=0,
+                )
+
+        out = cluster_schwarz_2d_tri(
             phi_in,
+            inner_solve,
             threshold=threshold,
-            margin=self.margin,
-            objective=objective,
             pad=self.pad,
             merge_dilation=self.merge_dilation,
             max_outer_iters=self.max_outer_iters,
             fallback_size_ratio=self.fallback_size_ratio,
             time_budget_s=self.time_budget_s,
-            final_polish=self.final_polish,
-            final_polish_max_iter=self.final_polish_max_iter,
-            max_grow_iters=self.max_grow_iters,
+            final_polish_fn=final_polish_fn,
             verbose=verbose,
             record_history=record_history,
             step_callback=step_callback,
@@ -762,24 +805,54 @@ class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
         step_callback=None,
         **_,
     ):
-        from dvfopt.core.wallbreakers._m14_schwarz_3d import (
-            iterative_3d_tet_refine_repair_schwarz,
-        )
+        from dataclasses import replace as _replace
+
+        from dvfopt._defaults import DEFAULT_PARAMS
+        from dvfopt.core.schwarz._common import cluster_schwarz_3d_tet
 
         self._check_constraint(constraint)
-        out = iterative_3d_tet_refine_repair_schwarz(
+        if threshold is None:
+            threshold = DEFAULT_PARAMS['threshold']
+
+        # Pinned inner built from this class's own knobs.
+        # HarmonicALMRefineRepair3DStrategy is a value-transparent wrapper
+        # around iterative_3d_tet_refine_repair (its dataclass defaults
+        # mirror the function's own defaults exactly), so per-cluster
+        # solves here reproduce what the old _m14_schwarz_3d.py shim did —
+        # this class now delegates to the same shared Schwarz core
+        # (cluster_schwarz_3d_tet) that SchwarzWrapperStrategy uses,
+        # instead of a dedicated standalone wrapper function. No final
+        # global polish (matches the old shim — the per-cluster m14-3D
+        # already runs its own log-barrier polish stage on each crop).
+        inner = HarmonicALMRefineRepair3DStrategy(margin=self.margin)
+
+        def inner_solve(phi_crop, time_budget_s=None):
+            crop_inner = (
+                _replace(inner, time_budget_s=time_budget_s) if time_budget_s is not None else inner
+            )
+            phi_out, _info = crop_inner.solve(
+                phi_crop,
+                constraint=type(constraint)(shape=phi_crop.shape[1:]),
+                objective=objective,
+                threshold=threshold,
+                verbose=max(0, verbose - 1),
+                record_history=False,
+                step_callback=step_callback,
+            )
+            return phi_out
+
+        out = cluster_schwarz_3d_tet(
             phi_in,
+            inner_solve,
             threshold=threshold,
-            margin=self.margin,
-            objective=objective,
             pad=self.pad,
             merge_dilation=self.merge_dilation,
             max_outer_iters=self.max_outer_iters,
             fallback_size_ratio=self.fallback_size_ratio,
             time_budget_s=self.time_budget_s,
+            final_polish_fn=None,
             verbose=verbose,
             record_history=record_history,
-            step_callback=step_callback,
         )
         return self._finish(out, record_history, threshold)
 

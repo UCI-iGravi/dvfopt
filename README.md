@@ -811,9 +811,10 @@ Corrections save to a directory containing:
 Before pushing, mirror the CI workflow locally:
 
 ```bash
-python scripts/check_ci.py              # lint + format + benchmark smoke + tests
-python scripts/check_ci.py --skip-tests # fast pre-push lint pass
+ruff check dvfopt dvfopt_gui tests benchmarks
+ruff format --check dvfopt dvfopt_gui tests benchmarks
+pytest tests/
 ```
 
-This runs exactly what [.github/workflows/test.yml](.github/workflows/test.yml) runs (including `ruff check` over `benchmarks/`, which is easy to forget locally and was the cause of a CI failure on PR #10).
+This runs what [.github/workflows/test.yml](.github/workflows/test.yml) runs (including `ruff check` over `benchmarks/`, which is easy to forget locally and was the cause of a CI failure on PR #10).
 

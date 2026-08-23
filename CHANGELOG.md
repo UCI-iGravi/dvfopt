@@ -4,6 +4,41 @@ Tracks user-visible changes to `dvfopt`. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Over-engineering cleanup — behaviour is unchanged.
+
+### Changed
+
+- **Dependencies** — dropped `joblib` (replaced its one call site,
+  `dvfopt.laplacian.correspondence`'s slice-to-slice correspondence
+  search, with stdlib `concurrent.futures.ProcessPoolExecutor`) and
+  moved `tqdm` out of the core install (its one call site, the same
+  function's progress bar, now logs periodically through the module's
+  existing `log_fn` convention) into the `[benchmarks]` extra, where
+  `benchmarks/registration/transmorph-registration.ipynb` still needs it.
+- **Schwarz strategies** — `SchwarzHarmonicALMRefineRepairStrategy`
+  (`M14SchwarzStrategy`) and `SchwarzHarmonicALMRefineRepair3DStrategy`
+  (`M14Schwarz3DStrategy`) now build their pinned inner strategy
+  (`HarmonicALMRefineRepairStrategy`/`3DStrategy`) from their own knobs
+  and delegate directly to the shared `dvfopt.core.schwarz._common`
+  core — the same core `SchwarzWrapperStrategy` uses. Public API
+  (class names, dataclass knobs, registry labels, aliases) is
+  unchanged; the internal standalone shim modules
+  `dvfopt/core/wallbreakers/_m14_schwarz.py` and `_m14_schwarz_3d.py`
+  (and their module-level functions) are deleted as consumer-free.
+
+### Removed
+
+- `scripts/check_ci.py` (dead — wired into nothing in CI/nox/pyproject).
+- `tools/rewrite_imports.py` (spent one-shot migration tool from the
+  0.5.0 reorg).
+- Two vacuous regression tests in `tests/test_slsqp_review_fixes.py`
+  that asserted the absence of warning code which no longer exists, and
+  `tests/test_tri_slsqp.py::test_invalid_anchor_raises`, which only
+  re-tested `make_objective`'s own error path (now covered directly by
+  `tests/test_objective.py::test_make_objective_invalid_label_raises`).
+
 ## [0.5.0] — 2026-08-22
 
 Library reorganization. Behaviour is unchanged — no solver produces a

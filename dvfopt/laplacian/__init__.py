@@ -5,7 +5,7 @@ Provides slice-to-slice Laplacian registration (contour correspondence
 matching + PDE-based interpolation) and the standalone PDE solver.
 
 Lightweight core (utils + solver) is imported eagerly.
-The correspondence pipeline (requires scikit-image, joblib, tqdm) is
+The correspondence pipeline (requires scikit-image) is
 imported lazily on first access so that callers who only need the PDE
 solver or matrix builders do not pay the cost of those optional
 dependencies at import time.

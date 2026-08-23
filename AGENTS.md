@@ -94,11 +94,11 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 | `SchwarzStrategy` (2-tri) | `dvfopt.core.schwarz.tri2d.iterative_2d_tri_schwarz` |
 | `HarmonicALMBarrierStrategy` (alias `M10Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_harmonic_polished` |
 | `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair` |
-| `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` (thin closure shim around `schwarz._common.cluster_schwarz_2d_tri`) |
+| `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) | builds a pinned `HarmonicALMRefineRepairStrategy` inner from its own knobs, then calls `dvfopt.core.schwarz._common.cluster_schwarz_2d_tri` directly — the same core `SchwarzWrapperStrategy` uses |
 | `SchwarzWrapperStrategy(inner=...)` | `dvfopt.core.schwarz._common.cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet` directly, calling `inner.solve` per cluster |
 | `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`) | `dvfopt.core.wallbreakers._alm_3d` (harmonic + ALM-3D + polish) |
 | `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d` |
-| `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d_schwarz` |
+| `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`) | builds a pinned `HarmonicALMRefineRepair3DStrategy` inner from its own knobs, then calls `dvfopt.core.schwarz._common.cluster_schwarz_3d_tet` directly |
 
 ### Building blocks (still public, still useful for custom pipelines)
 
