@@ -262,7 +262,7 @@ The fastest but least accurate method. Replaces displacement vectors in the neig
 
 ### 2. Full-Grid SLSQP
 
-**Entry point:** `_full_grid_step()` in `dvfopt/core/solver.py`
+**Entry point:** `_full_grid_step()` in `dvfopt/core/slsqp_windowed/_window.py`
 
 Optimizes the entire displacement field simultaneously via Sequential Least Squares Programming (SLSQP):
 
@@ -276,7 +276,7 @@ Optimizes the entire displacement field simultaneously via Sequential Least Squa
 
 ### 3. Iterative SLSQP
 
-**Entry point:** `iterative_serial()` in `dvfopt/core/iterative.py`
+**Entry point:** `iterative_serial()` in `dvfopt/core/slsqp_windowed/iterative.py`
 
 The primary method. Instead of optimizing the full grid, it repeatedly identifies the worst folding region and corrects it with a small local optimization:
 
@@ -311,7 +311,7 @@ The primary method. Instead of optimizing the full grid, it repeatedly identifie
 
 ### Hybrid Parallel Variant
 
-**Entry point:** `iterative_parallel()` in `dvfopt/core/parallel.py`
+**Entry point:** `iterative_parallel()` in `dvfopt/core/slsqp_windowed/parallel.py`
 
 Extends the iterative method to process multiple non-overlapping windows simultaneously:
 
@@ -643,7 +643,7 @@ When all constraints are active, the optimizer converges to the minimum-L2 field
 
 ## 3D Extension
 
-The 3D extension in `dvfopt/core/solver3d.py` + `dvfopt/core/iterative3d.py` generalizes all 2D operations:
+The 3D extension in `dvfopt/core/slsqp_windowed/coordinator3d.py` + `dvfopt/core/slsqp_windowed/iterative3d.py` generalizes all 2D operations:
 
 | Aspect | 2D | 3D |
 |--------|----|----|
@@ -668,41 +668,40 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 ## Project Structure
 
 ```
-├── dvfopt/                         # Installable Python package
-│   ├── core/                       # Optimization algorithms
-│   │   ├── objective.py            # L2 objective function
-│   │   ├── constraints.py          # Jacobian, shoelace, injectivity constraints
-│   │   ├── spatial.py              # Window selection, bounding box, edge logic
-│   │   ├── solver.py               # Single-window SLSQP solver
-│   │   ├── iterative.py            # Serial iterative correction (2D)
-│   │   ├── parallel.py             # Hybrid parallel correction (2D)
-│   │   ├── solver3d.py             # 3D solver helpers
-│   │   └── iterative3d.py          # 3D iterative correction
+├── dvfopt/                         # Installable Python package (single package)
+│   ├── constraints.py              # Constraint axis (2-tri, Jdet 2D/3D, 6-tet)
+│   ├── objectives.py               # Objective axis (L1/L2/None + anchor_term)
+│   ├── strategies/                 # Strategy axis (one module per family)
+│   ├── solver.py                   # Solver composition + auto_strategy
+│   ├── core/                       # Optimization algorithms — method-first
+│   │   ├── primitives/             # Shared constraint math + traced SLSQP driver
+│   │   ├── nmvf/                   # Heuristic neighborhood-mean smoother
+│   │   ├── barrier/                # Penalty -> log-barrier (_core.py = engine)
+│   │   ├── slsqp_windowed/         # Windowed Jdet SLSQP (serial/parallel, 2D+3D)
+│   │   ├── slsqp_fullgrid/         # Full-grid SLSQP (2-tri, 6-tet)
+│   │   ├── schwarz/                # Domain decomposition (_common.py = engine)
+│   │   ├── wallbreakers/           # Harmonic + ALM + refine/repair stacks
+│   │   ├── slp/                    # Sequential-LP / HiGHS (2-tri, 6-tet)
+│   │   └── marching/               # 2.5D marching + 3D-interior mop
 │   ├── jacobian/                   # Jacobian determinant computation
 │   │   ├── numpy_jdet.py           # Pure-numpy 2D/3D Jacobian
 │   │   ├── sitk_jdet.py            # SimpleITK wrapper
 │   │   ├── shoelace.py             # Shoelace (geometric quad area) constraint
+│   │   ├── tetrahedron_sign.py     # 6-tet signed volumes + adjoint
 │   │   └── monotonicity.py         # Injectivity/monotonicity constraint
 │   ├── dvf/                        # Deformation field utilities
 │   │   ├── generation.py           # Random DVF generation (2D/3D)
 │   │   └── scaling.py              # Bicubic rescaling (2D/3D)
-│   ├── laplacian/                  # Laplacian interpolation
-│   │   ├── matrix.py               # Sparse matrix construction
-│   │   └── solver.py               # LGMRES solver, end-to-end pipeline
+│   ├── laplacian/                  # Laplacian interpolation (was top-level)
+│   │   ├── utils.py                # Sparse matrix construction
+│   │   ├── solver.py               # CG/LGMRES solver
+│   │   └── correspondence.py       # Contour matching, end-to-end pipeline
+│   ├── testdata/                   # Test case registry (was top-level test_cases/)
 │   ├── viz/                        # Visualization (matplotlib)
-│   │   ├── snapshots.py            # Per-iteration heatmaps
-│   │   ├── fields.py               # Deformation field plots
-│   │   ├── grids.py                # Deformed grid visualization
-│   │   ├── closeups.py             # Checkerboard & neighborhood views
-│   │   └── pipeline.py             # End-to-end plotting pipeline
-│   ├── io/                         # I/O utilities
-│   │   └── nifti.py                # NIfTI loading via nibabel
-│   ├── utils/                      # Miscellaneous helpers
-│   │   ├── checkerboard.py         # Checkerboard image generation
-│   │   ├── correspondences.py      # Point correspondence utilities
-│   │   └── transform.py            # Affine/deformation field application
+│   ├── io/                         # I/O — nifti.py, fields.py (load_dvf/save_dvf)
+│   └── utils/                      # Miscellaneous helpers
 │
-├── test_cases/                     # Test case registry and data loaders
+├── dvfopt_gui/                     # PyQtGraph live-solver GUI
 │
 ├── notebooks/                      # Jupyter notebooks
 │   ├── slsqp-iterative-refactored.ipynb    # Iterative SLSQP — primary
@@ -728,19 +727,19 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 
 | Sub-package | Purpose |
 |-------------|---------|
-| `dvfopt.core` | Objective/constraint functions, `iterative_serial` (serial), `iterative_parallel` (hybrid), `iterative_3d`, window selection, SLSQP solver |
+| `dvfopt.core` | Method-first solver packages: `primitives`, `nmvf`, `barrier`, `slsqp_windowed` (`iterative_serial` / `iterative_parallel` / `iterative_3d`), `slsqp_fullgrid`, `schwarz`, `wallbreakers`, `slp`, `marching` |
 | `dvfopt.jacobian` | Pure-numpy 2D/3D Jacobian (`jacobian_det2D`, `jacobian_det3D`), SimpleITK wrapper, shoelace constraint, injectivity constraint |
 | `dvfopt.dvf` | `generate_random_dvf`, `scale_dvf` (2D/3D) |
 | `dvfopt.viz` | `plot_deformations` (2×2 panel), `plot_grid_before_after` (colored quad grids), `plot_step_snapshot` (per-iteration heatmap) |
-| `test_cases` | `SYNTHETIC_CASES` (8 correspondence-based), `RANDOM_DVF_CASES` (4 random), `REAL_DATA_SLICES` (8 real-data configs) — separate package |
+| `dvfopt.testdata` | `SYNTHETIC_CASES` (8 correspondence-based), `RANDOM_DVF_CASES` (4 random), `REAL_DATA_SLICES` (8 real-data configs) |
 | `dvfopt.utils` | Checkerboard generation |
-| `laplacian` | Sparse 1D/2D/3D Laplacian matrix with Dirichlet BCs, CG/LGMRES solvers, contour correspondence matching, slice-to-slice registration pipeline (separate package) |
+| `dvfopt.laplacian` | Sparse 1D/2D/3D Laplacian matrix with Dirichlet BCs, CG/LGMRES solvers, contour correspondence matching, slice-to-slice registration pipeline |
 
 ## Test Cases
 
 ### Synthetic (Correspondence-Based)
 
-Defined in the `test_cases/` package (for example, `test_cases/_cases.py`) as `SYNTHETIC_CASES`. Deformation fields constructed by solving a Laplacian system with Dirichlet boundary conditions at correspondence points:
+Defined in the `dvfopt.testdata` package (for example, `dvfopt/testdata/_cases.py`) as `SYNTHETIC_CASES`. Deformation fields constructed by solving a Laplacian system with Dirichlet boundary conditions at correspondence points:
 
 $$\nabla^2 u = 0 \quad \text{(interior)}, \qquad u(\mathbf{p}_i) = \mathbf{m}_i - \mathbf{f}_i \quad \text{(correspondences)}$$
 
@@ -774,7 +773,7 @@ Upscaled cases (5×5 → larger) produce smooth spiral-like patterns via bicubic
 
 ### Real Data
 
-Axial slices from ANTs registration warps (`.npy` files), available at full resolution (320×456) and downscaled (64×91). Real data files are not included in the repository — see `test_cases/_cases.py` for the `REAL_DATA_SLICES` configuration.
+Axial slices from ANTs registration warps (`.npy` files), available at full resolution (320×456) and downscaled (64×91). Real data files are not included in the repository — see `dvfopt/testdata/_cases.py` for the `REAL_DATA_SLICES` configuration.
 
 ## Installation
 

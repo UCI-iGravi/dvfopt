@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Research codebase for correcting **negative Jacobian determinants** in 2D/3D deformation (displacement) fields. The installable `dvfopt/` package implements three correction methods (heuristic NMVF, full-grid SLSQP, iterative SLSQP). Notebooks in `notebooks/` demonstrate each method; `benchmarks/` compares performance across registration algorithms.
+Research codebase for correcting **negative Jacobian determinants** in 2D/3D deformation (displacement) fields. The installable `dvfopt/` package composes a solve out of three orthogonal axes — Constraint × Objective × Strategy — over a method-first `dvfopt/core/` (one package per algorithm family). Notebooks in `notebooks/` demonstrate each method; `benchmarks/` compares performance across registration algorithms.
+
+**Adding a method / constraint / objective? Read [ARCHITECTURE.md](ARCHITECTURE.md) first** — it holds the dependency rules and the three extension checklists. This file is the map of what exists.
 
 ## Setup & Commands
 
@@ -26,6 +28,12 @@ exact env; `uv lock --check` verifies the lock still matches pyproject's
 constraints — CI's test leg runs this, the coverage leg installs from the lock
 via `uv sync --locked`). pyproject deps stay unpinned; the lock is the opt-in
 reproducible snapshot. Re-lock after editing dependency constraints (`uv lock`).
+
+`requires-python = ">=3.10"` and `scipy>=1.15,<1.19`: the traced SLSQP driver
+(`dvfopt.core.primitives.slsqp`) vendors scipy's `_slsqplib` private internals,
+which are stable across 1.15–1.18 only, and scipy>=1.15 already drops 3.9.
+`requirements-dev.txt` carries the same scipy pin. Ruff's `target-version`
+deliberately trails at `py39` (see the comment in pyproject).
 
 The install exposes a `dvfopt` CLI (`dvfopt {info, correct, gui}`, also `python -m dvfopt`) over the library — see [dvfopt/cli.py](dvfopt/cli.py); `correct` drives the solver / per-slice sweep / 2.5D / 3D pipelines and writes `summary.json` + `convergence.png` reports. Exit codes: 0 feasible / 1 folds remain / 2 usage errors.
 
@@ -68,12 +76,11 @@ asv run                    # asv_bench/benchmarks/, config in asv.conf.json
 ### Optimization internals
 
 - **phi flattening — TWO conventions exist, do not cross-mix them:**
-  - **Windowed Jdet SLSQP family** (`dvfopt/core/slsqp/constraints*.py`, `gradients*.py`, `iterative*.py`, the windowed serial/parallel solvers, `dvfopt/core/iterative2d_barrier.py`, `dvfopt/core/iterative3d_barrier*.py`, `dvfopt/core/barrier_objective.py`):
-    `phi[:N]` = `dx`, `phi[N:2N]` = `dy` (3D: also `phi[2N:]` = `dz`). I.e. **x-channel first**.
-  - **All 2-triangle solvers** (the 2tri barrier, full-grid SLSQP, Schwarz, wall-breakers m02/m03/m10/m12/m14, `_cluster_2tri`, the shared `tri_primitives` module):
-    `phi[:N]` = `dy`, `phi[N:]` = `dx`. I.e. **y-channel first**.
-  - A flat phi vector from a Jdet-SLSQP helper CANNOT be passed to a 2-triangle helper without channel-swapping. If you write a new helper that may consume both, add an assertion on the layout. Helpers in `tri_primitives.py` and `_barrier_core.py` (anchor term) are the single sources of truth for the 2-triangle world — reuse them rather than re-deriving partials.
-- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `laplacian/utils.py`.
+  - **`PhiPack.DX_FIRST`** — `phi[:N]` = `dx`, `phi[N:2N]` = `dy` (3D: also `phi[2N:]` = `dz`). Declared by `JdetConstraint2D`, `JdetConstraint3D` **and `Tet6Constraint3D`** (the 6-tet family packs x-first so it can share the 3D barrier plumbing with Jdet3D). Modules: `dvfopt/core/slsqp_windowed/*`, `dvfopt/core/primitives/{jdet2d,jdet3d}.py`, `dvfopt/core/barrier/{jdet2d,jdet3d,jdet3d_torch,tet3d_torch}.py`, `dvfopt/core/slsqp_fullgrid/tet3d.py`, `dvfopt/core/slp/{lp_direct_6tet,cluster_lp_6tet}.py`, the 3D wallbreakers, `dvfopt/jacobian/tetrahedron_sign.py`.
+  - **`PhiPack.DY_FIRST`** — `phi[:N]` = `dy`, `phi[N:]` = `dx`. Declared by `TriConstraint2D` / `TriConstraint2DFullCoverage` (2D 2-triangle only). Modules: `dvfopt/core/primitives/tri.py`, `dvfopt/core/barrier/tri2d.py`, `dvfopt/core/slsqp_fullgrid/tri2d.py`, `dvfopt/core/schwarz/{tri2d,_cluster}.py`, the 2D wallbreakers (m02/m03/m10/m12/m14), `dvfopt/core/slp/{lp_direct_2tri,cluster_lp_2tri,tri_linearize}.py`.
+  - So the split is **not** "2-tri/6-tet vs Jdet" — it is `Constraint.pack`, and that attribute is the only thing to trust. `dvfopt/core/schwarz/_common.py` is pack-agnostic (slices `(C, *shape)` arrays, never flattens).
+  - A flat phi vector from one pack CANNOT be passed to a helper of the other without channel-swapping. A helper that genuinely sees both — `dvfopt/core/marching/*` mixes a DX_FIRST 6-tet stack with a DY_FIRST 2-tri term — asserts on the pack lengths at the boundary; copy that pattern. Helpers in `dvfopt/core/primitives/tri.py` and `anchor_term` in `dvfopt/objectives.py` are the single sources of truth — reuse them rather than re-deriving partials.
+- **Laplacian matrix:** uses `z*ny*nx + y*nx + x` flattening in `dvfopt/laplacian/utils.py`.
 - **Windowed approach:** iterative SLSQP finds worst-Jdet pixel, computes bounding box of connected negative region + 1px positive border (min 3×3), runs `scipy.optimize.minimize(method='SLSQP')` on that sub-window with frozen edges. Grows window by 2 if needed.
 - **Parallel variant:** `iterative_parallel()` batches non-overlapping windows into `ProcessPoolExecutor`. Falls back to serial for single windows (avoids Windows spawn overhead).
 
@@ -94,13 +101,17 @@ result = Solver(
 ).fit(phi)
 ```
 
-**Constraints** ([dvfopt/constraints.py](dvfopt/constraints.py)) — `TriConstraint2D`, `TriConstraint2DFullCoverage`, `JdetConstraint2D`, `JdetConstraint3D`. Each provides `values()`, `adjoint(v)`, optional `jacobian()`, plus `flatten/unflatten` between `(C, *shape)` arrays and the flat decision vector. The pack convention is encoded in `Constraint.pack` (`PhiPack.DY_FIRST` for 2-tri, `PhiPack.DX_FIRST` for Jdet).
+**Constraints** ([dvfopt/constraints.py](dvfopt/constraints.py)) — `TriConstraint2D`, `TriConstraint2DFullCoverage`, `JdetConstraint2D`, `JdetConstraint3D`, `Tet6Constraint3D`. Each provides `values()`, `adjoint(v)`, optional `jacobian()` (SLSQP path only), plus `flatten/unflatten` between `(C, *shape)` arrays and the flat decision vector, and declares `pack` + `dim`. `@register_constraint('<label>')` + `make_constraint(name, shape)` back the string-label path. The pack convention is encoded in `Constraint.pack` — `PhiPack.DY_FIRST` for the 2D 2-tri pair, `PhiPack.DX_FIRST` for Jdet2D/Jdet3D **and 6-tet** (see the phi-flattening note above).
 
-**Objectives** ([dvfopt/objectives.py](dvfopt/objectives.py)) — `L1Objective(eps)`, `L2Objective()`, `NoneObjective()`. Wrap the shared `anchor_term` from `_barrier_core.py`. Composition (`+`, `*`) supported for research.
+**Objectives** ([dvfopt/objectives.py](dvfopt/objectives.py)) — `L1Objective(eps)`, `L2Objective()`, `NoneObjective()`, over the shared `anchor_term` (which lives in this module — pure numpy, must not import `dvfopt.core`). An `Objective` is `__call__(diff) -> (value, grad)` and nothing else; there is no operator composition. Every solver in the package takes `objective=` end-to-end (no string anchors left). Kernels that cannot call back into Python (numba wallbreakers, torch autograd) take the legacy `(kind, eps_l1)` pair from `objectives._kind_eps(objective)`.
 
-**Strategies** ([dvfopt/strategies/](dvfopt/strategies/)) — `NMVFStrategy` (heuristic neighborhood-mean smoother, original method), `SLPStrategy` (sequential-LP / `auto_slp` — the L1-minimising strict-feasibility champion: per-cluster trust-region SLP + m14 seed + HiGHS L1 step, continuous parallel cluster scheduler; promoted from `research/strict_feasibility_2d` into `dvfopt/core/slp/`; also accepts the 3D 6-tet constraint via the promoted `lp_direct_6tet`/`cluster_lp_6tet` solvers with the research-validated `seed_3d='m10'` default), `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `SchwarzWrapperStrategy(inner=…)` (generic Schwarz wrapper around any 2-tri or 6-tet inner — auto-detects 2D vs 3D), `HarmonicALMBarrierStrategy` (alias `M10Strategy`), `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`), `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`). 3D analogues for the wallbreakers: `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`), `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`), `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`). The class names are phase-stack-explicit: each algorithm in the pipeline (harmonic Laplacian extension, PHR-ALM, log-barrier polish, soft-penalty L2 refine, harmonic repair, Schwarz domain decomposition) appears in the name. The dedicated `Schwarz*` classes are equivalent to `SchwarzWrapperStrategy(inner=...)` with the inner pinned — both run through the shared `dvfopt.core.wallbreakers._schwarz_common` core (one implementation of the Schwarz decomposition, not two). Each Strategy is a dataclass with strategy-specific knobs. `accepts_constraints` and `supports_3d` class attrs declare compatibility; `Solver.__init__` checks at construction.
+**Strategies** ([dvfopt/strategies/](dvfopt/strategies/)) — `NMVFStrategy` (heuristic neighborhood-mean smoother, original method), `SLPStrategy` (sequential-LP / `auto_slp` — the L1-minimising strict-feasibility champion: per-cluster trust-region SLP + m14 seed + HiGHS L1 step, continuous parallel cluster scheduler; promoted from `research/strict_feasibility_2d` into `dvfopt/core/slp/`; also accepts the 3D 6-tet constraint via the promoted `lp_direct_6tet`/`cluster_lp_6tet` solvers with the research-validated `seed_3d='m10'` default), `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `SchwarzWrapperStrategy(inner=…)` (generic Schwarz wrapper around any 2-tri or 6-tet inner — auto-detects 2D vs 3D), `HarmonicALMBarrierStrategy` (alias `M10Strategy`), `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`), `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`). 3D analogues for the wallbreakers: `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`), `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`), `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`). The class names are phase-stack-explicit: each algorithm in the pipeline (harmonic Laplacian extension, PHR-ALM, log-barrier polish, soft-penalty L2 refine, harmonic repair, Schwarz domain decomposition) appears in the name. The dedicated `Schwarz*` classes are equivalent to `SchwarzWrapperStrategy(inner=...)` with the inner pinned — both run through the shared `dvfopt.core.schwarz._common` core (one implementation of the Schwarz decomposition, not two). Each Strategy is a dataclass with strategy-specific knobs.
+
+`accepts_constraints`, `accepts_objectives` and `supports_3d` class attrs declare compatibility (`None` = accept anything); `Solver.__init__` checks all three at construction and raises `IncompatibleConstraintError` / `IncompatibleObjectiveError` (both `dvfopt.exceptions`, both `TypeError` subclasses) rather than failing mid-solve. `SLPStrategy` declares `accepts_objectives = (L1Objective, NoneObjective)` — it is an L1 method and cannot honour an L2 anchor. `BarrierStrategy(objective_override=...)` lets a composed pipeline pin the barrier leg's objective independently of the Solver's.
 
 **Solver** ([dvfopt/solver.py](dvfopt/solver.py)) — composes the three; provides `from_spec(constraint='2tri', ...)` string-based construction and one-shot `correct_dvf(phi, ...)`. `auto_strategy(constraint, init_n_neg, init_min, objective_label)` encodes the strategy-selection heuristic: the 2-tri constraint family with the L1 objective auto-routes to `'slp'` (the champion) at every fold tier; other regimes keep the density-tiered heuristic. 6-tet 3D tiers like 2D: extremes (n_neg > 5000 or min < -10) route to the 3D wallbreakers (`m10_3d` for L2, `m14_schwarz_3d` on >200K-voxel volumes, else `m14_3d`); everything else keeps `barrier`.
+
+**SolveInfo** — every `Strategy.solve` normalises its return through `_build_solve_info`, so callers always get `(phi_out, SolveInfo)` with `.phases` / `.total_iter` / `.extras`. With `record_history=True` the SLSQP strategies also lift each run's per-major-iteration trace (from the traced driver) to the stable path `SolveInfo.extras['slsqp_trace']` — a list of `{'phase': ..., 'iters': [...]}` — so the GUI and reports never reach into per-phase `PhaseInfo.extras`.
 
 **DVFopt facade** ([dvfopt/unified.py](dvfopt/unified.py)) — per-slice orchestration over `Solver`: 2D/3D auto-detection, tabular reports, plots. Use when you want `DVFoptConfig` string-based config and per-slice analysis across a 3D volume.
 
@@ -110,16 +121,17 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 
 | Strategy | Delegates to |
 |---|---|
-| `NMVFStrategy` (Jdet 2D) | `dvfopt.core._nmvf.nmvf_correct_2d` |
+| `NMVFStrategy` (Jdet 2D) | `dvfopt.core.nmvf.nmvf_correct_2d` |
 | `SLPStrategy` (2-tri + 6-tet) | 2D: `dvfopt.core.slp.cluster_slp_iter` (large) / `slp_iter` (small); 3D: `cluster_slp_iter_3d` / `slp_iter_3d`; auto-routes by pixel/voxel count |
-| `BarrierStrategy` (any constraint) | `_barrier_core.run_penalty_barrier_lbfgs` |
-| `SLSQPFullGridStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_slsqp.iterative_2d_tri_slsqp` |
-| `SLSQPWindowedStrategy` (Jdet) | `dvfopt.core.slsqp.iterative.iterative_serial` / `iterative3d` |
-| `SchwarzStrategy` (2-tri) | `dvfopt.core.iterative2d_tri_schwarz.iterative_2d_tri_schwarz` |
+| `BarrierStrategy` (any constraint) | `dvfopt.core.barrier._core.run_penalty_barrier_lbfgs` |
+| `SLSQPFullGridStrategy` (2-tri) | `dvfopt.core.slsqp_fullgrid.tri2d.iterative_2d_tri_slsqp` |
+| `SLSQPFullGrid3DStrategy` (6-tet) | `dvfopt.core.slsqp_fullgrid.tet3d.iterative_3d_tet_slsqp` |
+| `SLSQPWindowedStrategy` (Jdet) | `dvfopt.core.slsqp_windowed.iterative.iterative_serial` / `.iterative3d.iterative_3d` |
+| `SchwarzStrategy` (2-tri) | `dvfopt.core.schwarz.tri2d.iterative_2d_tri_schwarz` |
 | `HarmonicALMBarrierStrategy` (alias `M10Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_harmonic_polished` |
 | `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair` |
-| `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` (thin closure shim around `_schwarz_common.cluster_schwarz_2d_tri`) |
-| `SchwarzWrapperStrategy(inner=...)` | `dvfopt.core.wallbreakers._schwarz_common.cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet` directly, calling `inner.solve` per cluster |
+| `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) | `dvfopt.core.wallbreakers.iterative_2d_tri_refine_repair_schwarz` (thin closure shim around `schwarz._common.cluster_schwarz_2d_tri`) |
+| `SchwarzWrapperStrategy(inner=...)` | `dvfopt.core.schwarz._common.cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet` directly, calling `inner.solve` per cluster |
 | `HarmonicALMBarrier3DStrategy` (alias `M10TetStrategy`) | `dvfopt.core.wallbreakers._alm_3d` (harmonic + ALM-3D + polish) |
 | `HarmonicALMRefineRepair3DStrategy` (alias `M14TetStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d` |
 | `SchwarzHarmonicALMRefineRepair3DStrategy` (alias `M14Schwarz3DStrategy`) | `dvfopt.core.wallbreakers._refine_repair_3d_schwarz` |
@@ -131,9 +143,12 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 | `harmonic_extension_2d()` (m02) | `dvfopt.core.wallbreakers._harmonic` | Laplacian extension over fold cores |
 | `augmented_lagrangian_2d()` (m03) | `dvfopt.core.wallbreakers._alm` | PHR-ALM with L-BFGS-B |
 | `l2_refine_2d()` (m12) | `dvfopt.core.wallbreakers._l2_refine` | Soft-penalty refinement of a feasible seed |
-| `solve_cluster_2tri_2d()` | `dvfopt.core._cluster_2tri` | Per-cluster SLSQP with frozen-edge interior mask |
-| `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.tri_primitives` | Canonical 2-tri constraint + adjoint |
-| `anchor_term()` / `run_penalty_barrier_lbfgs()` | `dvfopt.core._barrier_core` | Shared anchor + penalty→barrier homotopy |
+| `solve_cluster_2tri_2d()` | `dvfopt.core.schwarz._cluster` | Per-cluster SLSQP with frozen-edge interior mask |
+| `tri_areas_flat()` / `tri_grad_T_v()` | `dvfopt.core.primitives.tri` | Canonical 2-tri constraint + adjoint |
+| `anchor_term()` | `dvfopt.objectives` | Shared anchor math behind `L1/L2/NoneObjective` |
+| `run_penalty_barrier_lbfgs()` | `dvfopt.core.barrier._core` | Shared penalty→barrier homotopy engine |
+| `cluster_schwarz_2d_tri()` / `cluster_schwarz_3d_tet()` | `dvfopt.core.schwarz._common` | Shared Schwarz decomposition engine |
+| `minimize_slsqp_traced()` / `ineq_dict()` | `dvfopt.core.primitives.slsqp` | Traced C-SLSQP driver (scipy's own core) + its old-style ineq-constraint dict helper — the single driver behind all 10 SLSQP call sites |
 | `fold_stats()` / `constraint_fold_stats()` / `FoldStats` | `dvfopt.metrics` | Canonical fold statistics (n_neg / n_below / min / severity) shared by pipelines, CLI, reports |
 | `load_dvf()` / `save_dvf()` | `dvfopt.io.fields` | Field I/O — `.npy`/`.npz` + NIfTI/MetaImage/NRRD (moved from `dvfopt_gui.io_formats`) |
 
@@ -169,16 +184,16 @@ exact-feasibility solver with escalating freedom cannot move them.
 |----------|--------|---------|
 | `correct_dvf_3d()` / `Correct3DReport` | `dvfopt.pipeline_3d` | End-to-end true-3D fold-*repair* orchestrator (6-tet feasibility); complements the 2.5D *prevention* pipeline above |
 | `jacobian_det2D()` / `jacobian_det3D()` | `dvfopt.jacobian.numpy_jdet` | Fast numpy Jacobian determinant |
-| `solveLaplacianFromCorrespondences()` | `laplacian.solver` | Build DVF from correspondences |
-| `sliceToSlice3DLaplacian()` | `laplacian.correspondence` | Full slice-to-slice Laplacian registration pipeline |
-| `make_deformation()` / `make_random_dvf()` | `test_cases` | Generate test deformation fields |
+| `solveLaplacianFromCorrespondences()` | `dvfopt.laplacian.solver` | Build DVF from correspondences |
+| `sliceToSlice3DLaplacian()` | `dvfopt.laplacian.correspondence` | Full slice-to-slice Laplacian registration pipeline |
+| `make_deformation()` / `make_random_dvf()` / `SYNTHETIC_CASES` | `dvfopt.testdata` | Generate test deformation fields (`from dvfopt.testdata import ...`) |
 
 ### Directory layout
 
-- `dvfopt/` — installable package (core solvers, jacobian, dvf utils, viz, io)
+- `dvfopt/` — the installable package; **one package, no sibling top-level packages** since 0.5.0. `core/` is method-first: one sub-package per algorithm family — `primitives/` (shared constraint math + the traced SLSQP driver, zero method logic), `nmvf/`, `barrier/` (`_core.py` is the shared homotopy engine), `slsqp_windowed/`, `slsqp_fullgrid/`, `schwarz/` (`_common.py` is the shared decomposition engine), `wallbreakers/`, `slp/`, `marching/`. Alongside `core/`: `jacobian/`, `dvf/`, `viz/`, `io/`, `utils/`, plus the absorbed `laplacian/` and `testdata/`.
 - `dvfopt_gui/` — PyQtGraph live-solver GUI (`app.py` + the `LiveSolverWindow` mixins `_win_fileio.py`/`_win_render.py`/`_win_run.py` and shared helpers `_shared.py`, plus `worker.py`, `convergence.py`, `history.py`, `persistence.py`, `demo.py`, `overview.py`, `strategy_params.py`, `logdock.py`; displacement-field I/O now lives in the library at [dvfopt/io/fields.py](dvfopt/io/fields.py) — the GUI imports the `*_sitk` loaders from there). The GUI also supports a **true-3D mode**: load a `(3, D, H, W)` volume and pick the `6-tet (3D)` or `Jdet (3D)` constraint to solve the whole volume with the 3D pipelines (M14Tet/M14-Schwarz3D/M10Tet/SLSQP-fullgrid-3D, or Barrier/SLSQP-windowed for Jdet3D). 3D wallbreaker runs stream per-phase snapshots and honor Stop at phase boundaries; the viewer renders the 6-tet min-volume slice of the current z. The method menu now includes **SLP (default 2-tri champion; also in the tet3d menu as SLP-3D)** and an **Auto** picker (`auto_strategy`, available for the 2D families AND the 3D constraints); each explicit method-menu entry constructs through the dvfopt strategy registry (`worker._MID_TO_LABEL` → `make_strategy`, parity-tested against the menus in [tests/test_gui_strategy_parity.py](tests/test_gui_strategy_parity.py) — a new strategy needs a registry label + a menu-spec row + a table row); the **Pipeline ▾** button runs `correct_dvf_25d` (2.5D marching, needs dz≡0 — a violation prompts an explicit, undoable consent dialog to zero the dz channel before running) or the one-click **full pipeline** (per-slice 2D → 2.5D). The tet3d menu adds the **full 3D pipeline** (`correct_dvf_3d`) and a torch-gated GPU barrier. Loads accept NIfTI/MetaImage/NRRD displacement fields via SimpleITK (and export back to `.npy`/`.nii.gz`); loads are threaded and reject non-finite fields. The feasibility threshold is editable (`thr:` spinbox), 3D metrics are cached (fast z-scrub/hover), the undo stack is byte-budgeted, a clickable per-slice fold strip sits under the plot, every strategy's dataclass knobs — spanning the 2D, tet3d, and jdet3d families — are editable via Params → Strategy, and "Run section" works on 3D sub-volumes (Rect ROI + z-range). Solver-path runs record their SolveInfo: the convergence chart marks pipeline-stage boundaries (stage names ride on the history snapshots and survive save/load), View → "Save convergence report…" renders `plot_solve_info`, and a View → "Solver log" dock streams the dvfopt logger live (its level drives the worker's `verbose`). An **Injectivity gap (min axial)** view mode renders the monotonicity-gap map in 2D and 3D, and the Params dialog renders `float | None` knobs (e.g. `injectivity_threshold`) as checkbox-enabled overrides — the 2D windowed method exposes exactly its constraint-mode toggles.
-- `laplacian/` — standalone Laplacian interpolation package (matrix construction, CG/LGMRES solvers, contour correspondence matching)
-- `test_cases/` — standalone test case definitions and builders (synthetic, random DVF, real-data slices)
+- `dvfopt/laplacian/` — Laplacian interpolation (matrix construction, CG/LGMRES solvers, contour correspondence matching). Was the top-level `laplacian/` package before 0.5.0 — import as `from dvfopt.laplacian import ...`.
+- `dvfopt/testdata/` — test case definitions and builders (synthetic, random DVF, real-data slices). Was the top-level `test_cases/` package before 0.5.0 — import as `from dvfopt.testdata import ...`.
 - `notebooks/` — canonical experiment notebooks
 - `benchmarks/` — performance comparison notebooks, grouped into subfolders:
   - `solvers/slsqp/` — SLSQP windowed solver comparisons (serial vs parallel, constraint modes, windowed vs fullgrid, 3D correction)
