@@ -4,7 +4,7 @@ Previously untested module — these guard the public contract:
 - The return shape switches between ``phi`` and ``(phi, history)`` based on
   ``record_history``. The unified API relied on tuple-vs-ndarray detection,
   so silent contract drift would re-introduce the unified.py bug.
-- ``anchor='l1'`` and ``anchor='none'`` paths must work; only ``'l2'`` was
+- ``L1Objective`` and ``NoneObjective`` paths must work; only L2 was
   exercised indirectly before.
 """
 
@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from dvfopt.core.barrier.tri2d import _tri_areas_flat, iterative_2d_tri_barrier
+from dvfopt.objectives import make_objective
 
 
 def _planted_fold(H=12, W=12, seed=0):
@@ -64,7 +65,9 @@ class TestAnchorModes:
     @pytest.mark.parametrize("anchor", ["l2", "l1", "none"])
     def test_anchor_does_not_crash(self, anchor):
         phi = _planted_fold(H=10, W=10, seed=1)
-        out = iterative_2d_tri_barrier(phi, anchor=anchor, verbose=0, record_history=False)
+        out = iterative_2d_tri_barrier(
+            phi, objective=make_objective(anchor), verbose=0, record_history=False
+        )
         assert out.shape == phi.shape
         assert np.all(np.isfinite(out))
 

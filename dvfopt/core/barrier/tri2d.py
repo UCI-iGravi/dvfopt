@@ -45,6 +45,7 @@ from dvfopt.core.primitives.tri import (
 from dvfopt.core.primitives.tri import (
     tri_grad_T_v_full_coverage as _tri_grad_T_v_full_coverage,
 )
+from dvfopt.objectives import L2Objective
 
 
 # ----------------------------------------------------------------- main entry
@@ -56,8 +57,7 @@ def iterative_2d_tri_barrier(
     lam_schedule=DEFAULT_LAM_SCHEDULE,
     mu_schedule=DEFAULT_MU_SCHEDULE,
     max_minimize_iter=300,
-    anchor='l2',
-    eps_l1=1e-4,
+    objective=None,
     verbose=1,
     record_history=False,
     full_coverage=False,
@@ -76,10 +76,9 @@ def iterative_2d_tri_barrier(
         Continuation schedules for penalty (lam) and barrier (mu).
     max_minimize_iter : int
         Inner L-BFGS-B iteration cap per (lam, mu) step.
-    anchor : {'l2', 'l1', 'none'}
-        Anchor norm against ``deformation_2hw`` itself.
-    eps_l1 : float
-        Smoothing for the L1 anchor (only used when ``anchor='l1'``).
+    objective : Objective or None
+        Anchor term measured against ``deformation_2hw`` itself.
+        ``None`` (default) means :class:`~dvfopt.objectives.L2Objective`.
     verbose : int
         0 = silent, 1 = step-level, 2 = step-level + scipy.
     record_history : bool
@@ -98,6 +97,7 @@ def iterative_2d_tri_barrier(
     phi_corrected : ndarray, shape (2, H, W)
     history : list, only if ``record_history=True``
     """
+    objective = objective or L2Objective()
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     if deformation_2hw.ndim == 4:  # (3, 1, H, W)
@@ -118,7 +118,7 @@ def iterative_2d_tri_barrier(
         scheme = '2-tri full-coverage' if full_coverage else '2-tri'
         log_info(
             f'[2d-tri-barrier init] grid {H}x{W}  threshold={threshold}  '
-            f'margin={margin}  anchor={anchor}  scheme={scheme}'
+            f'margin={margin}  objective={objective!r}  scheme={scheme}'
         )
         log_info(f'[init] tri neg={init_neg}  min={init_min:+.5f}')
 
@@ -133,8 +133,7 @@ def iterative_2d_tri_barrier(
         lam_schedule=lam_schedule,
         mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
-        anchor=anchor,
-        eps_l1=eps_l1,
+        objective=objective,
         verbose=verbose,
         record_history=record_history,
     )

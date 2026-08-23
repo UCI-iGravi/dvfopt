@@ -24,6 +24,7 @@ from dvfopt.jacobian.tetrahedron_sign import (
     tet_grad_T_v,
     tet_volumes_flat,
 )
+from dvfopt.objectives import L2Objective
 
 
 class TestIdentity:
@@ -727,7 +728,9 @@ class TestTetBarrierTorch:
         phi[1, 1, 1, 1] = 1.5
         phi[2, 1, 1, 1] = 1.5
 
-        phi_out = iterative_3d_tet_barrier_torch(phi, verbose=0, device='cpu', anchor='l2')
+        phi_out = iterative_3d_tet_barrier_torch(
+            phi, verbose=0, device='cpu', objective=L2Objective()
+        )
         V = six_tet_volumes_3d(phi_out)
         assert (V <= 0).sum() == 0
         assert V.min() >= 0.01 - 1e-4  # threshold (default 0.01), slack for float32
@@ -742,7 +745,7 @@ class TestTetBarrierTorch:
         phi[2, 3, 3, 3] = 2.0
 
         phi_w = iterative_3d_tet_barrier_torch(
-            phi, windowed=True, pad=2, verbose=0, device='cpu', anchor='l2'
+            phi, windowed=True, pad=2, verbose=0, device='cpu', objective=L2Objective()
         )
         V_w = six_tet_volumes_3d(phi_w)
         assert (V_w <= 0).sum() == 0

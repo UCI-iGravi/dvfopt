@@ -36,6 +36,7 @@ def iterative_3d(
     voxel_cap_stall_threshold=5,
     enforce_injectivity=False,
     injectivity_threshold=None,
+    objective=None,
 ):
     """Iterative SLSQP correction of negative Jacobian determinants in 3D.
 
@@ -279,6 +280,7 @@ def iterative_3d(
             max_window_voxels=cur_voxel_cap,
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
+            objective=objective,
         )
         quality_matrix = (
             _quality_patch(quality_matrix, jacobian_matrix, (_cz, _cy, _cx), subvolume_size)

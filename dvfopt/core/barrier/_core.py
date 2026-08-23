@@ -18,9 +18,9 @@ two-phase continuation:
   the feasible interior.
 
 The constraint ``T(phi)`` and its adjoint ``J^T @ v`` differ per solver,
-so this core takes them as callables. The anchor mode (``'l2' / 'l1' /
-'none'``) lifts out of the tri-barrier file so the other solvers can
-trivially gain non-L2 anchors.
+so this core takes them as callables. The anchor term is an
+:class:`~dvfopt.objectives.Objective` (``L2`` / ``L1`` / ``None``), so
+every solver can trivially gain a non-L2 anchor.
 """
 
 from __future__ import annotations
@@ -32,25 +32,11 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._logging import log_info, log_warning
+from dvfopt.objectives import L2Objective, Objective
 
 # Schedules shared across all CPU barrier solvers.
 DEFAULT_LAM_SCHEDULE: tuple[float, ...] = (1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
 DEFAULT_MU_SCHEDULE: tuple[float, ...] = (1e-1, 1e-2, 1e-3, 1e-4)
-
-
-def anchor_term(diff: np.ndarray, kind: str, eps_l1: float = 1e-4):
-    """Return ``(value, gradient)`` of the anchor term.
-
-    ``kind`` is one of ``'l2'``, ``'l1'`` (smoothed), ``'none'``.
-    """
-    if kind == 'l2':
-        return 0.5 * float(diff @ diff), diff.copy()
-    if kind == 'l1':
-        s = np.sqrt(diff * diff + eps_l1 * eps_l1)
-        return float((s - eps_l1).sum()), diff / s
-    if kind == 'none':
-        return 0.0, np.zeros_like(diff)
-    raise ValueError(f"unknown anchor kind: {kind!r}")
 
 
 def _penalty_objective(
@@ -62,12 +48,11 @@ def _penalty_objective(
     constraint_adjoint,
     target,
     active_mask,
-    anchor,
-    eps_l1,
+    objective,
 ):
     """Smooth quadratic exterior penalty on negative-T cells."""
     diff = phi_flat - phi_anchor
-    val, grad = anchor_term(diff, anchor, eps_l1)
+    val, grad = objective(diff)
     T = constraint_values(phi_flat)
     viol = np.maximum(0.0, target - T)
     if active_mask is not None:
@@ -88,8 +73,7 @@ def _barrier_objective(
     constraint_adjoint,
     threshold,
     active_mask,
-    anchor,
-    eps_l1,
+    objective,
     grad_rtol=0.0,
 ):
     """Log-barrier interior penalty. Returns ``(+inf, zeros)`` on infeasible iterates
@@ -105,7 +89,7 @@ def _barrier_objective(
     so no tet can cross the threshold undetected; only the descent
     direction (and thus the final L2/L1, negligibly) changes."""
     diff = phi_flat - phi_anchor
-    val, grad = anchor_term(diff, anchor, eps_l1)
+    val, grad = objective(diff)
     T = constraint_values(phi_flat)
     slack = T - threshold
     if active_mask is not None:
@@ -146,8 +130,7 @@ def run_penalty_barrier_lbfgs(
     mu_schedule: tuple[float, ...] = DEFAULT_MU_SCHEDULE,
     max_iter: int = 300,
     active_mask: Optional[np.ndarray] = None,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Optional[Objective] = None,
     bounds=None,
     barrier_grad_rtol: float = 0.0,
     verbose: int = 0,
@@ -178,14 +161,17 @@ def run_penalty_barrier_lbfgs(
         entries are penalised / barrier'd (the windowed 3D solver uses this
         to ignore the patch rim whose one-sided-difference Jdet does not
         match the global field).
-    anchor
-        ``'l2'`` (default), ``'l1'`` (smoothed), or ``'none'``.
+    objective
+        Anchor term, called as ``objective(phi_flat - phi_anchor)`` ->
+        ``(value, gradient)``. ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective`.
 
     Returns
     -------
     phi_flat : ndarray
     info : dict with keys ``feasible``, ``lam_steps``, ``mu_steps``, ``history``.
     """
+    objective = objective or L2Objective()
     target = threshold + margin
     phi_flat = phi_init_flat.copy()
     history = []
@@ -214,8 +200,7 @@ def run_penalty_barrier_lbfgs(
         constraint_values=constraint_values,
         constraint_adjoint=constraint_adjoint,
         active_mask=active_mask,
-        anchor=anchor,
-        eps_l1=eps_l1,
+        objective=objective,
     )
 
     # Initial feasibility check.

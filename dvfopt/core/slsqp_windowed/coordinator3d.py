@@ -6,8 +6,7 @@ import numpy as np
 from scipy.optimize import NonlinearConstraint
 
 from dvfopt._defaults import _adaptive_maxiter, _log, _unpack_size_3d
-from dvfopt.core.slsqp_windowed._objective import objective_euc
-from dvfopt.core.slsqp_windowed._window import _window_minimize
+from dvfopt.core.slsqp_windowed._window import DEFAULT_OBJECTIVE, _window_minimize
 from dvfopt.core.slsqp_windowed.constraints3d import (
     _build_constraints_3d,
     _build_constraints_3d_maxwindow,
@@ -178,6 +177,7 @@ def _optimize_single_window_3d(
     patch_ctx=None,
     enforce_injectivity=False,
     injectivity_threshold=None,
+    objective=None,
 ):
     """Run SLSQP on one 3D sub-volume.  Returns ``(result_x, elapsed, success)``.
 
@@ -214,9 +214,10 @@ def _optimize_single_window_3d(
             injectivity_threshold=injectivity_threshold,
         )
 
+    obj = objective or DEFAULT_OBJECTIVE
     t0 = time.time()
     result = _window_minimize(
-        lambda phi1: objective_euc(phi1, phi_init_sub_flat),
+        lambda phi1: obj(phi1 - phi_init_sub_flat),
         phi_sub_flat,
         constraints,
         max_minimize_iter,
@@ -232,7 +233,9 @@ def _optimize_single_window_3d(
 # ---------------------------------------------------------------------------
 # Full-grid optimisation fallback (non-cubic grids)
 # ---------------------------------------------------------------------------
-def _full_grid_step_3d(phi, phi_init, D, H, W, threshold, max_minimize_iter, method_name, verbose):
+def _full_grid_step_3d(
+    phi, phi_init, D, H, W, threshold, max_minimize_iter, method_name, verbose, objective=None
+):
     """Optimize the entire D x H x W grid at once."""
     voxels = D * H * W
     phi_flat = np.concatenate([phi[2].flatten(), phi[1].flatten(), phi[0].flatten()])
@@ -258,8 +261,9 @@ def _full_grid_step_3d(phi, phi_init, D, H, W, threshold, max_minimize_iter, met
 
     _log(verbose, 1, f"  [full-grid] Optimizing entire {D}x{H}x{W} grid ({3 * voxels} variables)")
 
+    obj = objective or DEFAULT_OBJECTIVE
     result = _window_minimize(
-        lambda phi1: objective_euc(phi1, phi_init_flat),
+        lambda phi1: obj(phi1 - phi_init_flat),
         phi_flat,
         constraints,
         max_minimize_iter,
@@ -298,6 +302,7 @@ def _serial_fix_voxel(
     max_window_voxels=None,
     enforce_injectivity=False,
     injectivity_threshold=None,
+    objective=None,
 ):
     """Fix a single voxel using the serial adaptive-window inner loop.
 
@@ -416,6 +421,7 @@ def _serial_fix_voxel(
             patch_ctx=patch_ctx,
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
+            objective=objective,
         )
         iter_times.append(elapsed)
         if not opt_success:

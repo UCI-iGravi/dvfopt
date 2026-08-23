@@ -88,6 +88,7 @@ def _serial_fix_pixel(
     min_window=(3, 3),
     labeled=None,
     quality_matrix=None,
+    objective=None,
 ):
     """Fix a single pixel using the serial adaptive-window inner loop.
 
@@ -233,6 +234,7 @@ def _serial_fix_pixel(
             enforce_injectivity=enforce_injectivity,
             injectivity_threshold=injectivity_threshold,
             enforce_triangles=enforce_triangles,
+            objective=objective,
         )
         iter_times.append(elapsed)
         if not opt_success:

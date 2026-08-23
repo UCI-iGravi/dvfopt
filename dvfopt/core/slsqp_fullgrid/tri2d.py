@@ -53,13 +53,13 @@ import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core.barrier._core import anchor_term
 from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
 from dvfopt.core.primitives.tri import (
     _build_full_grid_tri_jac,
     tri_areas_flat,
     tri_areas_flat_full_coverage,
 )
+from dvfopt.objectives import L1Objective, Objective
 
 
 def iterative_2d_tri_slsqp(
@@ -71,8 +71,7 @@ def iterative_2d_tri_slsqp(
     warm_ftol=1e-10,
     warm_sigma=0.01,
     warm_seed=123,
-    anchor='l1',
-    eps_l1=1e-4,
+    objective: Objective | None = None,
     full_coverage=False,
     verbose=1,
     record_history=False,
@@ -99,11 +98,10 @@ def iterative_2d_tri_slsqp(
         ``status == 8`` (line-search stall).
     warm_seed : int
         Seed for the warm-restart perturbation RNG (deterministic).
-    anchor : {'l1', 'l2', 'none'}
-        Anchor objective against ``deformation_2hw``. Default ``'l1'``
-        (smoothed) — produces concentrated corrections; see notebook 14.
-    eps_l1 : float
-        Smoothing constant for the L1 anchor.
+    objective : Objective or None
+        Anchor objective against ``deformation_2hw``. ``None`` (default)
+        means :class:`~dvfopt.objectives.L1Objective` (smoothed L1) —
+        produces concentrated corrections; see notebook 14.
     full_coverage : bool
         When True, the constraint is augmented with two corner-patch
         triangles so vertices ``(0, 0)`` and ``(H-1, W-1)`` — which the
@@ -120,6 +118,7 @@ def iterative_2d_tri_slsqp(
     phi_corrected : ndarray, shape ``(2, H, W)`` — channels ``[dy, dx]``.
     history : list of dict, only if ``record_history=True``.
     """
+    objective = objective or L1Objective()
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
 
@@ -137,7 +136,7 @@ def iterative_2d_tri_slsqp(
     z_anchor = np.concatenate([deformation_2hw[0].ravel(), deformation_2hw[1].ravel()])
 
     def _obj(z):
-        return anchor_term(z - z_anchor, anchor, eps_l1)
+        return objective(z - z_anchor)
 
     constraint_values = tri_areas_flat_full_coverage if full_coverage else tri_areas_flat
 
@@ -222,7 +221,7 @@ def iterative_2d_tri_slsqp(
         n_neg = int((T <= 0).sum())
         scheme = 'full-coverage' if full_coverage else 'per-cell'
         log_info(
-            f'[2d-tri-slsqp done] grid {H}x{W}  anchor={anchor}  '
+            f'[2d-tri-slsqp done] grid {H}x{W}  objective={objective!r}  '
             f'scheme={scheme}  '
             f'cold_nit={cold_nit} status={cold_status}  '
             f'warm_fired={warm_fired}  '

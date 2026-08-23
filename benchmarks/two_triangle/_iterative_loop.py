@@ -14,7 +14,7 @@ Reuses (do NOT modify):
                                  get_nearest_center, _edge_flags,
                                  get_phi_sub_flat_padded}
   - dvfopt.core.slsqp_windowed.constraints._build_constraints (default constraint builder)
-  - dvfopt.core.slsqp_windowed._objective.objective_euc
+  - dvfopt.objectives.L2Objective
   - dvfopt.jacobian.numpy_jdet.jacobian_det2D
 """
 
@@ -28,7 +28,6 @@ from scipy.optimize import minimize
 
 from benchmarks.two_triangle.result import SolverResult
 from benchmarks.two_triangle.trajectory import TrajectoryAccumulator
-from dvfopt.core.slsqp_windowed._objective import objective_euc
 from dvfopt.core.slsqp_windowed.constraints import _build_constraints, _quality_map
 from dvfopt.core.slsqp_windowed.spatial import (
     _edge_flags,
@@ -38,6 +37,10 @@ from dvfopt.core.slsqp_windowed.spatial import (
     neg_jdet_bounding_window,
 )
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+from dvfopt.objectives import L2Objective
+
+# Same L2 anchor the package's own window solves use.
+_L2 = L2Objective()
 
 
 @dataclass
@@ -147,7 +150,7 @@ def run_minimal_iterative_2d(
                 minimize_options["ftol"] = 1e-9
 
             res = minimize(
-                objective_euc,
+                lambda z, a: _L2(z - a),
                 phi_sub_flat,
                 args=(phi_init_sub_flat,),
                 method=method,

@@ -17,11 +17,15 @@ from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import _log, _unpack_size
 from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
-from dvfopt.core.slsqp_windowed._objective import objective_euc
 from dvfopt.core.slsqp_windowed.constraints import _build_constraints
 from dvfopt.jacobian.monotonicity import injectivity_constraint
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 from dvfopt.jacobian.shoelace import _all_triangle_areas_2d, _shoelace_areas_2d
+from dvfopt.objectives import L2Objective
+
+# Module-level singleton so the default costs nothing per window solve
+# and stays picklable for the ProcessPoolExecutor path in parallel.py.
+DEFAULT_OBJECTIVE = L2Objective()
 
 
 def _window_minimize(obj, x0, constraints, maxiter, method_name, disp=False):
@@ -91,6 +95,7 @@ def _full_grid_step(
     enforce_injectivity,
     injectivity_threshold=None,
     enforce_triangles=False,
+    objective=None,
 ):
     """Optimize the entire H×W grid at once.
 
@@ -141,8 +146,9 @@ def _full_grid_step(
 
     _log(verbose, 1, f"  [full-grid] Optimizing entire {H}x{W} grid ({2 * pixels} variables)")
 
+    obj = objective or DEFAULT_OBJECTIVE
     result = _window_minimize(
-        lambda phi1: objective_euc(phi1, phi_init_flat),
+        lambda phi1: obj(phi1 - phi_init_flat),
         phi_flat,
         constraints,
         max_minimize_iter,
@@ -167,8 +173,15 @@ def _optimize_single_window(
     enforce_injectivity=False,
     injectivity_threshold=None,
     enforce_triangles=False,
+    objective=None,
 ):
-    """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed, success)``."""
+    """Run SLSQP on one sub-window.  Returns ``(result_x, elapsed, success)``.
+
+    ``objective`` is an :class:`~dvfopt.objectives.Objective` evaluated on
+    ``phi - phi_init_sub_flat``; ``None`` means
+    :class:`~dvfopt.objectives.L2Objective`. It must stay picklable --
+    ``parallel.py`` ships this function to ``ProcessPoolExecutor``
+    workers."""
     constraints = _build_constraints(
         phi_sub_flat,
         submatrix_size,
@@ -181,9 +194,10 @@ def _optimize_single_window(
         enforce_triangles=enforce_triangles,
     )
 
+    obj = objective or DEFAULT_OBJECTIVE
     t0 = time.time()
     result = _window_minimize(
-        lambda phi1: objective_euc(phi1, phi_init_sub_flat),
+        lambda phi1: obj(phi1 - phi_init_sub_flat),
         phi_sub_flat,
         constraints,
         max_minimize_iter,

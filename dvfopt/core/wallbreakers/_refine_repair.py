@@ -27,7 +27,7 @@ Pipeline
 4. Final log-barrier L2 (or L1) polish anchored to ``phi_in``.
 
 Promoted from ``notebooks/experiments/wall_breakers/methods/m14_l2_refine_repair.py``
-and ``m14_l1.py``. With ``anchor='l1'`` the entire pipeline uses a
+and ``m14_l1.py``. With ``objective=L1Objective()`` the entire pipeline uses a
 smoothed-L1 anchor — this is the **m14_l1** variant in the manuscript.
 """
 
@@ -56,6 +56,7 @@ from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
 from dvfopt.core.wallbreakers._harmonic_polished import iterative_2d_tri_harmonic_polished
 from dvfopt.core.wallbreakers._l2_refine import l2_refine_2d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.objectives import L2Objective, NoneObjective, Objective, _kind_eps
 
 
 def iterative_2d_tri_refine_repair(
@@ -63,7 +64,7 @@ def iterative_2d_tri_refine_repair(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
+    objective: Objective | None = None,
     seed: np.ndarray = None,
     lam_schedule: tuple = (1e2, 1e4, 1e6, 1e8),
     inner_maxiter: int = 300,
@@ -74,7 +75,6 @@ def iterative_2d_tri_refine_repair(
     stage1_mu_schedule: Optional[tuple] = None,
     time_budget_s: float = 600.0,
     verbose: int = 1,
-    eps_l1: float = 1e-4,
     record_history: bool = False,
     step_callback=None,
 ):
@@ -84,8 +84,10 @@ def iterative_2d_tri_refine_repair(
     ----------
     phi_in : ndarray, shape ``(2, H, W)`` or ``(3, 1, H, W)``
         Input deformation field.
-    anchor : {'l2', 'l1'}
-        Objective anchor. ``'l1'`` is the **m14_l1** variant (smoothed-L1,
+    objective : Objective or None
+        Anchor objective; ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective`.
+        :class:`~dvfopt.objectives.L1Objective` is the **m14_l1** variant (smoothed-L1,
         concentrates corrections into a few cells; far smaller L1
         deviation than L2).
     seed : ndarray, optional
@@ -100,14 +102,14 @@ def iterative_2d_tri_refine_repair(
         runs as a seed stage whose stage-2 ``l2_refine_2d`` (anchored to
         the same ``phi_in``) immediately redoes that slide-toward-input
         work. Ignored when ``seed`` is provided.
-    eps_l1 : float
-        Smoothing constant for the L1 anchor.
 
     Returns
     -------
     dict with keys ``phi_out`` (shape ``(2, H, W)``) and ``info``
     (per-stage statistics).
     """
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     # Coerce input shape.
     if phi_in.ndim == 4:
         if phi_in.shape[0] == 3:
@@ -151,8 +153,7 @@ def iterative_2d_tri_refine_repair(
             phi_in,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             max_grow_iters=max_grow_iters,
             time_budget_s=time_budget_s * 0.4,
             verbose=verbose,
@@ -174,12 +175,11 @@ def iterative_2d_tri_refine_repair(
         seed=seed,
         threshold=threshold,
         margin=margin,
-        anchor=anchor,
+        objective=objective,
         lam_schedule=lam_schedule,
         inner_maxiter=inner_maxiter,
         time_budget_s=remaining * 0.5,
         verbose=verbose,
-        eps_l1=eps_l1,
         require_feasibility=False,
     )
     pulled_L2 = float(np.linalg.norm((pulled - phi_in).ravel()))
@@ -226,7 +226,7 @@ def iterative_2d_tri_refine_repair(
             repaired,
             threshold=threshold + safety_margin,
             margin=1e-4,
-            anchor='none',
+            objective=NoneObjective(),
             outer_max=20,
             inner_maxiter=150,
             time_budget_s=max(30.0, time_budget_s - (time.time() - t0)),

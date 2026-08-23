@@ -27,6 +27,7 @@ from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )
+from dvfopt.objectives import Objective
 
 
 def iterative_2d_tri_refine_repair_schwarz(
@@ -34,8 +35,7 @@ def iterative_2d_tri_refine_repair_schwarz(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     pad: int = 4,
     merge_dilation: int = 2,
     max_outer_iters: int = 3,
@@ -58,7 +58,7 @@ def iterative_2d_tri_refine_repair_schwarz(
     Parameters
     ----------
     phi_in : ndarray, shape ``(2, H, W)`` or ``(3, 1, H, W)``.
-    threshold, margin, anchor, eps_l1
+    threshold, margin, objective
         Forwarded to per-cluster :func:`iterative_2d_tri_refine_repair`
         (and the optional final barrier polish).
     pad, merge_dilation, max_outer_iters, fallback_size_ratio,
@@ -86,8 +86,7 @@ def iterative_2d_tri_refine_repair_schwarz(
             phi_crop,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             time_budget_s=time_budget_s if time_budget_s is not None else 600.0,
             verbose=0,
             **m14_kwargs,
@@ -102,8 +101,7 @@ def iterative_2d_tri_refine_repair_schwarz(
                 threshold=threshold,
                 margin=margin,
                 max_minimize_iter=final_polish_max_iter,
-                anchor=anchor,
-                eps_l1=eps_l1,
+                objective=objective,
                 verbose=0,
             )
 

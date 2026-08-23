@@ -42,6 +42,7 @@ from dvfopt.jacobian.triangle_sign import (
     _corner_patch_areas_2d,
     _triangle_areas_2d,
 )
+from dvfopt.objectives import make_objective
 from test_cases import canonical_2tri_2d
 
 
@@ -91,8 +92,7 @@ def solve_barrier(phi_init, anchor):
         threshold=THRESHOLD,
         margin=1e-3,
         max_minimize_iter=500,
-        anchor=anchor,
-        eps_l1=EPS_L1,
+        objective=make_objective(anchor, eps_l1=EPS_L1),
         verbose=0,
         full_coverage=True,
     )
@@ -131,8 +131,7 @@ def solve_slsqp_fullgrid(phi_init, anchor):
         threshold=THRESHOLD,
         max_iter=80,
         warm_max_iter=1200,
-        anchor=anchor,
-        eps_l1=EPS_L1,
+        objective=make_objective(anchor, eps_l1=EPS_L1),
         full_coverage=True,
         verbose=0,
     )

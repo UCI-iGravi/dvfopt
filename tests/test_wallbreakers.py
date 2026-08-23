@@ -21,6 +21,7 @@ from dvfopt.core.wallbreakers._common import (
     barrier_anchored_objective,
 )
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.objectives import L1Objective, L2Objective, make_objective
 
 
 def _fold_count(phi):
@@ -182,7 +183,12 @@ class TestAugmentedLagrangian2D:
         init_n = _fold_count(phi)
         assert init_n > 0
         out = augmented_lagrangian_2d(
-            phi, anchor='l2', outer_max=20, inner_maxiter=100, time_budget_s=60.0, verbose=0
+            phi,
+            objective=L2Objective(),
+            outer_max=20,
+            inner_maxiter=100,
+            time_budget_s=60.0,
+            verbose=0,
         )
         # ALM should at least not make things worse.
         assert _fold_count(out) <= init_n
@@ -192,7 +198,12 @@ class TestAugmentedLagrangian2D:
         """All three anchors must complete and produce finite output."""
         phi = _planted_fold(8, 8, seed=3)
         out = augmented_lagrangian_2d(
-            phi, anchor=anchor, outer_max=10, inner_maxiter=80, time_budget_s=30.0, verbose=0
+            phi,
+            objective=make_objective(anchor),
+            outer_max=10,
+            inner_maxiter=80,
+            time_budget_s=30.0,
+            verbose=0,
         )
         assert out.shape == phi.shape
         assert np.all(np.isfinite(out))
@@ -250,7 +261,7 @@ class TestHarmonicPolished:
 
 
 # ---------------------------------------------------------------------------
-# m14 — refine_repair (and m14_l1 via anchor='l1')
+# m14 — refine_repair (and m14_l1 via objective=L1Objective())
 # ---------------------------------------------------------------------------
 
 
@@ -258,22 +269,30 @@ class TestRefineRepair:
     def test_clears_planted_fold_l2(self):
         phi = _planted_fold(10, 10, seed=7)
         assert _fold_count(phi) > 0
-        out = iterative_2d_tri_refine_repair(phi, anchor='l2', time_budget_s=180.0, verbose=0)
+        out = iterative_2d_tri_refine_repair(
+            phi, objective=L2Objective(), time_budget_s=180.0, verbose=0
+        )
         assert _fold_count(out) == 0
 
     def test_clears_planted_fold_l1(self):
         """The m14_l1 variant — smoothed-L1 anchor throughout."""
         phi = _planted_fold(10, 10, seed=8)
         assert _fold_count(phi) > 0
-        out = iterative_2d_tri_refine_repair(phi, anchor='l1', time_budget_s=180.0, verbose=0)
+        out = iterative_2d_tri_refine_repair(
+            phi, objective=L1Objective(), time_budget_s=180.0, verbose=0
+        )
         assert _fold_count(out) == 0
 
     def test_l1_anchor_uses_less_l1_than_l2_anchor(self):
         """L1 anchor should produce concentrated corrections — typically
         a smaller L1 cost than the L2 anchor."""
         phi = _planted_fold(12, 12, seed=9)
-        out_l2 = iterative_2d_tri_refine_repair(phi, anchor='l2', time_budget_s=180.0, verbose=0)
-        out_l1 = iterative_2d_tri_refine_repair(phi, anchor='l1', time_budget_s=180.0, verbose=0)
+        out_l2 = iterative_2d_tri_refine_repair(
+            phi, objective=L2Objective(), time_budget_s=180.0, verbose=0
+        )
+        out_l1 = iterative_2d_tri_refine_repair(
+            phi, objective=L1Objective(), time_budget_s=180.0, verbose=0
+        )
         assert _fold_count(out_l2) == 0
         assert _fold_count(out_l1) == 0
         l1_of_l2 = float(np.abs(out_l2 - phi).sum())
@@ -314,7 +333,7 @@ class TestL2Refine2D:
         out = l2_refine_2d(
             phi,
             seed=seed,
-            anchor=anchor,
+            objective=make_objective(anchor),
             lam_schedule=(1e2, 1e4),
             inner_maxiter=150,
             time_budget_s=60.0,

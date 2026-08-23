@@ -15,6 +15,7 @@ from dvfopt.core.schwarz._common import (
 )
 from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.objectives import L1Objective
 
 
 def _plant_fold(arr, cy, cx, amp=0.8):
@@ -121,7 +122,11 @@ class TestSmoke:
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
             out = iterative_2d_tri_refine_repair_schwarz(
-                phi.copy(), threshold=0.01, anchor='l1', verbose=0, max_outer_iters=2
+                phi.copy(),
+                threshold=0.01,
+                objective=L1Objective(),
+                verbose=0,
+                max_outer_iters=2,
             )
         T1, T2 = _triangle_areas_2d(out[0], out[1])
         n_neg = int((np.minimum(T1, T2) <= 0).sum())
@@ -136,7 +141,7 @@ class TestSmoke:
             _out, info = iterative_2d_tri_refine_repair_schwarz(
                 phi.copy(),
                 threshold=0.01,
-                anchor='l1',
+                objective=L1Objective(),
                 verbose=0,
                 max_outer_iters=2,
                 record_history=True,
@@ -163,7 +168,7 @@ class TestFallback:
             out, info = iterative_2d_tri_refine_repair_schwarz(
                 phi.copy(),
                 threshold=0.01,
-                anchor='l1',
+                objective=L1Objective(),
                 fallback_size_ratio=0.5,
                 verbose=0,
                 record_history=True,

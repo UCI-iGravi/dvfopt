@@ -48,6 +48,7 @@ from dvfopt.core.wallbreakers._common import (
     resolved_safety_margin,
 )
 from dvfopt.core.wallbreakers._harmonic import harmonic_extension_2d
+from dvfopt.objectives import L2Objective, NoneObjective, Objective, _kind_eps
 
 
 def iterative_2d_tri_harmonic_polished(
@@ -59,8 +60,7 @@ def iterative_2d_tri_harmonic_polished(
     max_grow_iters: int = 8,
     mu_schedule: tuple = (1e-1, 1e-2, 1e-3, 1e-4, 1e-5),
     inner_maxiter: int = 300,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     time_budget_s: float = 600.0,
     verbose: int = 1,
     record_history: bool = False,
@@ -91,7 +91,7 @@ def iterative_2d_tri_harmonic_polished(
         closer to the L2-optimum, but a wall at the constraint surface).
     inner_maxiter : int
         L-BFGS-B ``maxiter`` per ``mu`` step.
-    anchor : {'l2', 'l1', 'none'}
+    objective : Objective or None
         Anchor form. ``'l2'`` is the manuscript default.
     time_budget_s : float
         Wall-time budget. The function returns whatever it has when this
@@ -107,6 +107,8 @@ def iterative_2d_tri_harmonic_polished(
     phi : ndarray, shape ``(2, H, W)``
     info : dict, only if ``record_history=True``
     """
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     # Coerce input shape.
     if phi_in.ndim == 4:
         if phi_in.shape[0] == 3:
@@ -166,7 +168,7 @@ def iterative_2d_tri_harmonic_polished(
             seed,
             threshold=threshold + safety_margin,
             margin=1e-4,
-            anchor=anchor,
+            objective=objective,
             outer_max=30,
             inner_maxiter=150,
             time_budget_s=remaining,
@@ -193,7 +195,7 @@ def iterative_2d_tri_harmonic_polished(
             seed,
             threshold=threshold + safety_margin,
             margin=1e-4,
-            anchor='none',
+            objective=NoneObjective(),
             outer_max=10,
             inner_maxiter=100,
             time_budget_s=60.0,

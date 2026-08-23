@@ -120,8 +120,7 @@ class HarmonicALMBarrierStrategy(Strategy):
             max_grow_iters=self.max_grow_iters,
             mu_schedule=self.mu_schedule,
             inner_maxiter=self.inner_maxiter,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
@@ -191,7 +190,7 @@ class HarmonicALMRefineRepairStrategy(Strategy):
             phi_in,
             threshold=threshold,
             margin=self.margin,
-            anchor=objective.label or 'l2',
+            objective=objective,
             lam_schedule=self.lam_schedule,
             inner_maxiter=self.inner_maxiter,
             ring_pad=self.ring_pad,
@@ -201,7 +200,6 @@ class HarmonicALMRefineRepairStrategy(Strategy):
             stage1_mu_schedule=self.stage1_mu_schedule,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
-            eps_l1=getattr(objective, 'eps', 1e-4),
             record_history=record_history,
             step_callback=step_callback,
         )
@@ -262,8 +260,7 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
             phi_in,
             threshold=threshold,
             margin=self.margin,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             pad=self.pad,
             merge_dilation=self.merge_dilation,
             max_outer_iters=self.max_outer_iters,
@@ -441,8 +438,7 @@ class ALM3DStrategy(Strategy):
             phi_in,
             threshold=threshold,
             margin=self.margin,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             rho_init=self.rho_init,
             rho_growth=self.rho_growth,
             rho_max=self.rho_max,
@@ -540,8 +536,6 @@ class HarmonicALMBarrier3DStrategy(Strategy):
         from dvfopt.jacobian.tetrahedron_sign import six_tet_volumes_3d
 
         self._check_constraint(constraint)
-        anchor_label = objective.label or 'l2'
-        eps_l1 = getattr(objective, 'eps', 1e-4)
 
         # ---- Stage 1: harmonic seed ----
         t0 = time.time()
@@ -585,8 +579,7 @@ class HarmonicALMBarrier3DStrategy(Strategy):
             phi_h,
             threshold=threshold,
             margin=self.margin,
-            anchor=anchor_label,
-            eps_l1=eps_l1,
+            objective=objective,
             phi_anchor=phi_anchor,
             rho_init=self.rho_init,
             rho_growth=self.rho_growth,
@@ -703,8 +696,7 @@ class HarmonicALMRefineRepair3DStrategy(Strategy):
             phi_in,
             threshold=threshold,
             margin=self.margin,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             ring_pad=self.ring_pad,
             max_grow_iters=self.max_grow_iters,
             merge_dilation=self.merge_dilation,
@@ -779,8 +771,7 @@ class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
             phi_in,
             threshold=threshold,
             margin=self.margin,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             pad=self.pad,
             merge_dilation=self.merge_dilation,
             max_outer_iters=self.max_outer_iters,

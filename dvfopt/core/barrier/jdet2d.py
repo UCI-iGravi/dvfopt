@@ -136,7 +136,6 @@ def _optimize_patch_2d(
         mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
         bounds=bounds,
-        anchor='l2',
         verbose=max(0, verbose - 2),
     )
 
@@ -281,7 +280,6 @@ def iterative_2d_barrier(
             lam_schedule=lam_schedule,
             mu_schedule=mu_schedule,
             max_iter=max_minimize_iter,
-            anchor='l2',
             verbose=verbose,
             record_history=True,
             log_prefix='',

@@ -13,6 +13,7 @@ from dvfopt.jacobian.triangle_sign import (
     _corner_patch_areas_2d,
     _triangle_areas_2d,
 )
+from dvfopt.objectives import L1Objective, L2Objective, make_objective
 
 
 def _planted_fold(H=8, W=8, seed=0):
@@ -73,7 +74,7 @@ class TestFeasibility:
             phi,
             threshold=0.01,
             verbose=0,
-            anchor='l2',
+            objective=L2Objective(),
             full_coverage=True,
             max_iter=200,
             warm_max_iter=2000,
@@ -93,7 +94,7 @@ class TestFeasibility:
             phi,
             threshold=0.01,
             verbose=0,
-            anchor='l1',
+            objective=L1Objective(),
             full_coverage=True,
             max_iter=80,
             warm_max_iter=1000,
@@ -108,14 +109,18 @@ class TestAnchorModes:
     @pytest.mark.parametrize("anchor", ["l2", "l1", "none"])
     def test_anchor_runs(self, anchor):
         phi = _planted_fold(H=6, W=6, seed=1)
-        out = iterative_2d_tri_slsqp(phi, anchor=anchor, verbose=0, max_iter=80, warm_max_iter=500)
+        out = iterative_2d_tri_slsqp(
+            phi, objective=make_objective(anchor), verbose=0, max_iter=80, warm_max_iter=500
+        )
         assert out.shape == phi.shape
         assert np.all(np.isfinite(out))
 
     def test_invalid_anchor_raises(self):
         phi = _planted_fold(H=4, W=4)
         with pytest.raises(ValueError):
-            iterative_2d_tri_slsqp(phi, anchor='l99', verbose=0, max_iter=20, warm_max_iter=20)
+            iterative_2d_tri_slsqp(
+                phi, objective=make_objective('l99'), verbose=0, max_iter=20, warm_max_iter=20
+            )
 
 
 class TestFullCoverageFlag:

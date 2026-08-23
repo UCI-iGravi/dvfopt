@@ -41,6 +41,7 @@ import numpy as np
 
 from dvfopt._defaults import _resolve_params
 from dvfopt._logging import log_info
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 # Torch is in the [benchmarks] extra. Defer the import so this module
 # can be imported on a torch-less install (matches the pattern used by
@@ -274,8 +275,7 @@ def iterative_3d_tet_barrier_torch(
     lam_schedule=_DEFAULT_LAM_SCHEDULE,
     mu_schedule=_DEFAULT_MU_SCHEDULE,
     max_iter=200,
-    anchor='l2',
-    eps_l1=1e-4,
+    objective: Objective | None = None,
     device=None,
     dtype=None,
     verbose=1,
@@ -302,10 +302,12 @@ def iterative_3d_tet_barrier_torch(
         clears ``threshold`` and runs through ``mu_schedule``.
     max_iter : int
         Per-phase L-BFGS iteration cap.
-    anchor : {'l1', 'l2', 'none'}
-        Anchor objective against ``deformation``.
-    eps_l1 : float
-        Smoothing constant for the L1 anchor.
+    objective : Objective or None
+        Anchor objective against ``deformation``. ``None`` (default)
+        means :class:`~dvfopt.objectives.L2Objective`. The torch inner
+        loop cannot call a numpy ``Objective`` on its device tensors, so
+        only the anchor *kind* (and ``eps``) crosses over — see
+        :func:`dvfopt.objectives._kind_eps`.
     device : str | torch.device | None
         Default: ``'cuda'`` if available, else ``'cpu'``.
     dtype : torch.dtype | None
@@ -335,6 +337,7 @@ def iterative_3d_tet_barrier_torch(
     phi_corrected : ndarray, shape ``(3, D, H, W)`` — channels ``[dz, dy, dx]``.
     history : list of dict, only if ``record_history=True``.
     """
+    anchor, eps_l1 = _kind_eps(objective or L2Objective())
     if torch is None:
         raise ImportError(
             'iterative_3d_tet_barrier_torch requires torch (optional dependency). '

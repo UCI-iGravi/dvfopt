@@ -8,8 +8,8 @@
 * ``Tet6Constraint3D.jacobian`` as the analytical sparse forward
   Jacobian (built via
   :func:`dvfopt.jacobian.tetrahedron_sign.build_tet_sparse_jac`).
-* A smoothed-L1 or L2 anchor against the input field, computed via
-  :func:`dvfopt.core.barrier._core.anchor_term`.
+* A smoothed-L1 or L2 anchor against the input field — any
+  :class:`dvfopt.objectives.Objective`.
 
 Practical note
 --------------
@@ -35,9 +35,9 @@ import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core.barrier._core import anchor_term
 from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
 from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac, tet_volumes_flat
+from dvfopt.objectives import L2Objective, Objective
 
 
 def iterative_3d_tet_slsqp(
@@ -46,8 +46,7 @@ def iterative_3d_tet_slsqp(
     threshold=None,
     max_iter=50,
     ftol=1e-8,
-    anchor='l2',
-    eps_l1=1e-4,
+    objective: Objective | None = None,
     verbose=1,
     record_history=False,
 ):
@@ -63,10 +62,9 @@ def iterative_3d_tet_slsqp(
         SLSQP iteration cap.
     ftol : float
         SLSQP convergence tolerance.
-    anchor : {'l1', 'l2', 'none'}
-        Anchor objective against ``deformation``.
-    eps_l1 : float
-        Smoothing constant for the L1 anchor.
+    objective : Objective or None
+        Anchor objective against ``deformation``. ``None`` (default)
+        means :class:`~dvfopt.objectives.L2Objective`.
     verbose : int
         0 = silent, 1 = one-line summary.
     record_history : bool
@@ -83,6 +81,7 @@ def iterative_3d_tet_slsqp(
     See module docstring for the scaling caveat: prefer
     :class:`dvfopt.strategies.BarrierStrategy` on anything non-tiny.
     """
+    objective = objective or L2Objective()
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
 
@@ -97,7 +96,7 @@ def iterative_3d_tet_slsqp(
     )
 
     def _obj(z):
-        return anchor_term(z - z_anchor, anchor, eps_l1)
+        return objective(z - z_anchor)
 
     def _constr(z):
         return tet_volumes_flat(z, D, H, W)
@@ -109,7 +108,7 @@ def iterative_3d_tet_slsqp(
         V_init = _constr(z_anchor)
         log_info(
             f'[3d-tet-slsqp init] grid {D}x{H}x{W}  threshold={threshold}  '
-            f'anchor={anchor}  n_constraints={V_init.size}  '
+            f'objective={objective!r}  n_constraints={V_init.size}  '
             f'n_neg={int((V_init <= 0).sum())}  min_V={float(V_init.min()):+.5f}'
         )
 

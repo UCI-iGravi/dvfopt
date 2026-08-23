@@ -42,6 +42,7 @@ def iterative_serial(
     enforce_triangles=False,
     max_doublings=5,
     debug=None,
+    objective=None,
 ):
     """Iterative SLSQP correction of negative Jacobian determinants.
 
@@ -281,6 +282,7 @@ def iterative_serial(
                 min_window=global_min_window,
                 labeled=_labeled_neg,
                 quality_matrix=quality_matrix,
+                objective=objective,
             )
         )
         if debug is not None:

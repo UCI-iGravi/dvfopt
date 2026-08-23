@@ -148,7 +148,6 @@ def _optimize_patch(
         max_iter=max_minimize_iter,
         active_mask=active_mask,
         bounds=bounds,
-        anchor='l2',
         verbose=max(0, verbose - 2),  # core's verbose=1 is per-step; suppress unless very chatty
     )
     lam_steps = info['lam_steps']
@@ -298,7 +297,6 @@ def _iterative_3d_barrier_fullgrid(
         lam_schedule=lam_schedule,
         mu_schedule=mu_schedule,
         max_iter=max_minimize_iter,
-        anchor='l2',
         verbose=verbose,
         record_history=True,
     )

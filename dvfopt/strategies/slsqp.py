@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -70,8 +69,7 @@ class SLSQPFullGridStrategy(Strategy):
             warm_ftol=self.warm_ftol,
             warm_sigma=self.warm_sigma,
             warm_seed=self.warm_seed,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             full_coverage=full_coverage,
             verbose=verbose,
             record_history=record_history,
@@ -91,19 +89,10 @@ class SLSQPWindowedStrategy(Strategy):
     solves the local SLSQP subproblem with frozen edges, repeats. Also
     supports the 2-triangle constraint via ``enforce_triangles=True``.
 
-    .. note::
-        **Objective contract.** The delegated windowed solvers
-        (``iterative_serial`` / ``iterative_3d``) hard-code an **L2**
-        anchor objective (``objective_euc``); the composed
-        :class:`~dvfopt.objectives.Objective` is **not** plumbed
-        through. Composing anything other than
-        :class:`~dvfopt.objectives.L2Objective` /
-        :class:`~dvfopt.objectives.NoneObjective` with this strategy
-        emits a :class:`UserWarning` and the composed objective is
-        ignored. Use :class:`SLSQPFullGridStrategy`,
-        :class:`~dvfopt.strategies.SLPStrategy`, or
-        :class:`~dvfopt.strategies.BarrierStrategy` if you need an L1
-        anchor.
+    The composed :class:`~dvfopt.objectives.Objective` is plumbed all
+    the way down to the per-window ``scipy.optimize.minimize`` call and
+    evaluated on ``phi - phi_init`` (``None`` means L2, the historical
+    behaviour).
     """
 
     max_iterations: int = 80
@@ -124,14 +113,6 @@ class SLSQPWindowedStrategy(Strategy):
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
     ):
-        _label = getattr(objective, 'label', None) if objective is not None else None
-        if objective is not None and _label not in ('l2', 'none'):
-            warnings.warn(
-                'SLSQPWindowedStrategy optimises an L2 objective; the composed '
-                f"'{_label or type(objective).__name__}' objective is ignored.",
-                UserWarning,
-                stacklevel=2,
-            )
         if isinstance(constraint, JdetConstraint2D):
             from dvfopt.core import iterative_serial
 
@@ -149,6 +130,7 @@ class SLSQPWindowedStrategy(Strategy):
                 enforce_shoelace=self.enforce_shoelace,
                 enforce_injectivity=self.enforce_injectivity,
                 injectivity_threshold=self.injectivity_threshold,
+                objective=objective,
             )
             return self._coerce_2d(out), _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         if isinstance(constraint, JdetConstraint3D):
@@ -172,6 +154,7 @@ class SLSQPWindowedStrategy(Strategy):
                 max_minimize_iter=self.max_minimize_iter,
                 enforce_injectivity=self.enforce_injectivity,
                 injectivity_threshold=self.injectivity_threshold,
+                objective=objective,
             )
             return out, _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         if isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage)):
@@ -191,6 +174,7 @@ class SLSQPWindowedStrategy(Strategy):
                 enforce_shoelace=self.enforce_shoelace,
                 enforce_injectivity=self.enforce_injectivity,
                 injectivity_threshold=self.injectivity_threshold,
+                objective=objective,
             )
             return self._coerce_2d(out), _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         raise TypeError(
@@ -251,8 +235,7 @@ class SLSQPFullGrid3DStrategy(Strategy):
             threshold=threshold,
             max_iter=self.max_iter,
             ftol=self.ftol,
-            anchor=objective.label or 'l2',
-            eps_l1=getattr(objective, 'eps', 1e-4),
+            objective=objective,
             verbose=verbose,
             record_history=record_history,
         )

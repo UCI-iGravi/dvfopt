@@ -1,18 +1,24 @@
-"""Tests for dvfopt.core.slsqp_windowed._objective — squared L2 objective function.
+"""Tests for dvfopt.objectives.L2Objective -- the squared-L2 anchor.
 
-objective_euc computes 0.5 * ||phi - phi_init||^2 with gradient (phi - phi_init).
+L2Objective computes 0.5 * ||phi - phi_init||^2 with gradient
+(phi - phi_init). This is the anchor every windowed SLSQP window solve
+uses by default.
 """
 
 import numpy as np
-import pytest
 
-from dvfopt.core.slsqp_windowed._objective import objective_euc
+from dvfopt.objectives import L2Objective
 
 
-class TestObjectiveEuc:
+def _l2(phi, phi_init):
+    """The L2 objective evaluated on ``phi - phi_init``."""
+    return L2Objective()(phi - phi_init)
+
+
+class TestL2Objective:
     def test_identical_inputs_zero(self):
         phi = np.array([1.0, 2.0, 3.0])
-        val, grad = objective_euc(phi, phi.copy())
+        val, grad = _l2(phi, phi.copy())
         assert val == 0.0
         np.testing.assert_array_equal(grad, 0.0)
 
@@ -20,14 +26,14 @@ class TestObjectiveEuc:
         """Value = 0.5 * (3^2 + 4^2) = 0.5 * 25 = 12.5, not the L2 norm 5.0."""
         phi = np.array([3.0, 4.0])
         phi_init = np.array([0.0, 0.0])
-        val, _grad = objective_euc(phi, phi_init)
+        val, _grad = _l2(phi, phi_init)
         np.testing.assert_allclose(val, 12.5)
 
     def test_gradient_equals_diff(self):
         """Gradient = (phi - phi_init), not the unit vector diff/||diff||."""
         phi = np.array([3.0, 4.0])
         phi_init = np.array([0.0, 0.0])
-        _val, grad = objective_euc(phi, phi_init)
+        _val, grad = _l2(phi, phi_init)
         np.testing.assert_allclose(grad, np.array([3.0, 4.0]))
 
     def test_gradient_direction(self):
@@ -35,18 +41,18 @@ class TestObjectiveEuc:
         rng = np.random.default_rng(123)
         phi = rng.standard_normal(20)
         phi_init = rng.standard_normal(20)
-        _val, grad = objective_euc(phi, phi_init)
+        _val, grad = _l2(phi, phi_init)
         diff = phi - phi_init
         # grad should be parallel to diff
         cos_sim = np.dot(grad, diff) / (np.linalg.norm(grad) * np.linalg.norm(diff))
         np.testing.assert_allclose(cos_sim, 1.0, atol=1e-12)
 
     def test_gradient_norm_equals_diff_norm(self):
-        """Gradient norm = ||phi - phi_init|| (not 1.0 — this is not the L2 norm)."""
+        """Gradient norm = ||phi - phi_init|| (not 1.0 -- this is not the L2 norm)."""
         rng = np.random.default_rng(456)
         phi = rng.standard_normal(50)
         phi_init = rng.standard_normal(50)
-        _val, grad = objective_euc(phi, phi_init)
+        _val, grad = _l2(phi, phi_init)
         np.testing.assert_allclose(np.linalg.norm(grad), np.linalg.norm(phi - phi_init), atol=1e-12)
 
     def test_symmetry(self):
@@ -54,6 +60,6 @@ class TestObjectiveEuc:
         rng = np.random.default_rng(789)
         a = rng.standard_normal(10)
         b = rng.standard_normal(10)
-        val_ab, _ = objective_euc(a, b)
-        val_ba, _ = objective_euc(b, a)
+        val_ab, _ = _l2(a, b)
+        val_ba, _ = _l2(b, a)
         np.testing.assert_allclose(val_ab, val_ba)

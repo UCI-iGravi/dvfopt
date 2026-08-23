@@ -22,6 +22,7 @@ from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
+from dvfopt.objectives import L2Objective, Objective
 
 
 def _folded_deformation_2d(H=10, W=10, spike=5.0):
@@ -267,13 +268,27 @@ class TestRollbackWorseResults:
 # ---------------------------------------------------------------------------
 
 
-class TestWindowedStrategyObjectiveWarning:
+class _CountingObjective(Objective):
+    """L2 anchor that records how many times the solver evaluated it."""
+
+    label = 'l2'
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, diff):
+        self.calls += 1
+        return L2Objective()(diff)
+
+
+class TestWindowedStrategyObjective:
     @staticmethod
-    def _solve(objective):
+    def _solve(objective, phi=None):
         from dvfopt.constraints import JdetConstraint2D
         from dvfopt.strategies.slsqp import SLSQPWindowedStrategy
 
-        phi = np.zeros((2, 6, 6))  # identity field -> returns immediately
+        if phi is None:
+            phi = np.zeros((2, 6, 6))  # identity field -> returns immediately
         return SLSQPWindowedStrategy(max_iterations=2).solve(
             phi,
             constraint=JdetConstraint2D(shape=(6, 6)),
@@ -282,11 +297,16 @@ class TestWindowedStrategyObjectiveWarning:
             verbose=0,
         )
 
-    def test_l1_objective_warns(self):
-        from dvfopt.objectives import L1Objective
-
-        with pytest.warns(UserWarning, match='L2 objective.*ignored'):
-            self._solve(L1Objective())
+    def test_objective_reaches_the_window_solve(self):
+        """The composed objective is plumbed down to the per-window
+        ``scipy.optimize.minimize`` call (it used to be ignored there in
+        favour of a hard-coded L2 anchor)."""
+        phi = np.zeros((2, 6, 6))
+        phi[0, 3, 3] = 2.0
+        phi[1, 3, 3] = 2.0  # plants a 2-pixel Jdet fold
+        obj = _CountingObjective()
+        self._solve(obj, phi=phi)
+        assert obj.calls > 0, 'windowed solver never evaluated the composed objective'
 
     def test_l2_objective_does_not_warn(self):
         from dvfopt.objectives import L2Objective

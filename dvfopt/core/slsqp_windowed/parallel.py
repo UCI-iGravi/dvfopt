@@ -54,6 +54,7 @@ def iterative_parallel(
     injectivity_threshold=None,
     enforce_triangles=False,
     max_doublings=5,
+    objective=None,
 ):
     """Hybrid serial/parallel iterative SLSQP correction.
 
@@ -290,6 +291,7 @@ def iterative_parallel(
                         min_window=global_min_window,
                         labeled=_labeled_neg,
                         quality_matrix=quality_matrix,
+                        objective=objective,
                     )
                 )
 
@@ -392,6 +394,9 @@ def iterative_parallel(
                         enforce_injectivity,
                         injectivity_threshold,
                         enforce_triangles,
+                        # Objective instances are plain picklable objects,
+                        # so they cross the ProcessPoolExecutor boundary.
+                        objective,
                     )
                     futures[fut] = (neg_idx, cz, cy, cx, sub_size, is_padded, opt_size)
 

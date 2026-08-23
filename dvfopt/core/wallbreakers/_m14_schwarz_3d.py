@@ -24,6 +24,7 @@ import numpy as np
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.core.schwarz._common import cluster_schwarz_3d_tet
 from dvfopt.core.wallbreakers._refine_repair_3d import iterative_3d_tet_refine_repair
+from dvfopt.objectives import Objective
 
 
 def iterative_3d_tet_refine_repair_schwarz(
@@ -31,8 +32,7 @@ def iterative_3d_tet_refine_repair_schwarz(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     pad: int = 4,
     merge_dilation: int = 2,
     max_outer_iters: int = 3,
@@ -52,7 +52,7 @@ def iterative_3d_tet_refine_repair_schwarz(
     Parameters
     ----------
     phi_in : ndarray, shape ``(3, D, H, W)``, channels ``[dz, dy, dx]``.
-    threshold, margin, anchor, eps_l1
+    threshold, margin, objective
         Forwarded to per-cluster :func:`iterative_3d_tet_refine_repair`.
     pad, merge_dilation, max_outer_iters, fallback_size_ratio,
     time_budget_s, verbose, record_history
@@ -73,8 +73,7 @@ def iterative_3d_tet_refine_repair_schwarz(
             phi_crop,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             time_budget_s=time_budget_s if time_budget_s is not None else 600.0,
             verbose=max(0, verbose - 1),
             step_callback=step_callback,

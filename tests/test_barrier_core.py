@@ -11,9 +11,9 @@ import pytest
 from dvfopt.core.barrier._core import (
     DEFAULT_LAM_SCHEDULE,
     DEFAULT_MU_SCHEDULE,
-    anchor_term,
     run_penalty_barrier_lbfgs,
 )
+from dvfopt.objectives import anchor_term
 
 # ---------------------------------------------------------------------------
 # anchor_term: per-mode value + gradient verification
