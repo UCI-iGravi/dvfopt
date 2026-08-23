@@ -5,7 +5,7 @@
 
 # Core scientific stack
 numpy
-scipy
+scipy>=1.15,<1.19   # keep in lockstep with pyproject [project.dependencies]
 matplotlib
 pandas
 SimpleITK

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints3d import _build_constraints_3d, jacobian_constraint_3d
+from dvfopt.core.slsqp_windowed.constraints3d import _build_constraints_3d, jacobian_constraint_3d
 
 
 class TestJacobianConstraint3D:

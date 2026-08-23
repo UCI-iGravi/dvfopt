@@ -1,10 +1,10 @@
-"""Tests for laplacian.utils — sparse Laplacian matrix construction."""
+"""Tests for dvfopt.laplacian.utils — sparse Laplacian matrix construction."""
 
 import numpy as np
 import pytest
 import scipy.sparse
 
-from laplacian.utils import (
+from dvfopt.laplacian.utils import (
     laplacianA1D,
     laplacianA2D,
     laplacianA3D,

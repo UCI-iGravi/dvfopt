@@ -9,7 +9,7 @@ Verifies that the iterative solver:
 import numpy as np
 import pytest
 
-from dvfopt.core.solver import _init_phi, _setup_accumulators, _update_metrics
+from dvfopt.core.slsqp_windowed.coordinator import _init_phi, _setup_accumulators, _update_metrics
 from dvfopt.dvf.generation import generate_random_dvf
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
@@ -18,7 +18,7 @@ class TestConvergenceProperties:
     @staticmethod
     def _run_and_collect_metrics(deformation, **kwargs):
         """Run solver and return per-iteration metrics."""
-        from dvfopt.core.slsqp.iterative import iterative_serial
+        from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 
         # Collect Jdet snapshots by running manually
         phi_init_snap = np.stack([deformation[1, 0], deformation[2, 0]])

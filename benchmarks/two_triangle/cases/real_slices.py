@@ -1,6 +1,6 @@
 """Real-data slice cases.
 
-2D: loaded via test_cases.load_slice (correspondences -> Laplacian field).
+2D: loaded via dvfopt.testdata.load_slice (correspondences -> Laplacian field).
 3D: loaded directly from pre-saved .npy files in data/test_cases_3d/.
 
 Data files are gitignored (*.npy is in .gitignore), so these cases will
@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from benchmarks.two_triangle.registry import register_case
-from test_cases import load_slice
+from dvfopt.testdata import load_slice
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_3D = REPO_ROOT / "data" / "test_cases_3d"

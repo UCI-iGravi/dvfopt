@@ -12,8 +12,8 @@ Run with:  python -m pytest tests/test_edge_cases.py -v
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.iterative3d import iterative_3d
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
 
 # ---------------------------------------------------------------------------
@@ -477,7 +477,7 @@ class TestConstraintModes:
 class TestSpatialHelpers:
     def test_get_nearest_center_clamps_to_valid_range(self):
         """get_nearest_center must never place the window outside the grid."""
-        from dvfopt.core.slsqp.spatial import get_nearest_center
+        from dvfopt.core.slsqp_windowed.spatial import get_nearest_center
 
         slice_shape = (1, 20, 20)
 
@@ -494,7 +494,7 @@ class TestSpatialHelpers:
 
     def test_neg_jdet_bounding_window_single_pixel(self):
         """Bounding window around a lone negative pixel should be at least 3×3."""
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 10, 10))
         jm[0, 5, 5] = -0.5  # single negative pixel
@@ -505,7 +505,7 @@ class TestSpatialHelpers:
         """Passing precomputed labels must give same result as computing them."""
         from scipy.ndimage import label
 
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 10, 10))
         jm[0, 4:7, 4:7] = -0.5
@@ -517,14 +517,14 @@ class TestSpatialHelpers:
 
     def test_frozen_edges_clean_all_positive(self):
         """Window entirely above threshold → frozen edges are clean."""
-        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp_windowed.spatial import _frozen_edges_clean
 
         jm = np.ones((1, 10, 10)) * 0.5
         assert _frozen_edges_clean(jm, 5, 5, (5, 5), THRESHOLD, ERR_TOL)
 
     def test_frozen_edges_clean_negative_on_edge(self):
         """Negative value on the window edge → not clean."""
-        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp_windowed.spatial import _frozen_edges_clean
 
         jm = np.ones((1, 10, 10)) * 0.5
         jm[0, 3, 3] = -0.5  # this is the top-left corner of a (5,5) window at (5,5)
@@ -533,7 +533,7 @@ class TestSpatialHelpers:
 
     def test_frozen_edges_clean_at_grid_border(self):
         """Window touching grid border → edge pixels not frozen → always clean."""
-        from dvfopt.core.slsqp.spatial import _frozen_edges_clean
+        from dvfopt.core.slsqp_windowed.spatial import _frozen_edges_clean
 
         # Window at cy=1, cx=1 with size=(3,3): y0=0, y1=2, x0=0, x1=2
         # That means the window IS at the border; _frozen_edges_clean checks
@@ -555,21 +555,22 @@ class TestSpatialHelpers:
 class TestObjective:
     def test_gradient_numerical_check(self):
         """Analytical gradient of L2-squared must match finite differences."""
-        from dvfopt.core.objective import objective_euc
+        from dvfopt.objectives import L2Objective
 
+        obj = L2Objective()
         rng = np.random.default_rng(7)
         phi = rng.standard_normal(20)
         phi_init = rng.standard_normal(20)
         eps = 1e-6
-        _val, grad = objective_euc(phi, phi_init)
+        _val, grad = obj(phi - phi_init)
         grad_fd = np.zeros_like(phi)
         for i in range(len(phi)):
             p = phi.copy()
             p[i] += eps
-            v_hi, _ = objective_euc(p, phi_init)
+            v_hi, _ = obj(p - phi_init)
             p = phi.copy()
             p[i] -= eps
-            v_lo, _ = objective_euc(p, phi_init)
+            v_lo, _ = obj(p - phi_init)
             grad_fd[i] = (v_hi - v_lo) / (2 * eps)
         np.testing.assert_allclose(
             grad, grad_fd, rtol=1e-5, err_msg="Analytical gradient does not match FD"
@@ -577,10 +578,10 @@ class TestObjective:
 
     def test_objective_zero_at_init(self):
         """Value must be zero when phi == phi_init."""
-        from dvfopt.core.objective import objective_euc
+        from dvfopt.objectives import L2Objective
 
         phi = np.array([1.0, 2.0, -3.0])
-        val, grad = objective_euc(phi, phi.copy())
+        val, grad = L2Objective()(phi - phi.copy())
         assert val == pytest.approx(0.0)
         np.testing.assert_allclose(grad, 0.0)
 
@@ -664,7 +665,7 @@ class Test3D:
 class TestPatchJacobian:
     def test_patch_matches_full_recompute_2d(self):
         """After modifying a sub-window, patch must match full recompute exactly."""
-        from dvfopt.core.solver import _patch_jacobian_2d
+        from dvfopt.core.slsqp_windowed.coordinator import _patch_jacobian_2d
 
         rng = np.random.default_rng(42)
         H, W = 20, 20
@@ -691,7 +692,7 @@ class TestPatchJacobian:
 
     def test_patch_matches_full_recompute_3d(self):
         """3D patch must match full recompute in the affected region."""
-        from dvfopt.core.solver3d import _patch_jacobian_3d
+        from dvfopt.core.slsqp_windowed.coordinator3d import _patch_jacobian_3d
 
         rng = np.random.default_rng(43)
         D, H, W = 10, 10, 10

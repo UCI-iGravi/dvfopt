@@ -32,6 +32,7 @@ from dvfopt.core.wallbreakers._alm_3d import augmented_lagrangian_3d
 from dvfopt.core.wallbreakers._harmonic_3d import harmonic_extension_3d
 from dvfopt.core.wallbreakers._l2_refine_3d import l2_refine_3d
 from dvfopt.jacobian.tetrahedron_sign import tet_grad_T_v, tet_volumes_flat
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 
 def _barrier_anchored_objective_3d(
@@ -77,8 +78,7 @@ def iterative_3d_tet_refine_repair(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     seed: Optional[np.ndarray] = None,
     # stage 1 (harmonic + ALM seed)
     ring_pad: int = 2,
@@ -104,6 +104,8 @@ def iterative_3d_tet_refine_repair(
     phi : ndarray, shape ``(3, D, H, W)``.
     info : dict, only if ``record_history=True`` — per-stage stats.
     """
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
 
@@ -135,8 +137,7 @@ def iterative_3d_tet_refine_repair(
             phi_h,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             phi_anchor=phi_in,
             outer_max=alm_outer_max,
             inner_maxiter=alm_inner_maxiter,
@@ -161,8 +162,7 @@ def iterative_3d_tet_refine_repair(
         seed=seed,
         threshold=threshold,
         margin=margin,
-        anchor=anchor,
-        eps_l1=eps_l1,
+        objective=objective,
         lam_schedule=lam_schedule,
         inner_maxiter=inner_maxiter,
         time_budget_s=remaining * 0.5,

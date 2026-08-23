@@ -6,7 +6,7 @@ cluster-based Schwarz: detect connected fold components, run
 (optionally) finish with a barrier polish.
 
 The schwarz core lives in
-:mod:`dvfopt.core.wallbreakers._schwarz_common` — this Strategy is just
+:mod:`dvfopt.core.schwarz._common` — this Strategy is just
 the composable façade. The legacy
 :class:`SchwarzHarmonicALMRefineRepairStrategy` (alias
 :class:`M14SchwarzStrategy`) remains exported for back-compat; it pins
@@ -147,7 +147,7 @@ class SchwarzWrapperStrategy(Strategy):
         record_history=False,
         **_,
     ):
-        from dvfopt.core.wallbreakers._schwarz_common import (
+        from dvfopt.core.schwarz._common import (
             cluster_schwarz_2d_tri,
             cluster_schwarz_3d_tet,
         )

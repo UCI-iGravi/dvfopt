@@ -63,7 +63,7 @@ class NMVFStrategy(Strategy):
         step_callback=None,
         **_,
     ):
-        from dvfopt.core._nmvf import nmvf_correct_2d
+        from dvfopt.core.nmvf import nmvf_correct_2d
 
         self._check_constraint(constraint)
         # NMVF doesn't use the objective — it's heuristic, no anchor.

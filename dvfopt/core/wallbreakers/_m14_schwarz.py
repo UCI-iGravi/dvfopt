@@ -1,11 +1,11 @@
 """Cluster-localized m14 (refine-repair) — Schwarz domain decomposition.
 
 Thin closure-shim around the generic
-:func:`dvfopt.core.wallbreakers._schwarz_common.cluster_schwarz_2d_tri`,
+:func:`dvfopt.core.schwarz._common.cluster_schwarz_2d_tri`,
 binding ``inner_solve`` to
 :func:`dvfopt.core.wallbreakers._refine_repair.iterative_2d_tri_refine_repair`
 and ``final_polish_fn`` to
-:func:`dvfopt.core.iterative2d_tri_barrier.iterative_2d_tri_barrier`.
+:func:`dvfopt.core.barrier.tri2d.iterative_2d_tri_barrier`.
 
 This file used to host the full schwarz pipeline. Today it just
 constructs the callbacks and hands off to ``cluster_schwarz_2d_tri``
@@ -22,11 +22,12 @@ from typing import Optional
 import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
+from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )
-from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+from dvfopt.objectives import Objective
 
 
 def iterative_2d_tri_refine_repair_schwarz(
@@ -34,8 +35,7 @@ def iterative_2d_tri_refine_repair_schwarz(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     pad: int = 4,
     merge_dilation: int = 2,
     max_outer_iters: int = 3,
@@ -50,7 +50,7 @@ def iterative_2d_tri_refine_repair_schwarz(
 ):
     """Cluster-localized refine-repair (m14-Schwarz).
 
-    See :mod:`dvfopt.core.wallbreakers._schwarz_common` for the
+    See :mod:`dvfopt.core.schwarz._common` for the
     underlying algorithm. This entry point pins ``inner_solve`` to
     :func:`iterative_2d_tri_refine_repair` and (optionally) the global
     polish to :func:`iterative_2d_tri_barrier`.
@@ -58,7 +58,7 @@ def iterative_2d_tri_refine_repair_schwarz(
     Parameters
     ----------
     phi_in : ndarray, shape ``(2, H, W)`` or ``(3, 1, H, W)``.
-    threshold, margin, anchor, eps_l1
+    threshold, margin, objective
         Forwarded to per-cluster :func:`iterative_2d_tri_refine_repair`
         (and the optional final barrier polish).
     pad, merge_dilation, max_outer_iters, fallback_size_ratio,
@@ -86,8 +86,7 @@ def iterative_2d_tri_refine_repair_schwarz(
             phi_crop,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             time_budget_s=time_budget_s if time_budget_s is not None else 600.0,
             verbose=0,
             **m14_kwargs,
@@ -102,8 +101,7 @@ def iterative_2d_tri_refine_repair_schwarz(
                 threshold=threshold,
                 margin=margin,
                 max_minimize_iter=final_polish_max_iter,
-                anchor=anchor,
-                eps_l1=eps_l1,
+                objective=objective,
                 verbose=0,
             )
 

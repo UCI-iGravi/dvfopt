@@ -14,6 +14,9 @@ Concrete subclasses signal the kind of failure precisely:
   Constraint type it cannot handle (e.g. ``HarmonicALMBarrierStrategy``
   with ``JdetConstraint2D``). Subclass of ``TypeError`` so existing
   ``except TypeError`` handlers still catch it.
+* :class:`IncompatibleObjectiveError` — a Strategy was given an
+  Objective it cannot handle (e.g. ``SLPStrategy`` with
+  ``L2Objective``). Also a subclass of ``TypeError``.
 * :class:`SolverConfigError` — config validation failure. Subclass of
   ``ValueError`` for the same back-compat reason.
 
@@ -39,8 +42,13 @@ class IncompatibleConstraintError(DVFoptError, TypeError):
     not support (declared via ``accepts_constraints``)."""
 
 
+class IncompatibleObjectiveError(DVFoptError, TypeError):
+    """Strategy × objective mismatch (e.g. SLP with an L2 objective)."""
+
+
 __all__ = [
     'DVFoptError',
     'IncompatibleConstraintError',
+    'IncompatibleObjectiveError',
     'SolverConfigError',
 ]

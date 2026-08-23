@@ -4,10 +4,72 @@ Tracks user-visible changes to `dvfopt`. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] — 2026-08-22
+
+Library reorganization. Behaviour is unchanged — no solver produces a
+different number — but **import paths moved**. See the old → new map below,
+and [ARCHITECTURE.md](ARCHITECTURE.md) for the rules the new layout enforces.
+
+### Changed
+
+- **BREAKING — `dvfopt.core` is method-first.** One sub-package per algorithm
+  family instead of ~20 flat `iterative*_*.py` modules: `primitives/` (shared
+  constraint math + the traced SLSQP driver, zero method logic), `nmvf/`,
+  `barrier/`, `slsqp_windowed/`, `slsqp_fullgrid/`, `schwarz/`,
+  `wallbreakers/`, `slp/`, `marching/`. Sibling method packages never import
+  each other; anything two of them need lives in `core/primitives/` or in one
+  of the two shared engines, `barrier/_core.py` (penalty→barrier homotopy) and
+  `schwarz/_common.py` (domain decomposition).
+- **BREAKING — one package.** The top-level `laplacian/` and `test_cases/`
+  packages were absorbed into the distribution as `dvfopt.laplacian` and
+  `dvfopt.testdata`. `pip install dvfopt` no longer installs (or collides on)
+  two generically-named top-level packages.
+- **BREAKING — `requires-python >= 3.10`** (was `>= 3.9`) and
+  **`scipy>=1.15,<1.19`**. scipy 1.15 already dropped 3.9, and the upper bound
+  is load-bearing: the traced SLSQP driver vendors scipy's `_slsqplib`
+  private internals (the SLSQP C core), which exist only on scipy >=1.16 —
+  itself requiring Python >=3.11 — through 1.18. On scipy 1.15.x (what
+  Python 3.10 resolves to) the driver transparently falls back to scipy's
+  own `minimize(method='SLSQP')`: same numerics, no per-iteration trace (see
+  the Fixed entry below). `uv.lock` and `requirements-dev.txt` are aligned
+  with the pin.
+- **Objective is a real axis.** Every solver in the package now takes
+  `objective=<Objective>` end-to-end; the parallel `anchor='l2' / eps_l1=...`
+  string parameters are gone, and `objective_euc` was deleted. `anchor_term`
+  moved from the barrier core to [dvfopt/objectives.py](dvfopt/objectives.py)
+  (pure numpy — the engine imports *from* it, never the reverse). Kernels that
+  cannot call back into Python (numba wallbreakers, torch autograd) take the
+  `(kind, eps_l1)` pair from `objectives._kind_eps(objective)`.
+- **CLAUDE.md correction:** the phi-pack split is *not* "2-tri/6-tet vs Jdet".
+  `Tet6Constraint3D` declares `PhiPack.DX_FIRST` (`[dx, dy, dz]`) so it can
+  share the 3D barrier plumbing with `JdetConstraint3D`; only the 2D 2-triangle
+  constraints are `DY_FIRST`. `Constraint.pack` is the only thing to trust.
+- **`research/` and `archive/` are frozen provenance.** They were
+  deliberately not migrated — scripts there still reference pre-0.5.0 module
+  paths and are not runnable against this version (use the git history at
+  0.4.x).
 
 ### Added
 
+- **`ARCHITECTURE.md`** — dependency rules, the phi-pack table, and the
+  checklists for adding a method, a constraint, or an objective.
+- **Traced C-SLSQP driver** — `minimize_slsqp_traced` / `ineq_dict` at
+  [dvfopt/core/primitives/slsqp.py](dvfopt/core/primitives/slsqp.py), now the
+  single driver behind all ten SLSQP call sites (full-grid 2-tri and 6-tet,
+  Schwarz per-cluster, windowed 2D/3D, coupled k-ring). Byte-identical results
+  to `scipy.optimize.minimize(method='SLSQP')` — it *is* scipy's own C core —
+  and adds per-major-iteration tracing on top. The windowed path routes through
+  a `_window_minimize` shim that falls back to plain scipy when a caller pins a
+  non-SLSQP `method_name`.
+- **`SolveInfo.extras['slsqp_trace']`** — with `record_history=True` the SLSQP
+  strategies lift each run's per-major-iteration trace to this stable path, so
+  the GUI and reports never reach into per-phase `PhaseInfo.extras`.
+- **`accepts_objectives` + `IncompatibleObjectiveError`** — the objective-side
+  analogue of `accepts_constraints`. `Solver.__init__` now rejects a bad
+  strategy × objective pair at construction instead of mid-solve;
+  `SLPStrategy` declares `(L1Objective, NoneObjective)`.
+  `BarrierStrategy(objective_override=...)` lets a composed pipeline pin the
+  barrier leg's objective independently of the Solver's.
 - **Interactive report — solver-trajectory animation.** The cohort's
   interactive report viewer gains a play/scrub timeline that animates how a
   field's Jacobian-determinant map deforms across the solver's iterations
@@ -43,6 +105,52 @@ follows [Semantic Versioning](https://semver.org/).
   (regression test:
   `tests/test_viz_theme.py::TestApplyTheme::test_apply_theme_does_not_leak_layout`).
   Removed the `test_cli.py` workaround fixture that restored rcParams.
+- **`iterative_3d_tet_barrier_torch`** evaluated its objective before the
+  torch-missing `ImportError` guard; the guard now runs first.
+- **Importing `dvfopt` on Python 3.10 no longer crashes.**
+  `scipy.optimize._slsqplib` (the SLSQP C core) requires scipy >=1.16, which
+  itself requires Python >=3.11; on 3.10, pip/uv resolve to scipy 1.15.x,
+  which lacks it, and `dvfopt/core/primitives/slsqp.py` raised `ImportError`
+  at *module* import time, taking the whole `dvfopt.core` import graph down
+  with it. The module now sets `HAS_TRACED_SLSQP = False` instead of raising,
+  and `minimize_slsqp_traced` transparently delegates to
+  `scipy.optimize.minimize(method='SLSQP')` when tracing is unavailable —
+  identical numerics, no per-iteration trace.
+
+### Import map (old → new)
+
+Dotted module paths, longest-old-first. Nothing was renamed *within* a module —
+only the module it lives in changed.
+
+| # | Old | New |
+|---|---|---|
+| 1 | `dvfopt.core.tri_primitives` | `dvfopt.core.primitives.tri` |
+| 2 | `dvfopt.core.barrier_objective` | `dvfopt.core.primitives.jdet3d` |
+| 3 | `dvfopt.core._internal.constraint_values` | `dvfopt.core.primitives.constraint_values` |
+| 4 | `dvfopt.core._barrier_core` | `dvfopt.core.barrier._core` |
+| 5 | `dvfopt.core.iterative2d_barrier` | `dvfopt.core.barrier.jdet2d` |
+| 6 | `dvfopt.core.iterative3d_barrier_torch` | `dvfopt.core.barrier.jdet3d_torch` |
+| 7 | `dvfopt.core.iterative3d_barrier` | `dvfopt.core.barrier.jdet3d` |
+| 8 | `dvfopt.core.iterative2d_tri_barrier` | `dvfopt.core.barrier.tri2d` |
+| 9 | `dvfopt.core.iterative3d_tet_barrier_torch` | `dvfopt.core.barrier.tet3d_torch` |
+| 10 | `dvfopt.core._internal.io` | `dvfopt.core.slsqp_windowed._io` |
+| 11 | `dvfopt.core._internal.metrics` | `dvfopt.core.slsqp_windowed._metrics` |
+| 12 | `dvfopt.core._internal.window` | `dvfopt.core.slsqp_windowed._window` |
+| 13 | `dvfopt.core.solver3d` | `dvfopt.core.slsqp_windowed.coordinator3d` |
+| 14 | `dvfopt.core.solver` | `dvfopt.core.slsqp_windowed.coordinator` |
+| 15 | `dvfopt.core.objective` | *(deleted — `objective_euc` is gone; use an `Objective`)* |
+| 16 | `dvfopt.core.slsqp` | `dvfopt.core.slsqp_windowed` |
+| 17 | `dvfopt.core.iterative2d_tri_slsqp` | `dvfopt.core.slsqp_fullgrid.tri2d` |
+| 18 | `dvfopt.core.iterative3d_tet_slsqp` | `dvfopt.core.slsqp_fullgrid.tet3d` |
+| 19 | `dvfopt.core.iterative2d_tri_schwarz` | `dvfopt.core.schwarz.tri2d` |
+| 20 | `dvfopt.core.wallbreakers._schwarz_common` | `dvfopt.core.schwarz._common` |
+| 21 | `dvfopt.core._cluster_2tri` | `dvfopt.core.schwarz._cluster` |
+| 22 | `dvfopt.core._nmvf` | `dvfopt.core.nmvf` |
+| 23 | `laplacian` | `dvfopt.laplacian` |
+| 24 | `test_cases` | `dvfopt.testdata` |
+| 25 | `slsqp_traced` *(benchmarks-local module)* | `dvfopt.core.primitives.slsqp` |
+
+Also moved: `anchor_term` (`dvfopt.core._barrier_core` → `dvfopt.objectives`).
 
 ## [0.4.0] — 2026-08-19
 

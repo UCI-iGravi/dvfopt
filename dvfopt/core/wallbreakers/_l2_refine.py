@@ -20,12 +20,13 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._logging import log_info
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat as _tri_areas_flat,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v as _tri_grad_T_v,
 )
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 # Optional fused JIT path for the L1-anchored objective — the common
 # case for cluster_slp's m14_fast inner. Combines anchor + T-area
@@ -155,12 +156,11 @@ def l2_refine_2d(
     threshold: Optional[float] = None,
     seed: np.ndarray = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
+    objective: Objective | None = None,
     lam_schedule: tuple = (1e2, 1e4, 1e6, 1e8, 1e10),
     inner_maxiter: int = 2000,
     time_budget_s: float = 600.0,
     verbose: int = 1,
-    eps_l1: float = 1e-4,
     require_feasibility: bool = True,
     record_history: bool = False,
 ):
@@ -184,6 +184,8 @@ def l2_refine_2d(
     from dvfopt._defaults import DEFAULT_PARAMS
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
 
@@ -198,8 +200,7 @@ def l2_refine_2d(
             phi_in,
             threshold=threshold,
             margin=margin,
-            anchor=anchor,
-            eps_l1=eps_l1,
+            objective=objective,
             time_budget_s=time_budget_s * 0.5,
             verbose=verbose,
         )

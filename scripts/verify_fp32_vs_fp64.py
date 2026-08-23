@@ -15,9 +15,9 @@ import numpy as np
 import torch
 
 from dvfopt import generate_random_dvf_3d, jacobian_det2D, jacobian_det3D, scale_dvf_3d
-from dvfopt.core.iterative2d_barrier import iterative_2d_barrier_torch
-from dvfopt.core.iterative3d_barrier_torch import iterative_3d_barrier_torch
-from test_cases import make_deformation
+from dvfopt.core.barrier.jdet2d import iterative_2d_barrier_torch
+from dvfopt.core.barrier.jdet3d_torch import iterative_3d_barrier_torch
+from dvfopt.testdata import make_deformation
 
 
 def time_call(fn, *args, **kwargs):

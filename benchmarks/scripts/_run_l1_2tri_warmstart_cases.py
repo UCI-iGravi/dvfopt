@@ -35,14 +35,15 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
-from dvfopt.core.iterative2d_tri_slsqp import iterative_2d_tri_slsqp
-from dvfopt.core.slsqp.iterative import iterative_serial
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
+from dvfopt.core.slsqp_fullgrid.tri2d import iterative_2d_tri_slsqp
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 from dvfopt.jacobian.triangle_sign import (
     _corner_patch_areas_2d,
     _triangle_areas_2d,
 )
-from test_cases import canonical_2tri_2d
+from dvfopt.objectives import make_objective
+from dvfopt.testdata import canonical_2tri_2d
 
 
 def _l1(a, b):
@@ -91,8 +92,7 @@ def solve_barrier(phi_init, anchor):
         threshold=THRESHOLD,
         margin=1e-3,
         max_minimize_iter=500,
-        anchor=anchor,
-        eps_l1=EPS_L1,
+        objective=make_objective(anchor, eps_l1=EPS_L1),
         verbose=0,
         full_coverage=True,
     )
@@ -131,8 +131,7 @@ def solve_slsqp_fullgrid(phi_init, anchor):
         threshold=THRESHOLD,
         max_iter=80,
         warm_max_iter=1200,
-        anchor=anchor,
-        eps_l1=EPS_L1,
+        objective=make_objective(anchor, eps_l1=EPS_L1),
         full_coverage=True,
         verbose=0,
     )

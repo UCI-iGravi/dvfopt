@@ -4,7 +4,7 @@ Runs the SAME full-grid fold-correction problem (a ``crop_fold_region`` patch of
 moderate B0039 slice) through
 
 1. ``pyslsqp.optimize`` with its HDF5 per-major-iteration recorder, and
-2. ``slsqp_traced.minimize_slsqp_traced`` with ``trace=`` + ``save_x=True``
+2. ``dvfopt.core.primitives.slsqp.minimize_slsqp_traced`` with ``trace=`` + ``save_x=True``
    (plus ``scipy.optimize.minimize(method='SLSQP')`` as the byte-identity anchor),
 
 then asserts field-by-field parity. Exact per-iteration equality across the Fortran
@@ -37,7 +37,8 @@ import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import slsqp_variants as sv  # noqa: E402
-from slsqp_traced import minimize_slsqp_traced  # noqa: E402
+
+from dvfopt.core.primitives.slsqp import minimize_slsqp_traced  # noqa: E402
 
 DEFAULT_VOL = "data/dvfs/b0039/b0039_laplacian_deformation_field.npy"
 

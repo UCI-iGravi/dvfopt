@@ -29,6 +29,7 @@ from dvfopt.constraints import (
     TriConstraint2D,
     TriConstraint2DFullCoverage,
 )
+from dvfopt.objectives import L1Objective, NoneObjective
 from dvfopt.strategies.base import (
     Strategy,
     _build_solve_info,
@@ -125,6 +126,10 @@ class SLPStrategy(Strategy):
 
     supports_3d: bool = True
     accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage, Tet6Constraint3D)
+    # The SLP solvers minimise L1 deviation from the anchor by construction
+    # (the LP objective IS the L1 epigraph) — an L2Objective would be
+    # silently ignored, so reject it at construction rather than mislead.
+    accepts_objectives = (L1Objective, NoneObjective)
 
     def __post_init__(self):
         if self.accuracy not in ('fast', 'max'):

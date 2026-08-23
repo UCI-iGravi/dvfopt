@@ -23,7 +23,7 @@ from dvfopt.constraints import JdetConstraint2D
 
 SOLVERS = (
     "scipy-slsqp",
-    "slsqp-traced",  # vendored scipy C driver + pyslsqp-style tracing (slsqp_traced.py)
+    "slsqp-traced",  # vendored scipy C driver + pyslsqp-style tracing (dvfopt.core.primitives.slsqp)
     "scipy-trust-constr",
     "scipy-slsqp+trust-constr",  # escalation: SLSQP, fall back to trust-constr on a leftover fold
     "pyslsqp",
@@ -568,7 +568,7 @@ def full_grid_correct(phi_dydx, solver, threshold=0.01, maxiter=200, objective="
     elif solver == "slsqp-traced":
         # vendored scipy C driver + pyslsqp-style tracing, run with tracing ON so
         # the benchmark charges it the full QoL cost (scipy-slsqp = untracked base)
-        from slsqp_traced import minimize_slsqp_traced
+        from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
 
         tr: dict = {}
         r = minimize_slsqp_traced(

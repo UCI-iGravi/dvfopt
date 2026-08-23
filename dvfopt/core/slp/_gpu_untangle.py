@@ -11,7 +11,7 @@ Pack convention: DY_FIRST — ``phi (2, H, W) = [dy, dx]`` (matches the
 
 The torch triangle-area kernel :func:`_areas_torch` matches
 ``dvfopt.jacobian.triangle_sign._triangle_areas_2d`` /
-``dvfopt.core.tri_primitives.tri_areas_flat`` EXACTLY — including the
+``dvfopt.core.primitives.tri.tri_areas_flat`` EXACTLY — including the
 leading ``-0.5`` sign — with T1: A=TR, B=BL, C=BR and T2: A=TL, B=BL,
 C=TR.
 

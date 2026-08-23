@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.spatial3d import (
+from dvfopt.core.slsqp_windowed.spatial3d import (
     _clamp_to_voxel_budget,
     _edge_flags_3d,
     _frozen_boundary_mask_3d,

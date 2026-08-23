@@ -9,7 +9,7 @@ the existing iterative_serial signature.
 import numpy as np
 
 from benchmarks.two_triangle.registry import register_case
-from laplacian import solveLaplacianFromCorrespondences
+from dvfopt.laplacian import solveLaplacianFromCorrespondences
 
 
 def _build(H: int, W: int, msample: list, fsample: list) -> np.ndarray:

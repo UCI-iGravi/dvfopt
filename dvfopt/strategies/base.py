@@ -79,6 +79,10 @@ class Strategy(ABC):
       subclasses, or ``None`` to accept anything. Used in
       :meth:`_check_constraint` to surface incompatible compositions
       at :class:`Solver` construction time rather than mid-run.
+    * ``accepts_objectives`` — a tuple of accepted :class:`Objective`
+      subclasses, or ``None`` to accept anything. Used in
+      :meth:`_check_objective`, the objective-side analogue of
+      :meth:`_check_constraint`.
     * ``supports_3d`` — whether the strategy handles 3D constraints
       (i.e. ``constraint.dim == 3``). Most 2-tri-specific strategies
       are 2D-only by construction.
@@ -86,6 +90,8 @@ class Strategy(ABC):
 
     # ``None`` = accept any Constraint subclass. A tuple narrows it.
     accepts_constraints: Optional[tuple[type, ...]] = None
+    # ``None`` = accept any Objective subclass. A tuple narrows it.
+    accepts_objectives: Optional[tuple[type, ...]] = None
     supports_3d: bool = False
 
     @abstractmethod
@@ -142,6 +148,18 @@ class Strategy(ABC):
         if not self.supports_3d and constraint.dim == 3:
             raise IncompatibleConstraintError(
                 f'{type(self).__name__} does not support 3D constraints'
+            )
+
+    def _check_objective(self, objective: Objective) -> None:
+        from dvfopt.exceptions import IncompatibleObjectiveError
+
+        if self.accepts_objectives is not None and not isinstance(
+            objective, self.accepts_objectives
+        ):
+            accepted = ', '.join(t.__name__ for t in self.accepts_objectives)
+            raise IncompatibleObjectiveError(
+                f'{type(self).__name__} requires one of ({accepted}); '
+                f'got {type(objective).__name__}'
             )
 
     def __repr__(self) -> str:

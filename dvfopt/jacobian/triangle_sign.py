@@ -21,7 +21,7 @@ import numpy as np
 from dvfopt.jacobian.shoelace import _ref_grid
 
 # Optional Numba JIT — paired with tri_grad_T_v JIT in
-# `dvfopt.core.tri_primitives`. Forward T-area computation is the
+# `dvfopt.core.primitives.tri`. Forward T-area computation is the
 # other ~497k calls/run inside L-BFGS-B objective evaluations; JIT
 # folds the 4 corner-slice broadcasts into a single fused loop.
 try:

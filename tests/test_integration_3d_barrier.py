@@ -23,7 +23,7 @@ def _assert_no_neg_jdet_3d(phi, threshold=THRESHOLD):
 
 class TestBarrier3DNumpy:
     def test_identity_unchanged(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 4, 4, 4), dtype=np.float64)
         phi = iterative_3d_barrier(d, verbose=0)
@@ -31,14 +31,14 @@ class TestBarrier3DNumpy:
         np.testing.assert_allclose(phi, 0.0, atol=1e-3)
 
     def test_output_shape(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 4, 5, 6), dtype=np.float64)
         phi = iterative_3d_barrier(d, verbose=0)
         assert phi.shape == (3, 4, 5, 6)
 
     def test_corrects_single_spike(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 4.0
@@ -50,7 +50,7 @@ class TestBarrier3DNumpy:
         _assert_no_neg_jdet_3d(phi)
 
     def test_corrects_random_field(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = generate_random_dvf_3d((3, 5, 5, 5), max_magnitude=2.0, seed=42)
         if jacobian_det3D(d).min() >= THRESHOLD:
@@ -60,7 +60,7 @@ class TestBarrier3DNumpy:
         _assert_no_neg_jdet_3d(phi)
 
     def test_opposing_spikes(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 2] = 3.0
@@ -71,7 +71,7 @@ class TestBarrier3DNumpy:
         _assert_no_neg_jdet_3d(phi)
 
     def test_displacement_stays_close(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 4.0
@@ -79,7 +79,7 @@ class TestBarrier3DNumpy:
         assert np.abs(phi - d).max() < 10.0
 
     def test_non_cubic_grid(self):
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         d = np.zeros((3, 3, 5, 7), dtype=np.float64)
         d[2, 1, 2, 3] = 4.0
@@ -94,7 +94,7 @@ class TestBarrier3DNumpy:
         """F1 regression: windowed=False used to raise RuntimeError after
         the optimisation because it demanded 'l2'/'phi_flat' keys that
         run_penalty_barrier_lbfgs never records. It must return a field."""
-        from dvfopt.core.iterative3d_barrier import iterative_3d_barrier
+        from dvfopt.core.barrier.jdet3d import iterative_3d_barrier
 
         rng = np.random.default_rng(0)
         d = rng.standard_normal((3, 4, 5, 5)) * 0.01
@@ -108,7 +108,7 @@ class TestBarrier3DTorch:
         pytest.importorskip('torch')
 
     def test_identity_unchanged(self):
-        from dvfopt.core.iterative3d_barrier_torch import iterative_3d_barrier_torch
+        from dvfopt.core.barrier.jdet3d_torch import iterative_3d_barrier_torch
 
         d = np.zeros((3, 4, 4, 4), dtype=np.float64)
         phi = iterative_3d_barrier_torch(d, verbose=0, device="cpu")
@@ -116,7 +116,7 @@ class TestBarrier3DTorch:
         np.testing.assert_allclose(phi, 0.0, atol=1e-3)
 
     def test_corrects_single_spike(self):
-        from dvfopt.core.iterative3d_barrier_torch import iterative_3d_barrier_torch
+        from dvfopt.core.barrier.jdet3d_torch import iterative_3d_barrier_torch
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 4.0
@@ -132,7 +132,7 @@ class TestBarrier3DTorch:
         _assert_no_neg_jdet_3d(phi)
 
     def test_opposing_spikes(self):
-        from dvfopt.core.iterative3d_barrier_torch import iterative_3d_barrier_torch
+        from dvfopt.core.barrier.jdet3d_torch import iterative_3d_barrier_torch
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 2] = 3.0
@@ -146,7 +146,7 @@ class TestBarrier3DTorch:
         """F10(c) regression: the module used to hard-import torch at the
         top level. It must be importable without torch, with the public
         entry raising a friendly ImportError at call time."""
-        from dvfopt.core import iterative3d_barrier_torch as mod
+        from dvfopt.core.barrier import jdet3d_torch as mod
 
         original = mod.torch
         mod.torch = None
@@ -181,7 +181,7 @@ class TestBatchedBarrier3DTorchInfeasiblePatch:
         return phi
 
     def _hard_interior_min_j(self, phi):
-        from dvfopt.core.iterative3d_barrier_torch import _jdet_3d_torch
+        from dvfopt.core.barrier.jdet3d_torch import _jdet_3d_torch
 
         z0, z1, y0, y1, x0, x1 = self.HARD
         j = _jdet_3d_torch(phi)
@@ -190,7 +190,7 @@ class TestBatchedBarrier3DTorchInfeasiblePatch:
     def _run(self, mu_schedule):
         import torch
 
-        from dvfopt.core.iterative3d_barrier_torch import _optimize_batch_3d_torch
+        from dvfopt.core.barrier.jdet3d_torch import _optimize_batch_3d_torch
 
         phi_full = self._build()
         _optimize_batch_3d_torch(

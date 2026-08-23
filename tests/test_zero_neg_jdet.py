@@ -12,8 +12,8 @@ entire-field folds, boundary-only folds, and adversarial patterns.
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.parallel import iterative_parallel
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
 THRESHOLD = 0.01
@@ -389,7 +389,7 @@ class TestConstraintModes:
 
 
 # ---------------------------------------------------------------------------
-# Synthetic test cases from test_cases package
+# Synthetic test cases from dvfopt.testdata package
 # ---------------------------------------------------------------------------
 
 
@@ -406,7 +406,7 @@ class TestSyntheticCases:
         ],
     )
     def test_synthetic_case(self, case_key):
-        from test_cases import make_deformation
+        from dvfopt.testdata import make_deformation
 
         deformation, _, _ = make_deformation(case_key)
         deformation = deformation.astype(np.float64)
@@ -431,7 +431,7 @@ class TestSyntheticCases:
         ],
     )
     def test_random_dvf_case(self, case_key):
-        from test_cases import make_random_dvf
+        from dvfopt.testdata import make_random_dvf
 
         deformation = make_random_dvf(case_key).astype(np.float64)
         jdet_before = jacobian_det2D(deformation[[1, 2], 0])

@@ -1,14 +1,14 @@
 """Slice-by-slice benchmark of m14 vs barrier on the full B0039 z-stack.
 
-528 slices total. Both methods use ``anchor='l2'`` and the package
+528 slices total. Both methods use ``objective=L2Objective()`` and the package
 default ``threshold=0.01``. The CSV is written incrementally so partial
 progress is visible while the benchmark runs (~hours).
 
 Per slice, the script:
 
 1. Computes initial fold stats (skip if already feasible).
-2. Runs ``iterative_2d_tri_barrier(anchor='l2')`` and records L2/L1/wall.
-3. Runs ``iterative_2d_tri_refine_repair(anchor='l2')`` and records.
+2. Runs ``iterative_2d_tri_barrier(objective=L2Objective())`` and records L2/L1/wall.
+3. Runs ``iterative_2d_tri_refine_repair(objective=L2Objective())`` and records.
 4. Appends two CSV rows (one per method) and flushes to disk.
 
 Generous per-slice time budget; failures are captured in the
@@ -37,13 +37,15 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
 from dvfopt.core.wallbreakers import iterative_2d_tri_harmonic_polished  # noqa
 from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair as iterative_m14
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.objectives import make_objective
 
 THRESHOLD = 0.01
 ANCHOR = 'l2'
+OBJECTIVE = make_objective(ANCHOR, eps_l1=1e-4)
 TIME_BUDGET_PER_SLICE = 600.0
 
 
@@ -158,8 +160,7 @@ def main():
                 threshold=THRESHOLD,
                 margin=1e-3,
                 max_minimize_iter=500,
-                anchor=ANCHOR,
-                eps_l1=1e-4,
+                objective=OBJECTIVE,
                 verbose=0,
             ),
         ),
@@ -170,8 +171,7 @@ def main():
                 p,
                 threshold=THRESHOLD,
                 margin=1e-3,
-                anchor=ANCHOR,
-                eps_l1=1e-4,
+                objective=OBJECTIVE,
                 time_budget_s=TIME_BUDGET_PER_SLICE,
                 verbose=0,
             ),

@@ -3,18 +3,18 @@
 Used by loop-owning variants (soft_margin, active_set, trust_constr). The
 re-implementation supports per-iteration trajectory capture and pluggable
 constraint builders, but deliberately omits the sophisticated escalation
-and oscillation-livelock logic from `dvfopt.core.slsqp.iterative` — keeping
+and oscillation-livelock logic from `dvfopt.core.slsqp_windowed.iterative` — keeping
 the harness loop small and easy to reason about. Loop-owning variants may
 therefore converge slightly less aggressively than the baseline; the
 baseline_serial variant uses the real solver and remains the convergence
 reference.
 
 Reuses (do NOT modify):
-  - dvfopt.core.slsqp.spatial.{argmin_quality, neg_jdet_bounding_window,
+  - dvfopt.core.slsqp_windowed.spatial.{argmin_quality, neg_jdet_bounding_window,
                                  get_nearest_center, _edge_flags,
                                  get_phi_sub_flat_padded}
-  - dvfopt.core.slsqp.constraints._build_constraints (default constraint builder)
-  - dvfopt.core.objective.objective_euc
+  - dvfopt.core.slsqp_windowed.constraints._build_constraints (default constraint builder)
+  - dvfopt.objectives.L2Objective
   - dvfopt.jacobian.numpy_jdet.jacobian_det2D
 """
 
@@ -28,9 +28,8 @@ from scipy.optimize import minimize
 
 from benchmarks.two_triangle.result import SolverResult
 from benchmarks.two_triangle.trajectory import TrajectoryAccumulator
-from dvfopt.core.objective import objective_euc
-from dvfopt.core.slsqp.constraints import _build_constraints, _quality_map
-from dvfopt.core.slsqp.spatial import (
+from dvfopt.core.slsqp_windowed.constraints import _build_constraints, _quality_map
+from dvfopt.core.slsqp_windowed.spatial import (
     _edge_flags,
     argmin_quality,
     get_nearest_center,
@@ -38,6 +37,10 @@ from dvfopt.core.slsqp.spatial import (
     neg_jdet_bounding_window,
 )
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
+from dvfopt.objectives import L2Objective
+
+# Same L2 anchor the package's own window solves use.
+_L2 = L2Objective()
 
 
 @dataclass
@@ -147,7 +150,7 @@ def run_minimal_iterative_2d(
                 minimize_options["ftol"] = 1e-9
 
             res = minimize(
-                objective_euc,
+                lambda z, a: _L2(z - a),
                 phi_sub_flat,
                 args=(phi_init_sub_flat,),
                 method=method,

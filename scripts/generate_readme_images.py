@@ -16,7 +16,7 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from dvfopt import jacobian_det2D
-from test_cases import (
+from dvfopt.testdata import (
     RANDOM_DVF_CASES,
     SYNTHETIC_CASES,
     make_deformation,

@@ -59,11 +59,11 @@ cells.append(
         "from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d\n"
         "from dvfopt.jacobian.triangle_sign import _triangle_areas_2d\n"
         "from dvfopt.jacobian.intersection import has_quad_self_intersections, _quads_intersect\n"
-        "from dvfopt.core.objective import objective_euc\n"
+        "from dvfopt.objectives import L2Objective\n"
         "from dvfopt.viz.triangle_debug import find_problematic_pixels\n"
         "from dvfopt.viz import plot_triangle_debug\n"
         "\n"
-        "from test_cases import make_deformation\n"
+        "from dvfopt.testdata import make_deformation\n"
         "\n"
         "THRESHOLD = DEFAULT_PARAMS['threshold']\n"
         "print(f'threshold = {THRESHOLD}')",
@@ -198,7 +198,7 @@ cells.append(
         "    if jac is not None:\n"
         "        nl_kwargs['jac'] = lambda z: jac(*unpack(z))\n"
         "    t0 = time.time()\n"
-        "    res = minimize(lambda z: objective_euc(z, z0_init), z0,\n"
+        "    res = minimize(lambda z: L2Objective()(z - z0_init), z0,\n"
         "                   jac=True, method='SLSQP',\n"
         "                   constraints=[NonlinearConstraint(lambda z: fun(*unpack(z)), **nl_kwargs)],\n"
         "                   options={'maxiter': max_iter, 'disp': False})\n"
@@ -207,7 +207,7 @@ cells.append(
         "        rng = np.random.default_rng(123)\n"
         "        z_warm = res.x + rng.normal(scale=noise_scale, size=res.x.shape)\n"
         "        t1 = time.time()\n"
-        "        res = minimize(lambda z: objective_euc(z, z0_init), z_warm,\n"
+        "        res = minimize(lambda z: L2Objective()(z - z0_init), z_warm,\n"
         "                       jac=True, method='SLSQP',\n"
         "                       constraints=[NonlinearConstraint(lambda z: fun(*unpack(z)), **nl_kwargs)],\n"
         "                       options={'maxiter': 2000, 'ftol': 1e-10, 'disp': False})\n"
@@ -244,7 +244,7 @@ cells.append(
     md(
         "## Setup - load the hard case\n"
         "\n"
-        "Same field as 05: `01c_20x40_edges` from `test_cases.make_deformation`. Large displacements concentrated at image borders; initial `neg_TR = 68`, `QI = 334`.",
+        "Same field as 05: `01c_20x40_edges` from `dvfopt.testdata.make_deformation`. Large displacements concentrated at image borders; initial `neg_TR = 68`, `QI = 334`.",
         "setup-md",
     )
 )

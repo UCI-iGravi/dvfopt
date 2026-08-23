@@ -13,7 +13,7 @@ import numpy as np
 from benchmarks.two_triangle._iterative_loop import run_minimal_iterative_2d
 from benchmarks.two_triangle.registry import register_variant
 from benchmarks.two_triangle.result import SolverResult
-from dvfopt.core.slsqp.constraints import _build_constraints
+from dvfopt.core.slsqp_windowed.constraints import _build_constraints
 
 
 def _is_3d(dvf):

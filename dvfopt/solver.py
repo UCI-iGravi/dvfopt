@@ -207,6 +207,7 @@ class Solver:
         self.err_tol = float(err_tol)
         # Eagerly check compatibility so failures surface at construction.
         self.strategy._check_constraint(self.constraint)
+        self.strategy._check_objective(self.objective)
 
     @classmethod
     def from_spec(

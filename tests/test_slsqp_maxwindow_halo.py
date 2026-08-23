@@ -9,7 +9,7 @@ the same stencils the full-field accept check uses.
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints3d import _build_constraints_3d_maxwindow
+from dvfopt.core.slsqp_windowed.constraints3d import _build_constraints_3d_maxwindow
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_3d, jacobian_det3D
 
 RNG = np.random.default_rng(42)
@@ -165,7 +165,7 @@ class TestMaxWindowSolveIntegration:
         # window voxels and cannot create fresh negatives in the halo;
         # a rejected one is rolled back. So the set of negative voxels
         # never grows.
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = self._fold_sheet_volume()
         neg_before = jacobian_det3D(d) <= THR - 1e-5
@@ -175,7 +175,7 @@ class TestMaxWindowSolveIntegration:
         assert neg_after.sum() < neg_before.sum(), 'solver made no progress'
 
     def test_maxwindow_requires_patch_ctx(self):
-        from dvfopt.core.solver3d import _optimize_single_window_3d
+        from dvfopt.core.slsqp_windowed.coordinator3d import _optimize_single_window_3d
 
         x0 = np.zeros(3 * 27)
         with pytest.raises(AssertionError):

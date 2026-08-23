@@ -5,10 +5,15 @@ returns ``(value, gradient)``. The objective is independent of the
 constraint family — every solver in the package accepts an
 ``Objective`` (or its string label via :func:`make_objective`).
 
-The underlying math is the existing ``anchor_term`` in
-:mod:`dvfopt.core._barrier_core`; these classes are a thin OO wrapper,
-1:1 with the three legacy string options ``'l2' / 'l1' / 'none'``.
-Solvers consume an objective by its ``label`` (and ``eps`` for L1).
+The underlying math is :func:`anchor_term` below; these classes are a
+thin OO wrapper, 1:1 with the three legacy string options
+``'l2' / 'l1' / 'none'``. Solvers take an ``Objective`` and call it on
+``phi - phi_anchor``; the numba/torch inner kernels, which dispatch on an
+integer anchor flag and cannot call back into Python, take the
+``(kind, eps_l1)`` pair from :func:`_kind_eps` instead.
+
+This module is pure numpy — it must not import from :mod:`dvfopt.core`
+(the engine imports *from here*).
 """
 
 from __future__ import annotations
@@ -17,7 +22,20 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from dvfopt.core._barrier_core import anchor_term
+
+def anchor_term(diff: np.ndarray, kind: str, eps_l1: float = 1e-4):
+    """Return ``(value, gradient)`` of the anchor term.
+
+    ``kind`` is one of ``'l2'``, ``'l1'`` (smoothed), ``'none'``.
+    """
+    if kind == 'l2':
+        return 0.5 * float(diff @ diff), diff.copy()
+    if kind == 'l1':
+        s = np.sqrt(diff * diff + eps_l1 * eps_l1)
+        return float((s - eps_l1).sum()), diff / s
+    if kind == 'none':
+        return 0.0, np.zeros_like(diff)
+    raise ValueError(f"unknown anchor kind: {kind!r}")
 
 
 class Objective(ABC):
@@ -110,10 +128,23 @@ def make_objective(spec, eps_l1: float = 1e-4) -> Objective:
     raise ValueError(f'unknown objective: {spec!r}')
 
 
+def _kind_eps(objective: Objective) -> tuple[str, float]:
+    """Legacy ``(kind, eps_l1)`` pair for kernels that can't call Python.
+
+    The numba fused kernels (wallbreakers) and the torch autograd path
+    dispatch on an integer/string anchor flag and cannot evaluate an
+    :class:`Objective` on their tensors, so they take this pair instead.
+    Mirrors the historical ``anchor=objective.label or 'l2'`` unwrapping
+    exactly — a custom subclass with no ``label`` falls back to ``'l2'``.
+    """
+    return objective.label or 'l2', float(getattr(objective, 'eps', 1e-4))
+
+
 __all__ = [
     'L1Objective',
     'L2Objective',
     'NoneObjective',
     'Objective',
+    'anchor_term',
     'make_objective',
 ]

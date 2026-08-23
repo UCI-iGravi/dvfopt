@@ -52,7 +52,7 @@ cd_code_src = (
     "\n"
     "t0 = time.time()\n"
     "res_cd = minimize(\n"
-    "    lambda z: objective_euc(z, z0_init),\n"
+    "    lambda z: L2Objective()(z - z0_init),\n"
     "    z0_init.copy(),\n"
     "    jac=True,\n"
     "    method='SLSQP',\n"

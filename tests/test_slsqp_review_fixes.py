@@ -9,8 +9,9 @@
   exactly for every constraint mode.
 * F8 — failed/worse SLSQP results must be rolled back, not applied
   unconditionally.
-* F9 — ``SLSQPWindowedStrategy`` must warn when the composed objective
-  is not L2/None (the delegated solvers hard-code L2).
+* F9 — ``SLSQPWindowedStrategy`` must plumb the composed objective all
+  the way down to the per-window SLSQP solve instead of silently
+  hard-coding an L2 anchor.
 """
 
 import warnings
@@ -18,10 +19,11 @@ import warnings
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.iterative import iterative_serial
-from dvfopt.core.slsqp.iterative3d import iterative_3d
-from dvfopt.core.slsqp.parallel import iterative_parallel
+from dvfopt.core.slsqp_windowed.iterative import iterative_serial
+from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
+from dvfopt.core.slsqp_windowed.parallel import iterative_parallel
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
+from dvfopt.objectives import L2Objective, Objective
 
 
 def _folded_deformation_2d(H=10, W=10, spike=5.0):
@@ -77,7 +79,7 @@ class TestFrozenEdgeReleaseAtMaxWindow3D:
     def test_builder_drops_freeze_at_max_window(self):
         from scipy.optimize import LinearConstraint
 
-        from dvfopt.core.slsqp.constraints3d import _build_constraints_3d
+        from dvfopt.core.slsqp_windowed.constraints3d import _build_constraints_3d
 
         sz, sy, sx = 4, 4, 4
         phi_flat = np.zeros(3 * sz * sy * sx)
@@ -141,8 +143,8 @@ class TestPatchQuality2D:
         ],
     )
     def test_matches_full_quality_map(self, shoe, inj, tri):
-        from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _patch_quality_2d
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(7)
         phi = rng.standard_normal((2, 14, 14)) * 0.3
@@ -162,8 +164,8 @@ class TestPatchQuality2D:
         np.testing.assert_allclose(qual, qual_full, atol=1e-12)
 
     def test_matches_at_grid_corner(self):
-        from dvfopt.core._internal.metrics import _patch_jacobian_2d, _patch_quality_2d
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _patch_jacobian_2d, _patch_quality_2d
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(11)
         phi = rng.standard_normal((2, 9, 9)) * 0.25
@@ -181,8 +183,8 @@ class TestPatchQuality2D:
 
     def test_update_metrics_quality_patch_path(self):
         """_update_metrics with quality_matrix= must equal the legacy path."""
-        from dvfopt.core._internal.metrics import _update_metrics
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed._metrics import _update_metrics
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(3)
         phi = rng.standard_normal((2, 12, 12)) * 0.3
@@ -219,7 +221,7 @@ class TestPatchQuality2D:
 class TestRollbackWorseResults:
     def test_serial_garbage_result_is_rolled_back(self, monkeypatch):
         """When every sub-solve returns garbage, phi must come back unchanged."""
-        import dvfopt.core.solver as solver_mod
+        import dvfopt.core.slsqp_windowed.coordinator as solver_mod
 
         rng = np.random.default_rng(0)
 
@@ -238,7 +240,7 @@ class TestRollbackWorseResults:
         np.testing.assert_array_equal(phi[1], d[2, 0])
 
     def test_serial_garbage_result_3d_is_rolled_back(self, monkeypatch):
-        import dvfopt.core.solver3d as solver3d_mod
+        import dvfopt.core.slsqp_windowed.coordinator3d as solver3d_mod
 
         rng = np.random.default_rng(1)
 
@@ -263,17 +265,31 @@ class TestRollbackWorseResults:
 
 
 # ---------------------------------------------------------------------------
-# F9 — SLSQPWindowedStrategy objective warning
+# F9 — SLSQPWindowedStrategy objective plumbing (no silent L2 fallback)
 # ---------------------------------------------------------------------------
 
 
-class TestWindowedStrategyObjectiveWarning:
+class _CountingObjective(Objective):
+    """L2 anchor that records how many times the solver evaluated it."""
+
+    label = 'l2'
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, diff):
+        self.calls += 1
+        return L2Objective()(diff)
+
+
+class TestWindowedStrategyObjective:
     @staticmethod
-    def _solve(objective):
+    def _solve(objective, phi=None):
         from dvfopt.constraints import JdetConstraint2D
         from dvfopt.strategies.slsqp import SLSQPWindowedStrategy
 
-        phi = np.zeros((2, 6, 6))  # identity field -> returns immediately
+        if phi is None:
+            phi = np.zeros((2, 6, 6))  # identity field -> returns immediately
         return SLSQPWindowedStrategy(max_iterations=2).solve(
             phi,
             constraint=JdetConstraint2D(shape=(6, 6)),
@@ -282,11 +298,16 @@ class TestWindowedStrategyObjectiveWarning:
             verbose=0,
         )
 
-    def test_l1_objective_warns(self):
-        from dvfopt.objectives import L1Objective
-
-        with pytest.warns(UserWarning, match='L2 objective.*ignored'):
-            self._solve(L1Objective())
+    def test_objective_reaches_the_window_solve(self):
+        """The composed objective is plumbed down to the per-window
+        ``scipy.optimize.minimize`` call (it used to be ignored there in
+        favour of a hard-coded L2 anchor)."""
+        phi = np.zeros((2, 6, 6))
+        phi[0, 3, 3] = 2.0
+        phi[1, 3, 3] = 2.0  # plants a 2-pixel Jdet fold
+        obj = _CountingObjective()
+        self._solve(obj, phi=phi)
+        assert obj.calls > 0, 'windowed solver never evaluated the composed objective'
 
     def test_l2_objective_does_not_warn(self):
         from dvfopt.objectives import L2Objective

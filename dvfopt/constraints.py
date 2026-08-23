@@ -188,7 +188,7 @@ class TriConstraint2D(Constraint):
     Output:   ``[T1.ravel(), T2.ravel()]`` of length ``2*(H-1)*(W-1)``.
 
     Reuses the canonical primitives in
-    :mod:`dvfopt.core.tri_primitives` so this class is purely an
+    :mod:`dvfopt.core.primitives.tri` so this class is purely an
     interface wrapper — no math is re-derived.
     """
 
@@ -236,12 +236,12 @@ class TriConstraint2D(Constraint):
         return np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
-        from dvfopt.core.tri_primitives import tri_areas_flat
+        from dvfopt.core.primitives.tri import tri_areas_flat
 
         return tri_areas_flat(phi_flat, *self.shape)
 
     def adjoint(self, phi_flat: np.ndarray, v: np.ndarray) -> np.ndarray:
-        from dvfopt.core.tri_primitives import tri_grad_T_v
+        from dvfopt.core.primitives.tri import tri_grad_T_v
 
         return tri_grad_T_v(phi_flat, *self.shape, v)
 
@@ -250,9 +250,9 @@ class TriConstraint2D(Constraint):
         # reused dense buffer (fastest for scipy's SLSQP adapter, which
         # densifies anyway); this convenience API keeps its documented
         # sparse contract.
-        from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
+        from dvfopt.core.primitives.tri import build_full_grid_tri_jac
 
-        builder = self._cached_jac_builder(lambda: _build_full_grid_tri_jac(*self.shape, False))
+        builder = self._cached_jac_builder(lambda: build_full_grid_tri_jac(*self.shape, False))
         return sp.csr_matrix(builder(phi_flat))
 
 
@@ -300,21 +300,21 @@ class TriConstraint2DFullCoverage(Constraint):
         return TriConstraint2D.unflatten(self, phi_flat)
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
-        from dvfopt.core.tri_primitives import tri_areas_flat_full_coverage
+        from dvfopt.core.primitives.tri import tri_areas_flat_full_coverage
 
         return tri_areas_flat_full_coverage(phi_flat, *self.shape)
 
     def adjoint(self, phi_flat: np.ndarray, v: np.ndarray) -> np.ndarray:
-        from dvfopt.core.tri_primitives import tri_grad_T_v_full_coverage
+        from dvfopt.core.primitives.tri import tri_grad_T_v_full_coverage
 
         return tri_grad_T_v_full_coverage(phi_flat, *self.shape, v)
 
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
         # See TriConstraint2D.jacobian — cached builder, dense buffer
         # wrapped to keep the documented sparse contract.
-        from dvfopt.core.iterative2d_tri_slsqp import _build_full_grid_tri_jac
+        from dvfopt.core.primitives.tri import build_full_grid_tri_jac
 
-        builder = self._cached_jac_builder(lambda: _build_full_grid_tri_jac(*self.shape, True))
+        builder = self._cached_jac_builder(lambda: build_full_grid_tri_jac(*self.shape, True))
         return sp.csr_matrix(builder(phi_flat))
 
 
@@ -332,7 +332,7 @@ class JdetConstraint2D(Constraint):
 
     Reuses :func:`dvfopt.jacobian.numpy_jdet._numpy_jdet_2d` and the
     closed-form adjoint already in
-    :mod:`dvfopt.core.iterative2d_barrier`.
+    :mod:`dvfopt.core.primitives.jdet2d`.
     """
 
     pack = PhiPack.DX_FIRST
@@ -368,14 +368,14 @@ class JdetConstraint2D(Constraint):
         )  # dx back to channel 1
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
-        from dvfopt.core.iterative2d_barrier import _jdet_2d_flat
+        from dvfopt.core.primitives.jdet2d import jdet_2d_flat
 
-        return _jdet_2d_flat(phi_flat, self.shape)
+        return jdet_2d_flat(phi_flat, self.shape)
 
     def adjoint(self, phi_flat: np.ndarray, v: np.ndarray) -> np.ndarray:
-        from dvfopt.core.iterative2d_barrier import _jdet_grad_T_v_2d
+        from dvfopt.core.primitives.jdet2d import jdet_grad_T_v_2d
 
-        return _jdet_grad_T_v_2d(phi_flat, self.shape, v)
+        return jdet_grad_T_v_2d(phi_flat, self.shape, v)
 
 
 class JdetConstraint3D(Constraint):
@@ -427,12 +427,12 @@ class JdetConstraint3D(Constraint):
         return np.stack([dz, dy, dx])
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
-        from dvfopt.core.barrier_objective import jdet_full
+        from dvfopt.core.primitives.jdet3d import jdet_full
 
         return jdet_full(phi_flat, self.shape)
 
     def adjoint(self, phi_flat: np.ndarray, v: np.ndarray) -> np.ndarray:
-        from dvfopt.core.barrier_objective import _jdet_grad_T_v
+        from dvfopt.core.primitives.jdet3d import _jdet_grad_T_v
 
         return _jdet_grad_T_v(phi_flat, self.shape, v)
 

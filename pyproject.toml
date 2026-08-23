@@ -1,11 +1,11 @@
 [project]
 name = "dvfopt"
-version = "0.4.0"
+version = "0.5.0"
 description = "Correction of negative Jacobian determinants in deformation (displacement) fields"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "scipy",
+    "scipy>=1.15,<1.19",
     "SimpleITK",
     "nibabel",
     "matplotlib",
@@ -54,14 +54,14 @@ gui = [
 ]
 fast = [
     # Optional JIT accelerator for the hot 2-triangle adjoint
-    # (`dvfopt.core.tri_primitives.tri_grad_T_v`). Provides a 5-14x
+    # (`dvfopt.core.primitives.tri.tri_grad_T_v`). Provides a 5-14x
     # per-call speedup; the module auto-detects numba at import and
     # falls back to the pure-numpy path when not installed.
     "numba",
 ]
 
 [tool.setuptools.packages.find]
-include = ["dvfopt*", "laplacian*", "test_cases*", "dvfopt_gui*"]
+include = ["dvfopt*", "dvfopt_gui*"]
 
 # ---------------------------------------------------------------------------
 # Pytest. Scope collection to tests/ so a bare `pytest` does NOT pull in the
@@ -99,6 +99,8 @@ files = ["dvfopt/cli.py", "dvfopt/metrics.py", "dvfopt/io"]
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
+# Deliberately trails `requires-python` (>=3.10): raising this to py310 turns
+# on ~30 pyupgrade/RUF findings that are code changes, not packaging truth.
 target-version = "py39"
 extend-exclude = [
     "archive/**",                    # historical, do not lint
@@ -166,11 +168,11 @@ ignore = [
 # laplacian package: ``__init__`` re-exports the public API; F821 in
 # ``correspondence.py`` is a false positive on closure free-variables
 # (``A``/``M`` are bound in the enclosing ``sliceToSlice3DLaplacian``).
-"laplacian/__init__.py" = ["F401"]
-"laplacian/correspondence.py" = ["F821"]
+"dvfopt/laplacian/__init__.py" = ["F401"]
+"dvfopt/laplacian/correspondence.py" = ["F821"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dvfopt", "dvfopt_gui", "laplacian", "test_cases"]
+known-first-party = ["dvfopt", "dvfopt_gui"]
 
 [tool.ruff.format]
 quote-style = "preserve"  # don't auto-rewrite quotes (codebase uses both)

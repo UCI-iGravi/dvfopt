@@ -17,7 +17,7 @@ Public API
   baseline. 100% feasibility on the original B0039 DVF.
 * :func:`iterative_2d_tri_refine_repair` (m14): 4-stage — m10 seed →
   soft-penalty pull → harmonic repair → barrier polish. The L2/L1
-  winner. Run with ``anchor='l1'`` for the smallest deviation from input.
+  winner. Run with ``objective=L1Objective()`` for the smallest deviation from input.
 * :func:`iterative_2d_tri_refine_repair_schwarz` (m14-Schwarz): m14 with
   cluster-localized domain decomposition. Detects fold components,
   runs m14 per-cluster on bounding-box crops, splices back. Final

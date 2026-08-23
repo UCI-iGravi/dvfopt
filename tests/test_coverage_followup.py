@@ -30,7 +30,7 @@ class TestTriGradFullCoverageAdjoint:
     def test_matches_numerical_finite_diff(self):
         """Verify the analytical adjoint matches the numerical Jacobian
         of ``_tri_areas_flat_full_coverage`` to ~1e-9."""
-        from dvfopt.core.iterative2d_tri_barrier import (
+        from dvfopt.core.barrier.tri2d import (
             _tri_areas_flat_full_coverage,
             _tri_grad_T_v_full_coverage,
         )
@@ -136,7 +136,7 @@ class TestLaplacianSolverWarnings:
     def test_duplicate_correspondences_warns(self):
         """Two source points rounded to the same target voxel should
         emit a warning via log_fn."""
-        from laplacian.solver import solveLaplacianFromCorrespondences
+        from dvfopt.laplacian.solver import solveLaplacianFromCorrespondences
 
         # Two correspondences land on the same target voxel (0, 0, 0).
         src = np.array([[0.0, 0.0, 0.0], [0.0, 0.4, 0.0]])
@@ -170,7 +170,7 @@ class TestLaplacianSymmetry:
     def test_laplacianA1D_interior_symmetric(self):
         """After zeroing boundary columns, interior rows of A_1D should
         be symmetric with their columns."""
-        from laplacian.utils import laplacianA1D
+        from dvfopt.laplacian.utils import laplacianA1D
 
         n = 8
         boundary = np.array([0, 4])
@@ -183,7 +183,7 @@ class TestLaplacianSymmetry:
                 )
 
     def test_laplacianA2D_interior_symmetric(self):
-        from laplacian.utils import laplacianA2D
+        from dvfopt.laplacian.utils import laplacianA2D
 
         shape = (4, 5)
         N = 20
@@ -204,7 +204,7 @@ class TestLaplacianSymmetry:
 
 class TestSchwarzActuallyRoutes:
     def test_large_component_triggers_schwarz_via_history(self):
-        from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
+        from dvfopt.core.schwarz.tri2d import iterative_2d_tri_schwarz
 
         rng = np.random.default_rng(99)
         phi = np.stack([rng.normal(0, 0.4, (30, 30)), rng.normal(0, 0.4, (30, 30))])

@@ -1,4 +1,4 @@
-"""Direct unit tests for ``dvfopt.core._barrier_core``.
+"""Direct unit tests for ``dvfopt.core.barrier._core``.
 
 This is the single homotopy engine that routes all four CPU barrier
 solvers, so it deserves localized tests. Failures here are far easier to
@@ -8,12 +8,12 @@ locate than via the multi-layer integration tests.
 import numpy as np
 import pytest
 
-from dvfopt.core._barrier_core import (
+from dvfopt.core.barrier._core import (
     DEFAULT_LAM_SCHEDULE,
     DEFAULT_MU_SCHEDULE,
-    anchor_term,
     run_penalty_barrier_lbfgs,
 )
+from dvfopt.objectives import anchor_term
 
 # ---------------------------------------------------------------------------
 # anchor_term: per-mode value + gradient verification

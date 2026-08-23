@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from dvfopt import jacobian_det2D
 from dvfopt.jacobian import triangle_sign_areas2D
-from test_cases import make_deformation
+from dvfopt.testdata import make_deformation
 
 
 def _forward_jdet_2d(dy, dx):

@@ -8,13 +8,13 @@ current code.
 
 Methods run:
 
-* ``barrier_l1``             — iterative_2d_tri_barrier(anchor='l1').
+* ``barrier_l1``             — iterative_2d_tri_barrier(objective=L1Objective()).
 * ``m10_default``            — iterative_2d_tri_harmonic_polished
                                (max_grow_iters=8, manuscript default).
 * ``m10_grow20``             — same with max_grow_iters=20.
 * ``m14_default_l2``         — iterative_2d_tri_refine_repair
-                               (anchor='l2', max_grow_iters=8).
-* ``m14_l1_grow20``          — refine_repair anchor='l1' (the
+                               (objective=L2Objective(), max_grow_iters=8).
+* ``m14_l1_grow20``          — refine_repair objective=L1Objective() (the
                                manuscript's lowest-L1 variant),
                                max_grow_iters=20.
 """
@@ -35,12 +35,13 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from dvfopt.core.iterative2d_tri_barrier import iterative_2d_tri_barrier
+from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
 from dvfopt.core.wallbreakers import (
     iterative_2d_tri_harmonic_polished,
     iterative_2d_tri_refine_repair,
 )
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
+from dvfopt.objectives import L1Objective, L2Objective
 
 THRESHOLD = 0.01
 
@@ -103,8 +104,7 @@ def main():
                 threshold=THRESHOLD,
                 margin=1e-3,
                 max_minimize_iter=500,
-                anchor='l1',
-                eps_l1=1e-4,
+                objective=L1Objective(eps=1e-4),
                 verbose=0,
             ),
         ),
@@ -115,8 +115,7 @@ def main():
                 p,
                 threshold=THRESHOLD,
                 margin=1e-3,
-                anchor='l1',
-                eps_l1=1e-4,
+                objective=L1Objective(eps=1e-4),
                 max_grow_iters=8,
                 time_budget_s=900.0,
                 verbose=0,
@@ -129,8 +128,7 @@ def main():
                 p,
                 threshold=THRESHOLD,
                 margin=1e-3,
-                anchor='l1',
-                eps_l1=1e-4,
+                objective=L1Objective(eps=1e-4),
                 max_grow_iters=20,
                 time_budget_s=900.0,
                 verbose=0,
@@ -143,8 +141,7 @@ def main():
                 p,
                 threshold=THRESHOLD,
                 margin=1e-3,
-                anchor='l2',
-                eps_l1=1e-4,
+                objective=L2Objective(),
                 max_grow_iters=8,
                 time_budget_s=900.0,
                 verbose=0,
@@ -157,8 +154,7 @@ def main():
                 p,
                 threshold=THRESHOLD,
                 margin=1e-3,
-                anchor='l1',
-                eps_l1=1e-4,
+                objective=L1Objective(eps=1e-4),
                 max_grow_iters=20,
                 time_budget_s=900.0,
                 verbose=0,

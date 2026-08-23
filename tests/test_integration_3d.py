@@ -23,7 +23,7 @@ def _assert_no_neg_jdet_3d(phi, threshold=THRESHOLD):
 
 class TestIterative3D:
     def test_identity_unchanged(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 4, 4, 4), dtype=np.float64)
         phi = iterative_3d(d, verbose=0, max_iterations=5)
@@ -31,7 +31,7 @@ class TestIterative3D:
         np.testing.assert_allclose(phi, 0.0, atol=1e-10)
 
     def test_output_shape(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 4, 5, 6), dtype=np.float64)
         phi = iterative_3d(d, verbose=0, max_iterations=5)
@@ -39,7 +39,7 @@ class TestIterative3D:
 
     def test_corrects_single_spike(self):
         """A single large displacement spike should be correctable."""
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 4.0  # large dx spike
@@ -51,7 +51,7 @@ class TestIterative3D:
 
     def test_corrects_random_field(self):
         """Random 3D DVF with negative Jacobians should be fully corrected."""
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = generate_random_dvf_3d((3, 5, 5, 5), max_magnitude=2.0, seed=42)
         jdet_before = jacobian_det3D(d)
@@ -62,7 +62,7 @@ class TestIterative3D:
         _assert_no_neg_jdet_3d(phi)
 
     def test_opposing_spikes(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 2] = 3.0
@@ -74,7 +74,7 @@ class TestIterative3D:
         _assert_no_neg_jdet_3d(phi)
 
     def test_displacement_stays_close(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 4.0
@@ -84,7 +84,7 @@ class TestIterative3D:
 
     def test_non_cubic_grid(self):
         """Non-cubic 3D grid triggers full-grid fallback path."""
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 3, 5, 7), dtype=np.float64)
         d[2, 1, 2, 3] = 4.0
@@ -103,8 +103,8 @@ class TestMaxWindowVoxels:
     def test_cap_respected_and_corrects(self, monkeypatch):
         """With a tight voxel cap the solver should still fix a small fold,
         and no window passed to the SLSQP inner call may exceed the cap."""
-        from dvfopt.core import solver3d as s3
-        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core.slsqp_windowed import coordinator3d as s3
+        from dvfopt.core.slsqp_windowed import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5
@@ -130,7 +130,7 @@ class TestMaxWindowVoxels:
 
     def test_cap_with_aspect_preserved(self):
         """Budget shrink should preserve aspect ratio (no axis collapse)."""
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         # Elongated grid: any window will prefer matching aspect.
         d = np.zeros((3, 4, 4, 20), dtype=np.float64)
@@ -143,7 +143,7 @@ class TestMaxWindowVoxels:
 
     def test_no_cap_equivalent_to_default(self):
         """``max_window_voxels=None`` should match unset default behaviour."""
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         d = np.zeros((3, 5, 5, 5), dtype=np.float64)
         d[2, 2, 2, 2] = 3.0
@@ -159,8 +159,8 @@ class TestVoxelCapEscalation:
 
     def test_ceiling_is_respected(self, monkeypatch):
         """The escalated cap must never exceed the ceiling."""
-        from dvfopt.core import solver3d as s3
-        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core.slsqp_windowed import coordinator3d as s3
+        from dvfopt.core.slsqp_windowed import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5
@@ -193,8 +193,8 @@ class TestVoxelCapEscalation:
 
     def test_no_escalation_when_ceiling_none(self, monkeypatch):
         """Without a ceiling the initial cap must stay in force."""
-        from dvfopt.core import solver3d as s3
-        from dvfopt.core.slsqp import iterative3d as it3
+        from dvfopt.core.slsqp_windowed import coordinator3d as s3
+        from dvfopt.core.slsqp_windowed import iterative3d as it3
 
         d = np.zeros((3, 6, 6, 6), dtype=np.float64)
         d[2, 3, 3, 3] = 3.5

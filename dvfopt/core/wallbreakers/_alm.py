@@ -27,12 +27,13 @@ import numpy as np
 from scipy.optimize import minimize
 
 from dvfopt._logging import log_info
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat as _tri_areas_flat,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v as _tri_grad_T_v,
 )
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 # Optional fused JIT path for the ALM inner objective — the hottest
 # path of the m10/m14 seed stages (executed ~1e5 times per slice
@@ -215,7 +216,7 @@ def augmented_lagrangian_2d(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
+    objective: Objective | None = None,
     rho_init: float = 1.0,
     rho_growth: float = 5.0,
     rho_max: float = 1e8,
@@ -233,8 +234,10 @@ def augmented_lagrangian_2d(
     ----------
     phi_in : ndarray, shape ``(2, H, W)``
         Starting field.
-    anchor : {'l2', 'l1', 'none'}
-        Data-term form. ``'none'`` skips the anchor entirely and just
+    objective : Objective or None
+        Data term. ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective`;
+        :class:`~dvfopt.objectives.NoneObjective` skips the anchor entirely and just
         pushes for feasibility.
 
     Returns
@@ -244,6 +247,10 @@ def augmented_lagrangian_2d(
     """
     from dvfopt._defaults import DEFAULT_PARAMS
 
+    # ``eps_l1`` stays the historical hard-coded 1e-4 below: this entry
+    # point never exposed an eps knob, and honouring L1Objective.eps here
+    # would change existing numerics.
+    anchor, _ = _kind_eps(objective or L2Objective())
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     H, W = phi_in.shape[1], phi_in.shape[2]

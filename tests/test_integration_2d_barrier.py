@@ -23,7 +23,7 @@ def _assert_no_neg_jdet_2d(phi, threshold=THRESHOLD):
 
 class TestBarrier2DNumpy:
     def test_identity_unchanged(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = np.zeros((3, 1, 8, 8), dtype=np.float64)
         phi = iterative_2d_barrier(d, verbose=0)
@@ -31,14 +31,14 @@ class TestBarrier2DNumpy:
         np.testing.assert_allclose(phi, 0.0, atol=1e-3)
 
     def test_output_shape(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = _make_folded_field(8, 12)
         phi = iterative_2d_barrier(d, verbose=0)
         assert phi.shape == (2, 8, 12)
 
     def test_corrects_negative_jacobians(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = _make_folded_field(10, 10)
         if jacobian_det2D(d[[1, 2], 0]).min() >= THRESHOLD:
@@ -47,7 +47,7 @@ class TestBarrier2DNumpy:
         _assert_no_neg_jdet_2d(phi)
 
     def test_displacement_stays_close(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = _make_folded_field(10, 10)
         phi_init = np.stack([d[1, 0], d[2, 0]])
@@ -58,7 +58,7 @@ class TestBarrier2DNumpy:
         """F10(b) regression: windowed mode with max_iterations<=0 used to
         hit the not-converged log with unbound cur_neg/cur_min
         (UnboundLocalError). It must return the (uncorrected) field."""
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = _make_folded_field(8, 8)
         phi = iterative_2d_barrier(d, verbose=1, max_iterations=0, windowed=True)
@@ -68,7 +68,7 @@ class TestBarrier2DNumpy:
         """Regression: the full-grid (windowed=False) path was migrated to
         the unified _barrier_core homotopy. Confirm it still produces a
         valid output and corrects folds."""
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier
 
         d = _make_folded_field(8, 8)
         phi = iterative_2d_barrier(
@@ -88,7 +88,7 @@ class TestBarrier2DTorch:
         pytest.importorskip('torch')
 
     def test_identity_unchanged(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier_torch
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier_torch
 
         d = np.zeros((3, 1, 8, 8), dtype=np.float64)
         phi = iterative_2d_barrier_torch(d, verbose=0, device="cpu")
@@ -96,7 +96,7 @@ class TestBarrier2DTorch:
         np.testing.assert_allclose(phi, 0.0, atol=1e-3)
 
     def test_corrects_negative_jacobians(self):
-        from dvfopt.core.iterative2d_barrier import iterative_2d_barrier_torch
+        from dvfopt.core.barrier.jdet2d import iterative_2d_barrier_torch
 
         d = _make_folded_field(10, 10)
         if jacobian_det2D(d[[1, 2], 0]).min() >= THRESHOLD:
@@ -136,7 +136,7 @@ class TestBatchedBarrier2DTorchInfeasiblePatch:
     def _hard_interior_min_j(self, phi):
         import torch
 
-        from dvfopt.core.iterative2d_barrier import _jdet_2d_torch
+        from dvfopt.core.barrier.jdet2d import _jdet_2d_torch
 
         y0, y1, x0, x1 = self.HARD
         j = _jdet_2d_torch(phi)
@@ -145,7 +145,7 @@ class TestBatchedBarrier2DTorchInfeasiblePatch:
     def _run(self, mu_schedule):
         import torch
 
-        from dvfopt.core.iterative2d_barrier import _optimize_batch_2d_torch
+        from dvfopt.core.barrier.jdet2d import _optimize_batch_2d_torch
 
         phi_full = self._build()
         _optimize_batch_2d_torch(

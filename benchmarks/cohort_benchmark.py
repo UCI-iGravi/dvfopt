@@ -150,7 +150,7 @@ def _local_cond(dy, dx, threshold, crop=24):
 
 def _tri_stats_2d(section, threshold):
     """2-triangle fold count + min triangle area for a (3, 1, H, W) 2D section."""
-    from dvfopt.core.tri_primitives import tri_areas_flat
+    from dvfopt.core.primitives.tri import tri_areas_flat
 
     dy, dx = section[1, 0], section[2, 0]
     h, w = dy.shape

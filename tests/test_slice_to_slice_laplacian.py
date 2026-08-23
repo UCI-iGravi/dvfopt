@@ -14,7 +14,7 @@ import pytest
 # sliceToSlice3DLaplacian requires skimage and other heavy deps used only
 # in the registration pipeline; skip cleanly if not installed.
 skimage = pytest.importorskip("skimage")
-from laplacian.correspondence import sliceToSlice3DLaplacian  # noqa: E402
+from dvfopt.laplacian.correspondence import sliceToSlice3DLaplacian  # noqa: E402
 
 
 def _two_circle_volumes():

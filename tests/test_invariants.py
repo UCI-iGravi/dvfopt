@@ -42,7 +42,7 @@ def _make_fold_dvf(H, W, cy, cx, mag=2.5):
 
 
 def _run_serial(dvf, **kw):
-    from dvfopt.core.slsqp.iterative import iterative_serial
+    from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 
     return iterative_serial(
         dvf,
@@ -77,7 +77,7 @@ class TestPhiInitImmutable:
         )
 
     def test_phi_init_unchanged_after_3d_correction(self):
-        from dvfopt.core.slsqp.iterative3d import iterative_3d
+        from dvfopt.core.slsqp_windowed.iterative3d import iterative_3d
 
         dvf = np.zeros((3, 6, 6, 6), dtype=np.float64)
         dvf[2, 3, 3, 3] = 2.5
@@ -121,8 +121,8 @@ class TestFrozenBoundaryRespected:
     def test_frozen_edges_unchanged(self):
         """Use unpadded extraction (sub-window not at edge) so the LinearConstraint
         freezes the outer ring.  After optimization those values must be identical."""
-        from dvfopt.core.slsqp.spatial import get_phi_sub_flat
-        from dvfopt.core.solver import _optimize_single_window
+        from dvfopt.core.slsqp_windowed.coordinator import _optimize_single_window
+        from dvfopt.core.slsqp_windowed.spatial import get_phi_sub_flat
 
         rng = np.random.default_rng(17)
         H, W = 15, 15
@@ -180,8 +180,8 @@ class TestPhiSubFlatRoundtrip:
     values that were written."""
 
     def test_extract_apply_roundtrip_unpadded(self):
-        from dvfopt.core.slsqp.spatial import get_phi_sub_flat
-        from dvfopt.core.solver import _apply_result
+        from dvfopt.core.slsqp_windowed.coordinator import _apply_result
+        from dvfopt.core.slsqp_windowed.spatial import get_phi_sub_flat
 
         rng = np.random.default_rng(0)
         H, W = 15, 15
@@ -204,8 +204,8 @@ class TestPhiSubFlatRoundtrip:
         )
 
     def test_extract_apply_roundtrip_padded(self):
-        from dvfopt.core.slsqp.spatial import get_phi_sub_flat, get_phi_sub_flat_padded
-        from dvfopt.core.solver import _apply_result
+        from dvfopt.core.slsqp_windowed.coordinator import _apply_result
+        from dvfopt.core.slsqp_windowed.spatial import get_phi_sub_flat, get_phi_sub_flat_padded
 
         rng = np.random.default_rng(1)
         H, W = 15, 15
@@ -241,7 +241,7 @@ class TestPhiSubFlatRoundtrip:
 
     def test_channel_order_dx_dy(self):
         """phi[0]=dy, phi[1]=dx.  Flat packing is [dx, dy].  Verify."""
-        from dvfopt.core.slsqp.spatial import get_phi_sub_flat
+        from dvfopt.core.slsqp_windowed.spatial import get_phi_sub_flat
 
         H, W = 10, 10
         phi = np.zeros((2, H, W))
@@ -257,7 +257,7 @@ class TestPhiSubFlatRoundtrip:
 
     def test_3d_channel_order_dx_dy_dz(self):
         """3D flat packing: [dx, dy, dz]. phi[0]=dz, phi[1]=dy, phi[2]=dx."""
-        from dvfopt.core.slsqp.spatial3d import get_phi_sub_flat_3d
+        from dvfopt.core.slsqp_windowed.spatial3d import get_phi_sub_flat_3d
 
         D, H, W = 8, 8, 8
         phi = np.zeros((3, D, H, W))
@@ -299,8 +299,8 @@ class TestConstraintJacobians:
         return J
 
     def test_jdet_constraint_jacobian_2d_interior(self):
-        from dvfopt.core.slsqp.constraints import jacobian_constraint
-        from dvfopt.core.slsqp.gradients import jdet_constraint_jacobian_2d
+        from dvfopt.core.slsqp_windowed.constraints import jacobian_constraint
+        from dvfopt.core.slsqp_windowed.gradients import jdet_constraint_jacobian_2d
 
         rng = np.random.default_rng(42)
         sub_size = (5, 5)
@@ -317,8 +317,8 @@ class TestConstraintJacobians:
         )
 
     def test_jdet_constraint_jacobian_2d_full(self):
-        from dvfopt.core.slsqp.constraints import jacobian_constraint
-        from dvfopt.core.slsqp.gradients import jdet_constraint_jacobian_2d
+        from dvfopt.core.slsqp_windowed.constraints import jacobian_constraint
+        from dvfopt.core.slsqp_windowed.gradients import jdet_constraint_jacobian_2d
 
         rng = np.random.default_rng(43)
         sub_size = (4, 4)
@@ -337,7 +337,7 @@ class TestConstraintJacobians:
         )
 
     def test_shoelace_constraint_jacobian_2d(self):
-        from dvfopt.core.slsqp.gradients import shoelace_constraint_jacobian_2d
+        from dvfopt.core.slsqp_windowed.gradients import shoelace_constraint_jacobian_2d
         from dvfopt.jacobian.shoelace import shoelace_constraint
 
         rng = np.random.default_rng(44)
@@ -357,7 +357,7 @@ class TestConstraintJacobians:
         )
 
     def test_injectivity_constraint_jacobian_2d(self):
-        from dvfopt.core.slsqp.gradients import injectivity_constraint_jacobian_2d
+        from dvfopt.core.slsqp_windowed.gradients import injectivity_constraint_jacobian_2d
         from dvfopt.jacobian.monotonicity import injectivity_constraint
 
         rng = np.random.default_rng(45)
@@ -377,8 +377,8 @@ class TestConstraintJacobians:
         )
 
     def test_jdet_constraint_jacobian_3d(self):
-        from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d
-        from dvfopt.core.slsqp.gradients3d import jdet_constraint_jacobian_3d
+        from dvfopt.core.slsqp_windowed.constraints3d import jacobian_constraint_3d
+        from dvfopt.core.slsqp_windowed.gradients3d import jdet_constraint_jacobian_3d
 
         rng = np.random.default_rng(46)
         sub_size = (3, 3, 3)
@@ -496,7 +496,7 @@ class TestParallelBatchNonOverlap:
         return y_overlap and x_overlap
 
     def test_selected_windows_non_overlapping(self):
-        from dvfopt.core.slsqp.spatial import _select_non_overlapping
+        from dvfopt.core.slsqp_windowed.spatial import _select_non_overlapping
 
         slice_shape = (1, 30, 30)
         # Densely packed negative pixels
@@ -522,13 +522,13 @@ class TestParallelBatchNonOverlap:
                 )
 
     def test_empty_neg_pixels_returns_empty_batch(self):
-        from dvfopt.core.slsqp.spatial import _select_non_overlapping
+        from dvfopt.core.slsqp_windowed.spatial import _select_non_overlapping
 
         batch = _select_non_overlapping([], {}, (1, 10, 10), {})
         assert batch == []
 
     def test_single_pixel_always_selected(self):
-        from dvfopt.core.slsqp.spatial import _select_non_overlapping
+        from dvfopt.core.slsqp_windowed.spatial import _select_non_overlapping
 
         batch = _select_non_overlapping(
             [(5, 5)],
@@ -548,7 +548,7 @@ class TestParallelBatchNonOverlap:
 class TestBoundingWindowEdgeCases:
     def test_negative_pixel_at_row_zero(self):
         """Negative pixel touching grid top must not produce out-of-bounds bbox."""
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 10, 10))
         jm[0, 0, 5] = -0.5  # top row
@@ -560,7 +560,7 @@ class TestBoundingWindowEdgeCases:
         """neg_jdet_bounding_window returns a raw bbox center (not clamped).
         Clamping is done downstream by get_nearest_center.  Verify that the
         size is at least 3×3 and that the raw center is within the grid."""
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 10, 10))
         jm[0, 5, 9] = -0.5  # last column
@@ -575,7 +575,7 @@ class TestBoundingWindowEdgeCases:
 
     def test_whole_grid_negative_returns_grid_size(self):
         """When the entire grid is negative, bbox should cover the full grid."""
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         H, W = 8, 8
         jm = np.full((1, H, W), -0.5)
@@ -587,7 +587,7 @@ class TestBoundingWindowEdgeCases:
 
     def test_non_negative_center_pixel_returns_minimum_window(self):
         """If the 'center' pixel is actually positive (edge case), return (3,3)."""
-        from dvfopt.core.slsqp.spatial import neg_jdet_bounding_window
+        from dvfopt.core.slsqp_windowed.spatial import neg_jdet_bounding_window
 
         jm = np.ones((1, 10, 10))
         # All positive — center_yx pixel is not negative
@@ -596,7 +596,7 @@ class TestBoundingWindowEdgeCases:
 
     def test_3d_bounding_window_boundary_pixel(self):
         """3D: negative voxel at z=0 face must not give negative z bbox."""
-        from dvfopt.core.slsqp.spatial3d import neg_jdet_bounding_window_3d
+        from dvfopt.core.slsqp_windowed.spatial3d import neg_jdet_bounding_window_3d
 
         D, H, W = 8, 8, 8
         jm = np.ones((D, H, W))
@@ -614,7 +614,7 @@ class TestBoundingWindowEdgeCases:
 class TestGetNearestCenterFullGrid:
     def test_full_grid_window_center_2d(self):
         """When window == grid, center must be at (H//2, W//2) (approximately)."""
-        from dvfopt.core.slsqp.spatial import get_nearest_center
+        from dvfopt.core.slsqp_windowed.spatial import get_nearest_center
 
         H, W = 12, 15
         _, cy, cx = get_nearest_center((0, 0), (1, H, W), (H, W))
@@ -631,7 +631,7 @@ class TestGetNearestCenterFullGrid:
         )
 
     def test_full_grid_window_center_3d(self):
-        from dvfopt.core.slsqp.spatial3d import get_nearest_center_3d
+        from dvfopt.core.slsqp_windowed.spatial3d import get_nearest_center_3d
 
         D, H, W = 5, 7, 9
         cz, cy, cx = get_nearest_center_3d((0, 0, 0), (D, H, W), (D, H, W))
@@ -643,7 +643,7 @@ class TestGetNearestCenterFullGrid:
 
     def test_window_larger_than_grid_clamped(self):
         """Requesting a window bigger than the grid must not crash or go OOB."""
-        from dvfopt.core.slsqp.spatial import get_nearest_center
+        from dvfopt.core.slsqp_windowed.spatial import get_nearest_center
 
         H, W = 5, 5
         _, cy, cx = get_nearest_center((2, 2), (1, H, W), (H + 4, W + 4))
@@ -742,7 +742,7 @@ class TestQualityMap:
     """_quality_map must always be ≤ jacobian_det2D pixel-wise."""
 
     def test_quality_le_jdet_with_shoelace(self):
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(99)
         phi = rng.standard_normal((2, 12, 12)) * 0.5
@@ -753,7 +753,7 @@ class TestQualityMap:
         assert (qm <= jdet + 1e-12).all(), "quality_map > jdet somewhere (shoelace mode)"
 
     def test_quality_le_jdet_with_injectivity(self):
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(100)
         phi = rng.standard_normal((2, 12, 12)) * 0.2
@@ -764,7 +764,7 @@ class TestQualityMap:
         assert (qm <= jdet + 1e-12).all(), "quality_map > jdet somewhere (injectivity mode)"
 
     def test_quality_equals_jdet_when_both_false(self):
-        from dvfopt.core.slsqp.constraints import _quality_map
+        from dvfopt.core.slsqp_windowed.constraints import _quality_map
 
         rng = np.random.default_rng(101)
         phi = rng.standard_normal((2, 10, 10)) * 0.3

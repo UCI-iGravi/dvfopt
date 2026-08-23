@@ -110,7 +110,7 @@ The :func:`auto_strategy` helper encodes this routing as a function.
 """
 
 # -- Package metadata -------------------------------------------------------
-__version__ = "0.4.0"  # CLI + dvfopt.metrics + dvfopt.io.fields
+__version__ = "0.5.0"  # method-first core + Objective axis + one-package absorption
 
 # -- New API: constraints, objectives, strategies, solver -------------------
 # -- Logging ----------------------------------------------------------------
@@ -144,6 +144,7 @@ from dvfopt.dvf import (
 from dvfopt.exceptions import (
     DVFoptError,
     IncompatibleConstraintError,
+    IncompatibleObjectiveError,
     SolverConfigError,
 )
 
@@ -254,6 +255,7 @@ __all__ = [
     'HarmonicALMRefineRepair3DStrategy',
     'HarmonicALMRefineRepairStrategy',
     'IncompatibleConstraintError',
+    'IncompatibleObjectiveError',
     'JdetConstraint2D',
     'JdetConstraint3D',
     'L1Objective',

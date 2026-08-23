@@ -8,8 +8,8 @@ plain per-cluster runner couldn't crack.
 import numpy as np
 import pytest
 
-from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
-from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
+from dvfopt.core.schwarz._cluster import solve_cluster_2tri_2d
+from dvfopt.core.schwarz.tri2d import iterative_2d_tri_schwarz
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 
@@ -105,7 +105,7 @@ class TestSolveCluster2tri2D:
         """The interior-variable constraint Jacobian (now returned as a
         preallocated dense buffer) must equal the FD Jacobian of the
         constraint function — same values as the old CSR container."""
-        from dvfopt.core._cluster_2tri import (
+        from dvfopt.core.schwarz._cluster import (
             _interior_pack_unpack_2d,
             _make_2tri_jac_2d,
         )

@@ -8,7 +8,7 @@ feasibility as the subround scheduler with essentially identical L1.
 
 import numpy as np
 
-from dvfopt.core.tri_primitives import tri_areas_flat
+from dvfopt.core.primitives.tri import tri_areas_flat
 from research.strict_feasibility_2d.algorithms.cluster_lp_2tri import (
     _boxes_conflict,
     cluster_slp_iter,

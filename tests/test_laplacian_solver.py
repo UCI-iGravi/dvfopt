@@ -1,9 +1,9 @@
-"""Tests for laplacian.solver — Laplacian interpolation solver."""
+"""Tests for dvfopt.laplacian.solver — Laplacian interpolation solver."""
 
 import numpy as np
 import pytest
 
-from laplacian.solver import solveLaplacianFromCorrespondences
+from dvfopt.laplacian.solver import solveLaplacianFromCorrespondences
 
 
 class TestSolveLaplacianFromCorrespondences:

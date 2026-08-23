@@ -769,7 +769,7 @@ def tet_grad_T_v(phi_flat: np.ndarray, D: int, H: int, W: int, v: np.ndarray) ->
 # Sparse forward Jacobian (SLSQP path)
 # ---------------------------------------------------------------------------
 #
-# 3D analogue of ``dvfopt.core.iterative2d_tri_slsqp._build_full_grid_tri_jac``.
+# 3D analogue of ``dvfopt.core.slsqp_fullgrid.tri2d._build_full_grid_tri_jac``.
 # SLSQP's interior solver wants a sparse CSR Jacobian ``J`` of the constraint
 # vector w.r.t. the flat decision vector — same shape conventions as the
 # barrier-side primitives:

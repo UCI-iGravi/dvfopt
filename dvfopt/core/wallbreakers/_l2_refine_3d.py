@@ -25,6 +25,7 @@ from scipy.optimize import minimize
 
 from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import tet_grad_T_v, tet_volumes_flat
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 
 def _soft_pen_objective_3d(phi_flat, phi_anchor_flat, D, H, W, threshold, lam, anchor, eps_l1):
@@ -54,8 +55,7 @@ def l2_refine_3d(
     threshold: Optional[float] = None,
     seed: Optional[np.ndarray] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     lam_schedule: tuple = (1e2, 1e4, 1e6, 1e8, 1e10),
     inner_maxiter: int = 2000,
     time_budget_s: float = 600.0,
@@ -78,10 +78,9 @@ def l2_refine_3d(
         Lower bound on per-tet volume. Default ``DEFAULT_PARAMS['threshold']``.
     margin : float
         Safety margin above ``threshold``.
-    anchor : {'l2', 'l1', 'none'}
-        Data-term form.
-    eps_l1 : float
-        Smoothing constant for L1.
+    objective : Objective or None
+        Data term; ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective`.
     lam_schedule : tuple of float
         Penalty parameter anneal schedule. Each step is an L-BFGS-B
         inner solve with a fixed ``lam``.
@@ -99,6 +98,8 @@ def l2_refine_3d(
     """
     from dvfopt._defaults import DEFAULT_PARAMS
 
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     _, D, H, W = phi_in.shape

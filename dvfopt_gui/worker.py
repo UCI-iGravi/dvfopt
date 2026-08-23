@@ -615,7 +615,7 @@ class SolverWorker(QtCore.QThread):
     def _run_windowed_slsqp(self, enforce_triangles: bool):
         """Live-progress path: ``iterative_serial`` with our
         ``step_callback`` hook so the GUI sees every sub-window solve."""
-        from dvfopt.core.slsqp.iterative import iterative_serial
+        from dvfopt.core.slsqp_windowed.iterative import iterative_serial
 
         kwargs = {
             'verbose': self._verbose,

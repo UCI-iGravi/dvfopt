@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints3d import jacobian_constraint_3d
-from dvfopt.core.slsqp.gradients3d import _gradient_stencil, jdet_constraint_jacobian_3d
+from dvfopt.core.slsqp_windowed.constraints3d import jacobian_constraint_3d
+from dvfopt.core.slsqp_windowed.gradients3d import _gradient_stencil, jdet_constraint_jacobian_3d
 
 
 def _numerical_jacobian(func, x0, eps=1e-6):

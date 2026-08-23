@@ -6,7 +6,7 @@ autograd. Use when you want to run a tet-based fold check (or build a
 barrier/penalty objective on top of it) on GPU.
 
 This is a building block: the full barrier-on-tet GPU path that mirrors
-:mod:`dvfopt.core.iterative3d_barrier_torch` (windowed, active-mask,
+:mod:`dvfopt.core.barrier.jdet3d_torch` (windowed, active-mask,
 L-BFGS) is **not yet wired** — that's a separate ~hundred-line port. The
 forward here is enough to:
 

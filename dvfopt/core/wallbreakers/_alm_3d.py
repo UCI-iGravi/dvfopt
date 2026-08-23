@@ -36,6 +36,7 @@ from scipy.optimize import minimize
 
 from dvfopt._logging import log_info
 from dvfopt.jacobian.tetrahedron_sign import tet_grad_T_v, tet_volumes_flat
+from dvfopt.objectives import L2Objective, Objective, _kind_eps
 
 
 def _alm_objective_3d(
@@ -67,8 +68,7 @@ def augmented_lagrangian_3d(
     *,
     threshold: Optional[float] = None,
     margin: float = 1e-3,
-    anchor: str = 'l2',
-    eps_l1: float = 1e-4,
+    objective: Objective | None = None,
     phi_anchor: Optional[np.ndarray] = None,
     rho_init: float = 1.0,
     rho_growth: float = 5.0,
@@ -90,11 +90,11 @@ def augmented_lagrangian_3d(
         Lower bound on per-tet volume.
     margin : float
         Safety margin above ``threshold``.
-    anchor : {'l2', 'l1', 'none'}
-        Data-term form. ``'none'`` skips the anchor — just push for
+    objective : Objective or None
+        Data term; ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective`.
+        :class:`~dvfopt.objectives.NoneObjective` skips the anchor — just push for
         feasibility (cheapest L2 unconstrained → harmonic-like result).
-    eps_l1 : float
-        Smoothing constant for the L1 anchor.
     phi_anchor : ndarray or None
         The reference field for the anchor term — distance is measured
         against this, not ``phi_in``. Default ``None`` uses ``phi_in``
@@ -120,6 +120,8 @@ def augmented_lagrangian_3d(
     """
     from dvfopt._defaults import DEFAULT_PARAMS
 
+    objective = objective or L2Objective()
+    anchor, eps_l1 = _kind_eps(objective)
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     _, D, H, W = phi_in.shape

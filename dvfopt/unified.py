@@ -305,7 +305,7 @@ def _compute_constraint_2d(phi2, kind):
     Stats-side caller: includes corner patches under ``'2tri'`` so the
     reported n_neg/min_value match what the solver enforces.
     """
-    from dvfopt.core._internal.constraint_values import compute_constraint_values_2d
+    from dvfopt.core.primitives.constraint_values import compute_constraint_values_2d
 
     return compute_constraint_values_2d(phi2, kind, include_patches=True)
 

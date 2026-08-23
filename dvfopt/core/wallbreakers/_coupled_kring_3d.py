@@ -319,14 +319,28 @@ def coupled_kring_slsqp_3d(
         )
 
     t0 = time.time()
-    res = minimize(
-        obj,
-        x0,
-        jac=obj_grad,
-        constraints=[constraint_dict],
-        method='SLSQP',
-        options={'maxiter': maxiter, 'ftol': ftol, 'disp': False},
-    )
+    if use_analytical_jacobian:
+        from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
+
+        res = minimize_slsqp_traced(
+            obj,
+            x0,
+            jac=obj_grad,
+            constraints=[constraint_dict],
+            maxiter=maxiter,
+            ftol=ftol,
+        )
+    else:
+        # ponytail: FD-jacobian path stays on scipy — the traced driver
+        # deliberately requires analytic jacs; upgrade when kring defaults flip.
+        res = minimize(
+            obj,
+            x0,
+            jac=obj_grad,
+            constraints=[constraint_dict],
+            method='SLSQP',
+            options={'maxiter': maxiter, 'ftol': ftol, 'disp': False},
+        )
     wall = time.time() - t0
 
     phi_out = _apply_x_to_phi(phi, res.x, free_corners)

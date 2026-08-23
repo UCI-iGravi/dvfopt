@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_areas_flat as _tri_areas_flat,
 )
-from dvfopt.core.tri_primitives import (
+from dvfopt.core.primitives.tri import (
     tri_grad_T_v as _tri_grad_T_v,
 )
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d

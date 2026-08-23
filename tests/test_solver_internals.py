@@ -1,6 +1,6 @@
 """Tests for solver internals.
 
-Covers the ``dvfopt.core.solver`` helper functions (windowed SLSQP
+Covers the ``dvfopt.core.slsqp_windowed.coordinator`` helper functions (windowed SLSQP
 plumbing) plus ``dvfopt.solver`` internals: the ``Solver.fit`` input
 coercion / layout-restore contract, the ``SolveInfo`` legacy-history
 stash, and the strategy/constraint registry overwrite guards.
@@ -9,8 +9,8 @@ stash, and the strategy/constraint registry overwrite guards.
 import numpy as np
 import pytest
 
-from dvfopt.core.slsqp.constraints import _build_constraints
-from dvfopt.core.solver import (
+from dvfopt.core.slsqp_windowed.constraints import _build_constraints
+from dvfopt.core.slsqp_windowed.coordinator import (
     _apply_result,
     _init_phi,
     _patch_jacobian_2d,
