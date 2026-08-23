@@ -56,7 +56,7 @@ def constraint_fold_stats(
     """:class:`FoldStats` of a DVF under a named constraint.
 
     ``constraint`` is a registry name ('2tri', '2tri_standard', 'jdet',
-    'jdet_2d', 'jdet_3d', '6tet'); ``'auto'`` picks '2tri' for 2D layouts
+    'jdet_2d', 'finite', 'jdet_3d', '6tet'); ``'auto'`` picks '2tri' for 2D layouts
     and '6tet' for true-3D ``(3, D>1, H, W)`` volumes. Returns the
     resolved name plus the stats. Mirrors ``Solver._stats``
     (coerce -> flatten -> values), so the numbers agree with

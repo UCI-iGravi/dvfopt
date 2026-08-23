@@ -122,6 +122,7 @@ from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import enable_default_handler, logger
 from dvfopt.constraints import (
     Constraint,
+    FiniteJdetConstraint2D,
     JdetConstraint2D,
     JdetConstraint3D,
     PhiPack,
@@ -248,6 +249,7 @@ __all__ = [
     'DVFopt',
     'DVFoptConfig',
     'DVFoptError',
+    'FiniteJdetConstraint2D',
     'FoldStats',
     'Harmonic3DStrategy',
     'HarmonicALMBarrier3DStrategy',
