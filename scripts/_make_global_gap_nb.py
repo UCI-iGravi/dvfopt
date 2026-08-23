@@ -63,7 +63,7 @@ cells.append(
         "from dvfopt.jacobian.intersection import has_quad_self_intersections, _quads_intersect\n"
         "from dvfopt.objectives import L2Objective\n"
         "\n"
-        "from test_cases import make_deformation\n"
+        "from dvfopt.testdata import make_deformation\n"
         "\n"
         "THRESHOLD = DEFAULT_PARAMS['threshold']\n"
         "print(f'threshold = {THRESHOLD}')",

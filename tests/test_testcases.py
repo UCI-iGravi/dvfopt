@@ -1,9 +1,9 @@
-"""Tests for test_cases — test case builders."""
+"""Tests for dvfopt.testdata — test case builders."""
 
 import numpy as np
 import pytest
 
-from test_cases import (
+from dvfopt.testdata import (
     RANDOM_DVF_CASES,
     SYNTHETIC_CASES,
     make_deformation,

@@ -1,4 +1,4 @@
-"""Tests for laplacian.correspondence — normal estimation and matching.
+"""Tests for dvfopt.laplacian.correspondence — normal estimation and matching.
 
 Guards two review findings:
 - ``estimate2Dnormals`` mutated the caller's points array in place and left
@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 pytest.importorskip("skimage")
-from laplacian.correspondence import (
+from dvfopt.laplacian.correspondence import (
     estimate2Dnormals,
     get2DCorrespondences_batch,
 )

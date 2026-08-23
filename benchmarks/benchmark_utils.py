@@ -630,7 +630,7 @@ def benchmark_canonical_2tri_2d(
     ...     label='barrier_l2')
     """
     from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
-    from test_cases import canonical_2tri_2d
+    from dvfopt.testdata import canonical_2tri_2d
 
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']

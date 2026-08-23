@@ -75,7 +75,7 @@ def _synthetic_3d_volume() -> np.ndarray:
 
 
 def _canonical_case(key: str) -> np.ndarray:
-    from test_cases import canonical_2tri_2d
+    from dvfopt.testdata import canonical_2tri_2d
 
     for name, phi, _meta in canonical_2tri_2d():
         if key in name:

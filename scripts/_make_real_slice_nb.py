@@ -31,7 +31,7 @@ cells.append(
     md(
         "# 2-Triangle on Real Registration Slices\n"
         "\n"
-        "The previous notebooks (01-05) used synthetic folds: the 7x7 bowtie and `test_cases` fold-library entries. This one runs the best 2-triangle SLSQP on **real slices** pulled through the Laplacian registration pipeline (`test_cases.load_slice`), and compares it to CD-SLSQP and FD-SLSQP on the same fields.\n"
+        "The previous notebooks (01-05) used synthetic folds: the 7x7 bowtie and `dvfopt.testdata` fold-library entries. This one runs the best 2-triangle SLSQP on **real slices** pulled through the Laplacian registration pipeline (`dvfopt.testdata.load_slice`), and compares it to CD-SLSQP and FD-SLSQP on the same fields.\n"
         "\n"
         "Two slices, both downsampled with `scale_factor=0.08` to keep SLSQP tractable (~900 pixels / ~1800 variables):\n"
         "\n"
@@ -60,7 +60,7 @@ cells.append(
         "from dvfopt.jacobian.intersection import has_quad_self_intersections, _quads_intersect\n"
         "from dvfopt.objectives import L2Objective\n"
         "\n"
-        "from test_cases._builders import load_slice\n"
+        "from dvfopt.testdata._builders import load_slice\n"
         "\n"
         "THRESHOLD = DEFAULT_PARAMS['threshold']\n"
         "MPOINTS = os.path.abspath('../../data/corrected_correspondences_count_touching/mpoints.npy')\n"

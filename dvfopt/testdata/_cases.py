@@ -277,7 +277,7 @@ RANDOM_DVF_CASES = {
 # SLSQP scales poorly past 20×20 (a single 20×40 case takes ~25 min). Any
 # benchmark that needs them should switch to a windowed solver.
 #
-# Use the canonical list through `test_cases.canonical_2tri_2d()` (returns
+# Use the canonical list through `dvfopt.testdata.canonical_2tri_2d()` (returns
 # a list of `(name, phi_2hw, meta)` triples).
 CANONICAL_2TRI_2D_KEYS = (
     '01a_10x10_crossing',

@@ -66,7 +66,7 @@ cells.append(
         "from dvfopt.jacobian.triangle_sign import _triangle_areas_2d\n"
         "from dvfopt.objectives import L2Objective\n"
         "\n"
-        "from test_cases import make_deformation\n"
+        "from dvfopt.testdata import make_deformation\n"
         "\n"
         "THRESHOLD = DEFAULT_PARAMS['threshold']\n"
         "print(f'threshold = {THRESHOLD}')",
@@ -327,7 +327,7 @@ cells.append(
     md(
         "## Run across cases\n"
         "\n"
-        "Test set (small to medium, all in `test_cases`):\n"
+        "Test set (small to medium, all in `dvfopt.testdata`):\n"
         "\n"
         "- `bowtie_7x7` - the shoelace-artifact construction (`dx[3,3]=+1.2, dx[3,4]=-1.2`). CD is blind here; FD sees the fold; 2-tri catches two flipped triangles.\n"
         "- `01a_10x10_crossing` - small structured crossing fold.\n"

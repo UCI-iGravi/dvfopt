@@ -1,6 +1,6 @@
 """Save the canonical 2-triangle 2D synthetic test cases to NPZ files.
 
-Each case in :func:`test_cases.canonical_2tri_2d` gets one NPZ at
+Each case in :func:`dvfopt.testdata.canonical_2tri_2d` gets one NPZ at
 ``data/dvfs/canonical_2tri_2d/<key>.npz`` with these arrays:
 
 * ``phi`` — ``(2, H, W)`` float64, channels ``[dy, dx]`` (the 2-tri pack
@@ -25,12 +25,9 @@ from pathlib import Path
 
 import numpy as np
 
-# Repo-root import for ``test_cases``.
 _REPO = Path(__file__).resolve().parent.parent
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
 
-from test_cases import canonical_2tri_2d
+from dvfopt.testdata import canonical_2tri_2d
 
 OUTDIR = _REPO / 'data' / 'dvfs' / 'canonical_2tri_2d'
 
@@ -47,7 +44,7 @@ def _bowtie_7x7_shoelace():
     that 2-tri catches sub-pixel folds the Jdet-CD stencil misses.
 
     Returns ``(name, phi_2hw, meta)`` matching the
-    :func:`test_cases.canonical_2tri_2d` triple shape, with
+    :func:`dvfopt.testdata.canonical_2tri_2d` triple shape, with
     correspondence arrays empty (the field is hand-set, not built
     from correspondences).
     """

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from test_cases import (
+from dvfopt.testdata import (
     CANONICAL_2TRI_2D_KEYS,
     canonical_2tri_2d,
 )

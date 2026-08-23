@@ -1,7 +1,7 @@
 """Deformation field builders — functions that assemble test inputs.
 
 These depend on both ``dvfopt`` (DVF generation, Jacobian computation) and
-``laplacian`` (correspondence-based interpolation).
+``dvfopt.laplacian`` (correspondence-based interpolation).
 """
 
 import contextlib
@@ -11,8 +11,8 @@ import warnings
 import numpy as np
 
 from dvfopt.dvf import generate_random_dvf, scale_dvf
-from laplacian import solveLaplacianFromCorrespondences
-from test_cases._cases import (
+from dvfopt.laplacian import solveLaplacianFromCorrespondences
+from dvfopt.testdata._cases import (
     CANONICAL_2TRI_2D_KEYS,
     RANDOM_DVF_CASES,
     SYNTHETIC_CASES,
@@ -106,7 +106,7 @@ def canonical_2tri_2d(*, with_meta=True):
 
     Six synthetic correspondence-based cases promoted from notebook 14
     (`14_l1-warmstart-2d-cases.ipynb`) — see
-    :data:`test_cases._cases.CANONICAL_2TRI_2D_KEYS` for the curated list.
+    :data:`dvfopt.testdata._cases.CANONICAL_2TRI_2D_KEYS` for the curated list.
 
     Each iteration yields ``(name, phi_2hw, meta)`` where:
 
@@ -121,7 +121,7 @@ def canonical_2tri_2d(*, with_meta=True):
 
     Examples
     --------
-    >>> from test_cases import canonical_2tri_2d
+    >>> from dvfopt.testdata import canonical_2tri_2d
     >>> for name, phi, meta in canonical_2tri_2d():
     ...     print(name, phi.shape, meta['init_n_neg'])
     """

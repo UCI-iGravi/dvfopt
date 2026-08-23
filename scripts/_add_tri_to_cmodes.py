@@ -58,7 +58,7 @@ from dvfopt.jacobian import (
     triangulated_shoelace_det2D,
 )
 from dvfopt.jacobian.intersection import has_quad_self_intersections
-from test_cases import SYNTHETIC_CASES, make_deformation, make_random_dvf
+from dvfopt.testdata import SYNTHETIC_CASES, make_deformation, make_random_dvf
 from dvfopt.viz import plot_deformations, plot_grid_before_after
 from benchmark_utils import (
     get_output_dir, save_figure, save_results_csv, save_summary_json, log_run_header, log_run_footer, results_to_rows, show_and_save, reset_figure_counter,

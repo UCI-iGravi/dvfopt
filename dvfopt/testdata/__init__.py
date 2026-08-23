@@ -11,17 +11,17 @@ Real-data slices are loaded via :func:`load_slice`.
 
 Usage::
 
-    from test_cases import SYNTHETIC_CASES, load_slice, make_deformation
+    from dvfopt.testdata import SYNTHETIC_CASES, load_slice, make_deformation
 """
 
-from test_cases._builders import (
+from dvfopt.testdata._builders import (
     canonical_2tri_2d,
     load_slice,
     make_deformation,
     make_random_dvf,
     save_and_summarize,
 )
-from test_cases._cases import (
+from dvfopt.testdata._cases import (
     CANONICAL_2TRI_2D_KEYS,
     RANDOM_DVF_CASES,
     REAL_DATA_SLICES,

@@ -22,7 +22,7 @@ Cases come from two datasets:
   range." z=0 and z=12 are always included (the canonical extreme
   cases from CLAUDE.md).
 * **Canonical synthetic suite** (``dataset='canonical'``) — the 6
-  ``test_cases.canonical_2tri_2d`` fixtures (10×10 and 20×20 quads with
+  ``dvfopt.testdata.canonical_2tri_2d`` fixtures (10×10 and 20×20 quads with
   planted crossings / opposing displacements). Fast smoke checks that
   also pin behaviour at the small-grid limit.
 
@@ -399,11 +399,11 @@ def _build_b0039_cases(slice_count_per_bucket: int) -> list[Case]:
 
 
 def _build_canonical_cases() -> list[Case]:
-    """The 6 canonical synthetic 2-tri 2D cases from :mod:`test_cases`."""
+    """The 6 canonical synthetic 2-tri 2D cases from :mod:`dvfopt.testdata`."""
     try:
-        from test_cases import canonical_2tri_2d
+        from dvfopt.testdata import canonical_2tri_2d
     except Exception as exc:
-        _log(f'WARNING: failed to import test_cases.canonical_2tri_2d: {exc}')
+        _log(f'WARNING: failed to import dvfopt.testdata.canonical_2tri_2d: {exc}')
         return []
     cases: list[Case] = []
     for name, phi, _meta in canonical_2tri_2d():

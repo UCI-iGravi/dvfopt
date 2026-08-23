@@ -43,7 +43,7 @@ from dvfopt.jacobian.triangle_sign import (
     _triangle_areas_2d,
 )
 from dvfopt.objectives import make_objective
-from test_cases import canonical_2tri_2d
+from dvfopt.testdata import canonical_2tri_2d
 
 
 def _l1(a, b):

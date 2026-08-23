@@ -63,7 +63,7 @@ cells.append(
         "from dvfopt.viz.triangle_debug import find_problematic_pixels\n"
         "from dvfopt.viz import plot_triangle_debug\n"
         "\n"
-        "from test_cases import make_deformation\n"
+        "from dvfopt.testdata import make_deformation\n"
         "\n"
         "THRESHOLD = DEFAULT_PARAMS['threshold']\n"
         "print(f'threshold = {THRESHOLD}')",
@@ -244,7 +244,7 @@ cells.append(
     md(
         "## Setup - load the hard case\n"
         "\n"
-        "Same field as 05: `01c_20x40_edges` from `test_cases.make_deformation`. Large displacements concentrated at image borders; initial `neg_TR = 68`, `QI = 334`.",
+        "Same field as 05: `01c_20x40_edges` from `dvfopt.testdata.make_deformation`. Large displacements concentrated at image borders; initial `neg_TR = 68`, `QI = 334`.",
         "setup-md",
     )
 )

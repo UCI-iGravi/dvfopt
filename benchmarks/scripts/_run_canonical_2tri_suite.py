@@ -22,7 +22,7 @@ sys.path.insert(0, _BENCHMARKS_DIR)
 from benchmark_suite import BenchmarkSuite
 
 from dvfopt import Solver
-from test_cases import canonical_2tri_2d
+from dvfopt.testdata import canonical_2tri_2d
 
 
 def main():
