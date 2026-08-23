@@ -37,20 +37,28 @@ Imports flow one way. Breaking these is what re-tangles the package.
 | `dvfopt/objectives.py` | numpy only | anything in `dvfopt.core` |
 | `dvfopt/constraints.py` | `core.primitives.*`, `jacobian.*` | any `core/<method>/` package |
 | `dvfopt/core/primitives/` | numpy/scipy, `dvfopt.objectives` | any `core/<method>/`, `strategies`, `solver` |
-| `dvfopt/core/<method>/` | `core.primitives.*`, the shared engines, `dvfopt.objectives` | a *sibling* method package, `strategies`, `solver` |
+| `dvfopt/core/<method>/` | `core.primitives.*`, the shared engines, `dvfopt.objectives`, a sibling's *public* entry point (see below) | a sibling's private internals, `strategies`, `solver` |
 | `dvfopt/strategies/<name>.py` | `constraints`, `objectives`, its own `core/<method>/` | another strategy's core package |
 | `dvfopt/solver.py`, `unified.py`, `pipeline_*.py`, `cli.py` | all of the above | — |
 
 - **Method packages are siblings, not a chain.** `core/barrier/`,
   `core/slsqp_windowed/`, `core/slsqp_fullgrid/`, `core/schwarz/`,
-  `core/wallbreakers/`, `core/slp/`, `core/nmvf/`, `core/marching/` never
-  import each other. Anything two of them need moves to `core/primitives/` or
-  to one of the two shared engines.
+  `core/wallbreakers/`, `core/slp/`, `core/nmvf/`, `core/marching/` all depend
+  on `core/primitives/` and on the two shared engines. A **composite** method
+  may additionally call a sibling's *public* function as an explicit pipeline
+  phase or seed — the wallbreakers run `barrier.tri2d` as a polish phase, SLP
+  seeds from `wallbreakers`, `marching` reuses `slp.tri_linearize`. What is
+  forbidden is reaching into a sibling's private internals or re-deriving its
+  math; shared math moves to `core/primitives/` instead.
+  *(Known debt: the barrier drivers borrow io/metrics helpers —
+  `_setup_accumulators`, `_print_summary`, `_init_phi_3d`, `_update_metrics_3d` —
+  from `slsqp_windowed.coordinator*`. Those are generic run-bookkeeping, not
+  windowed-SLSQP logic; they are candidates to move into shared infra.)*
 - **The two shared engines** are `core/barrier/_core.py`
   (`run_penalty_barrier_lbfgs`, the penalty→barrier homotopy) and
   `core/schwarz/_common.py` (`cluster_schwarz_2d_tri` / `cluster_schwarz_3d_tet`,
-  the domain decomposition). They are the exception to "no cross-method
-  imports" — a method package may import an engine, and the wallbreakers do.
+  the domain decomposition). Any method package may import these; they carry no
+  method logic of their own.
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy
