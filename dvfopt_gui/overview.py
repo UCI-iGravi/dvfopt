@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtCore
+from PySide6 import QtCore
 
 from dvfopt_gui.worker import _metric_counts
 
@@ -21,7 +21,7 @@ _CHUNK = 32
 class OverviewWorker(QtCore.QThread):
     """Compute per-slice 2-tri fold counts; emit ``(start, counts)`` chunks."""
 
-    chunkReady = QtCore.pyqtSignal(int, object)
+    chunkReady = QtCore.Signal(int, object)
 
     def __init__(self, volume: np.ndarray, parent=None):
         super().__init__(parent)
@@ -50,7 +50,7 @@ class OverviewWorker(QtCore.QThread):
 class SliceOverviewStrip(pg.PlotWidget):
     """Fixed-height clickable bar chart of per-slice fold counts."""
 
-    sliceClicked = QtCore.pyqtSignal(int)
+    sliceClicked = QtCore.Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent, background='w')

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 from dvfopt_gui._shared import (
     DEFAULT_CONSTRAINT,

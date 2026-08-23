@@ -27,7 +27,7 @@ import sys
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 from dvfopt_gui._shared import (  # noqa: F401  (re-exported for back-compat)
@@ -1058,7 +1058,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
             strategy_algo=algo,
             strategy_overrides=self._strategy_overrides.get(algo, {}),
         )
-        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
             vals = dlg.result_values()
             new_hms = int(vals['history_max_size'])
             if new_hms != self._history_max_size:
@@ -1399,4 +1399,4 @@ def launch(deformation_i=None, *, solver_kwargs=None, initial_constraint=None) -
         win._select_combo_data(win._constraint_combo, initial_constraint)
     win.show()
     win.start()
-    return app.exec_()
+    return app.exec()

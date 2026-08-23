@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
@@ -170,7 +170,7 @@ def _folded_cells_path(phi_2hw: np.ndarray, max_cells: int = 10_000):
     cells, well under the cap). When the cap is exceeded the loudest
     folds (by ``min(T1, T2)``) are kept and the rest dropped.
     """
-    from PyQt5.QtGui import QPainterPath
+    from PySide6.QtGui import QPainterPath
 
     dy, dx = phi_2hw[0], phi_2hw[1]
     T1, T2 = _triangle_areas_2d(dy, dx)

@@ -1,7 +1,7 @@
 """dvfopt.io.fields — .npy/.npz + SimpleITK DVF I/O, plus GUI LoadWorker dispatch.
 
 Library I/O is testable without the ``[gui]`` extra; only the LoadWorker
-case needs PyQt5 (guarded locally). SimpleITK is a core dependency.
+case needs PySide6 (guarded locally). SimpleITK is a core dependency.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def test_is_sitk_path():
 
 
 def test_loadworker_npy_and_sitk(tmp_path, qapp_placeholder=None):
-    pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra')
+    pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra')
     from dvfopt_gui.worker import LoadWorker
 
     npy = tmp_path / 'f.npy'

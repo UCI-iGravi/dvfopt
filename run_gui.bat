@@ -21,10 +21,10 @@ if exist .venv\Scripts\python.exe set PYTHON=.venv\Scripts\python.exe
 REM Detect that the GUI extras are installed; tell the user how to fix
 REM if not. We probe with a tiny stub instead of importing pyqtgraph
 REM directly (its import is slow).
-%PYTHON% -c "import importlib.util as u; raise SystemExit(0 if u.find_spec('pyqtgraph') and u.find_spec('PyQt5') else 1)"
+%PYTHON% -c "import importlib.util as u; raise SystemExit(0 if u.find_spec('pyqtgraph') and u.find_spec('PySide6') else 1)"
 if errorlevel 1 (
     echo.
-    echo [run_gui] PyQt5 and pyqtgraph are not installed in this Python.
+    echo [run_gui] PySide6 and pyqtgraph are not installed in this Python.
     echo           Install them with:
     echo               %PYTHON% -m pip install -e ".[gui]"
     echo.

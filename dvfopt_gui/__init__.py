@@ -30,7 +30,7 @@ Requires the ``[gui]`` extra::
 
     pip install -e '.[gui]'
 
-which pulls in ``pyqt5`` + ``pyqtgraph``.
+which pulls in ``pyside6`` + ``pyqtgraph``.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ stand-in, and the save/load persistence round-trip. These are exactly
 the off-by-one-prone bits that break silently in the GUI, so they get
 coverage without ever constructing a ``QApplication``.
 
-Skipped wholesale if the GUI extras (PyQt5) aren't installed.
+Skipped wholesale if the GUI extras (PySide6) aren't installed.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
+pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra (PySide6)')
 
 from dvfopt_gui import persistence
 from dvfopt_gui.worker import (

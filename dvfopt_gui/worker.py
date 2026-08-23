@@ -38,7 +38,7 @@ import traceback
 from collections import deque
 
 import numpy as np
-from PyQt5 import QtCore
+from PySide6 import QtCore
 
 from dvfopt._defaults import DEFAULT_PARAMS
 
@@ -354,8 +354,8 @@ class LoadWorker(QtCore.QThread):
     freeze the window.
     """
 
-    loadedRun = QtCore.pyqtSignal(object)
-    failed = QtCore.pyqtSignal(str)
+    loadedRun = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
 
     def __init__(self, path: str, parent=None):
         super().__init__(parent)
@@ -424,8 +424,8 @@ class SolverWorker(QtCore.QThread):
     on its own render timer at ~10 Hz.
     """
 
-    finishedWithResult = QtCore.pyqtSignal(object, object)  # corrected_phi, info
-    errored = QtCore.pyqtSignal(str)
+    finishedWithResult = QtCore.Signal(object, object)  # corrected_phi, info
+    errored = QtCore.Signal(str)
 
     def __init__(
         self,

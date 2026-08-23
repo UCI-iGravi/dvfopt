@@ -3,7 +3,7 @@ injectivity-gap view, optional-float strategy params, phase-aware
 convergence (stage snapshots + markers + report), and the solver log dock.
 
 Offscreen widget tests where a real window/widget is needed; pure logic
-tests otherwise. Skipped wholesale without PyQt5.
+tests otherwise. Skipped wholesale without PySide6.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
+pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra (PySide6)')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 from dvfopt_gui._shared import (
     _METHOD_SPECS_JDET3D,

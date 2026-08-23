@@ -6,7 +6,7 @@ unit tests in ``test_gui_logic.py`` can't reach: the history-scrub
 controller's state machine, the method-id dispatch contract, and the
 diff/auto-level view paths.
 
-Skipped wholesale if PyQt5 isn't installed.
+Skipped wholesale if PySide6 isn't installed.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
+pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra (PySide6)')
 
 # Must be set before the first QApplication is created.
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PyQt5 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from dvfopt_gui.app import (
     VIEW_DIFF,

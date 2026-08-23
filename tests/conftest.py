@@ -93,19 +93,19 @@ def planted_fold_3d(
 
 
 # ---------------------------------------------------------------------------
-# Shared offscreen QApplication for the GUI test files (PyQt5-gated).
+# Shared offscreen QApplication for the GUI test files (PySide6-gated).
 # Session-scoped: one QApplication per test session (Qt allows only one).
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope='session')
 def qapp():
-    PyQt5 = pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
-    del PyQt5
+    PySide6 = pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra (PySide6)')
+    del PySide6
     import os
 
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from PyQt5 import QtWidgets
+    from PySide6 import QtWidgets
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     yield app

@@ -12,7 +12,7 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip('PyQt5', reason='dvfopt_gui requires the [gui] extra (PyQt5)')
+pytest.importorskip('PySide6', reason='dvfopt_gui requires the [gui] extra (PySide6)')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from dvfopt import Strategy
