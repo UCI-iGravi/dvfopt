@@ -18,6 +18,11 @@ import numpy as np
 from dvfopt._defaults import DEFAULT_PARAMS
 
 
+def _is_volume(phi: np.ndarray) -> bool:
+    """True for a true-3D ``(C, D>1, H, W)`` layout, False for 2D layouts."""
+    return phi.ndim == 4 and phi.shape[1] > 1
+
+
 @dataclass(frozen=True)
 class FoldStats:
     """Fold statistics of one constraint-values array (areas / volumes / Jdets)."""
@@ -66,7 +71,7 @@ def constraint_fold_stats(
 
     phi = np.asarray(phi, dtype=np.float64)
     if constraint == 'auto':
-        constraint = '6tet' if phi.ndim == 4 and phi.shape[1] > 1 else '2tri'
+        constraint = '6tet' if _is_volume(phi) else '2tri'
     shape = phi.shape[-3:] if constraint in ('6tet', 'jdet_3d') else phi.shape[-2:]
     c = make_constraint(constraint, shape)
     vals = c.values(c.flatten(c.coerce(phi)))
@@ -77,38 +82,46 @@ def constraint_fold_stats(
 class InjectivityStats:
     """Sub-pixel injectivity diagnostics of a DVF.
 
-    From the quantitative-IFT radius map (and, in 2D, the bilinear cell
-    certificate) in :mod:`dvfopt.jacobian.injectivity_radius` — see that
-    module's docstring for the math and references.
+    From the quantitative-IFT radius *estimate* (and, in 2D, the exact
+    bilinear cell certificate) in :mod:`dvfopt.jacobian.injectivity_radius`
+    — see that module's docstring for the math, references, and caveats:
+    the radius is an estimate, not a certificate, and it is
+    orientation-blind (a uniformly reflected region scores clean), so read
+    these numbers alongside :func:`fold_stats`, never instead of it.
     """
 
-    min_radius: float  # smallest certified IFT injectivity radius (px/voxels)
-    frac_subpixel: float  # fraction of samples with certified radius < 1
+    min_radius: float  # smallest IFT radius estimate; saturates at max_window
+    frac_subpixel: float  # fraction of samples with radius estimate < 1
     cell_min_jdet: Optional[float]  # 2D only: min bilinear cell Jdet (None in 3D)
     n_cells_nonpos: Optional[int]  # 2D only: folded cells under the bilinear model
+    max_window: int  # ladder cap used — min_radius == max_window means "at least this"
 
 
 def injectivity_stats(phi, max_window: int = 8) -> InjectivityStats:
     """Neighbourhood-injectivity diagnostics for a 2D field or 3D volume.
 
-    Accepts ``(2, H, W)`` ``[dy, dx]`` layouts as well as the canonical
-    ``(3, 1, H, W)`` / ``(3, D, H, W)`` ``[dz, dy, dx]``. 2D fields also get
-    the bilinear cell certificate; 3D volumes report the radius map only —
-    the trilinear Jdet is not multi-affine, so sub-voxel folds are the
-    6-tet constraint family's job (:func:`constraint_fold_stats`).
+    Accepts the layouts the constraint paths accept: ``(2, H, W)``
+    ``[dy, dx]``, ``(3, H, W)`` / ``(3, 1, H, W)`` (dz dropped), and
+    true-3D ``(3, D>1, H, W)`` ``[dz, dy, dx]``. 2D fields also get the
+    exact bilinear cell certificate; 3D volumes report the radius map
+    only — the trilinear Jdet is not multi-affine, so sub-voxel 3D folds
+    are the 6-tet constraint family's job (:func:`constraint_fold_stats`).
+    See :class:`InjectivityStats` for how (not) to read the numbers.
     """
     from dvfopt.jacobian.injectivity_radius import (
         cell_min_jdet_2d,
         ift_radius_2d,
         ift_radius_3d,
     )
+    from dvfopt.validation import validate_dvf
 
-    phi = np.asarray(phi, dtype=np.float64)
-    if phi.ndim == 4 and phi.shape[0] == 3 and phi.shape[1] > 1:
-        r = ift_radius_3d(phi, max_window=max_window)
+    phi = np.asarray(phi)
+    if _is_volume(phi):
+        vol = validate_dvf(phi, dim=3)
+        r = ift_radius_3d(vol, max_window=max_window)
         cell_min = None
     else:
-        phi2 = phi[1:] if phi.shape[0] == 3 else phi  # drop the dz channel
+        phi2 = validate_dvf(phi, dim=2)
         r = ift_radius_2d(phi2, max_window=max_window)
         cell_min = cell_min_jdet_2d(phi2)
     return InjectivityStats(
@@ -116,4 +129,5 @@ def injectivity_stats(phi, max_window: int = 8) -> InjectivityStats:
         frac_subpixel=float((r < 1.0).mean()),
         cell_min_jdet=None if cell_min is None else float(cell_min.min()),
         n_cells_nonpos=None if cell_min is None else int((cell_min <= 0).sum()),
+        max_window=int(max_window),
     )
