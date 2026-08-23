@@ -260,6 +260,24 @@ def _eval_con_normals(C, x, cons, m, meq):
         row += temp.shape[0]
 
 
+def ineq_dict(fun, jac, lb=0.0):
+    """Old-style ineq constraint dict for :func:`minimize_slsqp_traced`.
+
+    Wraps ``fun(x) >= lb`` as ``fun(x) - lb >= 0`` and densifies sparse
+    jacobians (the C core is dense — scipy's own SLSQP densifies too).
+    """
+    import scipy.sparse as _sp
+
+    def _fun(x, *args):
+        return np.asarray(fun(x), dtype=np.float64) - lb
+
+    def _jac(x, *args):
+        J = jac(x)
+        return J.toarray() if _sp.issparse(J) else np.asarray(J, dtype=np.float64)
+
+    return {"type": "ineq", "fun": _fun, "jac": _jac}
+
+
 if __name__ == "__main__":
     # self-check: byte-identical to scipy's minimize(method='SLSQP') on a random
     # inequality-constrained least-distance problem, and the trace converges.

@@ -669,7 +669,7 @@ def _inner_solve(sub, inner, maxiter, trace=None):
     - ``"isqp-osqp"`` (default): the tuned elastic-QP SQP over the free vars,
       UNCHANGED — the path every existing test and the no-damage invariant assume.
     - ``"scipy-slsqp"`` / ``"scipy-slsqp+trust-constr"``: the SLSQP leg runs through
-      ``slsqp_traced.minimize_slsqp_traced`` — scipy's own C-core driver (verified
+      ``dvfopt.core.primitives.slsqp.minimize_slsqp_traced`` — scipy's own C-core driver (verified
       byte-identical to ``minimize(method='SLSQP')``; see
       ``benchmarks/trace_parity_check.py``) with optional pyslsqp-style tracing —
       on the REDUCED free-variable problem (frozen vars pinned at ``sub.flat0``, so
@@ -699,7 +699,7 @@ def _inner_solve(sub, inner, maxiter, trace=None):
     if inner not in ("scipy-slsqp", "scipy-slsqp+trust-constr"):
         raise ValueError(f"unknown inner {inner!r}")
 
-    from slsqp_traced import minimize_slsqp_traced
+    from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
 
     free = np.asarray(sub.free_idx)
     x0 = sub.flat0.copy()

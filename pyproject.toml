@@ -5,7 +5,7 @@ description = "Correction of negative Jacobian determinants in deformation (disp
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
-    "scipy",
+    "scipy>=1.15,<1.19",
     "SimpleITK",
     "nibabel",
     "matplotlib",
