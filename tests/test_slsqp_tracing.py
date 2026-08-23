@@ -1,8 +1,10 @@
 """record_history=True surfaces per-major-iteration SLSQP traces in SolveInfo."""
 
 import numpy as np
+import pytest
 
 from dvfopt import L1Objective, SLSQPFullGridStrategy, Solver, TriConstraint2D
+from dvfopt.core.primitives.slsqp import HAS_TRACED_SLSQP
 
 
 def _folded_field(h=8, w=8):
@@ -11,6 +13,7 @@ def _folded_field(h=8, w=8):
     return phi
 
 
+@pytest.mark.skipif(not HAS_TRACED_SLSQP, reason="scipy build lacks _slsqplib; tracing unavailable")
 def test_fullgrid_trace_in_solveinfo():
     phi = _folded_field()
     solver = Solver(

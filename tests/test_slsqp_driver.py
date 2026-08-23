@@ -1,8 +1,11 @@
 """Byte-identity + trace contract for the vendored traced C-SLSQP driver."""
 
 import numpy as np
+import pytest
 import scipy.sparse as sp
 from scipy.optimize import minimize
+
+from dvfopt.core.primitives.slsqp import HAS_TRACED_SLSQP
 
 
 def _problem():
@@ -46,6 +49,9 @@ class TestByteIdentity:
         assert (r.status, r.nit) == (ref.status, ref.nit)
         assert np.array_equal(r.x, ref.x)
 
+    @pytest.mark.skipif(
+        not HAS_TRACED_SLSQP, reason="scipy build lacks _slsqplib; tracing unavailable"
+    )
     def test_trace_records_majors(self):
         from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
 
@@ -64,6 +70,39 @@ class TestByteIdentity:
         last = tr["iters"][-1]
         assert last["max_viol"] < 1e-8
         assert {"obj", "opt", "alpha", "nfev"} <= set(last)
+
+
+class TestFallback:
+    def test_fallback_path_matches_scipy(self, monkeypatch):
+        """HAS_TRACED_SLSQP=False (scipy build w/o _slsqplib, e.g. scipy
+        1.15.x on Python 3.10) must transparently delegate to
+        scipy.optimize.minimize(method='SLSQP') with identical numerics."""
+        import dvfopt.core.primitives.slsqp as slsqp_mod
+
+        f, x0, cons = _problem()
+        ref = minimize(
+            f,
+            x0,
+            jac=True,
+            method="SLSQP",
+            constraints=cons,
+            options={"maxiter": 100, "ftol": 1e-8},
+        )
+
+        monkeypatch.setattr(slsqp_mod, "HAS_TRACED_SLSQP", False)
+        trace: dict = {}
+        r = slsqp_mod.minimize_slsqp_traced(
+            lambda x: f(x)[0],
+            x0,
+            jac=lambda x: f(x)[1],
+            constraints=cons,
+            maxiter=100,
+            ftol=1e-8,
+            trace=trace,
+        )
+        assert (r.status, r.nit) == (ref.status, ref.nit)
+        assert np.array_equal(r.x, ref.x)
+        assert trace == {}, "fallback must not touch a passed trace dict"
 
 
 class TestIneqDict:

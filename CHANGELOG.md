@@ -103,6 +103,15 @@ and [ARCHITECTURE.md](ARCHITECTURE.md) for the rules the new layout enforces.
   Removed the `test_cli.py` workaround fixture that restored rcParams.
 - **`iterative_3d_tet_barrier_torch`** evaluated its objective before the
   torch-missing `ImportError` guard; the guard now runs first.
+- **Importing `dvfopt` on Python 3.10 no longer crashes.**
+  `scipy.optimize._slsqplib` (the SLSQP C core) requires scipy >=1.16, which
+  itself requires Python >=3.11; on 3.10, pip/uv resolve to scipy 1.15.x,
+  which lacks it, and `dvfopt/core/primitives/slsqp.py` raised `ImportError`
+  at *module* import time, taking the whole `dvfopt.core` import graph down
+  with it. The module now sets `HAS_TRACED_SLSQP = False` instead of raising,
+  and `minimize_slsqp_traced` transparently delegates to
+  `scipy.optimize.minimize(method='SLSQP')` when tracing is unavailable —
+  identical numerics, no per-iteration trace.
 
 ### Import map (old → new)
 

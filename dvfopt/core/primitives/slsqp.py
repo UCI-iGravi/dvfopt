@@ -18,24 +18,28 @@ plumbing is replaced by the trace dict.
 Pinned against scipy's PRIVATE API (state-dict/workspace layout of
 ``_slsqplib``): written from scipy 1.18.0. A layout change in a future scipy
 breaks this loudly (import/shape error), not silently — pin scipy.
+
+Tracing requires a scipy build that exposes ``scipy.optimize._slsqplib``
+(scipy >=1.16, which in turn requires Python >=3.11). On an older scipy —
+e.g. 1.15.x, the ceiling ``pip``/``uv`` resolve to on Python 3.10 —
+``HAS_TRACED_SLSQP`` is False and :func:`minimize_slsqp_traced` transparently
+delegates to ``scipy.optimize.minimize(method='SLSQP')``: identical
+numerics, no per-iteration trace.
 """
 
 import numpy as np
-import scipy
+from scipy.optimize import OptimizeResult
 
+HAS_TRACED_SLSQP = True
 try:
     from scipy.linalg.lapack import HAS_ILP64
     from scipy.optimize._optimize import (
-        OptimizeResult,
         _clip_x_for_func,
         _prepare_scalar_function,
     )
     from scipy.optimize._slsqplib import slsqp
-except ImportError as e:  # pragma: no cover
-    raise ImportError(
-        f"dvfopt.core.primitives.slsqp vendors scipy>=1.15 private internals (found scipy {scipy.__version__}); "
-        "pin scipy to a 1.15-1.18 release"
-    ) from e
+except ImportError:  # pragma: no cover — exercised by test_fallback_path_matches_scipy
+    HAS_TRACED_SLSQP = False
 
 EXIT_MODES = {
     -1: "Gradient evaluation required (g & a)",
@@ -71,7 +75,25 @@ def minimize_slsqp_traced(
     final ``multipliers``; ``save_x=True`` additionally snapshots the iterate
     into each record (pyslsqp's iterate saving). Returns a scipy
     ``OptimizeResult`` (including ``multipliers``).
+
+    If ``HAS_TRACED_SLSQP`` is False (scipy build without ``_slsqplib``),
+    transparently delegates to ``scipy.optimize.minimize(method='SLSQP')``;
+    a passed ``trace`` dict is left untouched (empty ⇒ falsy ⇒ downstream
+    ``SolveInfo`` trace-lifting skips it) and ``save_x`` is ignored.
     """
+    if not HAS_TRACED_SLSQP:
+        from scipy.optimize import minimize
+
+        return minimize(
+            func,
+            x0,
+            jac=jac,
+            method="SLSQP",
+            constraints=constraints,
+            bounds=bounds,
+            options={"maxiter": maxiter, "ftol": ftol},
+        )
+
     x = np.asarray(x0, dtype=np.float64).ravel().copy()
 
     if bounds is None or len(bounds) == 0:
