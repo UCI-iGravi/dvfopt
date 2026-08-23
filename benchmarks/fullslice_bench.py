@@ -1,7 +1,8 @@
 """Full-slice multi-inner fold-correction benchmark over a subset of B0039.
 
 For every N-th folded slice of the B0039 Laplacian field, run
-:func:`windowed_isqp.windowed_correct` for the full cross of **3 inner solvers x 3
+:func:`dvfopt.core.windowed.windowed_correct` (via the `_windowed_compat`
+family-string adapter) for the full cross of **3 inner solvers x 3
 constraint families x 2 objectives**, and record folds cleared, the no-damage
 invariant (``damage``), giant/mop counts, wall time, AND the corrected field's fold
 count re-scored under ALL three metrics (cross-metric scoring: does clearing the
@@ -35,7 +36,7 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import windowed_isqp as wi  # noqa: E402
+import _windowed_compat as wc  # noqa: E402
 
 DEFAULT_VOL = "data/dvfs/b0039/b0039_laplacian_deformation_field.npy"
 DEFAULT_WORKERS = min(8, os.cpu_count() or 1)
@@ -77,14 +78,15 @@ def _cross_metric_folds(phi_out, threshold):
     last row/col with ``+inf`` (no cell there) so those are sliced off before counting.
     """
     H, W = phi_out.shape[1:]
-    central = int((wi.min_field("jdet", phi_out) < threshold).sum())
-    finite = int((wi.min_field("finite", phi_out)[: H - 1, : W - 1] < threshold).sum())
-    tri = int((wi.min_field("2tri", phi_out)[: H - 1, : W - 1] < threshold).sum())
+    central = int((wc.min_field("jdet", phi_out) < threshold).sum())
+    finite = int((wc.min_field("finite", phi_out)[: H - 1, : W - 1] < threshold).sum())
+    tri = int((wc.min_field("2tri", phi_out)[: H - 1, : W - 1] < threshold).sum())
     return central, finite, tri
 
 
 def _rec(z, family, inner, objective, rep, cross, l1_move, l2_move):
-    """Flatten a :class:`windowed_isqp.SliceReport` + cross-scores into a record dict."""
+    """Flatten a :class:`dvfopt.core.windowed.SliceReport` + cross-scores into a
+    record dict."""
     central, finite, tri = cross
     return {
         "z": z,
@@ -123,7 +125,7 @@ def _run_task(z, family, inner, objective, phi, threshold, maxiter):
     returned as an error record so one bad task never kills the run.
     """
     try:
-        phi_out, rep = wi.windowed_correct(
+        phi_out, rep = wc.windowed_correct_compat(
             phi,
             family=family,
             objective=objective,
@@ -190,7 +192,7 @@ def build_tasks(
     n_folded = 0
     for z in sampled:
         phi = _slice_phi(vol, z)
-        masks = {f: wi.pixel_fold_mask(f, phi, threshold) for f in FAMILIES}
+        masks = {f: wc.pixel_fold_mask(f, phi, threshold) for f in FAMILIES}
         fam_folded = [f for f in FAMILIES if masks[f].any()]
         if not fam_folded:
             print(f"z={z:>3}: 0 folds before -> skip")

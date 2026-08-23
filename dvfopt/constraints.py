@@ -378,6 +378,79 @@ class JdetConstraint2D(Constraint):
         return jdet_grad_T_v_2d(phi_flat, self.shape, v)
 
 
+class FiniteJdetConstraint2D(Constraint):
+    """Per-cell forward-difference determinant ``(1+a)(1+d) - b*c >= threshold``.
+
+    With forward differences at cell ``(i, j)``::
+
+        a = dx[i,j+1]-dx[i,j]   b = dx[i+1,j]-dx[i,j]
+        c = dy[i,j+1]-dy[i,j]   d = dy[i+1,j]-dy[i,j]
+
+    the constraint is the deformed-parallelogram area spanned by the two
+    forward edges — a local 2-pixel stencil, so unlike the central-diff
+    :class:`JdetConstraint2D` it is NOT blind to high-frequency
+    (checkerboard) folds. A middle strictness between the central-diff
+    Jdet and the exact 2-triangle areas of :class:`TriConstraint2D`.
+    Promoted from ``benchmarks/finite_jdet.py`` (PR #64).
+
+    Phi pack: ``[dx.ravel(), dy.ravel()]`` (x-first, matching
+    :class:`JdetConstraint2D`).
+    Output: cell determinants of length ``(H-1)*(W-1)``.
+
+    Reuses :mod:`dvfopt.core.primitives.finite_jdet` for the flat form,
+    analytic sparse Jacobian, and adjoint.
+    """
+
+    pack = PhiPack.DX_FIRST
+    dim = 2
+
+    @property
+    def n_variables(self) -> int:
+        H, W = self.shape
+        return 2 * H * W
+
+    @property
+    def n_constraints(self) -> int:
+        H, W = self.shape
+        return (H - 1) * (W - 1)
+
+    def coerce(self, phi) -> np.ndarray:
+        """Same shape acceptance as :class:`TriConstraint2D`. Reuses
+        the canonical 2D validator."""
+        return TriConstraint2D.coerce(self, phi)
+
+    def flatten(self, phi: np.ndarray) -> np.ndarray:
+        phi = self.coerce(phi)
+        return np.concatenate([phi[1].ravel(), phi[0].ravel()])
+
+    def unflatten(self, phi_flat: np.ndarray) -> np.ndarray:
+        H, W = self.shape
+        n = H * W
+        return np.stack(
+            [
+                phi_flat[n:].reshape(H, W),  # dy back to channel 0
+                phi_flat[:n].reshape(H, W),
+            ]
+        )  # dx back to channel 1
+
+    def values(self, phi_flat: np.ndarray) -> np.ndarray:
+        from dvfopt.core.primitives.finite_jdet import finite_jdet_flat
+
+        return finite_jdet_flat(phi_flat, *self.shape)
+
+    def adjoint(self, phi_flat: np.ndarray, v: np.ndarray) -> np.ndarray:
+        from dvfopt.core.primitives.finite_jdet import finite_jdet_grad_T_v
+
+        return finite_jdet_grad_T_v(phi_flat, *self.shape, v)
+
+    def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
+        # Analytic sparse pattern — 6 nonzeros per cell (3 dx, 3 dy);
+        # already CSR, so no wrapping needed.
+        from dvfopt.core.primitives.finite_jdet import finite_jdet_jacobian
+
+        return finite_jdet_jacobian(phi_flat, *self.shape)
+
+
 class JdetConstraint3D(Constraint):
     """Per-voxel 3D Jacobian determinant ``det(I + ∇phi) >= threshold``.
 
@@ -579,6 +652,7 @@ register_constraint('2tri')(TriConstraint2DFullCoverage)
 register_constraint('2tri_standard')(TriConstraint2D)
 register_constraint('jdet')(JdetConstraint2D)  # alias
 register_constraint('jdet_2d')(JdetConstraint2D)
+register_constraint('finite')(FiniteJdetConstraint2D)
 register_constraint('jdet_3d')(JdetConstraint3D)
 register_constraint('6tet')(Tet6Constraint3D)
 register_constraint('6tet_3d')(Tet6Constraint3D)  # explicit alias
@@ -603,6 +677,7 @@ def make_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
 
 __all__ = [
     'Constraint',
+    'FiniteJdetConstraint2D',
     'JdetConstraint2D',
     'JdetConstraint3D',
     'PhiPack',

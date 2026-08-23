@@ -1,4 +1,9 @@
-"""Windowed fold-correction driver — solves only where the folds are.
+"""Windowed fold-correction engine — solves only where the folds are.
+
+dvfopt's **third shared engine** (after ``barrier/_core.py`` and
+``schwarz/_common.py``): domain decomposition orthogonal to the inner
+solve, carrying no method logic of its own. Promoted from
+``benchmarks/windowed_isqp.py`` (PRs #61-64).
 
 Designed from the measured B0039 fold geometry (folds cover ~3-6.5% of a slice,
 in many small clusters) rather than from any existing dvfopt loop. A full-grid
@@ -7,9 +12,10 @@ small window around a fold cluster and freezes a context ring, so the rest of th
 slice is untouched *by construction*.
 
 Core invariant (no-damage): moving a pixel changes only constraints whose support
-touches it. Both constraint families have finite support, so a window can enforce
-*every* constraint a free pixel influences and freeze everything else — no window
-solve can create a fold elsewhere. Two subtleties this module handles explicitly:
+touches it. Every registered constraint family has finite support, so a window can
+enforce *every* constraint a free pixel influences and freeze everything else — no
+window solve can create a fold elsewhere. Two subtleties this module handles
+explicitly:
 
 - **Finite-difference Jdet.** ``det(I+grad phi)`` is evaluated with ``np.gradient``
   (central differences), so a constraint on a patch's *interior-cut* edge uses a
@@ -22,161 +28,56 @@ solve can create a fold elsewhere. Two subtleties this module handles explicitly
   set lands in another's context ring; windows are then independent and only free
   pixels are pasted back.
 
-The inner solve is ``slsqp_variants._isqp_solve_osqp`` (elastic-QP SQP, L1/L2,
-warm-started), restricted to the window's free variables. Everything here is the
-window *builder*; the solver is unchanged.
+The "inner" contract
+--------------------
+
+Each window becomes a :class:`~dvfopt.core.windowed._inners.WindowSub` — a
+frozen-ring REDUCED problem: a patch-shaped constraint clone, the patch flat
+vector, ``cons``/``cons_jac`` restricted to the enforced rows (driven to
+``threshold + margin_delta``), the objective triplet, and the free-variable
+indices. :func:`~dvfopt.core.windowed._inners.solve_window_inner` dispatches it
+by label (``'isqp'`` default / ``'slsqp'`` / ``'slsqp+trust-constr'``) and
+returns ``(x_full, n_iter, feasible)``; frozen variables MUST stay at
+``sub.flat0`` and only free pixels are pasted back, so the no-damage invariant
+holds for any inner. This is deliberately NOT ``Strategy.fit`` on a crop — a
+crop-level Strategy cannot express frozen variables or row restriction (the
+seam gap ``core/slsqp_windowed`` documents in its own FOLLOW-UP comment).
+
+Per-constraint locality (ring width, fold map, influenced rows) comes from the
+:mod:`~dvfopt.core.windowed._locality` registry. The giant-region tiler
+(:func:`_solve_giant_schwarz`) is windowing-specific — ring-inset overlapping
+tiles with damage accounting — and deliberately does NOT reuse
+``core/schwarz/_common.py``, whose crop-Strategy contract cannot freeze rings.
 """
 
-import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import finite_jdet as fj
-import slsqp_variants as sv
+from dvfopt._logging import log_warning
+from dvfopt.objectives import L2Objective, _kind_eps
 
-from dvfopt.constraints import JdetConstraint2D, TriConstraint2D
-from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
-
-# Frozen-ring width per family: how far in from an interior patch edge a pixel must
-# be before every constraint it influences is enforceable with the correct
-# (global-matching) evaluation.
-#   jdet: 2 — central-diff rows must be 1 in from the edge, and a free pixel's
-#            influenced rows are its 4 neighbours (finite-difference support).
-#   2tri: 1 — cell areas are EXACT (no finite-diff), and a free pixel's influenced
-#            cells are its <=4 corner cells, all in-patch once it is 1 in.
-#   finite: 1 — forward-diff cell det is EXACT and depends on 3 corners; a free
-#            pixel's <=3 influenced cells are all in-patch once it is 1 in (like 2tri).
-_RING = {"jdet": 2, "2tri": 1, "finite": 1}
+from ._inners import WindowSub, solve_window_inner
+from ._locality import _locality_of, min_field, pixel_fold_mask
 
 
-def _constraint(family, shape):
-    if family == "jdet":
-        return JdetConstraint2D(shape=shape)
-    if family == "2tri":
-        return TriConstraint2D(shape=shape)
-    if family == "finite":
-        return fj.FiniteJdetConstraint2D(shape)
-    raise ValueError(f"unknown family {family!r}")
+def _objective_fns(flat0, objective):
+    """L1 (eps-smoothed) or L2 obj / grad / GN-diagonal-Hessian over the full patch.
 
-
-def min_field(family, phi_dydx):
-    """Per-location constraint value on the ``(H, W)`` pixel grid (folds are where
-    it is ``< threshold``).
-
-    - jdet: the pixel Jacobian determinant.
-    - 2tri: each cell ``(i, j)``'s min triangle area, placed at pixel ``(i, j)``;
-      the last pixel row/col have no cell and are set to ``+inf``.
-    - finite: each cell ``(i, j)``'s forward-diff determinant, placed at pixel
-      ``(i, j)``; the last pixel row/col have no cell and are set to ``+inf``.
+    Adapted from the :class:`~dvfopt.objectives.Objective` via ``_kind_eps`` —
+    the L1 smoothing eps comes from the objective itself
+    (``L1Objective(eps=...)``), not from any engine knob.
     """
-    H, W = phi_dydx.shape[1:]
-    if family == "jdet":
-        return _numpy_jdet_2d(phi_dydx[0], phi_dydx[1])
-    if family == "2tri":
-        c = TriConstraint2D(shape=(H, W))
-        vals = np.asarray(c.values(c.flatten(phi_dydx)))
-        m = (H - 1) * (W - 1)
-        cellmin = np.minimum(vals[:m], vals[m:]).reshape(H - 1, W - 1)
-        out = np.full((H, W), np.inf)
-        out[: H - 1, : W - 1] = cellmin
-        return out
-    if family == "finite":
-        c = fj.FiniteJdetConstraint2D((H, W))
-        vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(H - 1, W - 1)
-        out = np.full((H, W), np.inf)
-        out[: H - 1, : W - 1] = vals
-        return out
-    raise ValueError(f"unknown family {family!r}")
-
-
-_COLORING_CACHE = {}  # (family, ph, pw) -> (pattern, colors, None)
-
-
-def _pattern_union(c, probes=4, seed=0):
-    """Sparsity pattern of ``c``'s Jacobian, as the union of nonzeros over ``probes``
-    random points (a single point can zero a structurally-nonzero entry)."""
-    rng = np.random.default_rng(seed)
-    flat0 = rng.normal(0, 0.5, c.n_variables)
-    acc = None
-    for _ in range(probes):
-        b = np.abs(sv.dense_jacobian(c, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
-        acc = b if acc is None else (acc | b)
-    return [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
-
-
-def _cached_coloring(family, c, shape):
-    """CPR coloring ``(pattern, colors, None)`` for a patch shape, cached (the
-    Jacobian sparsity pattern depends only on the shape, and shapes recur across a
-    volume). Jdet uses the pixel-grid stride-3 colouring; 2-tri uses a cell-grid
-    ``triangle*4 + (i%2)*2 + j%2`` colouring (8 colours) — both give one adjoint
-    call per colour instead of one per constraint row, exact for their stencils."""
-    key = (family, *shape)
-    hit = _COLORING_CACHE.get(key)
-    if hit is None:
-        if family == "jdet":
-            hit = sv.jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
-        else:  # 2tri: cell grid, 2 triangles per cell share a 2x2-corner support
-            ph, pw = shape
-            ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing="ij")
-            cellcol = ((ii % 2) * 2 + (jj % 2)).ravel()
-            colors = np.concatenate([cellcol, 4 + cellcol])  # T1: 0-3, T2: 4-7
-            hit = (_pattern_union(c), colors, None)
-        _COLORING_CACHE[key] = hit
-    return hit
-
-
-def pixel_fold_mask(family, phi_dydx, threshold):
-    """Boolean ``(H, W)`` pixel mask of folds (constraint value < threshold)."""
-    return min_field(family, phi_dydx) < threshold
-
-
-def _eval_valid_jdet(ph, pw, at_top, at_bot, at_left, at_right):
-    """``(ph, pw)`` bool: constraint rows whose patch central-difference matches the
-    global field. Invalid only on an *interior* (non-image-border) patch edge."""
-    ax0 = np.ones(ph, bool)
-    if not at_top:
-        ax0[0] = False
-    if not at_bot:
-        ax0[-1] = False
-    ax1 = np.ones(pw, bool)
-    if not at_left:
-        ax1[0] = False
-    if not at_right:
-        ax1[-1] = False
-    return ax0[:, None] & ax1[None, :]
-
-
-@dataclass
-class _Sub:
-    """A window sub-problem ready to hand to the inner solver."""
-
-    constraint: object
-    flat0: np.ndarray
-    cons: object
-    cons_jac: object
-    obj: object
-    obj_grad: object
-    hess_diag: object
-    free_idx: np.ndarray
-    free_mask: np.ndarray  # (ph, pw) which patch pixels are free (for paste-back)
-    patch_box: tuple  # (py0, py1, px0, px1) global coords
-    n_enforced: int
-
-
-def _objective_fns(flat0, objective, eps):
-    """L1 (eps-smoothed) or L2 obj / grad / GN-diagonal-Hessian over the full patch."""
-    if objective == "l2":
+    kind, eps = _kind_eps(objective)
+    if kind == "l2":
         return (
             lambda f: float((f - flat0) @ (f - flat0)),
             lambda f: 2.0 * (f - flat0),
             lambda f: np.full(f.size, 2.0),
         )
-    if objective == "l1":
+    if kind == "l1":
 
         def obj(f):
             d = f - flat0
@@ -191,7 +92,7 @@ def _objective_fns(flat0, objective, eps):
             return np.maximum(eps * eps / np.power(d * d + eps * eps, 1.5), 0.1)
 
         return obj, grad, hess
-    if objective == "none":
+    if kind == "none":
         # Pure feasibility: no distance anchor, only the elastic-QP constraint drive.
         # The flat unit Hessian keeps the QP positive-definite. Use this to clear an
         # objective-basin trap the distance objective pins (see the z=16 analysis).
@@ -200,91 +101,38 @@ def _objective_fns(flat0, objective, eps):
             lambda f: np.zeros_like(f),
             lambda f: np.full(f.size, 2.0),
         )
-    raise ValueError(f"unknown objective {objective!r}")
+    raise ValueError(f"unknown objective {kind!r}")
 
 
-def _enforced_rows_and_jac(family, c, free_mask, ph, pw, borders):
-    """Return ``(enforced_idx, jac_of)`` for a patch.
-
-    ``enforced_idx`` are the constraint rows a free pixel influences AND that
-    evaluate correctly (grid + finite-difference rules differ per family).
-    ``jac_of(f)`` returns the full sparse CSR Jacobian (rows sliced by the caller).
-    """
-    cross = ndimage.generate_binary_structure(2, 1)
-    if family == "jdet":
-        valid = _eval_valid_jdet(ph, pw, *borders)
-        influenced = ndimage.binary_dilation(free_mask, cross)  # Jdet row depends on 4 neighbours
-        enforced_idx = np.nonzero((influenced & valid).ravel())[0]  # row = pixel raveled
-        coloring = _cached_coloring(family, c, (ph, pw))
-
-        def jac_of(f):
-            return sv.colored_jacobian(c, f, *coloring).tocsr()
-
-        return enforced_idx, jac_of
-
-    if family == "2tri":
-        # cell (i,j) is influenced iff any of its 4 corner pixels is free; cell areas
-        # are exact so every cell evaluates correctly (no image-border special case).
-        fm = free_mask
-        cell = fm[:-1, :-1] | fm[1:, :-1] | fm[:-1, 1:] | fm[1:, 1:]  # (ph-1, pw-1)
-        cell_flat = np.nonzero(cell.ravel())[0]
-        m = (ph - 1) * (pw - 1)
-        enforced_idx = np.concatenate([cell_flat, m + cell_flat])  # T1 and T2 rows
-        coloring = _cached_coloring(family, c, (ph, pw))
-
-        def jac_of(f):
-            # coloring: 8 adjoint calls, not a full dense (2M x 2N) rebuild per iter
-            # (the native jacobian() densifies — ~43% of a 2-tri window's time).
-            return sv.colored_jacobian(c, f, *coloring).tocsr()
-
-        return enforced_idx, jac_of
-
-    if family == "finite":
-        # forward-diff cell (i,j) depends on its 3 forward corners (i,j),(i,j+1),
-        # (i+1,j); influenced iff any is free. One row per cell (row = cell raveled
-        # C-order, matching FiniteJdetConstraint2D.values). The analytic sparse
-        # jacobian is cheap — no coloring needed.
-        fm = free_mask
-        cell = fm[:-1, :-1] | fm[:-1, 1:] | fm[1:, :-1]  # (ph-1, pw-1)
-        enforced_idx = np.nonzero(cell.ravel())[0]
-
-        def jac_of(f):
-            return c.jacobian(f).tocsr()
-
-        return enforced_idx, jac_of
-
-    raise ValueError(f"unknown family {family!r}")
-
-
-def build_subproblem(
-    family, phi_dydx, free_box, threshold, objective="l2", eps=1e-2, margin_delta=1e-3
-):
+def build_subproblem(constraint, phi_dydx, free_box, threshold, objective=None, margin_delta=1e-3):
     """Build the window sub-problem for a free box ``(fy0, fy1, fx0, fx1)`` (global).
 
-    Expands the free box by the family ring to a patch, instantiates the constraint
-    on the patch, selects the free pixels and the enforced constraint rows (those a
-    free pixel influences AND that evaluate correctly), and returns a :class:`_Sub`.
+    Expands the free box by the family ring to a patch, instantiates a
+    patch-shaped clone of ``constraint``'s type, selects the free pixels and the
+    enforced constraint rows (those a free pixel influences AND that evaluate
+    correctly), and returns a :class:`~dvfopt.core.windowed._inners.WindowSub`.
 
     ``margin_delta`` is enforced ON TOP of ``threshold`` (constraints are driven to
     ``threshold + margin_delta``) so that OSQP's ~1e-5 tolerance landing a hair
     short of the active bound still clears the strict ``< threshold`` fold check.
     """
     H, W = phi_dydx.shape[1:]
-    ring = _RING[family]
+    loc = _locality_of(constraint)
+    ring = loc.ring
     fy0, fy1, fx0, fx1 = free_box
     py0, py1 = max(0, fy0 - ring), min(H, fy1 + ring)
     px0, px1 = max(0, fx0 - ring), min(W, fx1 + ring)
     patch = np.ascontiguousarray(phi_dydx[:, py0:py1, px0:px1])
     ph, pw = patch.shape[1:]
-    c = _constraint(family, (ph, pw))
+    c = type(constraint)(shape=(ph, pw))
     flat0 = np.asarray(c.flatten(patch), dtype=np.float64)
 
     # free pixels (patch-local): the free box, clipped into the patch
     free_mask = np.zeros((ph, pw), bool)
     free_mask[fy0 - py0 : fy1 - py0, fx0 - px0 : fx1 - px0] = True
 
-    enforced_idx, jac_of = _enforced_rows_and_jac(
-        family, c, free_mask, ph, pw, (py0 == 0, py1 == H, px0 == 0, px1 == W)
+    enforced_idx, jac_of = loc.influenced(
+        c, free_mask, ph, pw, (py0 == 0, py1 == H, px0 == 0, px1 == W)
     )
 
     # free variable indices in the constraint's own pack (never hand-packed)
@@ -299,8 +147,8 @@ def build_subproblem(
     def cons_jac(f):  # sparse (n_enforced, n_vars) — enforced rows only
         return jac_of(f)[enforced_idx]
 
-    obj, grad, hess = _objective_fns(flat0, objective, eps)
-    return _Sub(
+    obj, grad, hess = _objective_fns(flat0, L2Objective() if objective is None else objective)
+    return WindowSub(
         c,
         flat0,
         cons,
@@ -388,55 +236,118 @@ class SliceReport:
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
+    # per-stage convergence entries, filled only when ``record_history=True``
+    # (each: name / n_iter / n_neg / min_T / wall_s; the 'final' entry adds
+    # ``extras`` with damage / n_windows / giant_regions / mop_cleared /
+    # l1_move / l2_move). Empty list otherwise.
+    history: list = field(default_factory=list)
 
 
 def windowed_correct(
-    phi_dydx,
-    family="jdet",
-    objective="l2",
-    threshold=0.01,
+    phi_in,
+    inner="isqp",
+    *,
+    constraint,
+    objective=None,
+    threshold,
     margin=3,
     maxiter=400,
-    eps=1e-2,
     max_rounds=8,
-    z=-1,
     margin_delta=1e-3,
     max_window_area=3000,
     mop_margin=25,
-    inner="isqp-osqp",
+    time_budget_s=None,
+    verbose=1,
+    record_history=False,
+    step_callback=None,
 ):
     """Correct a full ``(2, H, W)`` slice by solving one small window per fold
     cluster. Returns ``(phi_out, SliceReport)``.
+
+    ``constraint`` is a registered 2D constraint instance
+    (:class:`~dvfopt.constraints.JdetConstraint2D`,
+    :class:`~dvfopt.constraints.TriConstraint2D`, or
+    :class:`~dvfopt.constraints.FiniteJdetConstraint2D` — see
+    :data:`~dvfopt.core.windowed._locality.LOCALITY`); ``objective`` is a
+    :class:`~dvfopt.objectives.Objective` (``None`` -> ``L2Objective()``; the
+    L1 smoothing eps rides on ``L1Objective(eps=...)``).
 
     ``max_window_area`` caps a window's free-box area; larger merged clusters are
     cleared by overlapping-tile Schwarz decomposition (``report.giant_regions``)
     instead of an intractable near-full-grid QP. ``margin`` is clamped to at least
     the family ring (the frozen inset band must stay fold-free).
 
-    ``inner`` selects the per-window solver — ``"isqp-osqp"`` (default, the tuned
-    elastic-QP SQP), ``"scipy-slsqp"``, or ``"scipy-slsqp+trust-constr"``. All
-    inners only move the window's free pixels, so the no-damage invariant holds
-    regardless of the choice.
+    ``inner`` selects the per-window solver — ``"isqp"`` (default, the tuned
+    elastic-QP SQP), ``"slsqp"``, or ``"slsqp+trust-constr"`` (see
+    :func:`~dvfopt.core.windowed._inners.solve_window_inner` for the aliases).
+    All inners only move the window's free pixels, so the no-damage invariant
+    holds regardless of the choice.
 
     After the round loop plateaus, a terminal **mop** pass re-windows any residual
     with ``mop_margin`` (>> ``margin``): the diagnostic on the densest slices shows
     the plateau is boundary-stuck folds inside the giants that a small window's
     tight frozen boundary can't clear but a large frozen-exterior window can (the
     analogue of the 2.5D pipeline's ``mop_interior_3d``). ``mop_margin=0`` disables.
+
+    ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
+    before each window solve; on expiry the engine stops, logs a warning, and
+    finishes accounting on the best-so-far field. ``record_history=True`` fills
+    ``report.history`` with per-stage convergence entries; ``step_callback``
+    receives ``{'phi': ..., 'stage': ...}`` snapshots after each round / giant /
+    mop (``KeyboardInterrupt`` propagates as the documented Stop). All three are
+    no-ops at their defaults — the default path is byte-identical to the
+    promoted benchmark driver. ``verbose`` reserves the standard solver
+    verbosity contract (the engine itself emits no progress lines; warnings
+    surface through the ``dvfopt`` logger regardless).
     """
-    phi = np.array(phi_dydx, dtype=np.float64, copy=True)
-    ring = _RING[family]
+    loc = _locality_of(constraint)
+    objective = L2Objective() if objective is None else objective
+    phi = np.array(phi_in, dtype=np.float64, copy=True)
+    ring = loc.ring
     margin = max(margin, ring)  # inset band must be fold-free margin, never < ring
     H, W = phi.shape[1:]
-    j0 = min_field(family, phi)
+    j0 = min_field(constraint, phi)
     orig_fold = j0 < threshold
     rep = SliceReport(folds_before=int(orig_fold.sum()), min_before=float(j0.min()))
     touched = np.zeros((H, W), bool)  # union of every window's ENFORCED footprint
     t0 = time.perf_counter()
+    deadline = None if time_budget_s is None else t0 + float(time_budget_s)
 
+    def _expired():
+        return deadline is not None and time.perf_counter() > deadline
+
+    def _fire(stage, phi_snap):
+        """Forward an intermediate phi snapshot to ``step_callback`` so
+        the live-viz GUI can scrub through each cluster splice. Buggy
+        callbacks are silenced; KeyboardInterrupt propagates as the
+        documented stop signal."""
+        if step_callback is None:
+            return
+        try:
+            step_callback({'phi': np.asarray(phi_snap).copy(), 'stage': stage})
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            log_warning(f'step_callback raised {type(exc).__name__}: {exc}; continuing')
+
+    def _stage_entry(name, w_start):
+        """One history entry: stage name + current fold stats + wall clock."""
+        mf = min_field(constraint, phi)
+        return {
+            "name": name,
+            "n_iter": int(sum(r.inner_iters for r in rep.windows[w_start:])),
+            "n_neg": int((mf < threshold).sum()),
+            "min_T": float(mf.min()),
+            "wall_s": time.perf_counter() - t0,
+        }
+
+    budget_hit = False
     prev_nfold = None
     for _rnd in range(max_rounds):
-        mask = pixel_fold_mask(family, phi, threshold)
+        if _expired():
+            budget_hit = True
+            break
+        mask = pixel_fold_mask(constraint, phi, threshold)
         nfold = int(mask.sum())
         if nfold == 0:
             break
@@ -444,7 +355,11 @@ def windowed_correct(
             break  # no progress — stop rather than spin
         prev_nfold = nfold
         rep.rounds += 1
+        round_w0 = len(rep.windows)
         for box in find_windows(mask, margin, ring):
+            if _expired():
+                budget_hit = True
+                break
             fy0, fy1, fx0, fx1 = box
             # touched = the ENFORCED footprint (free box dilated by ring), not the
             # bare free box: a free pixel influences constraints up to `ring` beyond
@@ -456,49 +371,56 @@ def windowed_correct(
                 # too big for one QP -> overlapping-tile Schwarz decomposition
                 rep.giant_regions += 1
                 rep.giant_boxes.append(box)
+                giant_w0 = len(rep.windows)
                 _solve_giant_schwarz(
                     phi,
-                    family,
+                    constraint,
                     box,
                     threshold,
                     objective,
-                    eps,
                     maxiter,
                     ring,
-                    z,
                     rep,
                     margin_delta,
                     inner=inner,
                 )
+                if record_history:
+                    rep.history.append(_stage_entry("giant", giant_w0))
+                _fire("giant", phi)
                 continue
             _solve_window(
                 phi,
-                family,
+                constraint,
                 box,
                 threshold,
                 objective,
-                eps,
                 maxiter,
                 ring,
-                z,
                 rep,
                 margin_delta=margin_delta,
                 inner=inner,
             )
+        if record_history:
+            rep.history.append(_stage_entry(f"round{rep.rounds}", round_w0))
+        _fire(f"round{rep.rounds}", phi)
+        if budget_hit:
+            break
+
+    if budget_hit:
+        log_warning("windowed_correct: time budget exhausted; stopping with best-so-far field")
 
     # terminal mop: clear the boundary-stuck residual the round loop plateaued on
-    if mop_margin > 0:
-        before_mop = int(pixel_fold_mask(family, phi, threshold).sum())
+    if mop_margin > 0 and not budget_hit:
+        before_mop = int(pixel_fold_mask(constraint, phi, threshold).sum())
         if before_mop > 0:
+            mop_w0 = len(rep.windows)
             _mop_pass(
                 phi,
-                family,
+                constraint,
                 threshold,
                 objective,
-                eps,
                 maxiter,
                 ring,
-                z,
                 rep,
                 margin_delta,
                 touched,
@@ -506,9 +428,12 @@ def windowed_correct(
                 max_window_area,
                 inner=inner,
             )
-            rep.mop_cleared = before_mop - int(pixel_fold_mask(family, phi, threshold).sum())
+            rep.mop_cleared = before_mop - int(pixel_fold_mask(constraint, phi, threshold).sum())
+            if record_history:
+                rep.history.append(_stage_entry("mop", mop_w0))
+            _fire("mop", phi)
 
-    jf = min_field(family, phi)
+    jf = min_field(constraint, phi)
     after_fold = jf < threshold
     new = after_fold & ~orig_fold
     rep.folds_after = int(after_fold.sum())
@@ -519,25 +444,42 @@ def windowed_correct(
     rep.residual_in_window = int((after_fold & touched).sum())
     rep.n_windows = len(rep.windows)
     rep.time_s = time.perf_counter() - t0
+    if record_history:
+        move = phi - np.asarray(phi_in, dtype=np.float64)
+        rep.history.append(
+            {
+                "name": "final",
+                "n_iter": 0,
+                "n_neg": rep.folds_after,
+                "min_T": rep.min_after,
+                "wall_s": rep.time_s,
+                "extras": dict(
+                    damage=rep.damage,
+                    n_windows=rep.n_windows,
+                    giant_regions=rep.giant_regions,
+                    mop_cleared=rep.mop_cleared,
+                    l1_move=float(np.abs(move).sum()),
+                    l2_move=float(np.linalg.norm(move.ravel())),
+                ),
+            }
+        )
     return phi, rep
 
 
 def _mop_pass(
     phi,
-    family,
+    constraint,
     threshold,
     objective,
-    eps,
     maxiter,
     ring,
-    z,
     rep,
     margin_delta,
     touched,
     mop_margin,
     max_window_area,
     max_sweeps=3,
-    inner="isqp-osqp",
+    inner="isqp",
 ):
     """Clear the boundary-stuck residual the round loop plateaued on. Each residual
     cluster is re-solved with a LARGE margin so its neighbourhood is free — no tight
@@ -549,7 +491,7 @@ def _mop_pass(
     H, W = phi.shape[1:]
     whole_cap = 4 * max_window_area  # the mop is allowed much larger single QPs
     for _sweep in range(max_sweeps):
-        mask = pixel_fold_mask(family, phi, threshold)
+        mask = pixel_fold_mask(constraint, phi, threshold)
         n = int(mask.sum())
         if n == 0:
             break
@@ -563,14 +505,12 @@ def _mop_pass(
             if (fy1 - fy0) * (fx1 - fx0) > whole_cap:
                 _solve_giant_schwarz(
                     phi,
-                    family,
+                    constraint,
                     box,
                     threshold,
                     objective,
-                    eps,
                     maxiter,
                     ring,
-                    z,
                     rep,
                     margin_delta,
                     inner=inner,
@@ -578,43 +518,43 @@ def _mop_pass(
             else:
                 _solve_window(
                     phi,
-                    family,
+                    constraint,
                     box,
                     threshold,
                     objective,
-                    eps,
                     maxiter,
                     ring,
-                    z,
                     rep,
                     margin_delta=margin_delta,
                     inner=inner,
                 )
-        if int(pixel_fold_mask(family, phi, threshold).sum()) >= n:
+        if int(pixel_fold_mask(constraint, phi, threshold).sum()) >= n:
             break  # no progress -> genuine local floor
 
 
 def _solve_giant_schwarz(
     phi,
-    family,
+    constraint,
     giant_box,
     threshold,
     objective,
-    eps,
     maxiter,
     ring,
-    z,
     rep,
     margin_delta,
     tile=32,
     max_sweeps=8,
-    inner="isqp-osqp",
+    inner="isqp",
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
     tiles overlap so a fold on one tile's seam is interior to a neighbour, and
     repeated sweeps propagate the correction across the whole region. Returns folds
     remaining in the region.
+
+    Windowing-specific and NOT :mod:`dvfopt.core.schwarz` — that engine's
+    crop-Strategy contract cannot freeze rings or restrict enforced rows, which
+    is exactly what the damage accounting here relies on.
 
     No-damage by construction: the tiled region is INSET by ``ring`` from each
     interior giant edge, so a tile-free pixel can only influence constraints inside
@@ -642,139 +582,47 @@ def _solve_giant_schwarz(
             if tb[1] > tb[0] and tb[3] > tb[2]:
                 _solve_window(
                     phi,
-                    family,
+                    constraint,
                     tb,
                     threshold,
                     objective,
-                    eps,
                     maxiter,
                     ring,
-                    z,
                     rep,
                     margin_delta=margin_delta,
                     allow_grow=False,
                     inner=inner,
                 )
-        nf = int((min_field(family, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
+        nf = int((min_field(constraint, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
         if nf == 0 or (prev is not None and nf >= prev):
             return nf  # cleared, or no further progress (geometric floor)
         prev = nf
     return prev if prev is not None else 0
 
 
-def _inner_solve(sub, inner, maxiter, trace=None):
-    """Solve a built window sub-problem with the chosen inner solver, returning
-    ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
-
-    - ``"isqp-osqp"`` (default): the tuned elastic-QP SQP over the free vars,
-      UNCHANGED — the path every existing test and the no-damage invariant assume.
-    - ``"scipy-slsqp"`` / ``"scipy-slsqp+trust-constr"``: the SLSQP leg runs through
-      ``dvfopt.core.primitives.slsqp.minimize_slsqp_traced`` — scipy's own C-core driver (verified
-      byte-identical to ``minimize(method='SLSQP')``; see
-      ``benchmarks/trace_parity_check.py``) with optional pyslsqp-style tracing —
-      on the REDUCED free-variable problem (frozen vars pinned at ``sub.flat0``, so
-      no-damage still holds by construction). ``+trust-constr`` escalates to scipy
-      trust-constr only when SLSQP leaves an enforced row folded, and keeps
-      whichever iterate reaches the higher constraint minimum (never worse than
-      SLSQP alone).
-
-    ``trace`` (optional dict) is threaded to the inner solver — ``isqp-osqp`` and
-    the traced SLSQP leg both fill it with per-iteration records + an explicit
-    exit reason (house style: ``trace['iters']`` / ``trace['exit']``). Default
-    ``None`` keeps behavior byte-identical to the untraced path.
-    """
-    if inner == "isqp-osqp":
-        return sv._isqp_solve_osqp(
-            sub.flat0,
-            sub.cons,
-            sub.cons_jac,
-            sub.obj_grad,
-            maxiter,
-            constraint=None,
-            obj=sub.obj,
-            hess_diag=sub.hess_diag,
-            free_idx=sub.free_idx,
-            trace=trace,
-        )
-    if inner not in ("scipy-slsqp", "scipy-slsqp+trust-constr"):
-        raise ValueError(f"unknown inner {inner!r}")
-
-    from dvfopt.core.primitives.slsqp import minimize_slsqp_traced
-
-    free = np.asarray(sub.free_idx)
-    x0 = sub.flat0.copy()
-    if free.size == 0 or sub.n_enforced == 0:
-        return x0, 0, True  # nothing to move / no enforced row -> already done
-
-    def embed(zf):
-        x = x0.copy()
-        x[free] = zf
-        return x
-
-    def cons_z(zf):
-        return sub.cons(embed(zf))  # enforced rows only (built restricted)
-
-    def jac_z_dense(zf):
-        return sub.cons_jac(embed(zf))[:, free].toarray()  # enforced rows, free cols
-
-    def obj_z(zf):
-        return sub.obj(embed(zf))
-
-    def grad_z(zf):
-        return sub.obj_grad(embed(zf))[free]
-
-    z0 = x0[free]
-    r = minimize_slsqp_traced(
-        obj_z,
-        z0,
-        jac=grad_z,
-        constraints=[{"type": "ineq", "fun": cons_z, "jac": jac_z_dense}],
-        maxiter=maxiter,
-        ftol=1e-8,
-        trace=trace,
-    )
-    zf = r.x
-    if inner == "scipy-slsqp+trust-constr" and cons_z(zf).min() < 0:
-        from scipy.optimize import NonlinearConstraint, minimize
-
-        r2 = minimize(
-            obj_z,
-            zf,  # warm-start the escalation from SLSQP's (closest-to-feasible) iterate
-            jac=grad_z,
-            method="trust-constr",
-            constraints=[NonlinearConstraint(cons_z, 0.0, np.inf, jac=jac_z_dense)],
-            options={"maxiter": maxiter, "xtol": 1e-10},
-        )
-        if cons_z(r2.x).min() > cons_z(zf).min():  # keep the better; never worse
-            zf = r2.x
-    x = embed(zf)
-    return x, 0, bool(sub.cons(x).min() >= -1e-9)
-
-
 def _solve_window(
     phi,
-    family,
+    constraint,
     box,
     threshold,
     objective,
-    eps,
     maxiter,
     ring,
-    z,
     rep,
     _grow=0,
     margin_delta=1e-3,
     allow_grow=True,
-    inner="isqp-osqp",
+    inner="isqp",
 ):
     """Solve one window; on infeasibility grow the blocked sides once and retry.
     Returns the inner solver's feasibility flag. ``allow_grow=False`` (used by the
     Schwarz tiler) keeps a tile at fixed size — growing a tile defeats tiling.
-    ``inner`` picks the per-window solver (see :func:`_inner_solve`)."""
+    ``inner`` picks the per-window solver (see
+    :func:`~dvfopt.core.windowed._inners.solve_window_inner`)."""
     H, W = phi.shape[1:]
-    sub = build_subproblem(family, phi, box, threshold, objective, eps, margin_delta)
+    sub = build_subproblem(constraint, phi, box, threshold, objective, margin_delta)
     t = time.perf_counter()
-    x, nit, ok = _inner_solve(sub, inner, maxiter)
+    x, nit, ok = solve_window_inner(sub, inner, maxiter)
     dt = time.perf_counter() - t
     patch_out = np.asarray(sub.constraint.unflatten(x))
     py0, py1, px0, px1 = sub.patch_box
@@ -783,9 +631,8 @@ def _solve_window(
     dst = phi[:, py0:py1, px0:px1]
     dst[:, fm] = patch_out[:, fm]
 
-    jpatch = min_field(family, phi[:, py0:py1, px0:px1])
+    jpatch = min_field(constraint, phi[:, py0:py1, px0:px1])
     rec = WindowRec(
-        z=z,
         fy0=box[0],
         fx0=box[2],
         ph=py1 - py0,
@@ -808,17 +655,24 @@ def _solve_window(
         if (gy0, gy1, gx0, gx1) != box:
             return _solve_window(
                 phi,
-                family,
+                constraint,
                 (gy0, gy1, gx0, gx1),
                 threshold,
                 objective,
-                eps,
                 maxiter,
                 ring,
-                z,
                 rep,
                 _grow + 1,
                 margin_delta,
                 inner=inner,
             )
     return bool(ok)
+
+
+__all__ = [
+    'SliceReport',
+    'WindowRec',
+    'build_subproblem',
+    'find_windows',
+    'windowed_correct',
+]

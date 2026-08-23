@@ -1,22 +1,34 @@
-"""Tests for the windowed fold-correction driver (benchmarks/windowed_isqp.py)."""
+"""Tests for the windowed fold-correction engine (``dvfopt.core.windowed``).
 
-import importlib.util
-import sys
-from pathlib import Path
+Ported from the benchmark-era suite when the driver was promoted into the
+library (PRs #61-64): the same invariants — no-damage per family x inner,
+border folds, giant tiling, terminal mop, patch-interior-row identity — now
+phrased against registered constraint instances and Objective objects.
+"""
 
 import numpy as np
 import pytest
 
-benchmarks_dir = Path(__file__).resolve().parents[1] / "benchmarks"
-if str(benchmarks_dir) not in sys.path:
-    sys.path.insert(0, str(benchmarks_dir))
+from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.core.primitives.isqp import HAS_OSQP
+from dvfopt.core.windowed import build_subproblem, min_field, windowed_correct
+from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
+from dvfopt.objectives import L1Objective, L2Objective
 
-if importlib.util.find_spec("osqp") is None:
+if not HAS_OSQP:
     pytest.skip("osqp not installed", allow_module_level=True)
 
-import windowed_isqp as wi  # noqa: E402
+_FAMILY = {"jdet": JdetConstraint2D, "2tri": TriConstraint2D, "finite": FiniteJdetConstraint2D}
 
-from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d  # noqa: E402
+
+def _c(family, phi):
+    """Shape-bound constraint instance for phi's ``(2, H, W)`` grid."""
+    return _FAMILY[family](shape=phi.shape[1:])
+
+
+def _obj(label):
+    """Old objective-string -> Objective (the old harness default was eps=1e-2)."""
+    return L1Objective(eps=1e-2) if label == "l1" else L2Objective()
 
 
 def _sparse_folds(H=100, W=100, seed=3):
@@ -35,7 +47,7 @@ def test_patch_matches_global_on_interior_rows():
     rng = np.random.default_rng(0)
     phi = np.stack([rng.normal(0, 0.5, (60, 60)), rng.normal(0, 0.5, (60, 60))])
     jg = _numpy_jdet_2d(phi[0], phi[1])
-    sub = wi.build_subproblem("jdet", phi, (20, 30, 25, 38), threshold=0.01)
+    sub = build_subproblem(_c("jdet", phi), phi, (20, 30, 25, 38), threshold=0.01)
     py0, py1, px0, px1 = sub.patch_box
     cvals = np.asarray(sub.constraint.values(sub.flat0)).reshape(py1 - py0, px1 - px0)
     diff = np.abs(cvals - jg[py0:py1, px0:px1])
@@ -46,7 +58,9 @@ def test_no_damage_and_full_clear():
     """The invariant: windowing clears folds with ZERO damage outside every window."""
     phi = _sparse_folds()
     n0 = int((_numpy_jdet_2d(phi[0], phi[1]) < 0.01).sum())
-    out, rep = wi.windowed_correct(phi, family="jdet", objective="l2")
+    out, rep = windowed_correct(
+        phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01
+    )
     assert n0 > 0 and rep.folds_before == n0
     assert rep.damage == 0  # no fold created outside any window — the whole point
     assert rep.folds_after == 0  # fully cleared
@@ -55,7 +69,7 @@ def test_no_damage_and_full_clear():
 
 def test_no_damage_holds_for_l1():
     phi = _sparse_folds(seed=5)
-    _, rep = wi.windowed_correct(phi, family="jdet", objective="l1", eps=1e-2)
+    _, rep = windowed_correct(phi, constraint=_c("jdet", phi), objective=_obj("l1"), threshold=0.01)
     assert rep.damage == 0
 
 
@@ -68,7 +82,7 @@ def test_schwarz_tiling_clears_giant_connected_region(family):
     phi = np.zeros((2, H, W))
     phi[0, 35:105, 35:105] = rng.normal(0, 1.2, (70, 70))
     phi[1, 35:105, 35:105] = rng.normal(0, 1.2, (70, 70))
-    _, rep = wi.windowed_correct(phi, family=family, objective="l2")
+    _, rep = windowed_correct(phi, constraint=_c(family, phi), objective=_obj("l2"), threshold=0.01)
     assert rep.giant_regions >= 1  # the region tripped the tiler
     assert rep.damage == 0
     assert rep.folds_after == 0  # tiling fully cleared it
@@ -79,8 +93,10 @@ def test_2tri_no_damage_and_full_clear(objective):
     """The 2-triangle metric (cell grid, exact areas, ring=1) clears folds with
     zero damage, same invariant as Jdet."""
     phi = _sparse_folds(seed=3)
-    n0 = int((wi.min_field("2tri", phi) < 0.01).sum())
-    _, rep = wi.windowed_correct(phi, family="2tri", objective=objective, eps=1e-2)
+    n0 = int((min_field(_c("2tri", phi), phi) < 0.01).sum())
+    _, rep = windowed_correct(
+        phi, constraint=_c("2tri", phi), objective=_obj(objective), threshold=0.01
+    )
     assert n0 > 0
     assert rep.damage == 0
     assert rep.folds_after == 0
@@ -91,19 +107,23 @@ def test_finite_no_damage_and_full_clear(objective):
     """The forward-diff Jdet metric (cell grid, exact det, ring=1, one row/cell)
     clears folds with zero damage, same invariant as 2tri/Jdet."""
     phi = _sparse_folds(seed=3)
-    n0 = int((wi.min_field("finite", phi) < 0.01).sum())
-    _, rep = wi.windowed_correct(phi, family="finite", objective=objective, eps=1e-2)
+    n0 = int((min_field(_c("finite", phi), phi) < 0.01).sum())
+    _, rep = windowed_correct(
+        phi, constraint=_c("finite", phi), objective=_obj(objective), threshold=0.01
+    )
     assert n0 > 0
     assert rep.damage == 0
     assert rep.folds_after == 0
 
 
-@pytest.mark.parametrize("inner", ["scipy-slsqp", "scipy-slsqp+trust-constr"])
+@pytest.mark.parametrize("inner", ["slsqp", "slsqp+trust-constr"])
 def test_pluggable_inner_preserves_no_damage(inner):
     """Swapping the inner solver must not break the no-damage invariant: every inner
     only moves the window's free pixels, so folds outside every window stay 0."""
     phi = _sparse_folds()
-    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2", inner=inner)
+    _, rep = windowed_correct(
+        phi, inner, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01
+    )
     assert rep.damage == 0
 
 
@@ -116,8 +136,8 @@ def test_border_folds_are_corrected():
     phi = np.zeros((2, H, W))
     phi[0, 0:5, 20:32] += rng.normal(0, 1.5, (5, 12))  # cluster touching top border
     phi[1, 0:5, 20:32] += rng.normal(0, 1.5, (5, 12))
-    assert (wi.min_field("jdet", phi)[0] < 0.01).any()  # folds ON row 0 exist
-    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2")
+    assert (min_field(_c("jdet", phi), phi)[0] < 0.01).any()  # folds ON row 0 exist
+    _, rep = windowed_correct(phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01)
     assert rep.damage == 0
     assert rep.folds_after == 0  # border folds cleared, not left frozen
 
@@ -131,8 +151,12 @@ def test_mop_only_helps_and_never_damages():
     phi = np.zeros((2, H, W))
     phi[0, 30:90, 30:90] = rng.normal(0, 2.2, (60, 60))  # large, high-amplitude region
     phi[1, 30:90, 30:90] = rng.normal(0, 2.2, (60, 60))
-    _, no_mop = wi.windowed_correct(phi, family="jdet", objective="l2", mop_margin=0)
-    _, with_mop = wi.windowed_correct(phi, family="jdet", objective="l2")  # default mop=25
+    _, no_mop = windowed_correct(
+        phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01, mop_margin=0
+    )
+    _, with_mop = windowed_correct(  # default mop_margin=25
+        phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01
+    )
     assert no_mop.damage == 0 and with_mop.damage == 0
     assert with_mop.folds_after <= no_mop.folds_after  # the mop only helps
 
@@ -147,5 +171,5 @@ def test_no_damage_on_severe_field():
     for cy, cx in [(25, 25), (25, 65), (65, 30), (66, 66)]:
         phi[0, cy - 3 : cy + 4, cx - 3 : cx + 4] += rng.normal(0, 4.0, (7, 7))  # amp 4 = hard
         phi[1, cy - 3 : cy + 4, cx - 3 : cx + 4] += rng.normal(0, 4.0, (7, 7))
-    _, rep = wi.windowed_correct(phi, family="jdet", objective="l2")
+    _, rep = windowed_correct(phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01)
     assert rep.damage == 0

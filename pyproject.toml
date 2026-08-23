@@ -39,11 +39,16 @@ dev = [
     "hypothesis>=6",
     "nbformat>=5",
     "pandas",
+    "osqp",                  # windowed isqp inner — CI's [dev,gui] legs run the no-damage suite
 ]
 perf = [
     # Airspeed Velocity — solver performance regression tracking.
     # `asv run` builds isolated envs per commit; not run in CI (too slow).
     "asv>=0.6",
+]
+solvers = [
+    # OSQP — the elastic-QP inner behind the windowed engine (ISQPWindowedStrategy).
+    "osqp",
 ]
 gui = [
     # Live-visualisation app (``dvfopt_gui``). Standalone — only needed

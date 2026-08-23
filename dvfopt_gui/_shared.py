@@ -240,6 +240,7 @@ _METHOD_SPECS_2TRI = [
     ('m10', 'M10 (Harmonic + ALM + barrier polish)'),
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
+    ('isqp_windowed', 'ISQP windowed (no-damage elastic-QP; needs osqp)'),
     ('slsqp_fullgrid', 'SLSQP full-grid (2-tri; KKT, smallest L1 on mild folds)'),
     ('schwarz', 'Schwarz (2-tri; overlapping-tile decomposition)'),
     ('auto', 'Auto (pick by fold stats)'),
@@ -247,6 +248,7 @@ _METHOD_SPECS_2TRI = [
 _METHOD_SPECS_JDET = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
+    ('isqp_windowed', 'ISQP windowed (no-damage elastic-QP; needs osqp)'),
     ('nmvf', 'NMVF (heuristic neighborhood-mean smoother)'),
     ('auto', 'Auto (pick by fold stats)'),
 ]
@@ -304,6 +306,12 @@ def _torch_available() -> bool:
     """True when PyTorch is importable (gates the GPU-barrier menu item)."""
 
     return importlib.util.find_spec('torch') is not None
+
+
+def _osqp_available() -> bool:
+    """True when osqp is importable (gates the ISQP-windowed menu items)."""
+
+    return importlib.util.find_spec('osqp') is not None
 
 
 def _default_roi_geometry(H: int, W: int) -> tuple[int, int, int, int]:

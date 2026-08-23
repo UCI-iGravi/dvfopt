@@ -399,6 +399,8 @@ _MID_TO_LABEL = {
     'm14_schwarz_2tri': 'm14_schwarz',
     'slsqp_fullgrid_2tri': 'slsqp',
     'schwarz_2tri': 'schwarz',
+    'isqp_windowed_2tri': 'isqp_windowed',
+    'isqp_windowed_jdet': 'isqp_windowed',
     'nmvf_jdet': 'nmvf',
     'slp_2tri': 'slp',
     'slp_tet3d': 'slp',
@@ -686,6 +688,7 @@ class SolverWorker(QtCore.QThread):
         from dvfopt import (
             JdetConstraint2D,
             Solver,
+            TriConstraint2D,
             TriConstraint2DFullCoverage,
         )
 
@@ -700,6 +703,13 @@ class SolverWorker(QtCore.QThread):
         H, W = phi_2hw.shape[1:]
         if constraint_kind == '2tri':
             constraint = TriConstraint2DFullCoverage(shape=(H, W))
+            # A strategy that declares it does not accept the full-coverage
+            # variant (ISQP-windowed: its locality registry covers the
+            # standard 2-tri only, full-coverage is stage 2) solves the
+            # standard 2-tri instead of failing Solver construction.
+            accepted = getattr(strategy, 'accepts_constraints', None)
+            if accepted is not None and not isinstance(constraint, tuple(accepted)):
+                constraint = TriConstraint2D(shape=(H, W))
         elif constraint_kind == 'jdet':
             constraint = JdetConstraint2D(shape=(H, W))
         else:

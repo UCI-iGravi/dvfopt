@@ -20,7 +20,8 @@ Usage:
     python benchmarks/trace_parity_check.py [--z 260] [--size 28] [--maxiter 200]
 
 Writes the HDF5 to a temp dir (never committed); prints the parity table and raises
-AssertionError on failure (gate for migrating windowed_isqp's scipy inners).
+AssertionError on failure (the gate that cleared the windowed engine's scipy
+inners — now :mod:`dvfopt.core.windowed`).
 """
 
 import argparse

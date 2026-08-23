@@ -1,7 +1,7 @@
 """Residual-escape modes for the windowed fold-corrector.
 
-The distance-minimising window solve in :mod:`windowed_isqp` can leave a few
-folds behind. That residual is **not** a geometric floor — it is an
+The distance-minimising window solve in :mod:`dvfopt.core.windowed` can leave a
+few folds behind. That residual is **not** a geometric floor — it is an
 OBJECTIVE-BASIN trap: un-folding a deeply inverted cell needs a large node move
 that the L1/L2 anchor penalises, so the distance-minimising SQP halts one fold
 short. (Verified on B0039 z=16: the *same* window, same freedom, clears to zero
@@ -19,28 +19,59 @@ These modes clear that residual within a *single* objective:
   barrier), so there is a downhill path *through* the degenerate (zero-area) state.
 
 Every mode moves ONLY a window's free pixels, so the no-damage invariant holds exactly
-as in :func:`windowed_isqp._solve_window`. :func:`repair_residuals` is the public entry
-point — additive over :func:`windowed_isqp.windowed_correct`'s output.
+as in the engine's ``_solve_window``. :func:`repair_residuals` is the public entry
+point — additive over :func:`dvfopt.core.windowed.windowed_correct`'s output. It keeps
+the historical family-string API (``'jdet'`` / ``'2tri'`` / ``'finite'``), converted to
+:mod:`dvfopt.constraints` instances at the library boundary.
 """
 
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import slsqp_variants as sv
-from windowed_isqp import (
-    _RING,
-    build_subproblem,
-    find_windows,
-    min_field,
-    pixel_fold_mask,
-)
+from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.core.primitives.isqp import isqp_solve
+from dvfopt.core.windowed import LOCALITY, build_subproblem, find_windows
+from dvfopt.core.windowed import min_field as _engine_min_field
+from dvfopt.objectives import L1Objective, L2Objective, NoneObjective
 
 _ESCAPE_MODES = ("baseline", "twophase", "weighted", "penalty")
+
+# Historical family-string API -> registered constraint types (the boundary
+# where this harness meets the promoted engine).
+_FAMILY = {"jdet": JdetConstraint2D, "2tri": TriConstraint2D, "finite": FiniteJdetConstraint2D}
+
+
+def _constraint_of(family, shape):
+    """A shape-bound constraint instance for a family string."""
+    try:
+        ctype = _FAMILY[family]
+    except KeyError:
+        raise ValueError(f"unknown family {family!r} (choose from {tuple(_FAMILY)})") from None
+    return ctype(shape=tuple(shape))
+
+
+def _objective_of(objective, eps):
+    """'l2' / 'l1' / 'none' string -> the dvfopt Objective the engine consumes."""
+    if objective == "l2":
+        return L2Objective()
+    if objective == "l1":
+        return L1Objective(eps=eps)
+    if objective == "none":
+        return NoneObjective()
+    raise ValueError(f"unknown objective {objective!r}")
+
+
+def min_field(family, phi_dydx):
+    """Family-string adapter over the engine's per-location constraint map
+    (see :func:`dvfopt.core.windowed.min_field`)."""
+    return _engine_min_field(_constraint_of(family, phi_dydx.shape[1:]), phi_dydx)
+
+
+def pixel_fold_mask(family, phi_dydx, threshold):
+    """Boolean ``(H, W)`` pixel mask of folds (constraint value < threshold)."""
+    return min_field(family, phi_dydx) < threshold
 
 
 def _fold_weight_field(taint, taper):
@@ -92,13 +123,12 @@ def _escape_solve(
     """Solve a built window sub-problem with a residual-escape strategy, returning
     ``(x_full, n_iter, feasible)``. Frozen vars stay at ``sub.flat0`` (no-damage)."""
     if mode == "baseline":
-        return sv._isqp_solve_osqp(
+        return isqp_solve(
             sub.flat0.copy(),
             sub.cons,
             sub.cons_jac,
             sub.obj_grad,
             maxiter,
-            constraint=None,
             obj=sub.obj,
             hess_diag=sub.hess_diag,
             free_idx=sub.free_idx,
@@ -107,25 +137,23 @@ def _escape_solve(
     if mode == "twophase":
         # phase 1: pure feasibility (objective off) to cross the fold barrier;
         # phase 2: re-anchor distance from the now-feasible point to recover fidelity.
-        xf, n1, _ = sv._isqp_solve_osqp(
+        xf, n1, _ = isqp_solve(
             sub.flat0.copy(),
             sub.cons,
             sub.cons_jac,
             (lambda f: np.zeros_like(f)),
             maxiter,
             rho=1e5,
-            constraint=None,
             obj=(lambda f: 0.0),
             hess_diag=sub.hess_diag,
             free_idx=sub.free_idx,
         )
-        xp, n2, ok = sv._isqp_solve_osqp(
+        xp, n2, ok = isqp_solve(
             xf,
             sub.cons,
             sub.cons_jac,
             sub.obj_grad,
             maxiter,
-            constraint=None,
             obj=sub.obj,
             hess_diag=sub.hess_diag,
             free_idx=sub.free_idx,
@@ -142,13 +170,12 @@ def _escape_solve(
         wpix = np.maximum(_fold_weight_field(taint, taper), 1e-3)  # floor keeps QP nonsingular
         wvar = np.asarray(c.flatten(np.stack([wpix, wpix])))
         obj, grad, hess = _weighted_obj_fns(sub.flat0, wvar, objective, eps)
-        return sv._isqp_solve_osqp(
+        return isqp_solve(
             sub.flat0.copy(),
             sub.cons,
             sub.cons_jac,
             grad,
             maxiter,
-            constraint=None,
             obj=obj,
             hess_diag=hess,
             free_idx=sub.free_idx,
@@ -165,14 +192,13 @@ def _escape_solve(
         nit = 0
         ok = False
         for rho in rho_schedule:
-            x, n, ok = sv._isqp_solve_osqp(
+            x, n, ok = isqp_solve(
                 x,
                 sub.cons,
                 sub.cons_jac,
                 sub.obj_grad,
                 maxiter,
                 rho=rho,
-                constraint=None,
                 obj=sub.obj,
                 hess_diag=sub.hess_diag,
                 free_idx=sub.free_idx,
@@ -199,16 +225,18 @@ def repair_residuals(
 ):
     """Clear the folds a distance-minimising solve leaves behind, using a residual-
     escape ``mode`` (see ``_ESCAPE_MODES``). Additive over
-    :func:`windowed_isqp.windowed_correct`'s output — re-windows each residual cluster
-    (large ``margin``) and applies the escape solve, pasting back only free pixels so
-    the no-damage invariant holds. Returns ``(phi_out, report dict)``."""
+    :func:`dvfopt.core.windowed.windowed_correct`'s output — re-windows each residual
+    cluster (large ``margin``) and applies the escape solve, pasting back only free
+    pixels so the no-damage invariant holds. Returns ``(phi_out, report dict)``."""
     if mode not in _ESCAPE_MODES:
         raise ValueError(f"unknown escape mode {mode!r} (choose from {_ESCAPE_MODES})")
     phi = np.array(phi_dydx, dtype=np.float64, copy=True)
     phi_in = np.array(phi_dydx, dtype=np.float64, copy=True)
-    ring = _RING[family]
-    margin = max(margin, ring)
     H, W = phi.shape[1:]
+    con = _constraint_of(family, (H, W))
+    obj = _objective_of(objective, eps)
+    ring = LOCALITY[type(con)].ring
+    margin = max(margin, ring)
     orig_fold = min_field(family, phi) < threshold
     fb = int(orig_fold.sum())
     touched = np.zeros((H, W), bool)
@@ -223,7 +251,7 @@ def repair_residuals(
         for box in find_windows(mask, margin, ring):
             fy0, fy1, fx0, fx1 = box
             touched[max(0, fy0 - ring) : fy1 + ring, max(0, fx0 - ring) : fx1 + ring] = True
-            sub = build_subproblem(family, phi, box, threshold, objective, eps, margin_delta)
+            sub = build_subproblem(con, phi, box, threshold, obj, margin_delta)
             x, nit, _ = _escape_solve(
                 sub,
                 mode,
