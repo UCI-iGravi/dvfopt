@@ -24,9 +24,9 @@ import time
 from typing import Optional
 
 import numpy as np
-from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ def solve_cluster_2tri_2d(
         return np.concatenate([T1.ravel(), T2.ravel()])
 
     jac_func = _make_2tri_jac_2d(phi_win, interior_mask)
-    nl = NonlinearConstraint(constr, lb=threshold, ub=np.inf, jac=jac_func)
+    cons = [ineq_dict(constr, jac_func, lb=threshold)]
 
     # ----- L2 multi-pass with perturb-on-stall -----
     STALL_PERTURB_LIMIT = 3
@@ -375,13 +375,12 @@ def solve_cluster_2tri_2d(
             z_init = z_init + rng.normal(scale=sigma, size=z_init.shape)
             perturb_seed += 1
         t_pass = time.time()
-        res = minimize(
-            obj_l2,
+        res = minimize_slsqp_traced(
+            lambda z: obj_l2(z)[0],
             z_init,
-            jac=True,
-            method='SLSQP',
-            constraints=[nl],
-            options={'maxiter': l2_max_iter, 'disp': False},
+            jac=lambda z: obj_l2(z)[1],
+            constraints=cons,
+            maxiter=l2_max_iter,
         )
         l2_total_t += time.time() - t_pass
         l2_passes_run += 1
@@ -417,13 +416,13 @@ def solve_cluster_2tri_2d(
             return float(s.sum()), d / s
 
         t_pass = time.time()
-        res = minimize(
-            obj_l1,
+        res = minimize_slsqp_traced(
+            lambda z: obj_l1(z)[0],
             z_init,
-            jac=True,
-            method='SLSQP',
-            constraints=[nl],
-            options={'maxiter': l1_max_iter, 'ftol': 1e-9, 'disp': False},
+            jac=lambda z: obj_l1(z)[1],
+            constraints=cons,
+            maxiter=l1_max_iter,
+            ftol=1e-9,
         )
         l1_t = time.time() - t_pass
         l1_nit = int(res.nit)
