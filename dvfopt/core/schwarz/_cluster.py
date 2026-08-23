@@ -3,7 +3,7 @@
 Promoted from ``notebooks/manuscript/_bench_worker.solve_cluster_inline``,
 the workhorse the manuscript runner used per fold cluster. Same logic,
 exposed as a package entry point so other dvfopt code (notably the
-Schwarz hybrid in :mod:`dvfopt.core.iterative2d_tri_schwarz`) can call
+Schwarz hybrid in :mod:`dvfopt.core.schwarz.tri2d`) can call
 it directly instead of re-implementing the L2-multi-pass + L1-polish
 loop inline.
 

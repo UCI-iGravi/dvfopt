@@ -7,13 +7,13 @@ import warnings
 import numpy as np
 import pytest
 
-from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
-from dvfopt.core.wallbreakers._schwarz_common import (
+from dvfopt.core.schwarz._common import (
     _fold_clusters_2d as _fold_clusters,
 )
-from dvfopt.core.wallbreakers._schwarz_common import (
+from dvfopt.core.schwarz._common import (
     _stats_2d as _stats,
 )
+from dvfopt.core.wallbreakers import iterative_2d_tri_refine_repair_schwarz
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 
@@ -90,7 +90,7 @@ class TestFoldClusters3D:
     """The 3D twin in _schwarz_common gets the same dilation guards."""
 
     def test_merge_dilation_zero_keeps_clusters_separate(self):
-        from dvfopt.core.wallbreakers._schwarz_common import _fold_clusters_3d
+        from dvfopt.core.schwarz._common import _fold_clusters_3d
 
         phi = np.zeros((3, 5, 20, 20))
         phi[1, 2, 4, 4] = 1.5
@@ -102,7 +102,7 @@ class TestFoldClusters3D:
         assert len(bboxes) == 2
 
     def test_negative_merge_dilation_raises(self):
-        from dvfopt.core.wallbreakers._schwarz_common import _fold_clusters_3d
+        from dvfopt.core.schwarz._common import _fold_clusters_3d
 
         with pytest.raises(ValueError, match='merge_dilation'):
             _fold_clusters_3d(np.zeros((3, 4, 4, 4)), threshold=0.0, merge_dilation=-1)
@@ -190,7 +190,7 @@ class TestTimeBudget2D:
         return phi
 
     def test_zero_budget_stops_before_any_inner_solve(self):
-        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+        from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 
         phi = self._saturated_fold()
         calls = []
@@ -217,7 +217,7 @@ class TestTimeBudget2D:
     def test_fallback_skipped_when_remaining_below_floor(self):
         """Budget small enough that < ~5 s remain at fallback time: the
         global fallback must be SKIPPED, not granted a fresh 60 s floor."""
-        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+        from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 
         phi = self._saturated_fold()
         calls = []
@@ -245,7 +245,7 @@ class TestTimeBudget2D:
     def test_fallback_budget_never_exceeds_remaining(self):
         """When the fallback DOES fire, it gets at most the remaining
         budget — never max(60, remaining)."""
-        from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
+        from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 
         phi = self._saturated_fold()
         calls = []

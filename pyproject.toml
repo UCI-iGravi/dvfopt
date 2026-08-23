@@ -54,7 +54,7 @@ gui = [
 ]
 fast = [
     # Optional JIT accelerator for the hot 2-triangle adjoint
-    # (`dvfopt.core.tri_primitives.tri_grad_T_v`). Provides a 5-14x
+    # (`dvfopt.core.primitives.tri.tri_grad_T_v`). Provides a 5-14x
     # per-call speedup; the module auto-detects numba at import and
     # falls back to the pure-numpy path when not installed.
     "numba",

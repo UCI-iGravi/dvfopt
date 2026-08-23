@@ -1,7 +1,7 @@
 """Cluster-localized m14 (refine-repair) — Schwarz domain decomposition.
 
 Thin closure-shim around the generic
-:func:`dvfopt.core.wallbreakers._schwarz_common.cluster_schwarz_2d_tri`,
+:func:`dvfopt.core.schwarz._common.cluster_schwarz_2d_tri`,
 binding ``inner_solve`` to
 :func:`dvfopt.core.wallbreakers._refine_repair.iterative_2d_tri_refine_repair`
 and ``final_polish_fn`` to
@@ -23,10 +23,10 @@ import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.core.barrier.tri2d import iterative_2d_tri_barrier
+from dvfopt.core.schwarz._common import cluster_schwarz_2d_tri
 from dvfopt.core.wallbreakers._refine_repair import (
     iterative_2d_tri_refine_repair,
 )
-from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_2d_tri
 
 
 def iterative_2d_tri_refine_repair_schwarz(
@@ -50,7 +50,7 @@ def iterative_2d_tri_refine_repair_schwarz(
 ):
     """Cluster-localized refine-repair (m14-Schwarz).
 
-    See :mod:`dvfopt.core.wallbreakers._schwarz_common` for the
+    See :mod:`dvfopt.core.schwarz._common` for the
     underlying algorithm. This entry point pins ``inner_solve`` to
     :func:`iterative_2d_tri_refine_repair` and (optionally) the global
     polish to :func:`iterative_2d_tri_barrier`.

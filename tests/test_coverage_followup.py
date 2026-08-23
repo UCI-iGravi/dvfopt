@@ -204,7 +204,7 @@ class TestLaplacianSymmetry:
 
 class TestSchwarzActuallyRoutes:
     def test_large_component_triggers_schwarz_via_history(self):
-        from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
+        from dvfopt.core.schwarz.tri2d import iterative_2d_tri_schwarz
 
         rng = np.random.default_rng(99)
         phi = np.stack([rng.normal(0, 0.4, (30, 30)), rng.normal(0, 0.4, (30, 30))])

@@ -12,7 +12,7 @@ from dvfopt.strategies.base import Strategy, register_strategy
 @dataclass
 class SchwarzStrategy(Strategy):
     """Overlapping-tile Schwarz + per-cluster SLSQP. 2-tri only —
-    wraps :func:`dvfopt.core.iterative2d_tri_schwarz.iterative_2d_tri_schwarz`."""
+    wraps :func:`dvfopt.core.schwarz.tri2d.iterative_2d_tri_schwarz`."""
 
     max_outer: int = 6
 
@@ -22,7 +22,7 @@ class SchwarzStrategy(Strategy):
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
     ):
-        from dvfopt.core.iterative2d_tri_schwarz import iterative_2d_tri_schwarz
+        from dvfopt.core.schwarz.tri2d import iterative_2d_tri_schwarz
 
         self._check_constraint(constraint)
         out = iterative_2d_tri_schwarz(

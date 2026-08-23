@@ -25,7 +25,7 @@ normal solver. Schwarz tiling is therefore a *fallback for the
 large-component case only*, not a replacement for normal per-cluster
 SLSQP.
 
-Both branches call :func:`dvfopt.core._cluster_2tri.solve_cluster_2tri_2d`
+Both branches call :func:`dvfopt.core.schwarz._cluster.solve_cluster_2tri_2d`
 for the actual SLSQP work.
 """
 
@@ -40,7 +40,7 @@ from scipy.ndimage import label as cc_label
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
-from dvfopt.core._cluster_2tri import solve_cluster_2tri_2d
+from dvfopt.core.schwarz._cluster import solve_cluster_2tri_2d
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 
 # ---------------------------------------------------------------------------

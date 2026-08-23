@@ -1,7 +1,7 @@
 """Cluster-localized m14 (refine-repair) for the 3D 6-tet constraint.
 
 Thin closure-shim around the generic
-:func:`dvfopt.core.wallbreakers._schwarz_common.cluster_schwarz_3d_tet`,
+:func:`dvfopt.core.schwarz._common.cluster_schwarz_3d_tet`,
 binding ``inner_solve`` to
 :func:`dvfopt.core.wallbreakers._refine_repair_3d.iterative_3d_tet_refine_repair`.
 
@@ -22,8 +22,8 @@ from typing import Optional
 import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt.core.schwarz._common import cluster_schwarz_3d_tet
 from dvfopt.core.wallbreakers._refine_repair_3d import iterative_3d_tet_refine_repair
-from dvfopt.core.wallbreakers._schwarz_common import cluster_schwarz_3d_tet
 
 
 def iterative_3d_tet_refine_repair_schwarz(
@@ -45,7 +45,7 @@ def iterative_3d_tet_refine_repair_schwarz(
 ):
     """Cluster-localized 3D refine-repair (m14-Schwarz-3D).
 
-    See :mod:`dvfopt.core.wallbreakers._schwarz_common` for the
+    See :mod:`dvfopt.core.schwarz._common` for the
     underlying algorithm. This entry point pins ``inner_solve`` to
     :func:`iterative_3d_tet_refine_repair`.
 
