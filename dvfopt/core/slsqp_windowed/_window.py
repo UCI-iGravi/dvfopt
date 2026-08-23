@@ -6,7 +6,7 @@
 * :func:`_optimize_single_window` — SLSQP on one sub-window.
 * :func:`_apply_result` — write a sub-window result back into ``phi``.
 
-Originally bundled in ``dvfopt/core/solver.py`` — kept re-exported there
+Originally bundled in ``coordinator.py`` — kept re-exported there
 for backward compatibility.
 """
 

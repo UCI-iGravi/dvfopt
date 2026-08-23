@@ -33,7 +33,7 @@ try:
     from scipy.optimize._slsqplib import slsqp
 except ImportError as e:  # pragma: no cover
     raise ImportError(
-        f"slsqp_traced vendors scipy>=1.15 private internals (found scipy {scipy.__version__}); "
+        f"dvfopt.core.primitives.slsqp vendors scipy>=1.15 private internals (found scipy {scipy.__version__}); "
         "pin scipy to a 1.15-1.18 release"
     ) from e
 

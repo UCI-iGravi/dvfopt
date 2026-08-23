@@ -92,7 +92,8 @@ def iterative_2d_tri_harmonic_polished(
     inner_maxiter : int
         L-BFGS-B ``maxiter`` per ``mu`` step.
     objective : Objective or None
-        Anchor form. ``'l2'`` is the manuscript default.
+        Anchor objective. ``None`` (default) means
+        :class:`~dvfopt.objectives.L2Objective` — the manuscript setting.
     time_budget_s : float
         Wall-time budget. The function returns whatever it has when this
         is exhausted.

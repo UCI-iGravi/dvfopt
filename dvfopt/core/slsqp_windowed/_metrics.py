@@ -5,7 +5,7 @@
 * :func:`_patch_quality_2d` — recompute the combined quality map only in the
   modified sub-region.
 
-Originally bundled in ``dvfopt/core/solver.py`` — kept re-exported there
+Originally bundled in ``coordinator.py`` — kept re-exported there
 for backward compatibility.
 """
 

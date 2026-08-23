@@ -2,10 +2,10 @@
 
 These are the flat ``T1+T2`` constraint evaluation and its analytical
 adjoint, used by every CPU 2-triangle solver in the package
-(``iterative2d_tri_barrier``, ``iterative2d_tri_slsqp``,
-``iterative2d_tri_schwarz``, the wall-breakers, and the per-cluster
+(:mod:`dvfopt.core.barrier.tri2d`, :mod:`dvfopt.core.slsqp_fullgrid.tri2d`,
+:mod:`dvfopt.core.schwarz.tri2d`, the wall-breakers, and the per-cluster
 solver). This module is the source of truth for those primitives; the
-underscore-prefixed names in ``iterative2d_tri_barrier`` are
+underscore-prefixed names in :mod:`dvfopt.core.barrier.tri2d` are
 back-compat aliases.
 
 Both functions assume the **tri-barrier phi-pack convention**:

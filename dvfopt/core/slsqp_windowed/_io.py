@@ -5,7 +5,7 @@
 * :func:`_print_summary` — end-of-run human-readable block.
 * :func:`_save_results` — checkpoint a run to disk for later inspection.
 
-These were originally bundled in ``dvfopt/core/solver.py`` — they stayed
+These were originally bundled in ``coordinator.py`` — they stay
 re-exported from there for backward compatibility with existing imports.
 """
 

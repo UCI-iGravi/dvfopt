@@ -1,7 +1,8 @@
 """Shared penalty -> log-barrier homotopy core for the L-BFGS-B solvers.
 
-All four CPU barrier solvers (``iterative2d_barrier``, ``iterative2d_tri_barrier``,
-``iterative3d_barrier``, plus their patch-level helpers) run the same
+All four CPU barrier solvers (:mod:`dvfopt.core.barrier.jdet2d`,
+:mod:`dvfopt.core.barrier.tri2d`, :mod:`dvfopt.core.barrier.jdet3d`, plus
+their patch-level helpers) run the same
 two-phase continuation:
 
 * Phase 1 (penalty)::

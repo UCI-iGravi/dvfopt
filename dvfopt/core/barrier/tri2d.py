@@ -1,6 +1,6 @@
 """2-triangle penalty -> log-barrier L-BFGS-B solver (2D).
 
-Sibling of ``iterative2d_barrier`` (which enforces the Jacobian determinant)
+Sibling of :mod:`dvfopt.core.barrier.jdet2d` (which enforces the Jacobian determinant)
 but enforces the manuscript's 2-triangle areas T1, T2 >= threshold. Used by
 ``dvfopt.unified.DVFopt`` when ``constraint='2tri'`` and ``solver='barrier'``.
 
@@ -45,7 +45,7 @@ from dvfopt.core.primitives.tri import (
 from dvfopt.core.primitives.tri import (
     tri_grad_T_v_full_coverage as _tri_grad_T_v_full_coverage,
 )
-from dvfopt.objectives import L2Objective
+from dvfopt.objectives import L2Objective, Objective
 
 
 # ----------------------------------------------------------------- main entry
@@ -57,7 +57,7 @@ def iterative_2d_tri_barrier(
     lam_schedule=DEFAULT_LAM_SCHEDULE,
     mu_schedule=DEFAULT_MU_SCHEDULE,
     max_minimize_iter=300,
-    objective=None,
+    objective: Objective | None = None,
     verbose=1,
     record_history=False,
     full_coverage=False,

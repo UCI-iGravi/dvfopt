@@ -337,12 +337,12 @@ def iterative_3d_tet_barrier_torch(
     phi_corrected : ndarray, shape ``(3, D, H, W)`` — channels ``[dz, dy, dx]``.
     history : list of dict, only if ``record_history=True``.
     """
-    anchor, eps_l1 = _kind_eps(objective or L2Objective())
     if torch is None:
         raise ImportError(
             'iterative_3d_tet_barrier_torch requires torch (optional dependency). '
             "Install with: pip install -e '.[benchmarks]'"
         )
+    anchor, eps_l1 = _kind_eps(objective or L2Objective())
     if dtype is None:
         dtype = torch.float32
     if device is None:
