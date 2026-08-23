@@ -9,8 +9,9 @@
   exactly for every constraint mode.
 * F8 — failed/worse SLSQP results must be rolled back, not applied
   unconditionally.
-* F9 — ``SLSQPWindowedStrategy`` must warn when the composed objective
-  is not L2/None (the delegated solvers hard-code L2).
+* F9 — ``SLSQPWindowedStrategy`` must plumb the composed objective all
+  the way down to the per-window SLSQP solve instead of silently
+  hard-coding an L2 anchor.
 """
 
 import warnings
@@ -264,7 +265,7 @@ class TestRollbackWorseResults:
 
 
 # ---------------------------------------------------------------------------
-# F9 — SLSQPWindowedStrategy objective warning
+# F9 — SLSQPWindowedStrategy objective plumbing (no silent L2 fallback)
 # ---------------------------------------------------------------------------
 
 

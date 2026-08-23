@@ -40,6 +40,10 @@ and [ARCHITECTURE.md](ARCHITECTURE.md) for the rules the new layout enforces.
   `Tet6Constraint3D` declares `PhiPack.DX_FIRST` (`[dx, dy, dz]`) so it can
   share the 3D barrier plumbing with `JdetConstraint3D`; only the 2D 2-triangle
   constraints are `DY_FIRST`. `Constraint.pack` is the only thing to trust.
+- **`research/` and `archive/` are frozen provenance.** They were
+  deliberately not migrated — scripts there still reference pre-0.5.0 module
+  paths and are not runnable against this version (use the git history at
+  0.4.x).
 
 ### Added
 
