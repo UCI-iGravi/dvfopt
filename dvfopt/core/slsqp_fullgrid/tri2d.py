@@ -2,8 +2,9 @@
 anchor and a reactive warm-restart.
 
 A sister to :func:`dvfopt.core.barrier.tri2d.iterative_2d_tri_barrier`
-that uses sequential quadratic programming (``scipy.optimize.minimize``
-with ``method='SLSQP'``) and the two-triangle ``NonlinearConstraint`` —
+that uses sequential quadratic programming
+(:func:`dvfopt.core.primitives.slsqp.minimize_slsqp_traced`, scipy's SLSQP
+core with pyslsqp-style tracing) over the two-triangle inequality constraint —
 the formulation explored in ``notebooks/two-triangle-check/`` (esp.
 ``11_l1-vs-l2-canonical-cases.ipynb`` and
 ``14_l1-warmstart-2d-cases.ipynb``) and promoted here into the dvfopt
@@ -49,11 +50,11 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
 from dvfopt.core.barrier._core import anchor_term
+from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
 from dvfopt.core.primitives.tri import (
     _build_full_grid_tri_jac,
     tri_areas_flat,
@@ -109,8 +110,7 @@ def iterative_2d_tri_slsqp(
         standard TR-BL per-cell scheme leaves under-covered — each
         participate in at least two constraints.
     verbose : int
-        ``0`` = silent, ``1`` = one-line summary, ``>=3`` enables scipy's
-        own ``disp=True``.
+        ``0`` = silent, ``1`` = one-line summary.
     record_history : bool
         If True, returns ``(phi, history)`` where history records the
         cold + warm run statistics.
@@ -145,19 +145,21 @@ def iterative_2d_tri_slsqp(
         return constraint_values(z, H, W)
 
     jac_func = _build_full_grid_tri_jac(H, W, full_coverage)
-    nlc = NonlinearConstraint(_constr, lb=threshold, ub=np.inf, jac=jac_func)
+    cons = [ineq_dict(_constr, jac_func, lb=threshold)]
 
     t0 = time.time()
     history = []
 
     # Cold run.
-    res = minimize(
-        _obj,
+    trace_cold: dict | None = {} if record_history else None
+    res = minimize_slsqp_traced(
+        lambda z: _obj(z)[0],
         z_anchor.copy(),
-        jac=True,
-        method='SLSQP',
-        constraints=[nlc],
-        options={'maxiter': max_iter, 'ftol': 1e-9, 'disp': verbose >= 3},
+        jac=lambda z: _obj(z)[1],
+        constraints=cons,
+        maxiter=max_iter,
+        ftol=1e-9,
+        trace=trace_cold,
     )
     cold_nit = int(res.nit)
     cold_status = int(res.status)
@@ -171,6 +173,7 @@ def iterative_2d_tri_slsqp(
                 status=cold_status,
                 success=cold_success,
                 wall_s=cold_wall,
+                trace=trace_cold,
             )
         )
 
@@ -187,13 +190,15 @@ def iterative_2d_tri_slsqp(
             warm_reason = f'status={res.status} (resume with extra budget)'
 
         t1 = time.time()
-        res = minimize(
-            _obj,
+        trace_warm: dict | None = {} if record_history else None
+        res = minimize_slsqp_traced(
+            lambda z: _obj(z)[0],
             z_warm,
-            jac=True,
-            method='SLSQP',
-            constraints=[nlc],
-            options={'maxiter': warm_max_iter, 'ftol': warm_ftol, 'disp': verbose >= 3},
+            jac=lambda z: _obj(z)[1],
+            constraints=cons,
+            maxiter=warm_max_iter,
+            ftol=warm_ftol,
+            trace=trace_warm,
         )
         if record_history:
             history.append(
@@ -204,6 +209,7 @@ def iterative_2d_tri_slsqp(
                     success=bool(res.success),
                     wall_s=time.time() - t1,
                     reason=warm_reason,
+                    trace=trace_warm,
                 )
             )
 
