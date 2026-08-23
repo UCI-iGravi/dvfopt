@@ -1,7 +1,7 @@
 """Full-grid SLSQP for the 3D 6-tetrahedron constraint.
 
 3D analogue of :mod:`dvfopt.core.slsqp_fullgrid.tri2d`. Drives
-``scipy.optimize.minimize(method='SLSQP')`` with:
+:func:`dvfopt.core.primitives.slsqp.minimize_slsqp_traced` with:
 
 * ``Tet6Constraint3D.values`` as the constraint vector
   (length ``6 * (D-1) * (H-1) * (W-1)``).
@@ -32,11 +32,11 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from scipy.optimize import NonlinearConstraint, minimize
 
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
 from dvfopt.core.barrier._core import anchor_term
+from dvfopt.core.primitives.slsqp import ineq_dict, minimize_slsqp_traced
 from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac, tet_volumes_flat
 
 
@@ -68,7 +68,7 @@ def iterative_3d_tet_slsqp(
     eps_l1 : float
         Smoothing constant for the L1 anchor.
     verbose : int
-        0 = silent, 1 = one-line summary, >=3 enables scipy's ``disp=True``.
+        0 = silent, 1 = one-line summary.
     record_history : bool
         If True, returns ``(phi, history)`` where history records SLSQP
         run statistics.
@@ -103,7 +103,7 @@ def iterative_3d_tet_slsqp(
         return tet_volumes_flat(z, D, H, W)
 
     jac_func = build_tet_sparse_jac(D, H, W)
-    nlc = NonlinearConstraint(_constr, lb=threshold, ub=np.inf, jac=jac_func)
+    cons = [ineq_dict(_constr, jac_func, lb=threshold)]
 
     if verbose >= 1:
         V_init = _constr(z_anchor)
@@ -114,13 +114,15 @@ def iterative_3d_tet_slsqp(
         )
 
     t0 = time.time()
-    res = minimize(
-        _obj,
+    trace: dict | None = {} if record_history else None
+    res = minimize_slsqp_traced(
+        lambda z: _obj(z)[0],
         z_anchor,
-        method='SLSQP',
-        jac=True,
-        constraints=[nlc],
-        options={'maxiter': max_iter, 'ftol': ftol, 'disp': verbose >= 3},
+        jac=lambda z: _obj(z)[1],
+        constraints=cons,
+        maxiter=max_iter,
+        ftol=ftol,
+        trace=trace,
     )
     wall = time.time() - t0
 
@@ -157,6 +159,7 @@ def iterative_3d_tet_slsqp(
                 n_neg=n_neg,
                 min_T=min_V,
                 wall_s=wall,
+                trace=trace,
             )
         ]
         return phi_corr, history
