@@ -17,6 +17,25 @@ from dvfopt.constraints import (
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
 
+def _lift_slsqp_trace(raw_history, info) -> None:
+    """Surface per-major-iteration SLSQP traces into ``info.extras``.
+
+    ``raw_history`` entries (Tasks 7-8) carry a ``'trace'`` dict with
+    per-major-iteration records under ``'trace'['iters']``. Lifted to a
+    stable ``info.extras['slsqp_trace']`` path so callers (GUI, reports)
+    don't have to reach into per-phase ``PhaseInfo.extras``.
+    """
+    if not raw_history:
+        return
+    traces = [
+        {'phase': h.get('phase', f'run{i}'), **h['trace']}
+        for i, h in enumerate(raw_history)
+        if isinstance(h, dict) and h.get('trace')
+    ]
+    if traces:
+        info.extras['slsqp_trace'] = traces
+
+
 @register_strategy('slsqp')
 @dataclass
 class SLSQPFullGridStrategy(Strategy):
@@ -57,7 +76,10 @@ class SLSQPFullGridStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        return self._finish(out, record_history, threshold, wrap_history=True)
+        raw_history = out[1] if record_history else None
+        phi_out, info = self._finish(out, record_history, threshold, wrap_history=True)
+        _lift_slsqp_trace(raw_history, info)
+        return phi_out, info
 
 
 @register_strategy('slsqp_windowed')
@@ -234,7 +256,10 @@ class SLSQPFullGrid3DStrategy(Strategy):
             verbose=verbose,
             record_history=record_history,
         )
-        return self._finish(out, record_history, threshold, wrap_history=True)
+        raw_history = out[1] if record_history else None
+        phi_out, info = self._finish(out, record_history, threshold, wrap_history=True)
+        _lift_slsqp_trace(raw_history, info)
+        return phi_out, info
 
 
 __all__ = ['SLSQPFullGrid3DStrategy', 'SLSQPFullGridStrategy', 'SLSQPWindowedStrategy']

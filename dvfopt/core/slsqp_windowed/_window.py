@@ -59,6 +59,8 @@ def _window_minimize(obj, x0, constraints, maxiter, method_name, disp=False):
                 cons = None
                 break
         if cons is not None:
+            # ponytail: per-window traces omitted; add if the GUI grows a
+            # per-window inspector.
             return minimize_slsqp_traced(
                 lambda z: obj(z)[0],
                 x0,
