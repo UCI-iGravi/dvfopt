@@ -33,9 +33,13 @@ jobs:
       - name: Check lockfile is up to date
         run: uv lock --check
 
+      - name: Qt headless system libs (for the GUI tests)
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0
+
       - name: Install
-        # Editable install with dev extras (pytest, ruff, hypothesis).
-        run: uv pip install --system -e ".[dev]"
+        # Editable install with dev + gui extras (pytest, ruff, hypothesis,
+        # PySide6 — the GUI tests run offscreen; conftest sets QT_QPA_PLATFORM).
+        run: uv pip install --system -e ".[dev,gui]"
 
       - name: Lint
         run: python -m ruff check dvfopt dvfopt_gui tests benchmarks
@@ -71,8 +75,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - name: Sync locked env (dev extra)
-        run: uv sync --locked --extra dev
+      - name: Qt headless system libs (for the GUI tests)
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0
+
+      - name: Sync locked env (dev + gui extras)
+        run: uv sync --locked --extra dev --extra gui
       - name: Tests with coverage
         run: uv run pytest tests/ -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
       - name: Upload coverage artifact
