@@ -44,7 +44,7 @@ A solve is `Solver(constraint=..., objective=..., strategy=...).fit(phi)`:
 
 ## Key Dependencies
 
-`numpy`, `scipy>=1.15,<1.19` (SLSQP driver + sparse LGMRES; the pin is load-bearing — `dvfopt/core/primitives/slsqp.py` vendors scipy's `_slsqplib` internals), `SimpleITK`, `nibabel`, `matplotlib`, `scikit-image`. Python >= 3.10.
+`numpy`, `scipy>=1.15,<1.19` (SLSQP driver + sparse LGMRES; the pin is load-bearing — `dvfopt/core/primitives/slsqp.py` vendors scipy's `_slsqplib` internals, which exist only on scipy >=1.16/Python >=3.11; on scipy 1.15.x, e.g. Python 3.10, it transparently falls back to scipy's own `minimize(method='SLSQP')`), `SimpleITK`, `nibabel`, `matplotlib`, `scikit-image`. Python >= 3.10.
 
 ## Working With This Codebase
 

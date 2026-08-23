@@ -27,8 +27,12 @@ and [ARCHITECTURE.md](ARCHITECTURE.md) for the rules the new layout enforces.
 - **BREAKING — `requires-python >= 3.10`** (was `>= 3.9`) and
   **`scipy>=1.15,<1.19`**. scipy 1.15 already dropped 3.9, and the upper bound
   is load-bearing: the traced SLSQP driver vendors scipy's `_slsqplib`
-  private internals, stable across 1.15–1.18 only. `uv.lock` and
-  `requirements-dev.txt` are aligned with the pin.
+  private internals (the SLSQP C core), which exist only on scipy >=1.16 —
+  itself requiring Python >=3.11 — through 1.18. On scipy 1.15.x (what
+  Python 3.10 resolves to) the driver transparently falls back to scipy's
+  own `minimize(method='SLSQP')`: same numerics, no per-iteration trace (see
+  the Fixed entry below). `uv.lock` and `requirements-dev.txt` are aligned
+  with the pin.
 - **Objective is a real axis.** Every solver in the package now takes
   `objective=<Objective>` end-to-end; the parallel `anchor='l2' / eps_l1=...`
   string parameters are gone, and `objective_euc` was deleted. `anchor_term`

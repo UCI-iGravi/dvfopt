@@ -30,8 +30,12 @@ via `uv sync --locked`). pyproject deps stay unpinned; the lock is the opt-in
 reproducible snapshot. Re-lock after editing dependency constraints (`uv lock`).
 
 `requires-python = ">=3.10"` and `scipy>=1.15,<1.19`: the traced SLSQP driver
-(`dvfopt.core.primitives.slsqp`) vendors scipy's `_slsqplib` private internals,
-which are stable across 1.15–1.18 only, and scipy>=1.15 already drops 3.9.
+(`dvfopt.core.primitives.slsqp`) vendors scipy's `_slsqplib` private internals
+(the SLSQP C core), which exist only on scipy >=1.16 — itself requiring
+Python >=3.11 — through 1.18, hence the upper pin. On scipy 1.15.x (what
+Python 3.10 resolves to, and which lacks `_slsqplib`) the driver sets
+`HAS_TRACED_SLSQP = False` and transparently falls back to scipy's own
+`minimize(method='SLSQP')`: same numerics, no per-iteration trace.
 `requirements-dev.txt` carries the same scipy pin. Ruff's `target-version`
 deliberately trails at `py39` (see the comment in pyproject).
 
