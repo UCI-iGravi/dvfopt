@@ -788,9 +788,9 @@ pip install -e .  # Install dvfopt package in editable mode
 
 ### Dependencies
 
-Runtime: `numpy`, `scipy` (SLSQP, sparse LGMRES, L-BFGS-B), `SimpleITK` (Jdet wrapper), `nibabel` (NIfTI I/O), `matplotlib` (visualization), `scikit-image`, `joblib`, `tqdm`.
+Runtime: `numpy`, `scipy` (SLSQP, sparse LGMRES, L-BFGS-B), `SimpleITK` (Jdet wrapper), `nibabel` (NIfTI I/O), `matplotlib` (visualization), `scikit-image`.
 
-Optional (`pip install -e ".[benchmarks]"`): `itk-elastix`, `opencv-python`, `timm`, `torch`, `voxelmorph` — needed only by `benchmarks/`.
+Optional (`pip install -e ".[benchmarks]"`): `itk-elastix`, `opencv-python`, `timm`, `torch`, `tqdm`, `voxelmorph` — needed only by `benchmarks/`.
 
 ### Output Format (when persisting a correction)
 

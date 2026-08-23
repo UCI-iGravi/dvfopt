@@ -36,7 +36,7 @@ def _default_log(msg, level='info'):
 
 
 # ============================================================================
-# Parallel helpers (module-level so they are picklable by loky)
+# Parallel helpers (module-level so they are picklable for ProcessPoolExecutor)
 # ============================================================================
 
 
