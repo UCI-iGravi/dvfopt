@@ -164,7 +164,13 @@ from dvfopt.jacobian import (
     triangle_constraint,
     triangle_det2D,
 )
-from dvfopt.metrics import FoldStats, constraint_fold_stats, fold_stats
+from dvfopt.metrics import (
+    FoldStats,
+    InjectivityStats,
+    constraint_fold_stats,
+    fold_stats,
+    injectivity_stats,
+)
 from dvfopt.objectives import (
     L1Objective,
     L2Objective,
@@ -262,6 +268,7 @@ __all__ = [
     'ISQPWindowedStrategy',
     'IncompatibleConstraintError',
     'IncompatibleObjectiveError',
+    'InjectivityStats',
     'JdetConstraint2D',
     'JdetConstraint3D',
     'L1Objective',
@@ -307,6 +314,7 @@ __all__ = [
     'generate_random_dvf',
     'generate_random_dvf_3d',
     'injectivity_constraint',
+    'injectivity_stats',
     'jacobian_det2D',
     'jacobian_det3D',
     'load_dvf',

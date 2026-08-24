@@ -1,35 +1,77 @@
-"""Neighbourhood-size diagnostics for local injectivity of 2D DVFs.
+"""Neighbourhood-size diagnostics for local injectivity of 2D/3D DVFs.
 
-Two companion maps that complement the standard pixel Jacobian determinant:
+Companion maps to the standard pixel Jacobian determinant.  The classical
+inverse function theorem [1] guarantees that a C¹ map with invertible
+``DF(x₀)`` is injective on *some* neighbourhood of ``x₀`` — but says
+nothing about its size, which is how a positive central-difference Jdet
+can coexist with a folded cell.  The *quantitative* IFT [2] bounds the
+size: ``F`` is injective on ``B_r(x₀)`` whenever
+``sup over B_r of ‖DF − DF(x₀)‖ ≤ σ_min(DF(x₀))/2``, which for ``DF``
+``L``-Lipschitz on the ball gives ``r = σ_min(I + ∇u) / (2 L)``.
 
-1. ``ift_radius_2d`` — quantitative-IFT lower bound on the size of the
-   neighbourhood in which the continuous deformation is injective.
-   From the quantitative inverse-function theorem
-   (Krantz & Parks 2002, §3.2):
+1. ``ift_radius_2d`` / ``ift_radius_3d`` — per-sample lower-bound
+   *estimate* of that radius from finite differences: σ_min of the
+   central-difference ``DF``, ``L`` from windowed maxima of tight
+   second differences (:func:`_window_ladder` has the exact semantics).
+   ``r`` collapsing toward 0 flags samples whose injective neighbourhood
+   is sub-pixel — where cells can fold without the pixel Jdet noticing
+   (the sample-point-Jdet gap discussed in [4], [5], [6]).
 
-       r ≳ σ_min(I + ∇u) / (2 · ‖∇²u‖)
+   Two limits to respect when reading the map:
 
-   Larger r ⇒ larger certified-invertible region around the sample.
+   * **Estimate, not certificate.**  No finite set of samples can
+     upper-bound the derivatives of an arbitrary interpolant, so no
+     finite-difference radius can *prove* injectivity of the underlying
+     continuous deformation.  The exact sub-grid certificates are
+     ``cell_min_jdet_2d`` below (bilinear model, 2D) and the 6-tet
+     volume family (3D).
+   * **Injectivity is orientation-blind.**  σ_min sees a reflection as
+     perfectly invertible: a uniformly ``Jdet < 0`` region reports a
+     *large* radius.  Read this map alongside the fold statistics
+     (:mod:`dvfopt.metrics`), never instead of them.
 
-2. ``cell_min_jdet_2d`` — sub-pixel injectivity certificate on each quad.
-   The Jacobian determinant of the bilinear interpolant restricted to a
-   unit cell is biaffine in (α, β) ∈ [0,1]², so its minimum over the cell
-   is attained at one of the four corners and has a closed form:
-
-       min over cell = min over 4 corners of the Jdet built from
-                       forward differences *local to the cell*.
-
-   Positivity of this minimum guarantees the bilinear interpolant is
+2. ``cell_min_jdet_2d`` — exact sub-pixel injectivity certificate on
+   each quad.  The Jacobian determinant of the bilinear interpolant
+   restricted to a unit cell is biaffine in (α, β) ∈ [0,1]², so its
+   minimum over the cell is attained at one of the four corners [3] and
+   has a closed form.  Positivity guarantees the bilinear interpolant is
    injective over the entire cell — a statement the central-difference
-   pixel Jdet cannot make.
+   pixel Jdet cannot make.  (No trilinear analogue exists: the trilinear
+   Jdet is not multi-affine, so 3D sub-voxel certification goes through
+   the 6-tet constraint family instead.)
 
-Neither uses scipy; both are pure numpy and vectorised.
+Pure numpy + scipy.ndimage; vectorised.
+
+References
+----------
+[1] W. Rudin, *Principles of Mathematical Analysis*, 3rd ed., McGraw-Hill,
+    1976.  Theorem 9.24 (inverse function theorem).
+[2] S. G. Krantz and H. R. Parks, *The Implicit Function Theorem: History,
+    Theory, and Applications*, Birkhäuser, 2002.  §3.2 (quantitative
+    inverse function theorem; the factor 1/2 is the contraction-mapping
+    convention, which also gives quantitative control on the inverse).
+[3] P. M. Knupp, "On the invertibility of the isoparametric map,"
+    *Computer Methods in Applied Mechanics and Engineering* 78(3):313–329,
+    1990.  Bilinear quad element invertible iff the Jacobian is positive
+    at the four corners — the basis of ``cell_min_jdet_2d`` (the standard
+    FEM element-validity check).
+[4] B. Karaçalı and C. Davatzikos, "Estimating topology preserving and
+    smooth displacement fields," *IEEE Transactions on Medical Imaging*
+    23(7):868–880, 2004.  Sample-point Jdet is insufficient for discrete
+    deformation fields.
+[5] Y. Choi and S. Lee, "Injectivity conditions of 2D and 3D uniform cubic
+    B-spline functions," *Graphical Models* 62(6):411–427, 2000.
+[6] S. Y. Chun and J. A. Fessler, "A simple regularizer for B-spline
+    nonrigid image registration that encourages local invertibility,"
+    *IEEE Journal of Selected Topics in Signal Processing* 3(1):159–169,
+    2009.
 """
 
 import numpy as np
+from scipy.ndimage import maximum_filter
 
 # ---------------------------------------------------------------------------
-# Quantitative-IFT neighbourhood radius (per pixel)
+# Quantitative-IFT neighbourhood radius (per sample)
 # ---------------------------------------------------------------------------
 
 
@@ -45,44 +87,98 @@ def _sigma_min_2d(a, b, c, d):
     return np.sqrt(np.clip(sigma_min_sq, 0.0, None))
 
 
-def _hessian_frob_norm_2d(dy, dx):
-    """Pointwise Frobenius norm of the second-derivative tensor of u.
+def _shift(p, shifts, shape):
+    """View of the edge-padded array ``p`` offset by ``shifts`` (each ±1/0)."""
+    return p[tuple(slice(1 + s, 1 + s + n) for s, n in zip(shifts, shape))]
 
-    For a 2-component field (u_x, u_y) the Hessian of each component is a
-    symmetric 2x2 tensor with three independent entries {xx, xy, yy}. The
-    Frobenius norm squared of a symmetric 2x2 matrix is
-    H_xx^2 + 2*H_xy^2 + H_yy^2 (off-diagonal counted twice). Summing over
-    both components gives the field's Hessian Frobenius norm at each pixel.
+
+def _hessian_frob_norm(comps):
+    """Frobenius norm of the second-difference tensor of u, per sample.
+
+    One implementation for any dimensionality: for each displacement
+    component in ``comps``, pure second derivatives use the tight
+    spacing-1 stencil ``f[i-1] − 2 f[i] + f[i+1]`` and mixed ones the
+    standard /4 cross stencil, with edge replication at the boundary.
+    Off-diagonal entries of each symmetric per-component Hessian count
+    twice in the Frobenius sum; Frobenius bounds the operator norm from
+    above, keeping the radius estimate conservative.
+
+    The tight stencils matter: a double ``np.gradient`` chain has
+    effective spacing 2, which smears single-pixel spikes (about a 4×
+    curvature underestimate) and is entirely blind to period-2 (Nyquist)
+    fields — the adversarial regimes this diagnostic exists to flag.
     """
-    dxx = np.gradient(np.gradient(dx, axis=1), axis=1)
-    dxy = np.gradient(np.gradient(dx, axis=1), axis=0)
-    dyy = np.gradient(np.gradient(dx, axis=0), axis=0)
-    exx = np.gradient(np.gradient(dy, axis=1), axis=1)
-    exy = np.gradient(np.gradient(dy, axis=1), axis=0)
-    eyy = np.gradient(np.gradient(dy, axis=0), axis=0)
-    return np.sqrt(
-        dxx * dxx + 2.0 * dxy * dxy + dyy * dyy + exx * exx + 2.0 * exy * exy + eyy * eyy
-    )
+    shape = comps[0].shape
+    nd = len(shape)
+    total = np.zeros(shape)
+    for f in comps:
+        p = np.pad(f, 1, mode='edge')
+        for j in range(nd):
+            ej = [int(j == ax) for ax in range(nd)]
+            total += (_shift(p, ej, shape) - 2.0 * f + _shift(p, [-e for e in ej], shape)) ** 2
+            for k in range(j + 1, nd):
+                ek = [int(k == ax) for ax in range(nd)]
+                cross = 0.25 * (
+                    _shift(p, [a + b for a, b in zip(ej, ek)], shape)
+                    - _shift(p, [a - b for a, b in zip(ej, ek)], shape)
+                    - _shift(p, [b - a for a, b in zip(ej, ek)], shape)
+                    + _shift(p, [-a - b for a, b in zip(ej, ek)], shape)
+                )
+                total += 2.0 * cross**2
+    return np.sqrt(total)
 
 
-def ift_radius_2d(phi_xy, eps=1e-8):
-    """Per-pixel lower bound on the IFT neighbourhood radius.
+def _window_ladder(sigma_min, hess, eps, max_window):
+    """Best radius estimate over windowed Lipschitz constants.
+
+    The quantitative IFT [2] gives injectivity on ``B_r`` when
+    ``r ≤ σ_min / (2 L)`` with ``L = sup over B_r of ‖∇²u‖``.  Taking
+    ``L_w`` as the max of the pointwise second-difference norm over the
+    ``(2w+1)``-window is self-consistent only up to radius ``w``, so the
+    claim at window ``w`` is ``min(σ_min / (2 L_w), w)``; the ladder
+    returns the largest claim over ``w = 1..max_window`` and therefore
+    saturates at ``max_window`` (a returned value of ``max_window`` means
+    "at least this").  ``max_window=0`` selects the pointwise variant
+    ``σ_min / (2 ‖∇²u(x)‖ + eps)``, which evaluates ``L`` only at the
+    sample itself (more optimistic still).
+
+    Estimate, not certificate — see the module docstring.
+    """
+    mw = int(max_window)
+    if mw != max_window or mw < 0:
+        raise ValueError(f'max_window must be a non-negative integer, got {max_window!r}')
+    if mw == 0:
+        return sigma_min / (2.0 * hess + eps)
+    best = np.zeros_like(sigma_min)
+    L = hess
+    for w in range(1, mw + 1):
+        L = maximum_filter(L, size=3, mode='nearest')  # (2w+1)-window max after w steps
+        best = np.maximum(best, np.minimum(sigma_min / (2.0 * L + eps), float(w)))
+    return best
+
+
+def ift_radius_2d(phi_xy, eps=1e-8, max_window=8):
+    """Per-pixel lower-bound estimate of the IFT injectivity radius.
 
     Parameters
     ----------
     phi_xy : ndarray, shape ``(2, H, W)`` or ``(2, 1, H, W)``
         Displacement field with channels ``[dy, dx]``.
     eps : float
-        Regulariser added to ``‖∇²u‖`` to avoid division-by-zero in the
-        (rare) constant-Jacobian regime.
+        Regulariser added to ``2·‖∇²u‖`` to avoid division-by-zero in the
+        (locally affine) zero-Hessian regime.
+    max_window : int
+        Window-ladder cap in pixels — the returned map saturates at this
+        value; ``0`` selects the pointwise variant.  Semantics in
+        :func:`_window_ladder`.
 
     Returns
     -------
     ndarray, shape ``(H, W)``
-        ``r(x) = σ_min(I + ∇u) / (2 · ‖∇²u‖ + eps)``.  Large values mean
-        the continuous deformation is provably injective over a large
-        neighbourhood of ``x``; tiny values mean the IFT guarantee shrinks
-        toward a point.
+        Radius-estimate map.  Values collapsing toward 0 flag pixels
+        whose injective neighbourhood is sub-pixel — where cells can fold
+        even under positive pixel Jdet.  An estimate, orientation-blind;
+        see the module docstring for both caveats.
     """
     H, W = phi_xy.shape[-2:]
     dy = phi_xy[0].reshape(H, W)
@@ -94,8 +190,45 @@ def ift_radius_2d(phi_xy, eps=1e-8):
     d = 1.0 + np.gradient(dy, axis=0)  # 1 + ∂dy/∂y
 
     sigma_min = _sigma_min_2d(a, b, c, d)
-    hess = _hessian_frob_norm_2d(dy, dx)
-    return sigma_min / (2.0 * hess + eps)
+    return _window_ladder(sigma_min, _hessian_frob_norm([dy, dx]), eps, max_window)
+
+
+def ift_radius_3d(phi_zyx, eps=1e-8, max_window=8):
+    """Per-voxel lower-bound estimate of the IFT injectivity radius (3D).
+
+    Same estimate and window ladder as :func:`ift_radius_2d`, on a
+    true-3D volume.
+
+    Parameters
+    ----------
+    phi_zyx : ndarray, shape ``(3, D, H, W)`` with ``D >= 2``
+        Displacement field with channels ``[dz, dy, dx]``.  Single-slice
+        volumes are 2D — use :func:`ift_radius_2d`.
+    eps, max_window
+        As in :func:`ift_radius_2d`.
+
+    Returns
+    -------
+    ndarray, shape ``(D, H, W)``
+        Radius-estimate map in voxel units.
+    """
+    if phi_zyx.ndim != 4 or phi_zyx.shape[0] != 3 or phi_zyx.shape[1] < 2:
+        raise ValueError(
+            f'expected a true-3D (3, D>=2, H, W) volume, got {phi_zyx.shape}; '
+            'single-slice fields are 2D — use ift_radius_2d'
+        )
+    D, H, W = phi_zyx.shape[-3:]
+    comps = [phi_zyx[0], phi_zyx[1], phi_zyx[2]]  # [dz, dy, dx]
+
+    DF = np.empty((D, H, W, 3, 3))
+    for i in range(3):
+        for j in range(3):
+            DF[..., i, j] = np.gradient(comps[i], axis=j) + (1.0 if i == j else 0.0)
+    # ponytail: full-volume batched 3x3 SVD (~9 float64 copies of the volume);
+    # chunk over z if memory ever matters on big cohort volumes.
+    sigma_min = np.linalg.svd(DF.reshape(-1, 3, 3), compute_uv=False)[:, -1].reshape(D, H, W)
+
+    return _window_ladder(sigma_min, _hessian_frob_norm(comps), eps, max_window)
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +242,9 @@ def cell_min_jdet_2d(phi_xy):
     For cell ``(r, c)`` with grid corners ``(r,c), (r,c+1), (r+1,c),
     (r+1,c+1)``, the Jacobian determinant of the bilinear map in local
     coordinates ``(α, β) ∈ [0, 1]²`` is biaffine and attains its extrema
-    at the four corners.  This function evaluates the Jdet at each corner
-    using forward differences *local to the cell* and returns the
-    elementwise minimum.
+    at the four corners (Knupp [3]; the standard FEM quad-validity check).
+    This function evaluates the Jdet at each corner using forward
+    differences *local to the cell* and returns the elementwise minimum.
 
     ``cell_min_jdet > 0`` ⇒ the bilinear interpolant has positive Jdet
     throughout the whole cell (true sub-pixel injectivity certificate).

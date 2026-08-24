@@ -78,8 +78,15 @@ def _cmd_info(args) -> int:
         **asdict(st),
         'feasible': st.feasible,
     }
+    bilinear_folded = False
+    if args.ift:
+        from dvfopt.metrics import injectivity_stats
+
+        inj = injectivity_stats(phi)
+        report['injectivity'] = asdict(inj)
+        bilinear_folded = bool(inj.n_cells_nonpos)  # None (3D) and 0 are both clean
     print(json.dumps(report, indent=2, default=_json_default))
-    return 1 if (args.check and not st.feasible) else 0
+    return 1 if (args.check and (not st.feasible or bilinear_folded)) else 0
 
 
 def _correct_slices(phi, args, params):
@@ -241,6 +248,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="'auto' (2tri for 2D, 6tet for 3D) | 2tri | 2tri_standard | jdet | jdet_3d | 6tet",
     )
     pi.add_argument('--check', action='store_true', help='exit 1 when not strictly feasible')
+    pi.add_argument(
+        '--ift',
+        action='store_true',
+        help='add sub-pixel injectivity diagnostics: IFT radius estimate '
+        '(orientation-blind; saturates at its window cap) plus, in 2D, the exact '
+        'bilinear cell min-Jdet certificate — with --check, nonpositive bilinear '
+        'cells also exit 1. Memory-heavy on large 3D volumes (full-volume batched SVD).',
+    )
     _common(pi)
 
     pc = sub.add_parser('correct', help='correct a field and save the result')
