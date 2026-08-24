@@ -1,5 +1,5 @@
 """LP step solver: ``min ||phi - phi_in||_1`` subject to linearised
-2-tri constraint + optional trust region. Backend is HiGHS via
+simplex (2D) constraint + optional trust region. Backend is HiGHS via
 ``scipy.optimize.linprog(method='highs')``.
 
 L1 epigraph reformulation

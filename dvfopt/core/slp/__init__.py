@@ -13,11 +13,11 @@ Public entry points:
   in the strategy.
 * :func:`slp_iter` — global (non-clustered) trust-region SLP.
 * :func:`lp_oneshot` — single LP linearised around a feasible seed.
-* :func:`linearize_T_2tri` / :func:`build_sparse_jacobian_T` — the 2-tri
+* :func:`linearize_T_2tri` / :func:`build_sparse_jacobian_T` — the simplex (2D)
   constraint linearisation.
 * :func:`solve_l1_lp_step` — one L1-epigraph LP step (HiGHS backend).
 
-3D (6-tet) analogues, promoted from ``research/strict_feasibility_3d``:
+3D (simplex (3D)) analogues, promoted from ``research/strict_feasibility_3d``:
 
 * :func:`cluster_slp_iter_3d` — per-cluster SLP over a full volume.
 * :func:`slp_iter_3d` / :func:`lp_oneshot_3d` — global 3D SLP / one-shot LP.

@@ -12,8 +12,8 @@ import pytest
 from dvfopt.constraints import (
     FiniteJdetConstraint2D,
     JdetConstraint2D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
 )
 from dvfopt.core.primitives.isqp import HAS_OSQP
 from dvfopt.core.windowed import build_subproblem, min_field, windowed_correct
@@ -25,9 +25,9 @@ if not HAS_OSQP:
 
 _FAMILY = {
     "jdet": JdetConstraint2D,
-    "2tri": TriConstraint2D,
+    "2tri": SimplexConstraint2D,
     "finite": FiniteJdetConstraint2D,
-    "bilinear": TriConstraint2DBilinear,
+    "bilinear": SimplexConstraint2DBilinear,
 }
 
 

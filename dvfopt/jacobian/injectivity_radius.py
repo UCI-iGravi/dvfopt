@@ -23,7 +23,7 @@ size: ``F`` is injective on ``B_r(x₀)`` whenever
      upper-bound the derivatives of an arbitrary interpolant, so no
      finite-difference radius can *prove* injectivity of the underlying
      continuous deformation.  The exact sub-grid certificates are
-     ``cell_min_jdet_2d`` below (bilinear model, 2D) and the 6-tet
+     ``cell_min_jdet_2d`` below (bilinear model, 2D) and the simplex (3D)
      volume family (3D).
    * **Injectivity is orientation-blind.**  σ_min sees a reflection as
      perfectly invertible: a uniformly ``Jdet < 0`` region reports a
@@ -38,7 +38,7 @@ size: ``F`` is injective on ``B_r(x₀)`` whenever
    injective over the entire cell — a statement the central-difference
    pixel Jdet cannot make.  (No trilinear analogue exists: the trilinear
    Jdet is not multi-affine, so 3D sub-voxel certification goes through
-   the 6-tet constraint family instead.)
+   the simplex (3D) constraint family instead.)
 
 Pure numpy + scipy.ndimage; vectorised.
 

@@ -2,7 +2,7 @@
 
 Sibling of :mod:`dvfopt.core.barrier.jdet2d` (which enforces the Jacobian determinant)
 but enforces the manuscript's 2-triangle areas T1, T2 >= threshold. Used by
-``dvfopt.unified.DVFopt`` when ``constraint='2tri'`` and ``solver='barrier'``.
+``dvfopt.unified.DVFopt`` when ``constraint='simplex'`` and ``solver='barrier'``.
 
 Phase 1 - exterior quadratic penalty:
     F_pen(phi) = anchor(phi - phi_init) + lam * sum_k max(0, target - T_k)^2
@@ -115,7 +115,7 @@ def iterative_2d_tri_barrier(
     init_neg = int((T_init <= 0).sum())
     init_min = float(T_init.min())
     if verbose >= 1:
-        scheme = '2-tri full-coverage' if full_coverage else '2-tri'
+        scheme = 'simplex (2D) full-coverage' if full_coverage else 'simplex (2D)'
         log_info(
             f'[2d-tri-barrier init] grid {H}x{W}  threshold={threshold}  '
             f'margin={margin}  objective={objective!r}  scheme={scheme}'

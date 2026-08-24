@@ -6,7 +6,7 @@ family-string adapter) for the full cross of **3 inner solvers x 3
 constraint families x 2 objectives**, and record folds cleared, the no-damage
 invariant (``damage``), giant/mop counts, wall time, AND the corrected field's fold
 count re-scored under ALL three metrics (cross-metric scoring: does clearing the
-central-diff Jdet also clear the forward-diff / 2-tri folds, and vice versa?).
+central-diff Jdet also clear the forward-diff / simplex (2D) folds, and vice versa?).
 
 - inners:     ``isqp-osqp`` (default OSQP-SQP), ``scipy-slsqp``, ``scipy-slsqp+trust-constr``
 - families:   ``jdet`` (central-diff Jdet), ``finite`` (forward-diff Jdet), ``2tri`` (min triangle area)
@@ -157,7 +157,7 @@ def _line(d):
 
 # Relative solver cost per family (from B0039 timings: finite ~60s, jdet ~500s, 2tri
 # hours on a dense slice). Drives cost-ascending task order so the tractable metrics
-# finish across the whole volume before 2-tri grinds the dense tail.
+# finish across the whole volume before simplex (2D) grinds the dense tail.
 _FAM_COST = {"finite": 0, "jdet": 1, "2tri": 2}
 
 
@@ -173,11 +173,11 @@ def build_tasks(
 
     ``tri_stride > 0`` subsamples the ``2tri`` family to every N-th folded slice while
     jdet/finite still cover all sampled slices — because every B0039 slice is densely
-    folded (min 696, median 2594 2-tri folds), full-volume 2-tri (0.5-3h per slice) is
+    folded (min 696, median 2594 simplex (2D) folds), full-volume simplex (2D) (0.5-3h per slice) is
     months, whereas finite/jdet (minutes) run the whole volume in ~10h.
 
-    Tasks are returned sorted by ``(family cost, 2-tri fold count)`` so finite finishes
-    volume-wide first, then jdet, then 2-tri light->heavy — maximising representative
+    Tasks are returned sorted by ``(family cost, simplex (2D) fold count)`` so finite finishes
+    volume-wide first, then jdet, then simplex (2D) light->heavy — maximising representative
     partial coverage (results.csv is written incrementally).
 
     Unless ``slow_2tri`` is set, the ``2tri``/``finite`` families run ONLY the isqp-osqp
@@ -203,7 +203,7 @@ def build_tasks(
         if limit > 0 and n_folded > limit:
             break
         for family in fam_folded:
-            # 2-tri subsampling: keep only every tri_stride-th folded slice.
+            # simplex (2D) subsampling: keep only every tri_stride-th folded slice.
             if family == "2tri" and tri_stride > 0 and folded_idx % tri_stride != 0:
                 continue
             for inner in inners:
@@ -316,8 +316,8 @@ def write_report(path, records, cfg):
         f"Volume `{cfg['vol']}` | stride {cfg['stride']} | maxiter {cfg['maxiter']} | "
         f"threshold {cfg['threshold']} | sampled z: {cfg['n_sampled']} (folded: {n_folded})",
         "",
-        f"**2-tri coverage:** tri-stride {cfg.get('tri_stride') or 'all'} — every B0039 slice "
-        "is densely folded (min 696, median 2594 2-tri folds), so full-volume 2-tri is months; "
+        f"**simplex (2D) coverage:** tri-stride {cfg.get('tri_stride') or 'all'} — every B0039 slice "
+        "is densely folded (min 696, median 2594 simplex (2D) folds), so full-volume simplex (2D) is months; "
         "the `slices` column below shows each test's actual per-slice sample size.",
         "",
         f"Inners: {', '.join(INNERS)} | Families: {', '.join(FAMILIES)} | "

@@ -93,7 +93,7 @@ def _coo_pattern(H: int, W: int):
 
 
 def build_sparse_jacobian_T(phi_flat: np.ndarray, H: int, W: int) -> sp.coo_matrix:
-    """Build the sparse Jacobian ``J`` of the 2-tri constraint at ``phi_flat``.
+    """Build the sparse Jacobian ``J`` of the simplex (2D) constraint at ``phi_flat``.
 
     Returns
     -------
@@ -158,7 +158,7 @@ def build_sparse_jacobian_T(phi_flat: np.ndarray, H: int, W: int) -> sp.coo_matr
 
 
 def linearize_T_2tri(phi_flat: np.ndarray, H: int, W: int):
-    """Return ``(T_vals, J)`` at ``phi_flat`` for the 2-tri constraint."""
+    """Return ``(T_vals, J)`` at ``phi_flat`` for the simplex (2D) constraint."""
     T_vals = tri_areas_flat(phi_flat, H, W)
     J = build_sparse_jacobian_T(phi_flat, H, W)
     return T_vals, J

@@ -159,9 +159,9 @@ def _tri_stats_2d(section, threshold):
 
 
 def _tet_stats_3d(field, threshold, max_voxels=8_000_000):
-    """6-tet fold count + min tet volume for a (3, D, H, W) field.
+    """simplex (3D) fold count + min tet volume for a (3, D, H, W) field.
 
-    Best-effort: the 6-tet constraint materializes ~6 volumes of tet volumes, so
+    Best-effort: the simplex (3D) constraint materializes ~6 volumes of tet volumes, so
     for large fields (or on MemoryError) it returns ``(None, None)`` rather than
     OOM the run — the report shows "n/a" for the tet family then.
     """
@@ -169,9 +169,9 @@ def _tet_stats_3d(field, threshold, max_voxels=8_000_000):
     if d * h * w > max_voxels:
         return None, None
     try:
-        from dvfopt.constraints import Tet6Constraint3D
+        from dvfopt.constraints import SimplexConstraint3D
 
-        c = Tet6Constraint3D(shape=(d, h, w))
+        c = SimplexConstraint3D(shape=(d, h, w))
         vals = np.asarray(c.values(c.flatten(field)))
         if vals.size == 0:  # degenerate dim (D/H/W == 1) -> no tets
             return None, None
@@ -200,7 +200,7 @@ def _build_2d_payload(vid, label, sec_init, sec_out, jac_init, jac_final, m, thr
     vmax = float(max(1.0, np.percentile(np.abs(jac_init), 99)))
     families = [
         ("Jdet", m["n_neg_init"], m["n_neg_final"], m["min_jdet_init"], m["min_jdet_final"]),
-        ("2-tri", m["n_tri_init"], m["n_tri_final"], m["tri_min_init"], m["tri_min_final"]),
+        ("simplex (2D)", m["n_tri_init"], m["n_tri_final"], m["tri_min_init"], m["tri_min_final"]),
     ]
     return {
         **_corr_payload(corr),
@@ -261,7 +261,13 @@ def _build_3d_payload(
     ]
     if m.get("n_tet_init") is not None:
         families.append(
-            ("6-tet", m["n_tet_init"], m["n_tet_final"], m["tet_min_init"], m["tet_min_final"])
+            (
+                "simplex (3D)",
+                m["n_tet_init"],
+                m["n_tet_final"],
+                m["tet_min_init"],
+                m["tet_min_final"],
+            )
         )
     payload = {
         **_corr_payload(corr),
@@ -654,7 +660,7 @@ def run_cohort_benchmark(
         Cohort variant to benchmark when *items* is not given
         (default ``"laplacian_exterior"`` — the folding-benchmark focus).
     interactive : bool
-        Emit the interactive HTML report (Jdet + 6-tet metrics, a worst-z-slice
+        Emit the interactive HTML report (Jdet + simplex (3D) metrics, a worst-z-slice
         pan/zoom viewer, and a volume-wide ROI table) instead of static figures.
     run_name, out_base, threshold, make_figures, verbose
         Run knobs. ``out_base`` is cwd-relative unless absolute.
@@ -705,7 +711,7 @@ def run_cohort_benchmark(
         jac_init, jac_final = m.pop("_jac_init"), m.pop("_jac_final")
         zc = int(np.argmax((jac_init < threshold).reshape(jac_init.shape[0], -1).sum(axis=1)))
         m["cond"] = _local_cond(phi_init[1, zc], phi_init[2, zc], threshold)
-        if interactive:  # 6-tet is heavy (materializes ~6 volumes) — only when reported
+        if interactive:  # simplex (3D) is heavy (materializes ~6 volumes) — only when reported
             m["n_tet_init"], m["tet_min_init"] = _tet_stats_3d(phi_init, threshold)
             m["n_tet_final"], m["tet_min_final"] = _tet_stats_3d(phi, threshold)
 

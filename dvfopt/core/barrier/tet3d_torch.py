@@ -2,7 +2,7 @@
 constraint via PyTorch autograd.
 
 Same two-phase homotopy as the numpy/scipy 3D tet path (which goes
-through :class:`dvfopt.constraints.Tet6Constraint3D` +
+through :class:`dvfopt.constraints.SimplexConstraint3D` +
 :class:`dvfopt.strategies.BarrierStrategy`), but every forward + gradient
 runs on a single ``(3, D, H, W)`` torch tensor:
 

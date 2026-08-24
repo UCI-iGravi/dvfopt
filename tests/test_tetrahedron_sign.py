@@ -1,4 +1,4 @@
-"""Tests for the 6-tet per-voxel sign helper.
+"""Tests for the simplex (3D) per-voxel sign helper.
 
 The winding signs in ``_TET_SIGN`` are easy to get wrong (six tets, two
 plausible windings each, plus a global ±1 from the +y-down image
@@ -237,7 +237,7 @@ class TestFlatPack:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end via Tet6Constraint3D
+# End-to-end via SimplexConstraint3D
 # ---------------------------------------------------------------------------
 
 
@@ -290,12 +290,12 @@ class TestTet6SparseJacobian:
         assert float(np.abs(J - J_fd).max()) < 1e-6
 
     def test_constraint_jacobian_method(self):
-        """``Tet6Constraint3D.jacobian()`` should return the same thing
+        """``SimplexConstraint3D.jacobian()`` should return the same thing
         as the underlying ``build_tet_sparse_jac``."""
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
 
         rng = np.random.default_rng(0)
-        c = Tet6Constraint3D(shape=(3, 4, 5))
+        c = SimplexConstraint3D(shape=(3, 4, 5))
         phi = rng.normal(0, 0.05, c.n_variables)
         J = c.jacobian(phi)
         assert J.shape == (c.n_constraints, c.n_variables)
@@ -305,7 +305,7 @@ class TestTet6SparseJacobian:
 
 
 class TestALM3DStrategy:
-    """PHR augmented Lagrangian for 6-tet — standalone Phase C wallbreaker."""
+    """PHR augmented Lagrangian for simplex (3D) — standalone Phase C wallbreaker."""
 
     @staticmethod
     def _phi_planted_fold_3d():
@@ -315,10 +315,10 @@ class TestALM3DStrategy:
         return phi
 
     def test_reaches_feasibility_at_threshold(self):
-        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+        from dvfopt import ALM3DStrategy, L2Objective, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=ALM3DStrategy(),
         )
@@ -331,11 +331,11 @@ class TestALM3DStrategy:
         """ALM should produce a smaller L2 than the harmonic-alone seed
         on this single-corner case — the harmonic patch is L2 = sqrt(4.5)
         ≈ 2.12 (smoothest), ALM tightens to ~0.59."""
-        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+        from dvfopt import ALM3DStrategy, L2Objective, SimplexConstraint3D, Solver
 
         phi = self._phi_planted_fold_3d()
         result = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=ALM3DStrategy(),
         ).fit(phi)
@@ -347,7 +347,7 @@ class TestALM3DStrategy:
 
         result = correct_dvf(
             self._phi_planted_fold_3d(),
-            constraint='6tet',
+            constraint='simplex_3d',
             objective='l2',
             strategy='alm_3d',
         )
@@ -361,10 +361,10 @@ class TestALM3DStrategy:
         which the iterate first reached feasibility. Before this fix,
         ALM history entries had no ``n_neg`` key, so all PhaseInfo
         entries had ``n_neg=-1`` and ``feasible_after_phase=-1``."""
-        from dvfopt import ALM3DStrategy, L2Objective, Solver, Tet6Constraint3D
+        from dvfopt import ALM3DStrategy, L2Objective, SimplexConstraint3D, Solver
 
         result = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=ALM3DStrategy(),
         ).fit(self._phi_planted_fold_3d(), record_history=True)
@@ -404,10 +404,10 @@ class TestM10TetStrategy:
         """With polish=False, the SolveInfo history has exactly two
         phases (harmonic + alm); ALM's anchor pulls toward the
         original input, not the harmonic seed."""
-        from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M10TetStrategy, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=M10TetStrategy(polish=False),
         )
@@ -421,10 +421,10 @@ class TestM10TetStrategy:
         assert l2 < 1.5, f'M10 (harmonic+ALM) L2 should be < 1.5; got {l2}'
 
     def test_polish_on_emits_pipeline(self):
-        from dvfopt import L2Objective, M10TetStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M10TetStrategy, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=M10TetStrategy(polish=True),
         )
@@ -442,7 +442,7 @@ class TestM10TetStrategy:
 
         result = correct_dvf(
             self._phi_planted_fold_3d(),
-            constraint='6tet',
+            constraint='simplex_3d',
             objective='l2',
             strategy='m10_3d',
         )
@@ -456,7 +456,7 @@ class TestM14Schwarz3DStrategy:
     def test_two_clusters_separately_processed(self):
         """Two well-separated planted folds should be detected as two
         clusters and processed independently (no fallback)."""
-        from dvfopt import L2Objective, M14Schwarz3DStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M14Schwarz3DStrategy, SimplexConstraint3D, Solver
 
         phi = np.zeros((3, 10, 10, 10))
         phi[1, 2, 2, 2] = 1.5
@@ -465,7 +465,7 @@ class TestM14Schwarz3DStrategy:
         phi[2, 7, 7, 7] = 1.5
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(10, 10, 10)),
+            constraint=SimplexConstraint3D(shape=(10, 10, 10)),
             objective=L2Objective(),
             strategy=M14Schwarz3DStrategy(pad=2),
         )
@@ -483,7 +483,7 @@ class TestM14Schwarz3DStrategy:
     def test_dense_field_falls_back_to_global(self):
         """A small dense field where one cluster spans the whole volume
         should fall back to global m14-3D."""
-        from dvfopt import L2Objective, M14Schwarz3DStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M14Schwarz3DStrategy, SimplexConstraint3D, Solver
 
         # Dense field — fold cells touch the global boundary so a
         # merge_dilation of 2 grows to cover the whole volume.
@@ -494,7 +494,7 @@ class TestM14Schwarz3DStrategy:
         phi[2, 2, 2, 2] = 1.5
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=M14Schwarz3DStrategy(pad=1, fallback_size_ratio=0.5),
         )
@@ -509,7 +509,9 @@ class TestM14Schwarz3DStrategy:
         phi = np.zeros((3, 10, 10, 10))
         phi[1, 2, 2, 2] = 1.5
         phi[2, 2, 2, 2] = 1.5
-        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='m14_schwarz_3d')
+        result = correct_dvf(
+            phi, constraint='simplex_3d', objective='l2', strategy='m14_schwarz_3d'
+        )
         assert result.feasible
         assert result.info.strategy_name == 'SchwarzHarmonicALMRefineRepair3DStrategy'
 
@@ -525,10 +527,10 @@ class TestM14TetStrategy:
         return phi
 
     def test_reaches_feasibility(self):
-        from dvfopt import L2Objective, M14TetStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M14TetStrategy, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=M14TetStrategy(),
         )
@@ -538,10 +540,10 @@ class TestM14TetStrategy:
         assert V.min() >= 0.01 - 1e-5
 
     def test_history_records_pipeline_stages(self):
-        from dvfopt import L2Objective, M14TetStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, M14TetStrategy, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=M14TetStrategy(),
         )
@@ -559,7 +561,7 @@ class TestM14TetStrategy:
 
         result = correct_dvf(
             self._phi_planted_fold_3d(),
-            constraint='6tet',
+            constraint='simplex_3d',
             objective='l2',
             strategy='m14_3d',
         )
@@ -571,13 +573,13 @@ class TestM14TetStrategy:
             IncompatibleConstraintError,
             L2Objective,
             M14TetStrategy,
+            SimplexConstraint2DFullCoverage,
             Solver,
-            TriConstraint2DFullCoverage,
         )
 
         with pytest.raises(IncompatibleConstraintError):
             Solver(
-                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                constraint=SimplexConstraint2DFullCoverage(shape=(8, 8)),
                 objective=L2Objective(),
                 strategy=M14TetStrategy(),
             )
@@ -666,8 +668,8 @@ class TestHarmonic3DWallbreaker:
         from dvfopt import (
             Harmonic3DStrategy,
             L2Objective,
+            SimplexConstraint3D,
             Solver,
-            Tet6Constraint3D,
         )
 
         phi = np.zeros((3, 4, 4, 4))
@@ -675,7 +677,7 @@ class TestHarmonic3DWallbreaker:
         phi[2, 1, 1, 1] = 1.5
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=Harmonic3DStrategy(polish=False),
         )
@@ -690,24 +692,24 @@ class TestHarmonic3DWallbreaker:
         phi = np.zeros((3, 4, 4, 4))
         phi[1, 1, 1, 1] = 1.5
         phi[2, 1, 1, 1] = 1.5
-        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='harmonic_3d')
+        result = correct_dvf(phi, constraint='simplex_3d', objective='l2', strategy='harmonic_3d')
         assert result.feasible
         assert result.info.strategy_name == 'Harmonic3DStrategy'
 
     def test_rejects_2tri_constraint(self):
-        """Strategy is 3D-tet-only — composing with a 2-tri constraint
+        """Strategy is 3D-tet-only — composing with a simplex (2D) constraint
         must fail at Solver init."""
         from dvfopt import (
             Harmonic3DStrategy,
             IncompatibleConstraintError,
             L2Objective,
+            SimplexConstraint2DFullCoverage,
             Solver,
-            TriConstraint2DFullCoverage,
         )
 
         with pytest.raises(IncompatibleConstraintError):
             Solver(
-                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                constraint=SimplexConstraint2DFullCoverage(shape=(8, 8)),
                 objective=L2Objective(),
                 strategy=Harmonic3DStrategy(),
             )
@@ -892,13 +894,13 @@ class TestSLSQPFullGrid3DStrategy:
     composition and the registry (``correct_dvf(strategy='slsqp_3d_tet')``)."""
 
     def test_direct_composition_clears_fold(self):
-        from dvfopt import L2Objective, SLSQPFullGrid3DStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, SimplexConstraint3D, SLSQPFullGrid3DStrategy, Solver
 
         phi = np.zeros((3, 4, 4, 4))
         phi[1, 1, 1, 1] = 1.5
         phi[2, 1, 1, 1] = 1.5
 
-        c = Tet6Constraint3D(shape=(4, 4, 4))
+        c = SimplexConstraint3D(shape=(4, 4, 4))
         assert (c.values(c.flatten(phi)) <= 0).any()
 
         solver = Solver(
@@ -917,31 +919,31 @@ class TestSLSQPFullGrid3DStrategy:
         phi[1, 1, 1, 1] = 1.5
         phi[2, 1, 1, 1] = 1.5
 
-        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='slsqp_3d_tet')
+        result = correct_dvf(phi, constraint='simplex_3d', objective='l2', strategy='slsqp_3d_tet')
         assert result.feasible
         assert result.info.strategy_name == 'SLSQPFullGrid3DStrategy'
 
     def test_rejects_wrong_constraint(self):
-        """Strategy declares accepts_constraints = (Tet6Constraint3D,) —
-        composing with a 2-tri constraint must fail at Solver init."""
+        """Strategy declares accepts_constraints = (SimplexConstraint3D,) —
+        composing with a simplex (2D) constraint must fail at Solver init."""
         from dvfopt import (
             IncompatibleConstraintError,
             L2Objective,
+            SimplexConstraint2DFullCoverage,
             SLSQPFullGrid3DStrategy,
             Solver,
-            TriConstraint2DFullCoverage,
         )
 
         with pytest.raises(IncompatibleConstraintError):
             Solver(
-                constraint=TriConstraint2DFullCoverage(shape=(8, 8)),
+                constraint=SimplexConstraint2DFullCoverage(shape=(8, 8)),
                 objective=L2Objective(),
                 strategy=SLSQPFullGrid3DStrategy(),
             )
 
 
 class TestSLSQPOnTet:
-    """End-to-end: direct scipy SLSQP using ``Tet6Constraint3D.jacobian()``
+    """End-to-end: direct scipy SLSQP using ``SimplexConstraint3D.jacobian()``
     should clear a planted 3D fold. Today this is the only way to drive
     SLSQP on tet — no Strategy is wired (3D SLSQP doesn't scale, so
     there's no `SLSQPFullGrid3DStrategy`). When such a Strategy is
@@ -950,14 +952,14 @@ class TestSLSQPOnTet:
     def test_clears_planted_fold(self):
         from scipy.optimize import NonlinearConstraint, minimize
 
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
 
         # Single-corner push that flips multiple tets meeting at that corner.
         phi = np.zeros((3, 4, 4, 4))
         phi[1, 1, 1, 1] = 1.5
         phi[2, 1, 1, 1] = 1.5
 
-        c = Tet6Constraint3D(shape=(4, 4, 4))
+        c = SimplexConstraint3D(shape=(4, 4, 4))
         flat_init = c.flatten(phi)
         V_init = c.values(flat_init)
         assert (V_init <= 0).any(), 'precondition: planted field should have folded tets'
@@ -987,54 +989,54 @@ class TestSLSQPOnTet:
         assert V_after.min() >= threshold - 1e-6, f'final min V = {V_after.min()} below threshold'
 
 
-class TestTet6Constraint3D:
+class TestSimplexConstraint3D:
     """Verify the public Constraint surface (registry, shape, packing,
     barrier-strategy round-trip)."""
 
     def test_registry(self):
         from dvfopt import make_constraint
-        from dvfopt.constraints import Tet6Constraint3D
+        from dvfopt.constraints import SimplexConstraint3D
 
-        c = make_constraint('6tet', (3, 4, 5))
-        assert isinstance(c, Tet6Constraint3D)
-        c2 = make_constraint('6tet_3d', (3, 4, 5))
-        assert isinstance(c2, Tet6Constraint3D)
+        c = make_constraint('simplex_3d', (3, 4, 5))
+        assert isinstance(c, SimplexConstraint3D)
+        c2 = make_constraint('6tet', (3, 4, 5))  # legacy label alias
+        assert isinstance(c2, SimplexConstraint3D)
 
     def test_shape_consistency(self):
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
 
         D, H, W = 3, 4, 5
-        c = Tet6Constraint3D(shape=(D, H, W))
+        c = SimplexConstraint3D(shape=(D, H, W))
         assert c.n_variables == 3 * D * H * W
         assert c.n_constraints == 6 * (D - 1) * (H - 1) * (W - 1)
 
     def test_flatten_unflatten_round_trip(self):
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
 
         rng = np.random.default_rng(0)
-        c = Tet6Constraint3D(shape=(3, 4, 5))
+        c = SimplexConstraint3D(shape=(3, 4, 5))
         phi = rng.normal(0, 0.1, (3, 3, 4, 5))
         np.testing.assert_array_equal(c.unflatten(c.flatten(phi)), phi)
 
     def test_identity_feasible(self):
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
 
-        c = Tet6Constraint3D(shape=(3, 4, 5))
+        c = SimplexConstraint3D(shape=(3, 4, 5))
         phi = np.zeros((3, 3, 4, 5))
         flat = c.flatten(phi)
         V = c.values(flat)
         assert np.allclose(V, 1 / 6)
 
     def test_auto_strategy_tet_tiering(self):
-        """``auto_strategy`` tiers ``Tet6Constraint3D`` like 2D: mild to
+        """``auto_strategy`` tiers ``SimplexConstraint3D`` like 2D: mild to
         moderate folds go barrier; extremes (where the barrier's penalty
         phase stalls) go to the 3D wallbreakers. Regression: early
         versions fell through to ``slsqp_windowed`` which doesn't accept
         tet constraints."""
-        from dvfopt import Tet6Constraint3D
+        from dvfopt import SimplexConstraint3D
         from dvfopt.solver import auto_strategy
 
-        c_small = Tet6Constraint3D(shape=(4, 5, 5))
+        c_small = SimplexConstraint3D(shape=(4, 5, 5))
         # Mild/moderate → barrier.
         for n_neg, init_min in [(1, -0.05), (200, -0.5)]:
             label = auto_strategy(
@@ -1051,14 +1053,14 @@ class TestTet6Constraint3D:
             auto_strategy(c_small, init_n_neg=10000, init_min=-5.0, objective_label='l1')
             == 'm14_3d'
         )
-        c_big = Tet6Constraint3D(shape=(64, 64, 64))  # 262144 voxels > 200K
+        c_big = SimplexConstraint3D(shape=(64, 64, 64))  # 262144 voxels > 200K
         assert (
             auto_strategy(c_big, init_n_neg=10000, init_min=-5.0, objective_label='l1')
             == 'm14_schwarz_3d'
         )
 
     def test_auto_dispatch_via_correct_dvf(self):
-        """End-to-end: ``correct_dvf(constraint='6tet', strategy='auto')``
+        """End-to-end: ``correct_dvf(constraint='simplex_3d', strategy='auto')``
         should reach feasibility, not crash."""
         from dvfopt import correct_dvf
 
@@ -1066,14 +1068,14 @@ class TestTet6Constraint3D:
         phi = rng.normal(0, 0.05, (3, 4, 5, 5))
         phi[1, 2, 2:4, 2:4] -= 1.0
         phi[2, 2, 2:4, 2:4] -= 1.0
-        result = correct_dvf(phi, constraint='6tet', objective='l2', strategy='auto')
+        result = correct_dvf(phi, constraint='simplex_3d', objective='l2', strategy='auto')
         assert result.feasible
         assert result.info.strategy_name == 'BarrierStrategy'
 
     def test_end_to_end_barrier_reaches_feasibility(self):
         """A small folded 3D field should be feasibilised by barrier
-        through the Tet6Constraint3D pipeline."""
-        from dvfopt import BarrierStrategy, L2Objective, Solver, Tet6Constraint3D
+        through the SimplexConstraint3D pipeline."""
+        from dvfopt import BarrierStrategy, L2Objective, SimplexConstraint3D, Solver
 
         rng = np.random.default_rng(0)
         phi = rng.normal(0, 0.05, (3, 4, 5, 5))
@@ -1081,7 +1083,7 @@ class TestTet6Constraint3D:
         phi[1, 2, 2:4, 2:4] -= 1.0
         phi[2, 2, 2:4, 2:4] -= 1.0
 
-        c = Tet6Constraint3D(shape=(4, 5, 5))
+        c = SimplexConstraint3D(shape=(4, 5, 5))
         assert c.values(c.flatten(phi)).min() <= 0, 'precondition: should start folded'
 
         solver = Solver(constraint=c, objective=L2Objective(), strategy=BarrierStrategy())
@@ -1131,10 +1133,10 @@ class TestHistorySchemaParity:
     def test_slsqp_3d_tet_solve_info_populates_min_T(self):
         """End-to-end: ``Solver.fit`` should produce a SolveInfo whose
         phases have a finite ``min_T``."""
-        from dvfopt import L2Objective, SLSQPFullGrid3DStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L2Objective, SimplexConstraint3D, SLSQPFullGrid3DStrategy, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=SLSQPFullGrid3DStrategy(max_iter=200),
         )
@@ -1165,10 +1167,10 @@ class TestHistorySchemaParity:
         After the fix, ``info.phases`` has 1 harmonic + N polish entries,
         each with a finite ``min_T``.
         """
-        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+        from dvfopt import Harmonic3DStrategy, L2Objective, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=Harmonic3DStrategy(polish=True),
         )
@@ -1186,10 +1188,10 @@ class TestHistorySchemaParity:
             assert not np.isnan(p.min_T), f'phase {p.name!r} has NaN min_T — schema mismatch'
 
     def test_harmonic_3d_polish_off_emits_just_harmonic_phase(self):
-        from dvfopt import Harmonic3DStrategy, L2Objective, Solver, Tet6Constraint3D
+        from dvfopt import Harmonic3DStrategy, L2Objective, SimplexConstraint3D, Solver
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+            constraint=SimplexConstraint3D(shape=(4, 4, 4)),
             objective=L2Objective(),
             strategy=Harmonic3DStrategy(polish=False),
         )

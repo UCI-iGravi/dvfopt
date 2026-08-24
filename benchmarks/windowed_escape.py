@@ -30,7 +30,7 @@ import time
 import numpy as np
 from scipy import ndimage
 
-from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, SimplexConstraint2D
 from dvfopt.core.primitives.isqp import isqp_solve
 from dvfopt.core.windowed import LOCALITY, build_subproblem, find_windows
 from dvfopt.core.windowed import min_field as _engine_min_field
@@ -40,7 +40,7 @@ _ESCAPE_MODES = ("baseline", "twophase", "weighted", "penalty")
 
 # Historical family-string API -> registered constraint types (the boundary
 # where this harness meets the promoted engine).
-_FAMILY = {"jdet": JdetConstraint2D, "2tri": TriConstraint2D, "finite": FiniteJdetConstraint2D}
+_FAMILY = {"jdet": JdetConstraint2D, "2tri": SimplexConstraint2D, "finite": FiniteJdetConstraint2D}
 
 
 def _constraint_of(family, shape):

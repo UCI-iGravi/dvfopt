@@ -462,8 +462,8 @@ def cluster_slp_iter(
         from dvfopt import (
             HarmonicALMRefineRepairStrategy,
             L1Objective,
+            SimplexConstraint2DFullCoverage,
             Solver,
-            TriConstraint2DFullCoverage,
         )
 
         H, W = phi_out.shape[1:]
@@ -482,7 +482,7 @@ def cluster_slp_iter(
         # () just makes the skip explicit and consistent with the
         # seed path.
         solver = Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(H, W)),
             objective=L1Objective(eps=1e-4),
             strategy=HarmonicALMRefineRepairStrategy(
                 polish_mu=(),

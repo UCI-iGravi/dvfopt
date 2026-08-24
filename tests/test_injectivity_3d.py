@@ -128,7 +128,7 @@ class TestStrategySurface:
         from dvfopt import JdetConstraint3D, L2Objective, SLSQPWindowedStrategy, Solver
 
         phi = _folded_volume()
-        with pytest.raises(ValueError, match='6-tet'):
+        with pytest.raises(ValueError, match='simplex_3d'):
             Solver(
                 constraint=JdetConstraint3D(shape=phi.shape[1:]),
                 objective=L2Objective(),

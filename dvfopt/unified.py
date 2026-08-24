@@ -14,10 +14,11 @@ each slice into ``solver.fit(phi)``.
 
 Configuration axes (every combination valid; sensible defaults):
 
-    constraint : '2tri' (default, full-coverage), '2tri_standard'
+    constraint : 'simplex' (default, full-coverage), 'simplex_standard'
         (TR-BL only — for benchmark reproducibility), 'jdet'
-        (== 'jdet_2d'). The facade is per-slice 2D; for true-3D
-        constraints ('6tet', 'jdet_3d') use correct_dvf_3d /
+        (== 'jdet_2d'); legacy '2tri'/'2tri_standard' labels are still
+        accepted. The facade is per-slice 2D; for true-3D
+        constraints ('simplex_3d', 'jdet_3d') use correct_dvf_3d /
         correct_dvf_25d or the Solver API.
     solver     : 'nmvf', 'barrier', 'slsqp', 'slsqp_windowed', 'schwarz',
                  'harmonic_alm_barrier' (alias 'm10'),
@@ -29,7 +30,7 @@ Configuration axes (every combination valid; sensible defaults):
 Example::
 
     from dvfopt import DVFopt, DVFoptConfig
-    opt = DVFopt(DVFoptConfig(constraint='2tri', solver='m14_schwarz',
+    opt = DVFopt(DVFoptConfig(constraint='simplex', solver='m14_schwarz',
                                 objective='l1', threshold=0.01))
     result = opt.fit(deformation)             # (3, D, H, W), (3, H, W), or (2, H, W)
     print(result.summary())
@@ -69,7 +70,7 @@ class DVFoptConfig:
     of a string label::
 
         cfg = DVFoptConfig(
-            constraint='2tri',
+            constraint='simplex',
             solver=BarrierStrategy(lam_schedule=(1, 100, 1e4), max_iter=500),
             objective='l1',
         )
@@ -79,11 +80,12 @@ class DVFoptConfig:
     """
 
     # ---- problem ----
-    # Any registered 2D constraint label: '2tri' (=full-coverage, default) |
-    # '2tri_standard' | 'bilinear' | 'finite' | 'jdet' | 'jdet_2d'.
-    # 3D constraints ('6tet', 'jdet_3d') are rejected — the facade is
+    # Any registered 2D constraint label: 'simplex' (=full-coverage, default) |
+    # 'simplex_standard' | 'bilinear' | 'finite' | 'jdet' | 'jdet_2d'
+    # (legacy '2tri' / '2tri_standard' still accepted).
+    # 3D constraints ('simplex_3d', 'jdet_3d') are rejected — the facade is
     # per-slice 2D; use correct_dvf_3d / correct_dvf_25d or Solver for 3D.
-    constraint: str = '2tri'
+    constraint: str = 'simplex'
     threshold: float = 0.01
     err_tol: float = 1e-5
 
@@ -98,7 +100,7 @@ class DVFoptConfig:
     solver: object = 'auto'
     # NOTE: defaults to 'l1', matching dvfopt.solver.correct_dvf — the two
     # APIs now share the same default objective. (Before v0.2.x this facade
-    # historically defaulted to 'l2'.) With solver='auto', 2-tri + l1 routes
+    # historically defaulted to 'l2'.) With solver='auto', simplex (2D) + l1 routes
     # to the SLP champion strategy.
     objective: str = 'l1'  # 'l1', 'l2', 'none'
     eps_l1: float = 1e-4
@@ -297,7 +299,7 @@ def _extract_2d_slice(deformation, z):
 
 def _compute_constraint_2d(phi2, kind):
     """Constraint values as a (n_constraints,) ndarray — exactly what the
-    solver enforces (corner patches included under ``'2tri'``)."""
+    solver enforces (corner patches included under ``'simplex'``)."""
     c = make_constraint(kind, phi2.shape[-2:])
     return c.values(c.flatten(phi2))
 
@@ -348,7 +350,7 @@ class DVFopt:
                 f'constraint {c.constraint!r} is not supported: the DVFopt '
                 f'facade is per-slice 2D; for true-3D correction use '
                 f'correct_dvf_3d / correct_dvf_25d or the Solver API '
-                f"(e.g. Solver.from_spec(constraint='6tet', ...))."
+                f"(e.g. Solver.from_spec(constraint='simplex_3d', ...))."
             )
         # solver: 'auto', a registered label, or a Strategy instance.
         if isinstance(c.solver, Strategy) or c.solver == 'auto':
@@ -513,7 +515,7 @@ class DVFopt:
                 else:
                     # auto resolved to a non-SLP label (l2/none objectives,
                     # Jdet constraints), where accuracy would silently do
-                    # nothing — say so. (2-tri + l1 auto-resolves to 'slp'
+                    # nothing — say so. (simplex (2D) + l1 auto-resolves to 'slp'
                     # and takes the branch above.)
                     import warnings
 

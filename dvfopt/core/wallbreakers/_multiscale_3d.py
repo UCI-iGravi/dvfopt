@@ -96,13 +96,13 @@ def multiscale_seed_3d(
             from dvfopt import (
                 HarmonicALMBarrier3DStrategy,
                 L1Objective,
+                SimplexConstraint3D,
                 Solver,
-                Tet6Constraint3D,
             )
 
             return (
                 Solver(
-                    constraint=Tet6Constraint3D(shape=field.shape[1:]),
+                    constraint=SimplexConstraint3D(shape=field.shape[1:]),
                     objective=L1Objective(eps=1e-4),
                     strategy=HarmonicALMBarrier3DStrategy(),
                     threshold=thr,

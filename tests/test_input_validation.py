@@ -23,9 +23,9 @@ from dvfopt import (
     DVFopt,
     DVFoptConfig,
     L2Objective,
+    SimplexConstraint2D,
     Solver,
     SolverConfigError,
-    TriConstraint2D,
     coerce_to_ndarray,
     validate_dvf,
     validate_finite,
@@ -151,7 +151,7 @@ class TestValidateDvf3D:
 
 
 def _silent_opt():
-    return DVFopt(DVFoptConfig(constraint='2tri', solver='barrier', objective='l1', verbose=0))
+    return DVFopt(DVFoptConfig(constraint='simplex', solver='barrier', objective='l1', verbose=0))
 
 
 class TestDvfoptFitGracefulRejection:
@@ -221,7 +221,7 @@ class TestSolverFitGracefulRejection:
 
     def _solver(self):
         return Solver(
-            constraint=TriConstraint2D((8, 8)),
+            constraint=SimplexConstraint2D((8, 8)),
             objective=L2Objective(),
             strategy=__import__('dvfopt').BarrierStrategy(),
         )

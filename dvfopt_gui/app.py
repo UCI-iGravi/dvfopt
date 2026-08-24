@@ -9,7 +9,7 @@ Features
   ``(3, 1, H, W)`` / ``(2, H, W)`` single 2D slices are supported.
 * **View modes** — radio selector switches the central image between:
     * **Jdet (CD)** — central-difference Jacobian determinant per pixel
-    * **2-tri (min T1, T2)** — minimum signed triangle area per cell
+    * **Simplex (min T1, T2)** — minimum signed triangle area per cell
       (catches sub-pixel folds the Jdet stencil misses)
     * **Deformation grid** — warped wireframe of the displacement field
 * **Slice slider** (3D only) — scrub z to switch the visible slice.
@@ -349,7 +349,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         bar.addWidget(QtWidgets.QLabel('View:'))
         self._view_combo = QtWidgets.QComboBox()
         self._view_combo.addItem('Jdet (CD)', VIEW_JDET)
-        self._view_combo.addItem('2-tri (min T1, T2)', VIEW_2TRI)
+        self._view_combo.addItem('Simplex (min T1, T2)', VIEW_2TRI)
         self._view_combo.addItem('Deformation grid', VIEW_GRID)
         self._view_combo.addItem('Δ Jdet vs input', VIEW_DIFF)
         self._view_combo.addItem('Injectivity gap (min axial)', VIEW_INJ)
@@ -361,7 +361,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         # Keep the dropdown in sync with the default ``_view_mode``.
         # The grid view is the only one that always makes folds visible
         # (Jdet view is uniformly red when min Jdet > 0, even with
-        # 2-tri folds present — that's the canonical "looks already
+        # simplex (2D) folds present — that's the canonical "looks already
         # optimized" trap).
         _default_idx = self._view_combo.findData(self._view_mode)
         if _default_idx >= 0:
@@ -477,7 +477,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
         if _default_c_idx >= 0:
             self._constraint_combo.setCurrentIndex(_default_c_idx)
         self._constraint_combo.setToolTip(
-            '2-tri: full-coverage triangle areas (catches sub-pixel folds the '
+            'Simplex (2D): full-coverage triangle areas (catches sub-pixel folds the '
             'Jdet central-diff stencil misses — e.g. the bowtie default). '
             'Jdet: per-pixel central-diff determinant (legacy / cheaper).'
         )
@@ -1109,9 +1109,9 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
             # Compute fold counts straight from the current slice so the
             # idle panel never looks like the field is feasible when it
             # isn't (the Jdet heatmap is uniformly red for fields whose
-            # min Jdet is positive, even with sub-pixel 2-tri folds — the
+            # min Jdet is positive, even with sub-pixel simplex (2D) folds — the
             # bowtie default is exactly that case: 0 Jdet folds but 2
-            # 2-tri folds).
+            # simplex (2D) folds).
             phi_2hw = self._volume[1:, self._z]
             jac = jacobian_det2D(phi_2hw)[0]
             min_tri = _min_tri_from_phi(phi_2hw)
@@ -1138,8 +1138,8 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
                 f'min Jdet . . . {jac.min():+.4f}<br>'
                 f'Jdet folds . . {n_neg_jdet}<br>'
                 f'min T1/T2  . . {np.nanmin(min_tri):+.4f}<br>'
-                f'2-tri folds  . {n_neg_tri}  ({100 * n_neg_tri / interior:.1f}%)<br>'
-                f'infeasible(&lt;{thr:g}) Jdet {infeas_jdet} · 2-tri {infeas_tri}<br>'
+                f'simplex folds  {n_neg_tri}  ({100 * n_neg_tri / interior:.1f}%)<br>'
+                f'infeasible(&lt;{thr:g}) Jdet {infeas_jdet} · simplex {infeas_tri}<br>'
                 '(idle — press <i>Run full</i> to start)'
             )
         if snap.phi.ndim == 4:  # 3D volume snapshot
@@ -1213,7 +1213,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
             return (
                 '<b>Pixel inspector (3D)</b><br>'
                 f'(z={zz}, y={y}, x={x})<br>'
-                f'min 6-tet V . {mv[zz, y, x]:+.5f}'
+                f'min simplex V . {mv[zz, y, x]:+.5f}'
             )
         # Prefer the live snapshot's phi; fall back to the volume.
         if self._latest is not None:

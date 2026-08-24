@@ -226,10 +226,10 @@ def tri_grad_T_v_full_coverage(phi_flat, H, W, v):
 
 
 # --- Bilinear (both-diagonal) variant: 4 triangles per cell, the rows behind
-# :class:`dvfopt.constraints.TriConstraint2DBilinear`. The TL-BR pair is the
+# :class:`dvfopt.constraints.SimplexConstraint2DBilinear`. The TL-BR pair is the
 # TR-BL pair of the x-MIRRORED field (mirroring swaps the diagonals), so the
 # kernels above serve both halves unchanged.
-# ponytail: 2 kernel launches + mirror copies ~ 2.3x the 2-tri cost per call;
+# ponytail: 2 kernel launches + mirror copies ~ 2.3x the simplex (2D) cost per call;
 # fuse both diagonals into the kernels if the barrier path on bilinear gets hot.
 
 

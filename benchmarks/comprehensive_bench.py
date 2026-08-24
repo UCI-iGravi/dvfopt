@@ -9,7 +9,7 @@ solve the crop to (target >= threshold) and score the RESULT under ALL THREE met
 (cross-metric fold counts), plus feasibility in the target metric, runtime, and the
 L1/L2 correction footprint. Rows stream to a CSV; a report.md aggregates.
 
-Full-slice windowed correction is infeasible at this breadth (2-tri z=0 alone is
+Full-slice windowed correction is infeasible at this breadth (simplex (2D) z=0 alone is
 ~2.7 h), so this isolates the solver/metric behaviour on each slice's worst fold.
 Slice tasks run in parallel; the volume is memmapped and only the small crop is
 handed to each worker.
@@ -38,7 +38,7 @@ import slsqp_variants as sv  # noqa: E402
 from dvfopt.constraints import (  # noqa: E402
     FiniteJdetConstraint2D,
     JdetConstraint2D,
-    TriConstraint2D,
+    SimplexConstraint2D,
 )
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d  # noqa: E402
 
@@ -55,7 +55,7 @@ def _constraint(metric, shape):
     if metric == "finite":
         return FiniteJdetConstraint2D(shape=shape)
     if metric == "2tri":
-        return TriConstraint2D(shape=shape)
+        return SimplexConstraint2D(shape=shape)
     raise ValueError(metric)
 
 
@@ -109,7 +109,7 @@ def _pattern_union(c, probes=4, seed=0):
 def _cached_coloring(family, c, shape):
     """CPR coloring ``(pattern, colors, None)`` for a patch shape, cached (the
     Jacobian sparsity pattern depends only on the shape). Jdet uses the
-    pixel-grid stride-3 colouring; 2-tri a cell-grid 8-colouring."""
+    pixel-grid stride-3 colouring; simplex (2D) a cell-grid 8-colouring."""
     key = (family, *shape)
     hit = _COLORING_CACHE.get(key)
     if hit is None:
@@ -301,7 +301,7 @@ def write_report(path, rows, cfg):
         f"Volume `{cfg['vol']}` | slices with folds: {n_slices} | crop {cfg['size']}x{cfg['size']} "
         f"around worst central-Jdet fold | maxiter {cfg['maxiter']} | threshold {THR}",
         "",
-        "Each result is scored under ALL THREE metrics (central-Jdet / finite-Jdet / 2-tri fold "
+        "Each result is scored under ALL THREE metrics (central-Jdet / finite-Jdet / simplex (2D) fold "
         "counts). `feasible` = the OPTIMISED (target) metric reached >= 0.",
         "",
         "## Feasibility and runtime, per (target metric, method, objective)",
@@ -337,8 +337,8 @@ def write_report(path, rows, cfg):
         "",
         "- **feasible** counts crops where the target metric cleared. The cross-metric "
         "columns show what optimising one metric leaves under the others — e.g. optimising "
-        "central-Jdet typically leaves large 2-tri residual (central-Jdet is checkerboard-"
-        "blind), whereas optimising 2-tri clears the real geometry.",
+        "central-Jdet typically leaves large simplex (2D) residual (central-Jdet is checkerboard-"
+        "blind), whereas optimising simplex (2D) clears the real geometry.",
         "- Compare methods within a (metric, objective) block for the speed/robustness "
         "trade-off (isqp-osqp fastest; slsqp+trust-constr most robust per second).",
         "",

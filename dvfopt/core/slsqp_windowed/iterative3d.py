@@ -94,7 +94,7 @@ def iterative_3d(
         use the element-wise minimum of Jdet and the (shifted)
         monotonicity quality, so the worst violation of either metric
         drives the solve. The 3D analogue of ``enforce_shoelace``
-        (geometric cell volume) is served by the dedicated 6-tet
+        (geometric cell volume) is served by the dedicated simplex (3D)
         constraint family instead.
     injectivity_threshold : float or None
         Lower bound for each axial gap. ``None`` uses *threshold*.

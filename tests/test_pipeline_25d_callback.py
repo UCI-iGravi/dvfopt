@@ -10,10 +10,10 @@ from dvfopt.pipeline_25d import correct_dvf_25d
 
 def _interlayer_folded_volume(D=4, H=8, W=8):
     """dz==0, per-slice 2D-feasible, but adjacent slices' dx alternate sign
-    strongly at one column -> inter-layer 6-tet folds.
+    strongly at one column -> inter-layer simplex (3D) folds.
 
     Magnitude 1.5 (not the smaller values one might reach for first):
-    empirically the 6-tet fold test only trips once the alternating swing
+    empirically the simplex (3D) fold test only trips once the alternating swing
     crosses a full grid unit (0.7 -> 0 folds, 1.0 -> the knife-edge, 1.5 ->
     a comfortable margin) -- 1.5 also matches the working fixture's
     magnitude in ``tests/test_pipeline_25d.py::_planted_25d_fold``.

@@ -526,7 +526,7 @@ def plot_fold_overview_3d(
 
     Direct 3D analogue of :func:`plot_fold_overview`. Adds a
     *per-tetrahedron* flip histogram in the bottom-left panel (using the
-    6-tet decomposition from :func:`six_tet_volumes_3d`), which
+    simplex (3D) decomposition from :func:`six_tet_volumes_3d`), which
     distinguishes a few-tet-flipped voxel (light correction job) from a
     whole-voxel collapse (heavy job for SLSQP / barrier).
 
@@ -723,7 +723,7 @@ def plot_fold_overview_3d(
     ax_tet.set_xlabel('Tets flipped / voxel', fontsize=7)
     ax_tet.set_ylabel('Voxel cells', fontsize=7)
     ax_tet.tick_params(labelsize=7)
-    ax_tet.set_title('Per-voxel tet flips (6-tet split)', fontsize=8)
+    ax_tet.set_title('Per-voxel tet flips (simplex (3D) split)', fontsize=8)
 
     ax_hist.set_title('Distribution of Jdet values')
     ax_hist.legend(loc='upper left', fontsize='x-small')

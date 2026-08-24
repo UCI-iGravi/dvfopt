@@ -520,7 +520,7 @@ def test_demo_3d_loaders_and_initial_constraint(qapp):
 
 
 def test_3d_end_to_end_run_through_window(qapp):
-    # Real integration: load folded volume -> 6-tet 3D -> M14Tet ->
+    # Real integration: load folded volume -> simplex (3D) 3D -> M14Tet ->
     # Run full -> the QThread solves the whole volume -> finished signal
     # splices the corrected volume back -> 3D fold count drops.
     from dvfopt_gui.demo import _synthetic_3d_volume
@@ -1023,10 +1023,10 @@ def test_overview_strip_counts_and_click(qapp):
     from dvfopt_gui.worker import _metric_counts
 
     vol = np.zeros((3, 4, 8, 8))
-    vol[2, 2, 3, 3] = 1.2  # slice 2 has 2-tri folds
+    vol[2, 2, 3, 3] = 1.2  # slice 2 has simplex (2D) folds
     vol[2, 2, 3, 4] = -1.2
 
-    # Worker computes per-slice 2-tri fold counts (run synchronously).
+    # Worker computes per-slice simplex (2D) fold counts (run synchronously).
     got = {}
     w = OverviewWorker(vol)
     w.chunkReady.connect(lambda start, arr: got.setdefault(start, np.asarray(arr)))
@@ -1272,7 +1272,7 @@ class TestMinorsSweepLifecycle:
         win = self._win(qapp, D=4)
         assert win._latest is None
         html = win._format_inspector((2, 2))
-        assert '3D' in html and 'min 6-tet' in html, (
+        assert '3D' in html and 'min simplex' in html, (
             f'idle 3D volume must get the 3D readout, got: {html}'
         )
 

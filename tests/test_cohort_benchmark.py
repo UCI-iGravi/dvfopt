@@ -167,7 +167,7 @@ def test_2d_sections_interactive_report(tmp_path, monkeypatch):
         out_base=str(tmp_path / "int2d"),
     )
     doc = (rd / "report.html").read_text(encoding="utf-8")
-    assert "data-viewer" in doc and "2-tri" in doc and "jdet_before" in doc
+    assert "data-viewer" in doc and "simplex (2D)" in doc and "jdet_before" in doc
     header = (rd / "results.csv").read_text().splitlines()[0]
     assert "n_tri_init" in header
 
@@ -203,7 +203,7 @@ def test_3d_interactive_report(tmp_path):
         out_base=str(tmp_path / "int3d"),
     )
     doc = (rd / "report.html").read_text(encoding="utf-8")
-    assert "data-viewer" in doc and "6-tet" in doc and "worst z" in doc
+    assert "data-viewer" in doc and "simplex (3D)" in doc and "worst z" in doc
     assert "n_tet_init" in (rd / "results.csv").read_text().splitlines()[0]
 
 

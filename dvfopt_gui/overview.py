@@ -1,7 +1,7 @@
 """Per-slice fold overview strip for (3, D>1, H, W) volumes.
 
 A thin clickable bar chart under the plot: x = slice index, y = per-slice
-2-tri fold count. Instantly answers "which of my 528 slices are bad" and
+simplex (2D) fold count. Instantly answers "which of my 528 slices are bad" and
 doubles as navigation (click → jump z). Counts are computed off the GUI
 thread by :class:`OverviewWorker`, streamed in chunks so the strip fills
 progressively on big volumes.
@@ -19,7 +19,7 @@ _CHUNK = 32
 
 
 class OverviewWorker(QtCore.QThread):
-    """Compute per-slice 2-tri fold counts; emit ``(start, counts)`` chunks."""
+    """Compute per-slice simplex (2D) fold counts; emit ``(start, counts)`` chunks."""
 
     chunkReady = QtCore.Signal(int, object)
 

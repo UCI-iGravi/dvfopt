@@ -11,8 +11,8 @@ from dvfopt import (
     HarmonicALMRefineRepairStrategy,
     L2Objective,
     SchwarzHarmonicALMRefineRepairStrategy,
+    SimplexConstraint2D,
     Solver,
-    TriConstraint2D,
 )
 from dvfopt.core.schwarz._common import (
     _fold_clusters_2d as _fold_clusters,
@@ -121,7 +121,7 @@ class TestSmoke:
             warnings.simplefilter('ignore')
             phi = np.zeros((2, 8, 8))
             result = Solver(
-                constraint=TriConstraint2D(shape=phi.shape[1:]),
+                constraint=SimplexConstraint2D(shape=phi.shape[1:]),
                 objective=L2Objective(),
                 strategy=SchwarzHarmonicALMRefineRepairStrategy(),
                 threshold=0.01,
@@ -133,7 +133,7 @@ class TestSmoke:
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
             result = Solver(
-                constraint=TriConstraint2D(shape=phi.shape[1:]),
+                constraint=SimplexConstraint2D(shape=phi.shape[1:]),
                 objective=L1Objective(),
                 strategy=SchwarzHarmonicALMRefineRepairStrategy(max_outer_iters=2),
                 threshold=0.01,
@@ -153,7 +153,7 @@ class TestSmoke:
             T1, T2 = _triangle_areas_2d(phi[0], phi[1])
             assert int((np.minimum(T1, T2) <= 0).sum()) > 0, 'test setup planted no folds'
             result = Solver(
-                constraint=TriConstraint2D(shape=phi.shape[1:]),
+                constraint=SimplexConstraint2D(shape=phi.shape[1:]),
                 objective=L1Objective(),
                 strategy=SchwarzHarmonicALMRefineRepairStrategy(max_outer_iters=2),
                 threshold=0.01,
@@ -183,7 +183,7 @@ class TestFallback:
             def inner_solve(phi_crop, time_budget_s=None):
                 out, _info = inner.solve(
                     phi_crop,
-                    constraint=TriConstraint2D(shape=phi_crop.shape[1:]),
+                    constraint=SimplexConstraint2D(shape=phi_crop.shape[1:]),
                     objective=L1Objective(),
                     threshold=0.01,
                     verbose=0,
@@ -307,7 +307,9 @@ class TestUnifiedAPI:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             phi = _synth_sparse(0)
-            cfg = DVFoptConfig(solver='m14_schwarz', constraint='2tri', objective='l1', verbose=0)
+            cfg = DVFoptConfig(
+                solver='m14_schwarz', constraint='simplex', objective='l1', verbose=0
+            )
             res = DVFopt(cfg).fit(phi)
         assert res.feasible
         assert res.slice_results[0].solver_used == 'm14_schwarz'
@@ -316,11 +318,11 @@ class TestUnifiedAPI:
         """The auto resolver picks m14_schwarz for large slices in the
         extreme-density tier when objective is neither 'l1' (which now
         routes to the SLP champion at every tier) nor 'l2' (m10)."""
-        from dvfopt.constraints import TriConstraint2D
+        from dvfopt.constraints import SimplexConstraint2D
         from dvfopt.solver import auto_strategy
 
-        c_big = TriConstraint2D((320, 456))
-        c_small = TriConstraint2D((60, 60))
+        c_big = SimplexConstraint2D((320, 456))
+        c_small = SimplexConstraint2D((60, 60))
         assert auto_strategy(c_big, 6000, -15.0, objective_label='none') == 'm14_schwarz'
         # Small extreme dense — falls back to plain m14.
         assert auto_strategy(c_small, 6000, -15.0, objective_label='none') == 'm14'
@@ -328,8 +330,8 @@ class TestUnifiedAPI:
         assert auto_strategy(c_big, 6000, -15.0, objective_label='l1') == 'slp'
 
     def test_auto_l2_still_picks_m10_on_extreme(self):
-        from dvfopt.constraints import TriConstraint2D
+        from dvfopt.constraints import SimplexConstraint2D
         from dvfopt.solver import auto_strategy
 
-        c_big = TriConstraint2D((320, 456))
+        c_big = SimplexConstraint2D((320, 456))
         assert auto_strategy(c_big, 6000, -15.0, objective_label='l2') == 'm10'

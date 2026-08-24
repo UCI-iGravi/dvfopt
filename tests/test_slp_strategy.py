@@ -1,4 +1,4 @@
-"""Tests for the packaged 2-tri SLP strategy (dvfopt.SLPStrategy).
+"""Tests for the packaged simplex (2D) SLP strategy (dvfopt.SLPStrategy).
 
 The auto_slp champion, promoted from research into the dvfopt package.
 Covers both dispatch paths (global small-slice, cluster large-slice) and
@@ -8,7 +8,7 @@ constraint compatibility.
 import numpy as np
 import pytest
 
-from dvfopt import L1Objective, SLPStrategy, Solver, TriConstraint2D
+from dvfopt import L1Objective, SimplexConstraint2D, SLPStrategy, Solver
 from dvfopt.core.primitives.tri import tri_areas_flat
 
 
@@ -32,7 +32,7 @@ def test_slp_global_path_small_slice():
     if _n_neg(phi) == 0:
         pytest.skip('no fold planted')
     res = Solver(
-        constraint=TriConstraint2D(shape=(16, 16)),
+        constraint=SimplexConstraint2D(shape=(16, 16)),
         objective=L1Objective(eps=1e-4),
         strategy=SLPStrategy(),
         threshold=0.01,
@@ -47,7 +47,7 @@ def test_slp_cluster_path_serial():
     if _n_neg(phi) == 0:
         pytest.skip('no fold planted')
     res = Solver(
-        constraint=TriConstraint2D(shape=(80, 80)),
+        constraint=SimplexConstraint2D(shape=(80, 80)),
         objective=L1Objective(eps=1e-4),
         strategy=SLPStrategy(n_workers=1),
         threshold=0.01,
@@ -56,14 +56,14 @@ def test_slp_cluster_path_serial():
 
 
 def test_slp_constraint_compat():
-    """SLPStrategy accepts the 2-tri and 6-tet families (the 3D SLP was
+    """SLPStrategy accepts the simplex (2D) and simplex (3D) families (the 3D SLP was
     promoted from research) and still rejects the Jdet family."""
-    from dvfopt import JdetConstraint2D, Tet6Constraint3D
+    from dvfopt import JdetConstraint2D, SimplexConstraint3D
     from dvfopt.exceptions import IncompatibleConstraintError
 
-    # 6-tet now composes at construction time.
+    # simplex (3D) now composes at construction time.
     Solver(
-        constraint=Tet6Constraint3D(shape=(4, 4, 4)),
+        constraint=SimplexConstraint3D(shape=(4, 4, 4)),
         objective=L1Objective(eps=1e-4),
         strategy=SLPStrategy(),
         threshold=0.01,
@@ -104,7 +104,7 @@ def test_slp_accuracy_max_reaches_feasibility():
     if _n_neg(phi) == 0:
         pytest.skip('no fold planted')
     res = Solver(
-        constraint=TriConstraint2D(shape=(24, 24)),
+        constraint=SimplexConstraint2D(shape=(24, 24)),
         objective=L1Objective(eps=1e-4),
         strategy=SLPStrategy(accuracy='max'),
         threshold=0.01,
@@ -126,7 +126,7 @@ def test_slp_accuracy_max_via_correct_dvf():
         pytest.skip('no fold planted')
     res = correct_dvf(
         phi,
-        constraint='2tri',
+        constraint='simplex',
         shape=(H, W),
         strategy='slp',
         accuracy='max',
@@ -164,7 +164,7 @@ def test_slp_accuracy_max_missing_torch_probe(monkeypatch):
     with pytest.raises(ImportError, match='requires PyTorch'):
         strat.solve(
             phi,
-            constraint=TriConstraint2D(shape=(16, 16)),
+            constraint=SimplexConstraint2D(shape=(16, 16)),
             objective=L1Objective(eps=1e-4),
             threshold=0.01,
         )
@@ -196,7 +196,7 @@ def test_slp_accuracy_max_reports_true_l1_global_path():
         pytest.skip('no fold planted')
     phi_orig = phi.copy()
     res = Solver(
-        constraint=TriConstraint2D(shape=(24, 24)),
+        constraint=SimplexConstraint2D(shape=(24, 24)),
         objective=L1Objective(eps=1e-4),
         strategy=SLPStrategy(accuracy='max'),
         threshold=0.01,
@@ -218,7 +218,7 @@ def test_slp_accuracy_max_cluster_path_anchor_tag():
         pytest.skip('no fold planted')
     phi_orig = phi.copy()
     res = Solver(
-        constraint=TriConstraint2D(shape=(24, 24)),
+        constraint=SimplexConstraint2D(shape=(24, 24)),
         objective=L1Objective(eps=1e-4),
         # Force the cluster path on a small slice; serial pool.
         strategy=SLPStrategy(accuracy='max', cluster_pixel_threshold=100, n_workers=1),

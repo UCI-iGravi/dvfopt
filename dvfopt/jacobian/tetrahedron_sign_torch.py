@@ -16,7 +16,7 @@ forward here is enough to:
 * drop into a hand-rolled penalty/barrier loop for experimentation.
 
 The numpy path remains canonical for the constraint system
-(:class:`dvfopt.constraints.Tet6Constraint3D`); this module is for users
+(:class:`dvfopt.constraints.SimplexConstraint3D`); this module is for users
 who want a torch tensor in / torch tensor out.
 """
 

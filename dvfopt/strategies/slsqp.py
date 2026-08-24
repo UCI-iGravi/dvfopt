@@ -1,4 +1,4 @@
-"""SLSQP strategies — full-grid (2-tri / 6-tet) and windowed (Jdet)."""
+"""SLSQP strategies — full-grid (simplex (2D) / simplex (3D)) and windowed (Jdet)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ import numpy as np
 from dvfopt.constraints import (
     JdetConstraint2D,
     JdetConstraint3D,
-    Tet6Constraint3D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
 )
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
@@ -43,7 +43,7 @@ class SLSQPFullGridStrategy(Strategy):
 
     2-triangle constraints only; the underlying full-grid Jacobian
     builder lives in :mod:`dvfopt.core.slsqp_fullgrid.tri2d` and
-    assumes the 2-tri constraint structure.
+    assumes the simplex (2D) constraint structure.
     """
 
     max_iter: int = 50
@@ -53,7 +53,7 @@ class SLSQPFullGridStrategy(Strategy):
     warm_seed: int = 123
 
     supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    accepts_constraints = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
 
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
@@ -61,7 +61,7 @@ class SLSQPFullGridStrategy(Strategy):
         from dvfopt.core.slsqp_fullgrid.tri2d import iterative_2d_tri_slsqp
 
         self._check_constraint(constraint)
-        full_coverage = isinstance(constraint, TriConstraint2DFullCoverage)
+        full_coverage = isinstance(constraint, SimplexConstraint2DFullCoverage)
         out = iterative_2d_tri_slsqp(
             phi_in,
             threshold=threshold,
@@ -90,8 +90,8 @@ class SLSQPWindowedStrategy(Strategy):
     solves the local SLSQP subproblem with frozen edges, repeats. The
     2D triangle constraints run its ``enforce_triangles=True`` mode,
     which enforces all four triangles of every cell (both diagonals) —
-    exactly :class:`~dvfopt.constraints.TriConstraint2DBilinear`, and a
-    superset of the 2-tri pair.
+    exactly :class:`~dvfopt.constraints.SimplexConstraint2DBilinear`, and a
+    superset of the simplex (2D) pair.
 
     The composed :class:`~dvfopt.objectives.Objective` is plumbed all
     the way down to the per-window ``scipy.optimize.minimize`` call and
@@ -103,7 +103,7 @@ class SLSQPWindowedStrategy(Strategy):
     max_minimize_iter: int = 120
     # Extra constraint modes. 2D supports both flags; 3D supports
     # enforce_injectivity (axial monotonicity, linear rows). The 3D
-    # analogue of enforce_shoelace is the 6-tet constraint family.
+    # analogue of enforce_shoelace is the simplex (3D) constraint family.
     # NOTE on injectivity_threshold=None semantics: the 2D path runs the
     # adaptive tau-doubling loop (doubling until globally injective);
     # the 3D path simply defaults the gap bound to `threshold` — no
@@ -116,9 +116,9 @@ class SLSQPWindowedStrategy(Strategy):
     accepts_constraints = (
         JdetConstraint2D,
         JdetConstraint3D,
-        TriConstraint2D,
-        TriConstraint2DFullCoverage,
-        TriConstraint2DBilinear,
+        SimplexConstraint2D,
+        SimplexConstraint2DFullCoverage,
+        SimplexConstraint2DBilinear,
     )
 
     def solve(
@@ -156,7 +156,7 @@ class SLSQPWindowedStrategy(Strategy):
             if self.enforce_shoelace:
                 raise ValueError(
                     'enforce_shoelace is 2D-only; in 3D the geometric cell-volume '
-                    "condition is served by the 6-tet constraint family ('6tet')."
+                    "condition is served by the simplex (3D) constraint family ('simplex_3d')."
                 )
             out = iterative_3d(
                 deformation,
@@ -170,7 +170,8 @@ class SLSQPWindowedStrategy(Strategy):
             )
             return out, _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
         if isinstance(
-            constraint, (TriConstraint2D, TriConstraint2DFullCoverage, TriConstraint2DBilinear)
+            constraint,
+            (SimplexConstraint2D, SimplexConstraint2DFullCoverage, SimplexConstraint2DBilinear),
         ):
             from dvfopt.core import iterative_serial
 
@@ -210,7 +211,7 @@ class SLSQPFullGrid3DStrategy(Strategy):
     """Full-grid SLSQP for the 3D 6-tetrahedron constraint.
 
     3D analogue of :class:`SLSQPFullGridStrategy` — uses
-    ``Tet6Constraint3D.jacobian`` (sparse forward Jacobian wired in PR
+    ``SimplexConstraint3D.jacobian`` (sparse forward Jacobian wired in PR
     #12) to drive ``scipy.optimize.minimize(method='SLSQP')``.
 
     .. warning::
@@ -228,7 +229,7 @@ class SLSQPFullGrid3DStrategy(Strategy):
     ftol: float = 1e-8
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,

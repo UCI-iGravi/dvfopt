@@ -3,7 +3,7 @@
 Provides two functions:
 
 * :func:`cluster_schwarz_2d_tri` — 2D, 2-triangle constraint
-* :func:`cluster_schwarz_3d_tet` — 3D, 6-tet constraint
+* :func:`cluster_schwarz_3d_tet` — 3D, simplex (3D) constraint
 
 Both share the same algorithm shape: detect connected fold components,
 crop each with padding, run an *arbitrary* user-supplied
@@ -393,7 +393,7 @@ def cluster_schwarz_2d_tri(
 
 
 # ---------------------------------------------------------------------------
-# 3D — 6-tet volume cluster detection
+# 3D — simplex (3D) volume cluster detection
 # ---------------------------------------------------------------------------
 
 
@@ -458,10 +458,10 @@ def cluster_schwarz_3d_tet(
     verbose: int = 1,
     record_history: bool = False,
 ):
-    """Generic Schwarz domain decomposition for 6-tet 3D fields.
+    """Generic Schwarz domain decomposition for simplex (3D) 3D fields.
 
     See :func:`cluster_schwarz_2d_tri` — same algorithm, 3D analog.
-    Uses 6-tet volumes for fold detection and 26-connectivity CCL.
+    Uses simplex (3D) volumes for fold detection and 26-connectivity CCL.
 
     Parameters
     ----------

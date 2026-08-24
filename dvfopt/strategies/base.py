@@ -84,7 +84,7 @@ class Strategy(ABC):
       :meth:`_check_objective`, the objective-side analogue of
       :meth:`_check_constraint`.
     * ``supports_3d`` — whether the strategy handles 3D constraints
-      (i.e. ``constraint.dim == 3``). Most 2-tri-specific strategies
+      (i.e. ``constraint.dim == 3``). Most simplex (2D)-specific strategies
       are 2D-only by construction.
     """
 

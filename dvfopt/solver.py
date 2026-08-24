@@ -10,9 +10,9 @@ Usage
 
 Direct construction::
 
-    from dvfopt import Solver, TriConstraint2D, L1Objective, BarrierStrategy
+    from dvfopt import Solver, SimplexConstraint2D, L1Objective, BarrierStrategy
     solver = Solver(
-        constraint=TriConstraint2D(shape=(320, 456)),
+        constraint=SimplexConstraint2D(shape=(320, 456)),
         objective=L1Objective(eps=1e-4),
         strategy=BarrierStrategy(),
     )
@@ -22,7 +22,7 @@ String shorthand (constructs the parts from labels)::
 
     from dvfopt import Solver
     result = Solver.from_spec(
-        constraint='2tri', objective='l1',
+        constraint='simplex', objective='l1',
         strategy='schwarz_harmonic_alm_refine_repair',
         shape=(320, 456),
     ).fit(phi_in)
@@ -43,8 +43,8 @@ import numpy as np
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.constraints import (
     Constraint,
-    TriConstraint2D,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DFullCoverage,
     make_constraint,
 )
 from dvfopt.objectives import Objective, make_objective
@@ -227,7 +227,7 @@ class Solver:
         Examples
         --------
         >>> Solver.from_spec(
-        ...     constraint='2tri', objective='l1',
+        ...     constraint='simplex', objective='l1',
         ...     strategy='schwarz_harmonic_alm_refine_repair',
         ...     shape=(320, 456),
         ... )
@@ -401,7 +401,7 @@ class Solver:
 def correct_dvf(
     phi_in: np.ndarray,
     *,
-    constraint: Union[str, Constraint] = '2tri',
+    constraint: Union[str, Constraint] = 'simplex',
     objective: Union[str, Objective] = 'l1',
     strategy: Union[str, Strategy] = 'auto',
     shape: Optional[tuple[int, ...]] = None,
@@ -420,7 +420,7 @@ def correct_dvf(
 
     With ``strategy='auto'``, picks a strategy based on the constraint
     family, objective, and initial fold density (see
-    :func:`auto_strategy`; 2-tri + L1 always routes to ``'slp'``).
+    :func:`auto_strategy`; simplex (2D) + L1 always routes to ``'slp'``).
 
     .. note::
         The default objective here is ``'l1'``, matching
@@ -476,7 +476,7 @@ def auto_strategy(
       * **Mild** — ``slsqp`` (active-set machinery is fine, gives KKT
         certs).
 
-    For the 6-tet 3D constraint: extremes (``n_neg > 5000`` or
+    For the 3D simplex constraint: extremes (``n_neg > 5000`` or
     ``init_min < -10``) route to the 3D wallbreakers (``m10_3d`` for L2,
     ``m14_schwarz_3d`` on volumes >200K voxels, ``m14_3d`` otherwise) —
     the plain barrier stalls on dense 3D folds. Everything else keeps
@@ -491,9 +491,9 @@ def auto_strategy(
     they fall back to ``slsqp_windowed`` only if it accepts them
     (``'finite'`` has no windowed-SLSQP mode and keeps ``barrier``).
     """
-    from dvfopt.constraints import Tet6Constraint3D
+    from dvfopt.constraints import SimplexConstraint3D
 
-    is_tri = isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage))
+    is_tri = isinstance(constraint, (SimplexConstraint2D, SimplexConstraint2DFullCoverage))
     if is_tri:
         if objective_label == 'l1':
             # The SLP champion is the validated L1 regime at every fold
@@ -509,13 +509,13 @@ def auto_strategy(
         if init_n_neg > 100 or init_min < -0.25:
             return 'barrier'
         return 'slsqp'
-    # 6-tet 3D: mirror the 2D tiering. Dense 3D folds are exactly where
+    # 3D simplex: mirror the 2D tiering. Dense 3D folds are exactly where
     # the plain barrier stalls (its penalty phase can't find a feasible
     # step when many tets crowd zero simultaneously) — route extremes to
     # the 3D wallbreakers, whose harmonic seed guarantees a feasible
     # start. Mild-to-moderate folds keep the barrier (fast, and the
     # full-grid tet SLSQP does not scale).
-    if isinstance(constraint, Tet6Constraint3D):
+    if isinstance(constraint, SimplexConstraint3D):
         if init_n_neg > 5000 or init_min < -10.0:
             if objective_label == 'l2':
                 return 'm10_3d'  # ALM phase is L2-optimal

@@ -24,7 +24,7 @@ The strategy hierarchy:
     ├── NMVFStrategy                                     neighborhood-mean heuristic (legacy)
     ├── BarrierStrategy                                  penalty -> log-barrier L-BFGS-B
     ├── SLSQPFullGridStrategy                            full-grid SLSQP + warm-restart
-    ├── SLSQPWindowedStrategy                            windowed SLSQP (Jdet + 2-tri)
+    ├── SLSQPWindowedStrategy                            windowed SLSQP (Jdet + simplex (2D))
     ├── SchwarzStrategy                                  overlapping-tile SLSQP/Schwarz
     ├── SchwarzWrapperStrategy                           cluster-Schwarz wrapper around any inner Strategy (2D + 3D)
     ├── WindowedWrapperStrategy / ISQPWindowedStrategy   no-damage cluster-windowed engine (inner by label; isqp pinned)

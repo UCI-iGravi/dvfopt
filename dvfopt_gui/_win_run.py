@@ -346,7 +346,7 @@ class RunActionsMixin:
                 return
             zero_dz = True
         if self._is_3d_run:
-            # Per-slice stage needs a 2D method; drop back to the 2-tri family.
+            # Per-slice stage needs a 2D method; drop back to the simplex (2D) family.
             self._select_combo_data(self._constraint_combo, DEFAULT_CONSTRAINT)
         self._push_undo_state()
         if zero_dz:

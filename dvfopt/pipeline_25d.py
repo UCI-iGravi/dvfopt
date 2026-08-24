@@ -4,11 +4,11 @@ Wires the two ported core modules —
 :mod:`dvfopt.core.marching._marching_25d` (``layer_min_v`` / ``march_slice``)
 and :mod:`dvfopt.core.marching._mop_interior_3d` (``mop_interior_3d``) — into
 ONE reproducible call that drives a folded, in-plane-only 3D displacement
-field toward strict 6-tet feasibility.
+field toward strict simplex (3D) feasibility.
 
 The 2.5D precondition
 ---------------------
-The inter-layer 6-tet volume of a ``(lower, upper)`` layer pair depends only
+The inter-layer simplex (3D) volume of a ``(lower, upper)`` layer pair depends only
 on the two slices' in-plane displacement (``dy``/``dx``); the through-plane
 channel ``dz`` must be identically zero. Run per-slice 2D correction first
 (which yields ``dz == 0``) before calling this pipeline. ``dz`` (``phi[0]``)
@@ -109,7 +109,7 @@ def correct_dvf_25d(
     progress_callback=None,
     callback_copies: bool = True,
 ):
-    """Drive a folded, in-plane-only 3D DVF toward strict 6-tet feasibility.
+    """Drive a folded, in-plane-only 3D DVF toward strict simplex (3D) feasibility.
 
     Parameters
     ----------
@@ -187,7 +187,7 @@ def correct_dvf_25d(
     stages = []
 
     # ---- Stats + origin selection ----
-    # `mv` is the per-cube min 6-tet volume of the whole volume; with dz == 0
+    # `mv` is the per-cube min simplex (3D) volume of the whole volume; with dz == 0
     # its z-slab `mv[z]` equals the (z, z+1) inter-layer min-volume, so the
     # per-inter-layer fold counts come from this single measurement.
     mv, n_neg_in, n_below_in, min_T_in = _stats(out, threshold)

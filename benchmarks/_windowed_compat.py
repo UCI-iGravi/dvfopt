@@ -13,13 +13,13 @@ smoothing eps keeps the old ``1e-2`` default, and the engine accepts the old
 inner labels as aliases anyway).
 """
 
-from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, SimplexConstraint2D
 from dvfopt.core.windowed import min_field as _engine_min_field
 from dvfopt.core.windowed import windowed_correct
 from dvfopt.objectives import L1Objective, L2Objective, NoneObjective
 
 # Historical family-string API -> registered constraint types.
-FAMILY = {"jdet": JdetConstraint2D, "2tri": TriConstraint2D, "finite": FiniteJdetConstraint2D}
+FAMILY = {"jdet": JdetConstraint2D, "2tri": SimplexConstraint2D, "finite": FiniteJdetConstraint2D}
 
 # Old inner-solver labels -> the engine's canonical labels (the engine also
 # accepts the old names as aliases; mapping keeps the canonical spelling).

@@ -57,11 +57,11 @@ def _exact_min_T(phi_3dhw: np.ndarray) -> float:
 def _tet_seed(phi_in_3dhw: np.ndarray, threshold: float, strategy) -> np.ndarray:
     """Feasible seed via a 3D wallbreaker pipeline (one helper for every
     seed kind — the recipe lives in ONE place)."""
-    from dvfopt import L1Objective, Solver, Tet6Constraint3D
+    from dvfopt import L1Objective, SimplexConstraint3D, Solver
 
     D, H, W = phi_in_3dhw.shape[1:]
     solver = Solver(
-        constraint=Tet6Constraint3D(shape=(D, H, W)),
+        constraint=SimplexConstraint3D(shape=(D, H, W)),
         objective=L1Objective(eps=1e-4),
         strategy=strategy,
         threshold=threshold,

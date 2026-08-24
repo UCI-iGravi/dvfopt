@@ -60,9 +60,11 @@ def constraint_fold_stats(
 ) -> tuple[str, FoldStats]:
     """:class:`FoldStats` of a DVF under a named constraint.
 
-    ``constraint`` is a registry name ('2tri', '2tri_standard', 'bilinear',
-    'jdet', 'jdet_2d', 'finite', 'jdet_3d', '6tet'); ``'auto'`` picks '2tri' for 2D layouts
-    and '6tet' for true-3D ``(3, D>1, H, W)`` volumes. Returns the
+    ``constraint`` is a registry name ('simplex', 'simplex_standard',
+    'bilinear', 'jdet', 'jdet_2d', 'finite', 'jdet_3d', 'simplex_3d' —
+    legacy '2tri'/'2tri_standard'/'6tet'/'6tet_3d' still accepted);
+    ``'auto'`` picks 'simplex' for 2D layouts and 'simplex_3d' for
+    true-3D ``(3, D>1, H, W)`` volumes. Returns the
     resolved name plus the stats. Mirrors ``Solver._stats``
     (coerce -> flatten -> values), so the numbers agree with
     ``SolveResult.init_n_neg``/``init_min_T``.
@@ -71,8 +73,11 @@ def constraint_fold_stats(
 
     phi = np.asarray(phi, dtype=np.float64)
     if constraint == 'auto':
-        constraint = '6tet' if _is_volume(phi) else '2tri'
-    shape = phi.shape[-3:] if constraint in ('6tet', 'jdet_3d') else phi.shape[-2:]
+        constraint = 'simplex_3d' if _is_volume(phi) else 'simplex'
+    from dvfopt.constraints import _CONSTRAINT_REGISTRY
+
+    cls = _CONSTRAINT_REGISTRY.get(constraint)
+    shape = phi.shape[-3:] if getattr(cls, 'dim', 2) == 3 else phi.shape[-2:]
     c = make_constraint(constraint, shape)
     vals = c.values(c.flatten(c.coerce(phi)))
     return constraint, fold_stats(vals, threshold, err_tol)
@@ -105,7 +110,7 @@ def injectivity_stats(phi, max_window: int = 8) -> InjectivityStats:
     true-3D ``(3, D>1, H, W)`` ``[dz, dy, dx]``. 2D fields also get the
     exact bilinear cell certificate; 3D volumes report the radius map
     only — the trilinear Jdet is not multi-affine, so sub-voxel 3D folds
-    are the 6-tet constraint family's job (:func:`constraint_fold_stats`).
+    are the simplex (3D) constraint family's job (:func:`constraint_fold_stats`).
     See :class:`InjectivityStats` for how (not) to read the numbers.
     """
     from dvfopt.jacobian.injectivity_radius import (

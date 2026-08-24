@@ -26,7 +26,7 @@ pytest.importorskip("osqp", reason="escape modes require the osqp elastic-QP inn
 
 def _one_inverted_cell(h=40, w=40):
     """A smooth (feasible) field with a single deeply-inverted interior cell: move one
-    corner node across its cell so the 2-tri area flips negative, leaving the rest
+    corner node across its cell so the simplex (2D) area flips negative, leaving the rest
     fold-free — the sparse-residual regime the escape modes target."""
     yy, xx = np.mgrid[0:h, 0:w].astype(float)
     dy = 0.25 * np.sin(xx / 4.0)

@@ -1,9 +1,9 @@
 """Shared elastic trust-region SLP engine for the 2.5D marching repairs.
 
 Factored out of ``_marching_25d._repair_cluster`` (sweep: one frozen plane,
-inter-layer 6-tet + per-slice 2-tri LP blocks) and
-``_mop_interior_3d._repair_box`` (mop: frozen rim, 6-tet-only LP block with a
-2-tri term in the acceptance oracle). The engine owns the trust loop, the LP
+inter-layer simplex (3D) + per-slice simplex (2D) LP blocks) and
+``_mop_interior_3d._repair_box`` (mop: frozen rim, simplex (3D)-only LP block with a
+simplex (2D) term in the acceptance oracle). The engine owns the trust loop, the LP
 assembly from linearized constraint blocks, the ``linprog`` call, the exact
 acceptance test and the trust bookkeeping; callers own free-column selection,
 Jacobian construction/slicing, the exact-violation definition and the

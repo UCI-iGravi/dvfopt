@@ -20,7 +20,7 @@ def _planted_fold(size, seed=0, scale=0.4):
 
 
 class Correct2D:
-    """Wall-time of the auto 2-tri / L1 correction at a couple of grid sizes."""
+    """Wall-time of the auto simplex (2D) / L1 correction at a couple of grid sizes."""
 
     params = [12, 24]
     param_names = ["size"]
@@ -29,7 +29,7 @@ class Correct2D:
         self.phi = _planted_fold(size)
 
     def time_correct_2tri_l1_auto(self, size):
-        correct_dvf(self.phi, constraint="2tri", objective="l1", strategy="auto")
+        correct_dvf(self.phi, constraint="simplex", objective="l1", strategy="auto")
 
     def time_correct_jdet_barrier(self, size):
         correct_dvf(self.phi, constraint="jdet", objective="l1", strategy="barrier")

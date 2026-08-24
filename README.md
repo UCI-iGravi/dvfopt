@@ -6,7 +6,7 @@ Correct **negative Jacobian determinants** (folding) in 2D and 3D displacement f
 from dvfopt import correct_dvf
 
 # Auto strategy selection by fold density. Returns SolveResult.
-result = correct_dvf(phi, constraint='2tri', objective='l1', strategy='auto')
+result = correct_dvf(phi, constraint='simplex', objective='l1', strategy='auto')
 phi_corrected = result.corrected
 print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 ```
@@ -16,7 +16,7 @@ print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 | Layer | What it does | Where |
 |---|---|---|
 | **`Solver`** | Composes constraint + objective + strategy, validates input, runs | [dvfopt/solver.py](dvfopt/solver.py) |
-| **`Constraint`** | `TriConstraint2DFullCoverage` (default `'2tri'`) / `TriConstraint2D` (`'2tri_standard'`) / `JdetConstraint2D` / `JdetConstraint3D` / `Tet6Constraint3D` — feasibility check + analytical adjoint + sparse Jacobian. The 2-tri default is full-coverage (includes 2 corner patches) so every grid vertex sits in ≥ 2 triangles | [dvfopt/constraints.py](dvfopt/constraints.py) |
+| **`Constraint`** | `SimplexConstraint2DFullCoverage` (default `'simplex'`) / `SimplexConstraint2D` (`'simplex_standard'`) / `JdetConstraint2D` / `JdetConstraint3D` / `SimplexConstraint3D` — feasibility check + analytical adjoint + sparse Jacobian. The simplex (2D) default is full-coverage (includes 2 corner patches) so every grid vertex sits in ≥ 2 triangles | [dvfopt/constraints.py](dvfopt/constraints.py) |
 | **`Objective`** | `L1Objective` / `L2Objective` / `NoneObjective` — what to minimize subject to feasibility (composable via `+` / `*`) | [dvfopt/objectives.py](dvfopt/objectives.py) |
 | **`Strategy`** | `NMVFStrategy`, `BarrierStrategy`, `SLSQPFullGridStrategy`, `SLSQPWindowedStrategy`, `SchwarzStrategy`, `SchwarzWrapperStrategy(inner=…)`, `HarmonicALMBarrierStrategy` (alias `M10Strategy`), `HarmonicALMRefineRepairStrategy` (alias `M14Strategy`), `SchwarzHarmonicALMRefineRepairStrategy` (alias `M14SchwarzStrategy`) — how to actually optimize | [dvfopt/strategies/](dvfopt/strategies/) |
 | **`DVFopt`** (facade) | Per-slice orchestration for 3D volumes, tabular reports, plots | [dvfopt/unified.py](dvfopt/unified.py) |
@@ -26,7 +26,7 @@ print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 
 ## Strategy selection — quick guide
 
-| Initial fold density (2-tri constraint) | Recommended strategy |
+| Initial fold density (simplex (2D) constraint) | Recommended strategy |
 |---|---|
 | Mild — `n_neg ≤ 100` | `SLSQPFullGridStrategy` (KKT semantics, smallest L1 with `L1Objective`) |
 | Moderate-to-dense — 100 < `n_neg` < 5000 | `BarrierStrategy` (dominates SLSQP by ~100x at this density) |
@@ -37,11 +37,11 @@ For **Jdet** (no wallbreaker family): `BarrierStrategy` for dense, `SLSQPWindowe
 
 The `auto_strategy(constraint, init_n_neg, init_min, objective_label)` helper encodes this routing as a function — `strategy='auto'` in `correct_dvf` calls it.
 
-### 3D constraint choice: `6tet` vs `jdet_3d`
+### 3D constraint choice: `simplex_3d` vs `jdet_3d`
 
 Both check 3D feasibility, but they discretise differently:
 
-| | `'jdet_3d'` (per-voxel Jdet) | `'6tet'` (six tets per voxel) |
+| | `'jdet_3d'` (per-voxel Jdet) | `'simplex_3d'` (six tets per voxel) |
 |---|---|---|
 | **What it checks** | Sign of `det(I + ∇φ)` via central differences at each voxel | Signed volume of each of 6 tets that share the cell's main diagonal |
 | **Constraints per voxel cell** | 1 | 6 |
@@ -53,9 +53,9 @@ Both check 3D feasibility, but they discretise differently:
 **When to use which:**
 
 - **`'jdet_3d'`** for the classical post-hoc correction problem when registration is already mostly clean and you want fastest convergence + the SLSQP option. This is the original method generalised to 3D.
-- **`'6tet'`** when you suspect sub-voxel folds, when `jdet_3d` reports "feasible" but the warped grid still looks wrong, or when you want the 3D analogue of the 2D 2-triangle check. The 6× larger constraint vector is essentially free in barrier (the analytical adjoint is one vectorised numpy pass).
+- **`'simplex_3d'`** when you suspect sub-voxel folds, when `jdet_3d` reports "feasible" but the warped grid still looks wrong, or when you want the 3D analogue of the 2D 2-triangle check. The 6× larger constraint vector is essentially free in barrier (the analytical adjoint is one vectorised numpy pass).
 
-A practical pattern: run `'jdet_3d'` first; if `result.feasible == True` but `min(six_tet_volumes_3d(result.corrected)) <= 0` (you can check directly), re-run with `'6tet'`.
+A practical pattern: run `'jdet_3d'` first; if `result.feasible == True` but `min(six_tet_volumes_3d(result.corrected)) <= 0` (you can check directly), re-run with `'simplex_3d'`.
 
 ## Quick start
 
@@ -65,8 +65,8 @@ A practical pattern: run `'jdet_3d'` first; if `result.feasible == True` but `mi
 from dvfopt import correct_dvf
 result = correct_dvf(
     phi,                       # (2, H, W) | (3, H, W) | (3, 1, H, W) | (3, D, H, W)
-    constraint='2tri',         # default: full-coverage (T1, T2, + 2 corner patches)
-                               # | '2tri_standard' (TR-BL only, no patches) | 'jdet' | 'jdet_3d' | '6tet'
+    constraint='simplex',         # default: full-coverage (T1, T2, + 2 corner patches)
+                               # | 'simplex_standard' (TR-BL only, no patches) | 'jdet' | 'jdet_3d' | 'simplex_3d'
     objective='l1',            # | 'l2' | 'none' (feasibility-only)
     strategy='auto',           # or 'nmvf' | 'barrier' | 'slsqp_fullgrid' | 'schwarz_harmonic_alm_refine_repair' | ...
 )
@@ -75,9 +75,9 @@ result = correct_dvf(
 ### Explicit composition
 
 ```python
-from dvfopt import Solver, TriConstraint2D, L1Objective, SchwarzHarmonicALMRefineRepairStrategy
+from dvfopt import Solver, SimplexConstraint2D, L1Objective, SchwarzHarmonicALMRefineRepairStrategy
 solver = Solver(
-    constraint=TriConstraint2D(shape=(320, 456)),
+    constraint=SimplexConstraint2D(shape=(320, 456)),
     objective=L1Objective(eps=1e-4),
     strategy=SchwarzHarmonicALMRefineRepairStrategy(pad=4),
 )
@@ -90,7 +90,7 @@ print(f'feasible={result.feasible}, L1={result.info.get("L1"):.4f}')
 ```python
 from dvfopt import DVFopt, DVFoptConfig
 opt = DVFopt(DVFoptConfig(
-    constraint='2tri', solver='schwarz_harmonic_alm_refine_repair',
+    constraint='simplex', solver='schwarz_harmonic_alm_refine_repair',
     objective='l1', threshold=0.01,
 ))
 result = opt.fit(deformation)            # (3, D, H, W) or (2, H, W)
@@ -103,7 +103,7 @@ print(result.to_dataframe())             # per-slice tabular
 Installed with the package (`pip install -e .`) as `dvfopt` (or `python -m dvfopt`):
 
 ```bash
-# Fold metrics only (auto constraint: 2tri for 2D, 6tet for 3D volumes).
+# Fold metrics only (auto constraint: simplex for 2D, simplex_3d for 3D volumes).
 dvfopt info field.nii.gz
 dvfopt info field.npy --check          # exit 1 if not strictly feasible (CI-friendly)
 
@@ -146,7 +146,7 @@ Both apply the package theme automatically (`apply_theme()`), use the curated `P
 | `NMVFStrategy` (heuristic) | Iteratively replace every pixel in the 3x3 neighbourhood of each fold with the local mean displacement vector | Fast first-pass smoother on sparse 2D Jdet folds; the original method this package was built around (lossy — non-optimisation) |
 | `HarmonicALMBarrierStrategy` (aka `M10Strategy`) | Harmonic Laplacian extension into fold cores → PHR augmented Lagrangian tightening → log-barrier L-BFGS-B polish | Extreme density where barrier stalls |
 | `HarmonicALMRefineRepairStrategy` (aka `M14Strategy`) | m10 seed + soft-penalty L2 refine + harmonic repair + barrier polish | After m10, when you want smallest L1 |
-| `SchwarzWrapperStrategy(inner=…)` | Cluster-CCL Schwarz decomposition around any 2-tri or 6-tet inner strategy — generic version of the m14-Schwarz pipeline. Auto-detects 2D vs 3D from the outer constraint | Large slices/volumes with sparse fold clusters; same speedup as the dedicated m14-Schwarz path but inner is swappable |
+| `SchwarzWrapperStrategy(inner=…)` | Cluster-CCL Schwarz decomposition around any simplex (2D) or simplex (3D) inner strategy — generic version of the m14-Schwarz pipeline. Auto-detects 2D vs 3D from the outer constraint | Large slices/volumes with sparse fold clusters; same speedup as the dedicated m14-Schwarz path but inner is swappable |
 | `SchwarzHarmonicALMRefineRepairStrategy` (aka `M14SchwarzStrategy`) | m14 with cluster-localized domain decomposition + global polish. Equivalent to `SchwarzWrapperStrategy(inner=HarmonicALMRefineRepairStrategy())` | Large slices where m14 itself becomes the bottleneck (~5× speedup) |
 
 ## Manuscript-grade math: see [Methods Reference](#methods-reference) (below)
@@ -669,7 +669,7 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 
 ```
 ├── dvfopt/                         # Installable Python package (single package)
-│   ├── constraints.py              # Constraint axis (2-tri, Jdet 2D/3D, 6-tet)
+│   ├── constraints.py              # Constraint axis (simplex (2D), Jdet 2D/3D, simplex (3D))
 │   ├── objectives.py               # Objective axis (L1/L2/None + anchor_term)
 │   ├── strategies/                 # Strategy axis (one module per family)
 │   ├── solver.py                   # Solver composition + auto_strategy
@@ -678,16 +678,16 @@ The iterative algorithm is structurally identical — find worst voxel, compute 
 │   │   ├── nmvf/                   # Heuristic neighborhood-mean smoother
 │   │   ├── barrier/                # Penalty -> log-barrier (_core.py = engine)
 │   │   ├── slsqp_windowed/         # Windowed Jdet SLSQP (serial/parallel, 2D+3D)
-│   │   ├── slsqp_fullgrid/         # Full-grid SLSQP (2-tri, 6-tet)
+│   │   ├── slsqp_fullgrid/         # Full-grid SLSQP (simplex (2D), simplex (3D))
 │   │   ├── schwarz/                # Domain decomposition (_common.py = engine)
 │   │   ├── wallbreakers/           # Harmonic + ALM + refine/repair stacks
-│   │   ├── slp/                    # Sequential-LP / HiGHS (2-tri, 6-tet)
+│   │   ├── slp/                    # Sequential-LP / HiGHS (simplex (2D), simplex (3D))
 │   │   └── marching/               # 2.5D marching + 3D-interior mop
 │   ├── jacobian/                   # Jacobian determinant computation
 │   │   ├── numpy_jdet.py           # Pure-numpy 2D/3D Jacobian
 │   │   ├── sitk_jdet.py            # SimpleITK wrapper
 │   │   ├── shoelace.py             # Shoelace (geometric quad area) constraint
-│   │   ├── tetrahedron_sign.py     # 6-tet signed volumes + adjoint
+│   │   ├── tetrahedron_sign.py     # simplex (3D) signed volumes + adjoint
 │   │   └── monotonicity.py         # Injectivity/monotonicity constraint
 │   ├── dvf/                        # Deformation field utilities
 │   │   ├── generation.py           # Random DVF generation (2D/3D)

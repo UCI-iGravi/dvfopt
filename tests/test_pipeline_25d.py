@@ -14,7 +14,7 @@ from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
 def _planted_25d_fold():
-    """Small dz==0 field with an inter-layer 6-tet fold between z=2 and z=3."""
+    """Small dz==0 field with an inter-layer simplex (3D) fold between z=2 and z=3."""
     rng = np.random.default_rng(0)
     phi = rng.normal(0, 0.02, (3, 6, 20, 20)).astype(np.float64)
     phi[0] = 0.0  # dz == 0 (2.5D precondition)

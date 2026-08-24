@@ -594,7 +594,7 @@ def plot_jdet_histograms(jac_groups, labels, title=None, figscale=2.5, colors=No
 def benchmark_canonical_2tri_2d(
     method_fn, *, label=None, threshold=None, err_tol=1e-5, verbose=True
 ):
-    """Run ``method_fn`` over every canonical 2D 2-tri case and report results.
+    """Run ``method_fn`` over every canonical 2D simplex (2D) case and report results.
 
     Parameters
     ----------

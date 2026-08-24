@@ -1,4 +1,4 @@
-"""Tests for the Schwarz hybrid 2-tri solver and its per-cluster building block.
+"""Tests for the Schwarz hybrid simplex (2D) solver and its per-cluster building block.
 
 Promoted from ``notebooks/experiments/overlapping_tiles_schwarz.ipynb``,
 which demonstrated 100% feasibility on dense-fold B0039 slices the

@@ -1,4 +1,4 @@
-"""4-stage refine-repair pipeline for the 6-tet constraint (m14-3D).
+"""4-stage refine-repair pipeline for the simplex (3D) constraint (m14-3D).
 
 3D analog of :mod:`dvfopt.core.wallbreakers._refine_repair`. Same staged
 structure, just with the 3D primitives in place of 2D:

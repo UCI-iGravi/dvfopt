@@ -1,4 +1,4 @@
-"""Whole-volume GPU PHR augmented-Lagrangian 3D (6-tet) untangler.
+"""Whole-volume GPU PHR augmented-Lagrangian 3D (simplex (3D)) untangler.
 
 3D analogue of ``dvfopt.core.slp._gpu_untangle.gpu_untangle_alm_2d`` — the
 2D accuracy='max' GPU seed. A first-order, whole-volume untangler that
@@ -66,7 +66,7 @@ def gpu_untangle_alm_3d(
     device=None,
     verbose=0,
 ):
-    """Whole-volume GPU 6-tet untangler with a PHR augmented Lagrangian.
+    """Whole-volume GPU simplex (3D) untangler with a PHR augmented Lagrangian.
 
     Mirrors :func:`dvfopt.core.slp._gpu_untangle.gpu_untangle_alm_2d`
     (same defaults, same schedule) with triangle areas replaced by the six

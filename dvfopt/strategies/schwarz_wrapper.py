@@ -17,11 +17,11 @@ for the same behaviour with the flexibility to swap the inner.
 Example::
 
     from dvfopt import (
-        Solver, TriConstraint2D, L1Objective,
+        Solver, SimplexConstraint2D, L1Objective,
         SchwarzWrapperStrategy, HarmonicALMRefineRepairStrategy,
     )
     result = Solver(
-        constraint=TriConstraint2D(shape=(320, 456)),
+        constraint=SimplexConstraint2D(shape=(320, 456)),
         objective=L1Objective(eps=1e-4),
         strategy=SchwarzWrapperStrategy(
             inner=HarmonicALMRefineRepairStrategy(),
@@ -39,9 +39,9 @@ import numpy as np
 
 from dvfopt.constraints import (
     Constraint,
-    Tet6Constraint3D,
-    TriConstraint2D,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
 )
 from dvfopt.exceptions import IncompatibleConstraintError
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
@@ -49,8 +49,8 @@ from dvfopt.strategies.base import Strategy, _build_solve_info, register_strateg
 # Constraint families the schwarz wrapper knows how to decompose.
 # Both must support a single-argument ``type(c)(shape=new_shape)`` clone
 # so per-cluster crops get a fresh constraint of matching shape.
-_SCHWARZ_2D = (TriConstraint2D, TriConstraint2DFullCoverage)
-_SCHWARZ_3D = (Tet6Constraint3D,)
+_SCHWARZ_2D = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
+_SCHWARZ_3D = (SimplexConstraint3D,)
 
 
 @register_strategy('schwarz_wrapper')
@@ -65,8 +65,8 @@ class SchwarzWrapperStrategy(Strategy):
 
     Compatible inner strategies are the ones whose
     ``accepts_constraints`` covers either the 2D 2-triangle family
-    (:class:`TriConstraint2D`, :class:`TriConstraint2DFullCoverage`) or
-    the 3D 6-tet family (:class:`Tet6Constraint3D`). The wrapper
+    (:class:`SimplexConstraint2D`, :class:`SimplexConstraint2DFullCoverage`) or
+    the 3D simplex (3D) family (:class:`SimplexConstraint3D`). The wrapper
     auto-detects 2D vs 3D from the outer constraint and dispatches
     accordingly.
 

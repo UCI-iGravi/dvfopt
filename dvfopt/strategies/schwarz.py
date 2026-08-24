@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dvfopt.constraints import TriConstraint2D, TriConstraint2DFullCoverage
+from dvfopt.constraints import SimplexConstraint2D, SimplexConstraint2DFullCoverage
 from dvfopt.strategies.base import Strategy, register_strategy
 
 
 @register_strategy('schwarz')
 @dataclass
 class SchwarzStrategy(Strategy):
-    """Overlapping-tile Schwarz + per-cluster SLSQP. 2-tri only —
+    """Overlapping-tile Schwarz + per-cluster SLSQP. simplex (2D) only —
     wraps :func:`dvfopt.core.schwarz.tri2d.iterative_2d_tri_schwarz`."""
 
     max_outer: int = 6
 
     supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    accepts_constraints = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
 
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_

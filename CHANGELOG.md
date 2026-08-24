@@ -6,6 +6,29 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — simplex terminology (pure rename, zero behavioral change)
+
+The "2-tri" / "6-tet" fold metrics are renamed to the **simplex** metric:
+they are the Jacobian determinant of the piecewise-linear simplicial
+interpolant (2 triangles/cell in 2D, 6 tetrahedra/cell in 3D). Full
+backwards compatibility via aliases:
+
+- **Classes** (old names stay importable, same class objects):
+  `TriConstraint2D` → `SimplexConstraint2D`,
+  `TriConstraint2DFullCoverage` → `SimplexConstraint2DFullCoverage`,
+  `TriConstraint2DBilinear` → `SimplexConstraint2DBilinear`,
+  `Tet6Constraint3D` → `SimplexConstraint3D`.
+- **Registry labels** (legacy labels remain registered): `'simplex'` (was
+  `'2tri'`), `'simplex_standard'` (was `'2tri_standard'`), `'simplex_3d'`
+  (was `'6tet'` / `'6tet_3d'`); `'bilinear'`, `'jdet*'`, `'finite'`
+  unchanged.
+- **Defaults / displays** now spell the new labels: `correct_dvf` /
+  `Solver.from_spec` / `DVFoptConfig` / CLI `correct --constraint` default
+  to `'simplex'`; `constraint_fold_stats(..., 'auto')` resolves to
+  `'simplex'` / `'simplex_3d'` (the resolved-name return value — and hence
+  the CLI `summary.json` `constraint` field — changes spelling); GUI menus
+  and reports say "Simplex (2D)" / "Simplex (3D)".
+
 Windowed-engine promotion (the PR #61–64 benchmark fold-corrector moves into
 the library) plus an over-engineering cleanup.
 

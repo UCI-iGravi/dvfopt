@@ -1,8 +1,8 @@
-"""Tests for the promoted 3D (6-tet) SLP solvers and SLPStrategy 3D path.
+"""Tests for the promoted 3D (simplex (3D)) SLP solvers and SLPStrategy 3D path.
 
 The 3D SLP family (lp_direct_6tet / cluster_lp_6tet / _gpu_untangle_3d)
 was promoted from ``research/strict_feasibility_3d`` into
-``dvfopt.core.slp``; ``SLPStrategy`` gained a 6-tet dispatch. These tests
+``dvfopt.core.slp``; ``SLPStrategy`` gained a simplex (3D) dispatch. These tests
 pin the promoted API and end-to-end feasibility on a small synthetic
 fold. The research paths remain importable via back-compat shims.
 """
@@ -61,11 +61,11 @@ class TestClusterSlpIter3D:
 
 class TestSLPStrategy3D:
     def test_solver_composition_reaches_feasibility(self):
-        from dvfopt import L1Objective, SLPStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L1Objective, SimplexConstraint3D, SLPStrategy, Solver
 
         phi = _folded_volume()
         result = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(),
             strategy=SLPStrategy(),
             threshold=THRESHOLD,
@@ -78,7 +78,7 @@ class TestSLPStrategy3D:
 
         phi = _folded_volume()
         result = Solver.from_spec(
-            constraint='6tet',
+            constraint='simplex_3d',
             objective='l1',
             strategy='slp',
             shape=phi.shape[1:],
@@ -91,11 +91,11 @@ class TestSLPStrategy3D:
         """Volumes above cluster_pixel_threshold dispatch to the 3D
         cluster path (checked via the solve info, no big solve needed —
         we shrink the threshold instead of growing the volume)."""
-        from dvfopt import L1Objective, SLPStrategy, Solver, Tet6Constraint3D
+        from dvfopt import L1Objective, SimplexConstraint3D, SLPStrategy, Solver
 
         phi = _folded_volume()
         result = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(),
             strategy=SLPStrategy(cluster_pixel_threshold=1),  # force cluster path
             threshold=THRESHOLD,

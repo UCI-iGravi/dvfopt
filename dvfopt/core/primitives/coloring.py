@@ -27,7 +27,7 @@ def colored_jacobian(constraint, flat, pattern, colors, stride=None):
     adjoint with their indicator returns each of their rows superposed on
     non-overlapping columns, and ``colvals[pattern[r]]`` recovers row ``r`` exactly.
     ``pattern``/``colors`` are precomputed once per grid shape (Jdet: pixel grid,
-    ``(i%3)*3+j%3``; 2-tri: cell grid, ``triangle*4 + (i%2)*2 + j%2``). ``stride`` is
+    ``(i%3)*3+j%3``; simplex (2D): cell grid, ``triangle*4 + (i%2)*2 + j%2``). ``stride`` is
     accepted for back-compat but ignored — the colour count is ``colors.max()+1``.
     Returns a ``scipy.sparse`` CSC matrix.
     """

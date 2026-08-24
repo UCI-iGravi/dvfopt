@@ -1,7 +1,7 @@
 """Penalty -> log-barrier L-BFGS-B strategy.
 
 The "workhorse" for moderate-density problems. Works for every concrete
-:class:`Constraint` subclass — 2D 2-tri, 2D Jdet, 3D Jdet — because the
+:class:`Constraint` subclass — 2D simplex (2D), 2D Jdet, 3D Jdet — because the
 underlying :func:`dvfopt.core.barrier._core.run_penalty_barrier_lbfgs`
 only requires ``constraint.values`` + ``constraint.adjoint``.
 """
@@ -84,7 +84,7 @@ class BarrierStrategy(Strategy):
 @register_strategy('barrier_tet_3d_torch')
 @dataclass
 class BarrierTet3DTorchStrategy(Strategy):
-    """GPU (CUDA) penalty → log-barrier solver for the 3D 6-tet constraint.
+    """GPU (CUDA) penalty → log-barrier solver for the 3D simplex (3D) constraint.
 
     Wraps :func:`dvfopt.core.barrier.tet3d_torch.iterative_3d_tet_barrier_torch`
     — an on-device (torch.optim.LBFGS) version of the penalty→barrier
@@ -138,14 +138,14 @@ class BarrierTet3DTorchStrategy(Strategy):
     ):
         import numpy as np
 
-        from dvfopt.constraints import Tet6Constraint3D
+        from dvfopt.constraints import SimplexConstraint3D
         from dvfopt.core.barrier.tet3d_torch import (
             iterative_3d_tet_barrier_torch,
         )
 
-        if not isinstance(constraint, Tet6Constraint3D):
+        if not isinstance(constraint, SimplexConstraint3D):
             raise IncompatibleConstraintError(
-                'BarrierTet3DTorchStrategy requires Tet6Constraint3D, got '
+                'BarrierTet3DTorchStrategy requires SimplexConstraint3D, got '
                 f'{type(constraint).__name__}'
             )
         import torch

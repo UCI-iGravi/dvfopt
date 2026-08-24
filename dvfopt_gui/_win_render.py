@@ -186,7 +186,7 @@ class RenderMixin:
         self._update_quiver(phi_2hw)
 
     def _heatmap_slice_3d(self, phi3d: np.ndarray) -> np.ndarray:
-        """The per-slice 3D fold field for the current z (default 6-tet
+        """The per-slice 3D fold field for the current z (default simplex (3D)
         min volume; Jdet3D when that constraint is selected). Padded to
         (H, W) with NaN at the trailing row/col so it lines up with the
         grid (the tet field is (D-1, H-1, W-1)).
@@ -210,7 +210,7 @@ class RenderMixin:
 
     def _set_view_3d(self, phi3d: np.ndarray, *, fast: bool = False) -> None:
         """3D heatmap: the fold-metric slice at the current z. The grid /
-        2-tri / Jdet views fall back to the (dy,dx) of the current slice."""
+        simplex (2D) / Jdet views fall back to the (dy,dx) of the current slice."""
         z = min(self._z, phi3d.shape[1] - 1)
         slice_2hw = phi3d[1:, z]  # (2, H, W) [dy, dx]
         mode = self._view_mode
@@ -373,7 +373,7 @@ class RenderMixin:
         # (captured *before* ``self._latest`` is overwritten below) lets
         # that path skip the whole-volume metric invalidation so
         # ``_heatmap_slice_3d`` hits ``_metric3d_field``'s cache instead
-        # of re-running the 6-tet/Jdet3D kernel on every tick. A genuinely
+        # of re-running the simplex (3D)/Jdet3D kernel on every tick. A genuinely
         # new snapshot (different object) still invalidates as before.
         same_field = snap is self._latest
         self._latest = snap

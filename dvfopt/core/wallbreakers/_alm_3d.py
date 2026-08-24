@@ -18,7 +18,7 @@ updates the Lagrange multiplier ``mu_i <- max(0, mu_i - rho (V_i - tau))``;
 (Birgin-Martinez safeguard).
 
 Same approach + the same shaped helpers as the 2D version, just with
-the 6-tet primitives in place of 2-tri.
+the simplex (3D) primitives in place of simplex (2D).
 
 Used as step 2 of the full m10-3D pipeline (harmonic seed → ALM →
 barrier polish). For now it's also useful as a standalone alternative
@@ -42,7 +42,7 @@ from dvfopt.objectives import L2Objective, Objective, _kind_eps
 def _alm_objective_3d(
     phi_flat, phi_init_flat, D, H, W, threshold, mu, rho, anchor='l2', eps_l1=1e-4
 ):
-    """PHR-ALM objective + gradient on the 6-tet constraint."""
+    """PHR-ALM objective + gradient on the simplex (3D) constraint."""
     diff = phi_flat - phi_init_flat
     if anchor == 'l2':
         val = 0.5 * float(diff @ diff)
@@ -125,7 +125,7 @@ def augmented_lagrangian_3d(
     if threshold is None:
         threshold = DEFAULT_PARAMS['threshold']
     _, D, H, W = phi_in.shape
-    # Phi pack: [dx, dy, dz] (DX_FIRST) — matches Tet6Constraint3D.
+    # Phi pack: [dx, dy, dz] (DX_FIRST) — matches SimplexConstraint3D.
     phi_init = phi_in.copy()
     phi_init_flat = np.concatenate([phi_init[2].ravel(), phi_init[1].ravel(), phi_init[0].ravel()])
     # Anchor reference (distance is measured against this, not phi_init).

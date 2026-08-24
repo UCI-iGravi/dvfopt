@@ -18,10 +18,10 @@ from dvfopt import (
 from dvfopt.constraints import (
     FiniteJdetConstraint2D,
     JdetConstraint2D,
-    Tet6Constraint3D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
     make_constraint,
 )
 from dvfopt.core.primitives.coloring import dense_jacobian
@@ -51,7 +51,8 @@ def _sparse_folds(H=100, W=100, seed=3):
 
 @needs_osqp
 @pytest.mark.parametrize(
-    "ctype", [TriConstraint2D, JdetConstraint2D, FiniteJdetConstraint2D, TriConstraint2DBilinear]
+    "ctype",
+    [SimplexConstraint2D, JdetConstraint2D, FiniteJdetConstraint2D, SimplexConstraint2DBilinear],
 )
 def test_solver_composition_reaches_zero_folds(ctype):
     phi = _sparse_folds()
@@ -78,9 +79,11 @@ def test_make_strategy_zero_arg():
 
 
 def test_from_spec_resolves_registry_label():
-    solver = Solver.from_spec(strategy="isqp_windowed", constraint="2tri_standard", shape=(20, 20))
+    solver = Solver.from_spec(
+        strategy="isqp_windowed", constraint="simplex_standard", shape=(20, 20)
+    )
     assert isinstance(solver.strategy, ISQPWindowedStrategy)
-    assert isinstance(solver.constraint, TriConstraint2D)
+    assert isinstance(solver.constraint, SimplexConstraint2D)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +94,7 @@ def test_from_spec_resolves_registry_label():
 def test_rejects_fullcoverage_constraint_at_construction():
     with pytest.raises(IncompatibleConstraintError):
         Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(12, 12)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(12, 12)),
             objective=L2Objective(),
             strategy=ISQPWindowedStrategy(),
         )
@@ -100,7 +103,7 @@ def test_rejects_fullcoverage_constraint_at_construction():
 def test_rejects_6tet_constraint_at_construction():
     with pytest.raises(IncompatibleConstraintError):
         Solver(
-            constraint=Tet6Constraint3D(shape=(4, 6, 6)),
+            constraint=SimplexConstraint3D(shape=(4, 6, 6)),
             objective=L2Objective(),
             strategy=ISQPWindowedStrategy(),
         )
