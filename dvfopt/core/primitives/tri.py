@@ -225,6 +225,42 @@ def tri_grad_T_v_full_coverage(phi_flat, H, W, v):
     return np.concatenate([g_dy.ravel(), g_dx.ravel()])
 
 
+# --- Bilinear (both-diagonal) variant: 4 triangles per cell, the rows behind
+# :class:`dvfopt.constraints.TriConstraint2DBilinear`. The TL-BR pair is the
+# TR-BL pair of the x-MIRRORED field (mirroring swaps the diagonals), so the
+# kernels above serve both halves unchanged.
+# ponytail: 2 kernel launches + mirror copies ~ 2.3x the 2-tri cost per call;
+# fuse both diagonals into the kernels if the barrier path on bilinear gets hot.
+
+
+def _mirror_flat(f, H, W):
+    """x-mirror of a flat DY_FIRST vector: pixel columns reversed, dx negated.
+    An involution and self-adjoint, so it also maps gradients back."""
+    HW = H * W
+    dy, dx = f[:HW].reshape(H, W), f[HW:].reshape(H, W)
+    return np.concatenate([dy[:, ::-1].ravel(), -dx[:, ::-1].ravel()])
+
+
+def tri_areas_flat_bilinear(phi_flat, H, W):
+    """``[T1, T2, U1, U2]`` — both diagonal splits, length ``4*(H-1)*(W-1)``.
+
+    ``T1``/``T2`` are :func:`tri_areas_flat`'s TR-BL pair; ``U1 = (TL, BL, BR)``
+    and ``U2 = (TR, TL, BR)`` are the TL-BR pair (mirrored cell ``j'`` is
+    original cell ``W-2-j'``, hence the column reversal).
+    """
+    U = tri_areas_flat(_mirror_flat(phi_flat, H, W), H, W).reshape(2, H - 1, W - 1)[:, :, ::-1]
+    return np.concatenate([tri_areas_flat(phi_flat, H, W), U.ravel()])
+
+
+def tri_grad_T_v_bilinear(phi_flat, H, W, v):
+    """J^T @ v for :func:`tri_areas_flat_bilinear` (``v`` of length
+    ``4*(H-1)*(W-1)``), returned as ``[g_dy.ravel(), g_dx.ravel()]``."""
+    m = (H - 1) * (W - 1)
+    vm = v[2 * m :].reshape(2, H - 1, W - 1)[:, :, ::-1].ravel()
+    gm = tri_grad_T_v(_mirror_flat(phi_flat, H, W), H, W, vm)
+    return tri_grad_T_v(phi_flat, H, W, v[: 2 * m]) + _mirror_flat(gm, H, W)
+
+
 def build_full_grid_tri_jac(H, W, full_coverage):
     """Build a callable ``jac(z) -> (n_constr, n_vars) ndarray`` for the
     full-grid 2-triangle constraint.
@@ -398,7 +434,9 @@ _build_full_grid_tri_jac = build_full_grid_tri_jac
 __all__ = [
     'build_full_grid_tri_jac',
     'tri_areas_flat',
+    'tri_areas_flat_bilinear',
     'tri_areas_flat_full_coverage',
     'tri_grad_T_v',
+    'tri_grad_T_v_bilinear',
     'tri_grad_T_v_full_coverage',
 ]

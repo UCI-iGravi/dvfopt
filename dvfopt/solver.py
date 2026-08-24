@@ -486,7 +486,10 @@ def auto_strategy(
     ``n_neg > 500`` or ``init_min < -1``; the mild tier below that
     prefers ``isqp_windowed`` (the no-damage windowed elastic-QP
     engine) when ``osqp`` is installed and the constraint is 2D, else
-    ``slsqp_windowed``.
+    ``slsqp_windowed``. The other 2D families that reach this tier
+    (``'bilinear'``, ``'finite'``) tier the same way; without ``osqp``
+    they fall back to ``slsqp_windowed`` only if it accepts them
+    (``'finite'`` has no windowed-SLSQP mode and keeps ``barrier``).
     """
     from dvfopt.constraints import Tet6Constraint3D
 
@@ -530,7 +533,11 @@ def auto_strategy(
     # keeps the legacy windowed SLSQP.
     if constraint.dim == 2 and importlib.util.find_spec('osqp') is not None:
         return 'isqp_windowed'
-    return 'slsqp_windowed'
+    from dvfopt.strategies.slsqp import SLSQPWindowedStrategy
+
+    if isinstance(constraint, SLSQPWindowedStrategy.accepts_constraints):
+        return 'slsqp_windowed'
+    return 'barrier'
 
 
 __all__ = [

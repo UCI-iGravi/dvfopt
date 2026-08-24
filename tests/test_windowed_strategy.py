@@ -20,6 +20,7 @@ from dvfopt.constraints import (
     JdetConstraint2D,
     Tet6Constraint3D,
     TriConstraint2D,
+    TriConstraint2DBilinear,
     TriConstraint2DFullCoverage,
     make_constraint,
 )
@@ -49,7 +50,9 @@ def _sparse_folds(H=100, W=100, seed=3):
 
 
 @needs_osqp
-@pytest.mark.parametrize("ctype", [TriConstraint2D, JdetConstraint2D, FiniteJdetConstraint2D])
+@pytest.mark.parametrize(
+    "ctype", [TriConstraint2D, JdetConstraint2D, FiniteJdetConstraint2D, TriConstraint2DBilinear]
+)
 def test_solver_composition_reaches_zero_folds(ctype):
     phi = _sparse_folds()
     res = Solver(

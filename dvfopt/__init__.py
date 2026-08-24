@@ -38,6 +38,7 @@ Public API
     from dvfopt import (
         Solver, correct_dvf, auto_strategy,
         Constraint, TriConstraint2D, TriConstraint2DFullCoverage,
+        TriConstraint2DBilinear, FiniteJdetConstraint2D,
         JdetConstraint2D, JdetConstraint3D, make_constraint,
         Objective, L1Objective, L2Objective, NoneObjective, make_objective,
         Strategy, NMVFStrategy, BarrierStrategy, SLSQPFullGridStrategy,
@@ -129,6 +130,7 @@ from dvfopt.constraints import (
     PhiPack,
     Tet6Constraint3D,
     TriConstraint2D,
+    TriConstraint2DBilinear,
     TriConstraint2DFullCoverage,
     make_constraint,
     register_constraint,
@@ -301,6 +303,7 @@ __all__ = [
     'Strategy',
     'Tet6Constraint3D',
     'TriConstraint2D',
+    'TriConstraint2DBilinear',
     'TriConstraint2DFullCoverage',
     'WindowedWrapperStrategy',
     'auto_strategy',

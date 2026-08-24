@@ -9,7 +9,12 @@ phrased against registered constraint instances and Objective objects.
 import numpy as np
 import pytest
 
-from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.constraints import (
+    FiniteJdetConstraint2D,
+    JdetConstraint2D,
+    TriConstraint2D,
+    TriConstraint2DBilinear,
+)
 from dvfopt.core.primitives.isqp import HAS_OSQP
 from dvfopt.core.windowed import build_subproblem, min_field, windowed_correct
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
@@ -18,7 +23,12 @@ from dvfopt.objectives import L1Objective, L2Objective
 if not HAS_OSQP:
     pytest.skip("osqp not installed", allow_module_level=True)
 
-_FAMILY = {"jdet": JdetConstraint2D, "2tri": TriConstraint2D, "finite": FiniteJdetConstraint2D}
+_FAMILY = {
+    "jdet": JdetConstraint2D,
+    "2tri": TriConstraint2D,
+    "finite": FiniteJdetConstraint2D,
+    "bilinear": TriConstraint2DBilinear,
+}
 
 
 def _c(family, phi):
@@ -88,14 +98,15 @@ def test_schwarz_tiling_clears_giant_connected_region(family):
     assert rep.folds_after == 0  # tiling fully cleared it
 
 
+@pytest.mark.parametrize("family", ["2tri", "bilinear"])
 @pytest.mark.parametrize("objective", ["l2", "l1"])
-def test_2tri_no_damage_and_full_clear(objective):
-    """The 2-triangle metric (cell grid, exact areas, ring=1) clears folds with
-    zero damage, same invariant as Jdet."""
+def test_2tri_no_damage_and_full_clear(family, objective):
+    """The triangle metrics (cell grid, exact areas, ring=1; 2 or 4 rows per cell)
+    clear folds with zero damage, same invariant as Jdet."""
     phi = _sparse_folds(seed=3)
-    n0 = int((min_field(_c("2tri", phi), phi) < 0.01).sum())
+    n0 = int((min_field(_c(family, phi), phi) < 0.01).sum())
     _, rep = windowed_correct(
-        phi, constraint=_c("2tri", phi), objective=_obj(objective), threshold=0.01
+        phi, constraint=_c(family, phi), objective=_obj(objective), threshold=0.01
     )
     assert n0 > 0
     assert rep.damage == 0

@@ -245,7 +245,8 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument(
         '--constraint',
         default='auto',
-        help="'auto' (2tri for 2D, 6tet for 3D) | 2tri | 2tri_standard | jdet | jdet_3d | 6tet",
+        help="'auto' (2tri for 2D, 6tet for 3D) | 2tri | 2tri_standard | bilinear | finite | "
+        'jdet | jdet_3d | 6tet',
     )
     pi.add_argument('--check', action='store_true', help='exit 1 when not strictly feasible')
     pi.add_argument(
