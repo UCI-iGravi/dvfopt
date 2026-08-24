@@ -1,36 +1,60 @@
 """``TriConstraint2DBilinear`` — the bilinear cell-min-Jdet certificate as four
 smooth triangle rows per cell (both diagonal splits).
 
-The contract under test: ``min over the 4 rows == 0.5 * cell_min_jdet_2d``, so
+Contract under test: ``min over the 4 rows == 0.5 * cell_min_jdet_2d``, so
 feasibility certifies the bilinear interpolant injective on every cell. Also
 pins ``cell_min_jdet_2d`` itself against brute-force sampling (it had no
-coverage before).
+coverage before). The hypothesis adjoint-vs-FD check lives in
+``test_constraint_properties.py``; the windowed no-damage / zero-fold checks
+in ``test_windowed_isqp.py`` / ``test_windowed_strategy.py``.
 """
 
+import importlib.util
+
+import matplotlib
 import numpy as np
 import pytest
 
 from dvfopt import (
     BarrierStrategy,
-    ISQPWindowedStrategy,
+    DVFopt,
+    DVFoptConfig,
     L1Objective,
     L2Objective,
     SLPStrategy,
+    SLSQPFullGridStrategy,
+    SLSQPWindowedStrategy,
     Solver,
     auto_strategy,
 )
-from dvfopt.constraints import TriConstraint2D, TriConstraint2DBilinear, make_constraint
-from dvfopt.core.primitives.isqp import HAS_OSQP
+from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt.constraints import (
+    _CONSTRAINT_REGISTRY,
+    TriConstraint2D,
+    TriConstraint2DBilinear,
+    make_constraint,
+)
+from dvfopt.core.primitives.coloring import dense_jacobian
+from dvfopt.core.windowed._locality import _cell_pattern
 from dvfopt.exceptions import IncompatibleConstraintError
 from dvfopt.jacobian.injectivity_radius import cell_min_jdet_2d
+from dvfopt.jacobian.shoelace import _all_triangle_areas_2d
 from dvfopt.metrics import constraint_fold_stats
+from dvfopt.objectives import make_objective
 from dvfopt.strategies import make_strategy
 from tests.conftest import planted_fold
+
+THR, ERR_TOL = DEFAULT_PARAMS['threshold'], DEFAULT_PARAMS['err_tol']
 
 
 def _rows(c, phi):
     H, W = c.shape
     return c.values(c.flatten(phi)).reshape(4, H - 1, W - 1)
+
+
+def _certified(phi_out):
+    """Feasible under the constraint <=> every cell's bilinear min-Jdet >= 2*threshold."""
+    return cell_min_jdet_2d(phi_out).min() >= 2 * (THR - ERR_TOL)
 
 
 # ---------------------------------------------------------------------------
@@ -50,16 +74,19 @@ def test_cell_min_matches_cell_min_jdet_2d():
     np.testing.assert_allclose(_rows(c, phi).min(0), 0.5 * cell_min_jdet_2d(phi), atol=1e-12)
 
 
-def test_first_two_blocks_are_the_2tri_rows():
+def test_rows_are_the_2tri_pair_then_shoelaces_other_diagonal():
     phi = planted_fold(8, 6, seed=1)
     c = TriConstraint2DBilinear(phi.shape[1:])
     t = TriConstraint2D(phi.shape[1:])
-    np.testing.assert_array_equal(
-        c.values(c.flatten(phi))[: t.n_constraints], t.values(t.flatten(phi))
+    vals = c.values(c.flatten(phi))
+    np.testing.assert_array_equal(vals[: t.n_constraints], t.values(t.flatten(phi)))
+    # the same four triangles shoelace.py defines (its T1..T4 = our rows reversed)
+    np.testing.assert_allclose(
+        _rows(c, phi), _all_triangle_areas_2d(phi[0], phi[1])[::-1], atol=1e-12
     )
 
 
-def test_opposite_diagonal_rows_differ_from_2tri_on_a_skewed_cell():
+def test_reflex_vertex_on_the_2tri_diagonal_is_invisible_to_2tri():
     """A reflex vertex ON the TR-BL diagonal folds the quad (bilinear map) without
     folding either TR-BL triangle — invisible to 2-tri, caught by both diagonals."""
     phi = np.zeros((2, 3, 3))
@@ -67,25 +94,9 @@ def test_opposite_diagonal_rows_differ_from_2tri_on_a_skewed_cell():
     phi[0, 0, 1], phi[1, 0, 1] = 0.7, -0.7
     t = TriConstraint2D((3, 3))
     c = TriConstraint2DBilinear((3, 3))
-    assert t.values(t.flatten(phi)).min() > 0  # 2-tri: TR-BL split sees no fold
-    assert c.values(c.flatten(phi)).min() < 0  # both diagonals: the fold is caught
+    assert t.values(t.flatten(phi)).min() > 0
+    assert c.values(c.flatten(phi)).min() < 0
     assert cell_min_jdet_2d(phi).min() < 0
-
-
-def test_adjoint_matches_finite_differences():
-    phi = planted_fold(6, 5, seed=2)
-    c = TriConstraint2DBilinear(phi.shape[1:])
-    flat = c.flatten(phi)
-    rng = np.random.default_rng(0)
-    v = rng.normal(size=c.n_constraints)
-    eps = 1e-6
-    num = np.empty(c.n_variables)
-    for i in range(c.n_variables):
-        p, m = flat.copy(), flat.copy()
-        p[i] += eps
-        m[i] -= eps
-        num[i] = np.dot((c.values(p) - c.values(m)) / (2 * eps), v)
-    np.testing.assert_allclose(c.adjoint(flat, v), num, atol=1e-6)
 
 
 def test_cell_min_jdet_2d_is_the_bilinear_minimum():
@@ -94,27 +105,26 @@ def test_cell_min_jdet_2d_is_the_bilinear_minimum():
     rng = np.random.default_rng(0)
     H, W = 4, 5
     phi = rng.normal(0, 0.5, (2, H, W))
-    ref = np.mgrid[:H, :W].astype(float)
-    Y, X = ref[0] + phi[0], ref[1] + phi[1]
+    Y, X = np.mgrid[:H, :W] + phi
     a = np.linspace(0, 1, 41)
     A, B = np.meshgrid(a, a, indexing='ij')  # alpha down rows, beta across cols
+
+    def d_beta(F):  # (H-1, W-1, 41, 41): x-direction edge, blended top->bottom
+        top, bot = F[:-1, 1:] - F[:-1, :-1], F[1:, 1:] - F[1:, :-1]
+        return (1 - A) * top[..., None, None] + A * bot[..., None, None]
+
+    def d_alpha(F):  # y-direction edge, blended left->right
+        left, right = F[1:, :-1] - F[:-1, :-1], F[1:, 1:] - F[:-1, 1:]
+        return (1 - B) * left[..., None, None] + B * right[..., None, None]
+
+    jdet = d_beta(X) * d_alpha(Y) - d_alpha(X) * d_beta(Y)
     cm = cell_min_jdet_2d(phi)
-    for i in range(H - 1):
-        for j in range(W - 1):
-            # bilinear map P(a, b) = (1-a)(1-b) TL + (1-a) b TR + a (1-b) BL + a b BR
-            def d_beta(F):
-                return (1 - A) * (F[i, j + 1] - F[i, j]) + A * (F[i + 1, j + 1] - F[i + 1, j])
-
-            def d_alpha(F):
-                return (1 - B) * (F[i + 1, j] - F[i, j]) + B * (F[i + 1, j + 1] - F[i, j + 1])
-
-            jdet = d_beta(X) * d_alpha(Y) - d_alpha(X) * d_beta(Y)
-            assert jdet.min() >= cm[i, j] - 1e-12
-            assert abs(jdet.min() - cm[i, j]) < 1e-12
+    assert (jdet.min((2, 3)) >= cm - 1e-12).all()
+    np.testing.assert_allclose(jdet.min((2, 3)), cm, atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
-# registry / metrics / auto
+# registry / metrics / auto / windowed pattern
 # ---------------------------------------------------------------------------
 
 
@@ -126,20 +136,49 @@ def test_registry_and_fold_stats():
     assert clean.feasible and clean.n_neg == 0
 
 
+_LABELS_2D = sorted(k for k, v in _CONSTRAINT_REGISTRY.items() if v.dim == 2)
+
+
+@pytest.mark.parametrize('label', _LABELS_2D)
+@pytest.mark.parametrize('osqp', [True, False])
 @pytest.mark.parametrize('n_neg,min_val', [(5, -0.1), (10_000, -20.0)])
-def test_auto_strategy_picks_something_that_accepts_it(n_neg, min_val):
-    c = TriConstraint2DBilinear((12, 12))
-    label = auto_strategy(c, n_neg, min_val, 'l1')
-    Solver(constraint=c, objective=L1Objective(), strategy=make_strategy(label))
+@pytest.mark.parametrize('objective', ['l1', 'l2'])
+def test_auto_strategy_always_picks_an_accepting_strategy(
+    monkeypatch, label, osqp, n_neg, min_val, objective
+):
+    """The invariant behind ``auto_strategy``: whatever it returns must compose
+    with the constraint it was asked about — for every registered 2D label, with
+    and without ``osqp`` installed."""
+    if not osqp:
+        real = importlib.util.find_spec
+        monkeypatch.setattr(
+            importlib.util, 'find_spec', lambda n, *a: None if n == 'osqp' else real(n, *a)
+        )
+    c = make_constraint(label, (12, 12))
+    strategy = make_strategy(auto_strategy(c, n_neg, min_val, objective))
+    Solver(constraint=c, objective=make_objective(objective), strategy=strategy)
 
 
-def test_two_triangle_specialised_strategy_rejects_it():
+@pytest.mark.parametrize('strategy', [SLPStrategy, SLSQPFullGridStrategy])
+def test_two_tri_specialised_strategies_reject_it_at_construction(strategy):
     with pytest.raises(IncompatibleConstraintError):
         Solver(
             constraint=TriConstraint2DBilinear((12, 12)),
             objective=L1Objective(),
-            strategy=SLPStrategy(),
+            strategy=strategy(),
         )
+
+
+@pytest.mark.parametrize('cls,k', [(TriConstraint2D, 2), (TriConstraint2DBilinear, 4)])
+def test_structural_sparsity_pattern_matches_the_probed_one(cls, k):
+    """The windowed engine's index-arithmetic pattern is exactly what dense
+    probing found (same columns, same order) — for both triangle families."""
+    c = cls((6, 7))
+    J = dense_jacobian(c, np.random.default_rng(0).normal(0, 0.3, c.n_variables))
+    probed = [np.nonzero(J[r])[0] for r in range(c.n_constraints)]
+    struct = _cell_pattern(6, 7, k)
+    assert len(struct) == len(probed)
+    assert all(np.array_equal(a, b) for a, b in zip(probed, struct))
 
 
 # ---------------------------------------------------------------------------
@@ -147,35 +186,39 @@ def test_two_triangle_specialised_strategy_rejects_it():
 # ---------------------------------------------------------------------------
 
 
-THR, ERR_TOL = 0.01, 1e-5
-
-
-def _certified(phi_out):
-    """Feasible under the constraint <=> every cell's bilinear min-Jdet >= 2*threshold."""
-    return cell_min_jdet_2d(phi_out).min() >= 2 * (THR - ERR_TOL)
-
-
 def test_barrier_reaches_feasibility_and_certifies_the_cells():
     phi = planted_fold(14, 14, seed=3, scale=0.3)
     c = TriConstraint2DBilinear(phi.shape[1:])
-    res = Solver(
-        constraint=c, objective=L2Objective(), strategy=BarrierStrategy(), threshold=THR
-    ).fit(phi)
+    res = Solver(constraint=c, objective=L2Objective(), strategy=BarrierStrategy()).fit(phi)
     assert res.init_n_neg > 0
     assert res.final_n_neg == 0 and res.feasible
     assert _certified(res.corrected)
 
 
-@pytest.mark.skipif(not HAS_OSQP, reason='osqp not installed')
-def test_isqp_windowed_reaches_feasibility_and_certifies_the_cells():
-    rng = np.random.default_rng(3)
-    phi = np.zeros((2, 60, 60))
-    for cy, cx in [(15, 15), (15, 44), (44, 18)]:
-        phi[:, cy - 2 : cy + 3, cx - 2 : cx + 3] += rng.normal(0, 1.5, (2, 5, 5))
+def test_slsqp_windowed_triangle_mode_solves_it():
+    """The legacy windowed SLSQP's triangle mode enforces all four triangles —
+    exactly this constraint — so it accepts and solves it."""
+    phi = planted_fold(10, 10, seed=0)
     c = TriConstraint2DBilinear(phi.shape[1:])
-    res = Solver(
-        constraint=c, objective=L2Objective(), strategy=ISQPWindowedStrategy(), threshold=THR
-    ).fit(phi)
+    res = Solver(constraint=c, objective=L2Objective(), strategy=SLSQPWindowedStrategy()).fit(phi)
     assert res.init_n_neg > 0
     assert res.final_n_neg == 0 and res.feasible
     assert _certified(res.corrected)
+
+
+@pytest.mark.parametrize('label', ['2tri', 'bilinear', 'jdet', 'finite'])
+def test_facade_resolves_every_2d_label_and_plots(label):
+    """The DVFopt facade goes through the constraint registry, and
+    ``plot_feasibility`` maps every row layout (2/4 triangle rows, the default
+    '2tri' snapshot's corner-patch rows, per-pixel Jdet, per-cell finite)."""
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    from dvfopt._plots import plot_feasibility
+
+    phi = planted_fold(8, 8, seed=3)
+    cfg = DVFoptConfig(constraint=label, solver='barrier', objective='l2', record_snapshots=True)
+    res = DVFopt(cfg).fit(phi)
+    plot_feasibility(res, z=0)  # snapshot path
+    plot_feasibility(DVFopt(DVFoptConfig(constraint=label, solver='barrier')).fit(phi), z=0)
+    plt.close('all')

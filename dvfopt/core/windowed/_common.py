@@ -266,7 +266,8 @@ def windowed_correct(
 
     ``constraint`` is a registered 2D constraint instance
     (:class:`~dvfopt.constraints.JdetConstraint2D`,
-    :class:`~dvfopt.constraints.TriConstraint2D`, or
+    :class:`~dvfopt.constraints.TriConstraint2D`,
+    :class:`~dvfopt.constraints.TriConstraint2DBilinear`, or
     :class:`~dvfopt.constraints.FiniteJdetConstraint2D` — see
     :data:`~dvfopt.core.windowed._locality.LOCALITY`); ``objective`` is a
     :class:`~dvfopt.objectives.Objective` (``None`` -> ``L2Objective()``; the

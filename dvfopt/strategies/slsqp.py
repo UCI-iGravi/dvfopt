@@ -11,6 +11,7 @@ from dvfopt.constraints import (
     JdetConstraint3D,
     Tet6Constraint3D,
     TriConstraint2D,
+    TriConstraint2DBilinear,
     TriConstraint2DFullCoverage,
 )
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
@@ -86,8 +87,11 @@ class SLSQPWindowedStrategy(Strategy):
     """Windowed iterative SLSQP — the legacy Jdet path.
 
     Finds the worst-Jdet voxel/pixel, builds a bbox + 1-cell ring,
-    solves the local SLSQP subproblem with frozen edges, repeats. Also
-    supports the 2-triangle constraint via ``enforce_triangles=True``.
+    solves the local SLSQP subproblem with frozen edges, repeats. The
+    2D triangle constraints run its ``enforce_triangles=True`` mode,
+    which enforces all four triangles of every cell (both diagonals) —
+    exactly :class:`~dvfopt.constraints.TriConstraint2DBilinear`, and a
+    superset of the 2-tri pair.
 
     The composed :class:`~dvfopt.objectives.Objective` is plumbed all
     the way down to the per-window ``scipy.optimize.minimize`` call and
@@ -109,10 +113,18 @@ class SLSQPWindowedStrategy(Strategy):
     injectivity_threshold: float | None = None
 
     supports_3d: bool = True
+    accepts_constraints = (
+        JdetConstraint2D,
+        JdetConstraint3D,
+        TriConstraint2D,
+        TriConstraint2DFullCoverage,
+        TriConstraint2DBilinear,
+    )
 
     def solve(
         self, phi_in, *, constraint, objective, threshold, verbose=0, record_history=False, **_
     ):
+        self._check_constraint(constraint)
         if isinstance(constraint, JdetConstraint2D):
             from dvfopt.core import iterative_serial
 
@@ -157,7 +169,9 @@ class SLSQPWindowedStrategy(Strategy):
                 objective=objective,
             )
             return out, _build_solve_info('SLSQPWindowedStrategy', {}, threshold)
-        if isinstance(constraint, (TriConstraint2D, TriConstraint2DFullCoverage)):
+        if isinstance(
+            constraint, (TriConstraint2D, TriConstraint2DFullCoverage, TriConstraint2DBilinear)
+        ):
             from dvfopt.core import iterative_serial
 
             H, W = constraint.shape

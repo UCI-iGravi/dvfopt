@@ -26,6 +26,7 @@ handling, which is out of scope here (stage 2).
 """
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable
 
 import numpy as np
@@ -37,7 +38,7 @@ from dvfopt.constraints import (
     TriConstraint2D,
     TriConstraint2DBilinear,
 )
-from dvfopt.core.primitives.coloring import colored_jacobian, dense_jacobian, jacobian_coloring
+from dvfopt.core.primitives.coloring import colored_jacobian, jacobian_coloring
 from dvfopt.exceptions import IncompatibleConstraintError
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
 
@@ -71,27 +72,15 @@ def _min_field_jdet(phi_dydx):
     return _numpy_jdet_2d(phi_dydx[0], phi_dydx[1])
 
 
-def _min_field_cells(cls):
-    """Fold map for a per-cell triangle family ``cls`` (``k`` rows per cell, laid
-    out ``[row0.ravel, row1.ravel, ...]``): each cell's min row at its TL pixel."""
-
-    def min_field(phi_dydx):
-        H, W = phi_dydx.shape[1:]
-        c = cls(shape=(H, W))
-        vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(-1, H - 1, W - 1)
-        out = np.full((H, W), np.inf)
-        out[: H - 1, : W - 1] = vals.min(0)
-        return out
-
-    return min_field
-
-
-def _min_field_finite(phi_dydx):
+def _min_field_cells(cls, phi_dydx):
+    """Fold map of a per-cell family ``cls`` (``k`` rows per cell, laid out
+    ``[row0.ravel, row1.ravel, ...]``): each cell's min row at its TL pixel; the
+    last pixel row/col have no cell (+inf)."""
     H, W = phi_dydx.shape[1:]
-    c = FiniteJdetConstraint2D(shape=(H, W))
-    vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(H - 1, W - 1)
+    c = cls(shape=(H, W))
+    vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(-1, H - 1, W - 1)
     out = np.full((H, W), np.inf)
-    out[: H - 1, : W - 1] = vals
+    out[: H - 1, : W - 1] = vals.min(0)
     return out
 
 
@@ -101,25 +90,35 @@ def _min_field_finite(phi_dydx):
 
 _COLORING_CACHE = {}  # (constraint type, ph, pw) -> (pattern, colors, None)
 
+# Corner (TL, TR, BL, BR) indices touched by each triangle-row block, in the
+# row order of ``tri_areas_flat`` / ``tri_areas_flat_bilinear``:
+# T1=(TR,BL,BR)  T2=(TL,BL,TR)  U1=(TL,BL,BR)  U2=(TR,TL,BR).
+_BLOCK_CORNERS = ((1, 2, 3), (0, 1, 2), (0, 2, 3), (0, 1, 3))
 
-def _pattern_union(c, probes=4, seed=0):
-    """Sparsity pattern of ``c``'s Jacobian, as the union of nonzeros over ``probes``
-    random points (a single point can zero a structurally-nonzero entry)."""
-    rng = np.random.default_rng(seed)
-    flat0 = rng.normal(0, 0.5, c.n_variables)
-    acc = None
-    for _ in range(probes):
-        b = np.abs(dense_jacobian(c, flat0 + rng.normal(0, 0.4, flat0.size))) > 0
-        acc = b if acc is None else (acc | b)
-    return [np.nonzero(acc[r])[0] for r in range(acc.shape[0])]
+
+def _cell_pattern(ph, pw, k):
+    """Exact Jacobian sparsity of the ``k``-rows-per-cell triangle families by
+    index arithmetic (row = 3 corners x 2 channels) — no dense probing, whose
+    ``np.eye(m)`` is O(m^2) memory (a cap-sized bilinear mop window would need
+    ~19 GB). Same column sets, in the same order, as the probed pattern."""
+    HW = ph * pw
+    ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing='ij')
+    tl = (ii * pw + jj).ravel()
+    corners = np.stack([tl, tl + 1, tl + pw, tl + pw + 1], axis=1)  # (m, 4)
+    pattern = []
+    for b in range(k):
+        cols = corners[:, list(_BLOCK_CORNERS[b])]
+        pattern.extend(np.sort(np.concatenate([cols, cols + HW], axis=1), axis=1))
+    return pattern
 
 
 def _cached_coloring(c, shape):
     """CPR coloring ``(pattern, colors, None)`` for a patch shape, cached (the
     Jacobian sparsity pattern depends only on the shape, and shapes recur across a
-    volume). Jdet uses the pixel-grid stride-3 colouring; 2-tri uses a cell-grid
-    ``triangle*4 + (i%2)*2 + j%2`` colouring (8 colours) — both give one adjoint
-    call per colour instead of one per constraint row, exact for their stencils."""
+    volume). Jdet uses the pixel-grid stride-3 colouring; the cell families use a
+    cell-grid ``row_block*4 + (i%2)*2 + j%2`` colouring (4 colours per row block:
+    8 for 2tri, 16 for bilinear) — both give one adjoint call per colour instead of
+    one per constraint row, exact for their stencils."""
     key = (type(c), *shape)
     hit = _COLORING_CACHE.get(key)
     if hit is None:
@@ -127,11 +126,11 @@ def _cached_coloring(c, shape):
             hit = jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
         else:  # 2tri/bilinear: cell grid, k triangles per cell share a 2x2-corner support
             ph, pw = shape
-            ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing="ij")
+            ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing='ij')
             cellcol = ((ii % 2) * 2 + (jj % 2)).ravel()
             k = c.n_constraints // cellcol.size
-            colors = np.concatenate([4 * b + cellcol for b in range(k)])  # T1: 0-3, T2: 4-7, ...
-            hit = (_pattern_union(c), colors, None)
+            colors = np.concatenate([4 * b + cellcol for b in range(k)])
+            hit = (_cell_pattern(ph, pw, k), colors, None)
         _COLORING_CACHE[key] = hit
     return hit
 
@@ -178,11 +177,12 @@ def _influenced_2tri(c, free_mask, ph, pw, borders):
     cell_flat = np.nonzero(cell.ravel())[0]
     m = (ph - 1) * (pw - 1)
     k = c.n_constraints // m  # rows per cell: 2 (2tri) or 4 (bilinear)
+    assert k * m == c.n_constraints, 'per-cell family with a non-cell row tail'
     enforced_idx = np.concatenate([b * m + cell_flat for b in range(k)])
     coloring = _cached_coloring(c, (ph, pw))
 
     def jac_of(f):
-        # coloring: 8 adjoint calls, not a full dense (2M x 2N) rebuild per iter
+        # coloring: 4k adjoint calls, not a full dense (kM x 2N) rebuild per iter
         # (the native jacobian() densifies — ~43% of a 2-tri window's time).
         return colored_jacobian(c, f, *coloring).tocsr()
 
@@ -213,13 +213,17 @@ LOCALITY: dict[type, WindowLocality] = {
         ring=2, min_field=_min_field_jdet, influenced=_influenced_jdet
     ),
     TriConstraint2D: WindowLocality(
-        ring=1, min_field=_min_field_cells(TriConstraint2D), influenced=_influenced_2tri
+        ring=1, min_field=partial(_min_field_cells, TriConstraint2D), influenced=_influenced_2tri
     ),
     TriConstraint2DBilinear: WindowLocality(
-        ring=1, min_field=_min_field_cells(TriConstraint2DBilinear), influenced=_influenced_2tri
+        ring=1,
+        min_field=partial(_min_field_cells, TriConstraint2DBilinear),
+        influenced=_influenced_2tri,
     ),
     FiniteJdetConstraint2D: WindowLocality(
-        ring=1, min_field=_min_field_finite, influenced=_influenced_finite
+        ring=1,
+        min_field=partial(_min_field_cells, FiniteJdetConstraint2D),
+        influenced=_influenced_finite,
     ),
 }
 
@@ -240,11 +244,9 @@ def min_field(constraint, phi_dydx):
     it is ``< threshold``).
 
     - jdet: the pixel Jacobian determinant.
-    - 2tri / bilinear: each cell ``(i, j)``'s min triangle area (2 or 4 rows),
-      placed at pixel ``(i, j)``; the last pixel row/col have no cell and are
-      set to ``+inf``.
-    - finite: each cell ``(i, j)``'s forward-diff determinant, placed at pixel
-      ``(i, j)``; the last pixel row/col have no cell and are set to ``+inf``.
+    - 2tri / bilinear / finite: each cell ``(i, j)``'s min row (2, 4 or 1 rows per
+      cell), placed at pixel ``(i, j)``; the last pixel row/col have no cell and
+      are set to ``+inf``.
     """
     return _locality_of(constraint).min_field(phi_dydx)
 

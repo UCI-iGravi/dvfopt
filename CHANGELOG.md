@@ -13,15 +13,26 @@ the library) plus an over-engineering cleanup.
 
 - **`TriConstraint2DBilinear`** (label `'bilinear'`) — the bilinear cell-min
   Jacobian (`cell_min_jdet_2d`) as a constraint: four smooth triangle rows per
-  cell (both diagonal splits; math in `core/primitives/tri.py`, the TL-BR pair
-  reuses the TR-BL kernels on the x-mirrored field). `min` of the rows equals
+  cell (both diagonal splits; the TL-BR pair reuses the TR-BL kernels on the
+  x-mirrored field, `core/primitives/tri.py`). `min` of the rows equals
   `½·cell_min_jdet_2d`, so feasibility certifies the bilinear interpolant
-  injective on every cell — the sub-pixel guarantee plain 2-tri cannot make on
-  the opposite diagonal. Consumed by the constraint-generic strategies (barrier,
-  `ISQPWindowedStrategy` via a windowed-locality entry); the 2-tri-specialised
-  strategies reject it at construction. `auto_strategy` tiers it like Jdet
-  (barrier / `isqp_windowed`), and the non-Jdet 2D families no longer fall
-  through to the Jdet-only `slsqp_windowed` when `osqp` is missing.
+  injective on every cell. Accepted by the barrier, the windowed engine
+  (`ISQPWindowedStrategy`, locality entry + structural sparsity pattern) and
+  `SLSQPWindowedStrategy` (its triangle mode already enforced all four
+  triangles); the other 2-tri-specialised strategies reject it at construction.
+  `auto_strategy` tiers it like Jdet.
+- **`SLSQPWindowedStrategy.accepts_constraints`** — declared (Jdet 2D/3D, the
+  2-tri family, bilinear), so an unsupported constraint is rejected at `Solver`
+  construction instead of a `TypeError` mid-solve; `auto_strategy`'s no-osqp
+  fallback reads that declaration (`'finite'` keeps `barrier`).
+- **Windowed engine** — the triangle families' CPR sparsity pattern is built by
+  index arithmetic instead of dense probing (`np.eye(m)`, O(m²) memory — a
+  cap-sized mop window under bilinear would have needed ~19 GB).
+- **`DVFopt` facade** — constraint labels resolve through the constraint
+  registry (`make_constraint`) instead of a parallel if-chain, so every 2D
+  label (`'finite'` included) is accepted; `core/primitives/constraint_values.py`
+  is gone (both callers use the registry). `plot_feasibility` now handles the
+  default `'2tri'` snapshots (corner-patch rows) and the per-pixel Jdet map.
 - **Windowed engine** — `dvfopt.core.windowed` (`windowed_correct`), the
   third shared engine: one small frozen-ring window per fold cluster,
   no-damage by construction, grow-on-failure, overlapping-tile decomposition

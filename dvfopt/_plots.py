@@ -34,14 +34,13 @@ def _extract_2d_slice(deformation, z):
 
 
 def _compute_constraint_2d(phi2, kind):
-    """Constraint values as a (n_constraints,) ndarray for plotting.
+    """Constraint values as a (n_constraints,) ndarray for plotting — the
+    standard 2-tri rows under ``'2tri'`` (no corner patches, so the rows
+    reshape onto the ``(H-1, W-1)`` cell grid)."""
+    from dvfopt.constraints import make_constraint
 
-    No corner patches — plot code reshapes T1/T2 onto an (H-1, W-1)
-    cell grid, which the patches would break.
-    """
-    from dvfopt.core.primitives.constraint_values import compute_constraint_values_2d
-
-    return compute_constraint_values_2d(phi2, kind, include_patches=False)
+    c = make_constraint('2tri_standard' if kind == '2tri' else kind, phi2.shape[-2:])
+    return c.values(c.flatten(phi2))
 
 
 def plot_convergence(result, z=None, ax=None):
@@ -104,14 +103,17 @@ def plot_feasibility(result, z=0, snapshot=-1, ax=None):
     min_val = float(T.min())
 
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4), constrained_layout=True)
-    if result.config.constraint in ('2tri', '2tri_standard', 'bilinear') and T.ndim == 1:
-        phi2 = _extract_2d_slice(result.corrected, z)
-        H, W = phi2.shape[1], phi2.shape[2]
-        tmap = T.reshape(-1, H - 1, W - 1).min(0)  # per-cell min over the 2 or 4 triangle rows
+    phi2 = _extract_2d_slice(result.corrected, z)
+    H, W = phi2.shape[1], phi2.shape[2]
+    if T.ndim != 1:
+        tmap = T
+    elif result.config.constraint in ('jdet', 'jdet_2d'):
+        tmap = T.reshape(H, W)  # per-pixel
     else:
-        phi2 = _extract_2d_slice(result.corrected, z)
-        H, W = phi2.shape[1], phi2.shape[2]
-        tmap = T.reshape(H - 1, W - 1) if T.ndim == 1 else T
+        # per-cell triangle rows (1, 2 or 4 per cell); a '2tri' snapshot also
+        # carries the 2 corner-patch rows — drop them before reshaping.
+        m = (H - 1) * (W - 1)
+        tmap = T[: T.size - T.size % m].reshape(-1, H - 1, W - 1).min(0)
     vmax = max(abs(tmap.min()), 1.5 * thr, 0.05)
     im = a1.imshow(tmap, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
     a1.set_title(f'z={z} {tag}: min_constraint={min_val:+.4f}  n_below_0={n_neg}')
@@ -142,8 +144,8 @@ def plot_gradient_region(result, z=0, ax=None):
 
     phi2 = _extract_2d_slice(result.corrected, z)
     H, W = phi2.shape[1], phi2.shape[2]
-    if result.config.constraint not in ('2tri', '2tri_standard'):
-        raise ValueError('plot_gradient_region only implemented for 2tri')
+    if result.config.constraint not in ('2tri', '2tri_standard', 'bilinear'):
+        raise ValueError('plot_gradient_region only implemented for the 2-tri families')
     ref_y, ref_x = _ref_grid(H, W)
     dy, dx = phi2[0], phi2[1]
     def_x = ref_x + dx

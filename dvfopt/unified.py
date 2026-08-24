@@ -48,13 +48,7 @@ from typing import Any, Optional
 import numpy as np
 
 from dvfopt._logging import log_info
-from dvfopt.constraints import (
-    Constraint,
-    JdetConstraint2D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
-    TriConstraint2DFullCoverage,
-)
+from dvfopt.constraints import _CONSTRAINT_REGISTRY, Constraint, make_constraint
 from dvfopt.objectives import make_objective
 from dvfopt.solver import SolveInfo, Solver, SolveResult, auto_strategy
 from dvfopt.strategies import Strategy, make_strategy
@@ -85,7 +79,8 @@ class DVFoptConfig:
     """
 
     # ---- problem ----
-    # '2tri' (=full-coverage, default) | '2tri_standard' | 'bilinear' | 'jdet' | 'jdet_2d'.
+    # Any registered 2D constraint label: '2tri' (=full-coverage, default) |
+    # '2tri_standard' | 'bilinear' | 'finite' | 'jdet' | 'jdet_2d'.
     # 3D constraints ('6tet', 'jdet_3d') are rejected — the facade is
     # per-slice 2D; use correct_dvf_3d / correct_dvf_25d or Solver for 3D.
     constraint: str = '2tri'
@@ -301,14 +296,10 @@ def _extract_2d_slice(deformation, z):
 
 
 def _compute_constraint_2d(phi2, kind):
-    """Returns the constraint values as a (n_constraints,) ndarray.
-
-    Stats-side caller: includes corner patches under ``'2tri'`` so the
-    reported n_neg/min_value match what the solver enforces.
-    """
-    from dvfopt.core.primitives.constraint_values import compute_constraint_values_2d
-
-    return compute_constraint_values_2d(phi2, kind, include_patches=True)
+    """Constraint values as a (n_constraints,) ndarray — exactly what the
+    solver enforces (corner patches included under ``'2tri'``)."""
+    c = make_constraint(kind, phi2.shape[-2:])
+    return c.values(c.flatten(phi2))
 
 
 def _stats_2d(phi2, kind):
@@ -348,21 +339,17 @@ class DVFopt:
         from dvfopt.exceptions import SolverConfigError
 
         c = self.config
-        if c.constraint in ('jdet_3d', '6tet', '6tet_3d'):
+        cls = _CONSTRAINT_REGISTRY.get(c.constraint)
+        if cls is None:
+            valid = sorted(k for k, v in _CONSTRAINT_REGISTRY.items() if v.dim == 2)
+            raise SolverConfigError(f'bad constraint: {c.constraint!r}; valid: {valid}')
+        if cls.dim != 2:
             raise SolverConfigError(
                 f'constraint {c.constraint!r} is not supported: the DVFopt '
                 f'facade is per-slice 2D; for true-3D correction use '
                 f'correct_dvf_3d / correct_dvf_25d or the Solver API '
                 f"(e.g. Solver.from_spec(constraint='6tet', ...))."
             )
-        if c.constraint not in (
-            '2tri',
-            '2tri_standard',
-            'bilinear',
-            'jdet',
-            'jdet_2d',
-        ):
-            raise SolverConfigError(f'bad constraint: {c.constraint!r}')
         # solver: 'auto', a registered label, or a Strategy instance.
         if isinstance(c.solver, Strategy) or c.solver == 'auto':
             pass
@@ -476,7 +463,7 @@ class DVFopt:
         # Build the Constraint up front so we can read init stats and
         # auto-resolve the strategy without re-deriving anything.
         H, W = phi2.shape[1], phi2.shape[2]
-        constraint = _build_constraint(c.constraint, (H, W))
+        constraint = make_constraint(c.constraint, (H, W))
         init_n_neg, init_min = _constraint_stats(constraint, phi2)
         if c.verbose >= 1:
             log_info(f'[z={z}] init n_neg={init_n_neg}  min={init_min:+.4f}')
@@ -629,30 +616,6 @@ class DVFopt:
 # ============================================================
 # Helpers (constraint + strategy plumbing)
 # ============================================================
-
-
-def _build_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
-    """Map a DVFoptConfig.constraint string to a Constraint instance.
-
-    Aliases the legacy ``'jdet'`` to ``'jdet_2d'`` since DVFopt's
-    per-slice loop always operates on 2D slices. 3D constraint labels
-    are rejected earlier, at :meth:`DVFopt._validate`.
-    """
-    if name == 'jdet':
-        name = 'jdet_2d'
-    # '2tri' is the full-coverage variant (2 corner patches included)
-    # so the standard scheme's diagonally-opposite corner gap is closed
-    # by default. The old standard-only behavior is available as
-    # '2tri_standard' for benchmark reproducibility.
-    if name == '2tri':
-        return TriConstraint2DFullCoverage(shape)
-    if name == '2tri_standard':
-        return TriConstraint2D(shape)
-    if name == 'bilinear':
-        return TriConstraint2DBilinear(shape)
-    if name in ('jdet_2d',):
-        return JdetConstraint2D(shape)
-    raise ValueError(f'unknown constraint {name!r}')
 
 
 def _constraint_stats(constraint: Constraint, phi2: np.ndarray) -> tuple[int, float]:

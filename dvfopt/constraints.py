@@ -163,33 +163,10 @@ class Constraint(ABC):
 # ---------------------------------------------------------------------------
 
 
-class TriConstraint2D(Constraint):
-    """Standard per-cell 2-triangle constraint ``T1, T2 >= threshold``.
-
-    Tiles each cell along the TR-BL diagonal into two triangles
-    (``T2 = {TL, BL, TR}`` and ``T1 = {TR, BL, BR}``) and enforces both
-    signed areas above threshold.
-
-    .. warning::
-        **Corner coverage gap.** Under the standard TR-BL split, the
-        two diagonally-opposite grid corners ``(0, 0)`` and
-        ``(H-1, W-1)`` sit in only one triangle each — they're
-        under-constrained relative to interior vertices (4–6 triangles)
-        and edge vertices (2–3). In practice fold escapes through these
-        corners are rare but possible.
-
-        For new code prefer the registry alias ``'2tri'``, which
-        resolves to :class:`TriConstraint2DFullCoverage` (adds two
-        opposite-diagonal corner patches at negligible cost). This
-        class is retained as ``'2tri_standard'`` for reproducibility
-        against benchmark numbers recorded before the default flipped.
-
-    Phi pack: ``[dy.ravel(), dx.ravel()]`` (y-first).
-    Output:   ``[T1.ravel(), T2.ravel()]`` of length ``2*(H-1)*(W-1)``.
-
-    Reuses the canonical primitives in
-    :mod:`dvfopt.core.primitives.tri` so this class is purely an
-    interface wrapper — no math is re-derived.
+class _Tri2DBase(Constraint):
+    """Shared plumbing of the 2D triangle families (``[dy, dx]`` pack, ``2*H*W``
+    variables, loose-layout ``coerce``). Leaves declare rows/values/adjoint.
+    A private base, not a public parent: strategies gate on the leaf classes.
     """
 
     pack = PhiPack.DY_FIRST
@@ -199,11 +176,6 @@ class TriConstraint2D(Constraint):
     def n_variables(self) -> int:
         H, W = self.shape
         return 2 * H * W
-
-    @property
-    def n_constraints(self) -> int:
-        H, W = self.shape
-        return 2 * (H - 1) * (W - 1)
 
     def coerce(self, phi) -> np.ndarray:
         """Accept ``(2, H, W)`` / ``(3, H, W)`` / ``(2, 1, H, W)`` /
@@ -235,6 +207,41 @@ class TriConstraint2D(Constraint):
         H, W = self.shape
         return np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
 
+
+class TriConstraint2D(_Tri2DBase):
+    """Standard per-cell 2-triangle constraint ``T1, T2 >= threshold``.
+
+    Tiles each cell along the TR-BL diagonal into two triangles
+    (``T2 = {TL, BL, TR}`` and ``T1 = {TR, BL, BR}``) and enforces both
+    signed areas above threshold.
+
+    .. warning::
+        **Corner coverage gap.** Under the standard TR-BL split, the
+        two diagonally-opposite grid corners ``(0, 0)`` and
+        ``(H-1, W-1)`` sit in only one triangle each — they're
+        under-constrained relative to interior vertices (4–6 triangles)
+        and edge vertices (2–3). In practice fold escapes through these
+        corners are rare but possible.
+
+        For new code prefer the registry alias ``'2tri'``, which
+        resolves to :class:`TriConstraint2DFullCoverage` (adds two
+        opposite-diagonal corner patches at negligible cost). This
+        class is retained as ``'2tri_standard'`` for reproducibility
+        against benchmark numbers recorded before the default flipped.
+
+    Phi pack: ``[dy.ravel(), dx.ravel()]`` (y-first).
+    Output:   ``[T1.ravel(), T2.ravel()]`` of length ``2*(H-1)*(W-1)``.
+
+    Reuses the canonical primitives in
+    :mod:`dvfopt.core.primitives.tri` so this class is purely an
+    interface wrapper — no math is re-derived.
+    """
+
+    @property
+    def n_constraints(self) -> int:
+        H, W = self.shape
+        return 2 * (H - 1) * (W - 1)
+
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
         from dvfopt.core.primitives.tri import tri_areas_flat
 
@@ -256,7 +263,7 @@ class TriConstraint2D(Constraint):
         return sp.csr_matrix(builder(phi_flat))
 
 
-class TriConstraint2DFullCoverage(Constraint):
+class TriConstraint2DFullCoverage(_Tri2DBase):
     """``TriConstraint2D`` + two opposite-diagonal corner patches.
 
     This is the **default** for ``'2tri'`` in the registry. Adds two
@@ -277,27 +284,10 @@ class TriConstraint2DFullCoverage(Constraint):
     the preferred choice for new code.
     """
 
-    pack = PhiPack.DY_FIRST
-    dim = 2
-
-    @property
-    def n_variables(self) -> int:
-        H, W = self.shape
-        return 2 * H * W
-
     @property
     def n_constraints(self) -> int:
         H, W = self.shape
         return 2 * (H - 1) * (W - 1) + 2
-
-    def coerce(self, phi: np.ndarray) -> np.ndarray:
-        return TriConstraint2D.coerce(self, phi)
-
-    def flatten(self, phi: np.ndarray) -> np.ndarray:
-        return TriConstraint2D.flatten(self, phi)
-
-    def unflatten(self, phi_flat: np.ndarray) -> np.ndarray:
-        return TriConstraint2D.unflatten(self, phi_flat)
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
         from dvfopt.core.primitives.tri import tri_areas_flat_full_coverage
@@ -318,7 +308,7 @@ class TriConstraint2DFullCoverage(Constraint):
         return sp.csr_matrix(builder(phi_flat))
 
 
-class TriConstraint2DBilinear(Constraint):
+class TriConstraint2DBilinear(_Tri2DBase):
     """Bilinear cell-min Jdet as four smooth rows per cell (both diagonals).
 
     The bilinear interpolant's Jacobian determinant is biaffine on each
@@ -334,35 +324,18 @@ class TriConstraint2DBilinear(Constraint):
 
     Strictly tighter feasible set than ``'2tri'`` (2x the rows), so expect
     more movement. Consumed by the constraint-generic strategies (barrier,
-    the windowed engine); the 2-tri-specialised strategies (SLP,
-    wallbreakers, SLSQP full-grid, Schwarz) reject it at construction.
+    the windowed engine) and by ``SLSQPWindowedStrategy`` (whose triangle
+    mode already enforces all four); the other 2-tri-specialised strategies
+    (SLP, wallbreakers, SLSQP full-grid, Schwarz) reject it at construction.
 
-    Phi pack: ``[dy.ravel(), dx.ravel()]`` (y-first).
     Output: ``[T1, T2, U1, U2]`` of length ``4*(H-1)*(W-1)`` — see
     :func:`dvfopt.core.primitives.tri.tri_areas_flat_bilinear`.
     """
-
-    pack = PhiPack.DY_FIRST
-    dim = 2
-
-    @property
-    def n_variables(self) -> int:
-        H, W = self.shape
-        return 2 * H * W
 
     @property
     def n_constraints(self) -> int:
         H, W = self.shape
         return 4 * (H - 1) * (W - 1)
-
-    def coerce(self, phi) -> np.ndarray:
-        return TriConstraint2D.coerce(self, phi)
-
-    def flatten(self, phi) -> np.ndarray:
-        return TriConstraint2D.flatten(self, phi)
-
-    def unflatten(self, phi_flat: np.ndarray) -> np.ndarray:
-        return TriConstraint2D.unflatten(self, phi_flat)
 
     def values(self, phi_flat: np.ndarray) -> np.ndarray:
         from dvfopt.core.primitives.tri import tri_areas_flat_bilinear
