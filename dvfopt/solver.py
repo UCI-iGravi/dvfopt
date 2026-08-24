@@ -43,6 +43,8 @@ import numpy as np
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.constraints import (
     Constraint,
+    JdetConstraint2D,
+    JdetConstraint3D,
     TriConstraint2D,
     TriConstraint2DFullCoverage,
     make_constraint,
@@ -486,7 +488,10 @@ def auto_strategy(
     ``n_neg > 500`` or ``init_min < -1``; the mild tier below that
     prefers ``isqp_windowed`` (the no-damage windowed elastic-QP
     engine) when ``osqp`` is installed and the constraint is 2D, else
-    ``slsqp_windowed``.
+    ``slsqp_windowed``. The other constraint-generic 2D families
+    (``'bilinear'``, ``'finite'``) tier the same way, except that the
+    legacy windowed SLSQP is Jdet-only, so without ``osqp`` they keep
+    ``barrier``.
     """
     from dvfopt.constraints import Tet6Constraint3D
 
@@ -530,7 +535,9 @@ def auto_strategy(
     # keeps the legacy windowed SLSQP.
     if constraint.dim == 2 and importlib.util.find_spec('osqp') is not None:
         return 'isqp_windowed'
-    return 'slsqp_windowed'
+    if isinstance(constraint, (JdetConstraint2D, JdetConstraint3D)):
+        return 'slsqp_windowed'
+    return 'barrier'
 
 
 __all__ = [

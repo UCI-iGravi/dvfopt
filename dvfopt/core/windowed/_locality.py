@@ -16,6 +16,7 @@ be before every constraint it influences is enforceable with the correct
            influenced rows are its 4 neighbours (finite-difference support).
   2tri: 1 — cell areas are EXACT (no finite-diff), and a free pixel's influenced
            cells are its <=4 corner cells, all in-patch once it is 1 in.
+  bilinear: 1 — the 2tri cells with both diagonals (4 rows/cell); same locality.
   finite: 1 — forward-diff cell det is EXACT and depends on 3 corners; a free
            pixel's <=3 influenced cells are all in-patch once it is 1 in (like 2tri).
 
@@ -30,7 +31,12 @@ from typing import Callable
 import numpy as np
 from scipy import ndimage
 
-from dvfopt.constraints import FiniteJdetConstraint2D, JdetConstraint2D, TriConstraint2D
+from dvfopt.constraints import (
+    FiniteJdetConstraint2D,
+    JdetConstraint2D,
+    TriConstraint2D,
+    TriConstraint2DBilinear,
+)
 from dvfopt.core.primitives.coloring import colored_jacobian, dense_jacobian, jacobian_coloring
 from dvfopt.exceptions import IncompatibleConstraintError
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
@@ -65,15 +71,19 @@ def _min_field_jdet(phi_dydx):
     return _numpy_jdet_2d(phi_dydx[0], phi_dydx[1])
 
 
-def _min_field_2tri(phi_dydx):
-    H, W = phi_dydx.shape[1:]
-    c = TriConstraint2D(shape=(H, W))
-    vals = np.asarray(c.values(c.flatten(phi_dydx)))
-    m = (H - 1) * (W - 1)
-    cellmin = np.minimum(vals[:m], vals[m:]).reshape(H - 1, W - 1)
-    out = np.full((H, W), np.inf)
-    out[: H - 1, : W - 1] = cellmin
-    return out
+def _min_field_cells(cls):
+    """Fold map for a per-cell triangle family ``cls`` (``k`` rows per cell, laid
+    out ``[row0.ravel, row1.ravel, ...]``): each cell's min row at its TL pixel."""
+
+    def min_field(phi_dydx):
+        H, W = phi_dydx.shape[1:]
+        c = cls(shape=(H, W))
+        vals = np.asarray(c.values(c.flatten(phi_dydx))).reshape(-1, H - 1, W - 1)
+        out = np.full((H, W), np.inf)
+        out[: H - 1, : W - 1] = vals.min(0)
+        return out
+
+    return min_field
 
 
 def _min_field_finite(phi_dydx):
@@ -115,11 +125,12 @@ def _cached_coloring(c, shape):
     if hit is None:
         if isinstance(c, JdetConstraint2D):
             hit = jacobian_coloring(c, np.random.default_rng(0).normal(0, 0.5, c.n_variables))
-        else:  # 2tri: cell grid, 2 triangles per cell share a 2x2-corner support
+        else:  # 2tri/bilinear: cell grid, k triangles per cell share a 2x2-corner support
             ph, pw = shape
             ii, jj = np.meshgrid(np.arange(ph - 1), np.arange(pw - 1), indexing="ij")
             cellcol = ((ii % 2) * 2 + (jj % 2)).ravel()
-            colors = np.concatenate([cellcol, 4 + cellcol])  # T1: 0-3, T2: 4-7
+            k = c.n_constraints // cellcol.size
+            colors = np.concatenate([4 * b + cellcol for b in range(k)])  # T1: 0-3, T2: 4-7, ...
             hit = (_pattern_union(c), colors, None)
         _COLORING_CACHE[key] = hit
     return hit
@@ -166,7 +177,8 @@ def _influenced_2tri(c, free_mask, ph, pw, borders):
     cell = fm[:-1, :-1] | fm[1:, :-1] | fm[:-1, 1:] | fm[1:, 1:]  # (ph-1, pw-1)
     cell_flat = np.nonzero(cell.ravel())[0]
     m = (ph - 1) * (pw - 1)
-    enforced_idx = np.concatenate([cell_flat, m + cell_flat])  # T1 and T2 rows
+    k = c.n_constraints // m  # rows per cell: 2 (2tri) or 4 (bilinear)
+    enforced_idx = np.concatenate([b * m + cell_flat for b in range(k)])
     coloring = _cached_coloring(c, (ph, pw))
 
     def jac_of(f):
@@ -200,7 +212,12 @@ LOCALITY: dict[type, WindowLocality] = {
     JdetConstraint2D: WindowLocality(
         ring=2, min_field=_min_field_jdet, influenced=_influenced_jdet
     ),
-    TriConstraint2D: WindowLocality(ring=1, min_field=_min_field_2tri, influenced=_influenced_2tri),
+    TriConstraint2D: WindowLocality(
+        ring=1, min_field=_min_field_cells(TriConstraint2D), influenced=_influenced_2tri
+    ),
+    TriConstraint2DBilinear: WindowLocality(
+        ring=1, min_field=_min_field_cells(TriConstraint2DBilinear), influenced=_influenced_2tri
+    ),
     FiniteJdetConstraint2D: WindowLocality(
         ring=1, min_field=_min_field_finite, influenced=_influenced_finite
     ),
@@ -223,8 +240,9 @@ def min_field(constraint, phi_dydx):
     it is ``< threshold``).
 
     - jdet: the pixel Jacobian determinant.
-    - 2tri: each cell ``(i, j)``'s min triangle area, placed at pixel ``(i, j)``;
-      the last pixel row/col have no cell and are set to ``+inf``.
+    - 2tri / bilinear: each cell ``(i, j)``'s min triangle area (2 or 4 rows),
+      placed at pixel ``(i, j)``; the last pixel row/col have no cell and are
+      set to ``+inf``.
     - finite: each cell ``(i, j)``'s forward-diff determinant, placed at pixel
       ``(i, j)``; the last pixel row/col have no cell and are set to ``+inf``.
     """

@@ -39,7 +39,8 @@ def compute_constraint_values_2d(
     ----------
     phi2 : ndarray, shape ``(2, H, W)``, channels ``[dy, dx]``.
     kind : str
-        One of ``'2tri'``, ``'2tri_standard'``, ``'jdet'``, ``'jdet_2d'``.
+        One of ``'2tri'``, ``'2tri_standard'``, ``'bilinear'``, ``'jdet'``,
+        ``'jdet_2d'``.
     include_patches : bool
         Only meaningful for ``kind == '2tri'``. When ``True`` (default),
         appends the two corner-patch triangle areas to match what the
@@ -65,6 +66,11 @@ def compute_constraint_values_2d(
     if kind == '2tri_standard':
         T1, T2 = _triangle_areas_2d(phi2[0], phi2[1])
         return np.concatenate([T1.ravel(), T2.ravel()])
+    if kind == 'bilinear':
+        from dvfopt.core.primitives.tri import tri_areas_flat_bilinear
+
+        H, W = phi2.shape[-2:]
+        return tri_areas_flat_bilinear(np.concatenate([phi2[0].ravel(), phi2[1].ravel()]), H, W)
     if kind in ('jdet', 'jdet_2d'):
         return np.squeeze(jacobian_det2D(phi2)).ravel()
     raise ValueError(f'unknown constraint kind: {kind}')

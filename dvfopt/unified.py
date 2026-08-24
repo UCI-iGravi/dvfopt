@@ -52,6 +52,7 @@ from dvfopt.constraints import (
     Constraint,
     JdetConstraint2D,
     TriConstraint2D,
+    TriConstraint2DBilinear,
     TriConstraint2DFullCoverage,
 )
 from dvfopt.objectives import make_objective
@@ -84,7 +85,7 @@ class DVFoptConfig:
     """
 
     # ---- problem ----
-    # '2tri' (=full-coverage, default) | '2tri_standard' | 'jdet' | 'jdet_2d'.
+    # '2tri' (=full-coverage, default) | '2tri_standard' | 'bilinear' | 'jdet' | 'jdet_2d'.
     # 3D constraints ('6tet', 'jdet_3d') are rejected — the facade is
     # per-slice 2D; use correct_dvf_3d / correct_dvf_25d or Solver for 3D.
     constraint: str = '2tri'
@@ -357,6 +358,7 @@ class DVFopt:
         if c.constraint not in (
             '2tri',
             '2tri_standard',
+            'bilinear',
             'jdet',
             'jdet_2d',
         ):
@@ -646,6 +648,8 @@ def _build_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
         return TriConstraint2DFullCoverage(shape)
     if name == '2tri_standard':
         return TriConstraint2D(shape)
+    if name == 'bilinear':
+        return TriConstraint2DBilinear(shape)
     if name in ('jdet_2d',):
         return JdetConstraint2D(shape)
     raise ValueError(f'unknown constraint {name!r}')

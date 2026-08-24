@@ -225,6 +225,51 @@ def tri_grad_T_v_full_coverage(phi_flat, H, W, v):
     return np.concatenate([g_dy.ravel(), g_dx.ravel()])
 
 
+# --- Bilinear (both-diagonal) variant: 4 triangles per cell. The bilinear
+# interpolant's Jdet is biaffine on a cell, so its cell-minimum is the min of
+# the four corner Jdets, each = 2x the signed area of that corner's triangle.
+# The TL-BR pair is the TR-BL pair of the x-MIRRORED field (mirroring swaps
+# the diagonals; the mirrored field is dy column-reversed, dx negated and
+# column-reversed), so the kernels above serve both halves unchanged.
+
+
+def _mirror_x(dy, dx):
+    """x-mirror of a ``(H, W)`` field pair (see :func:`tri_areas_flat_bilinear`).
+    Linear and self-adjoint, so it also maps gradients back."""
+    return dy[:, ::-1], -dx[:, ::-1]
+
+
+def tri_areas_flat_bilinear(phi_flat, H, W):
+    """``[T1, T2, U1, U2]`` — both diagonal splits, length ``4*(H-1)*(W-1)``.
+
+    ``T1``/``T2`` are :func:`tri_areas_flat`'s TR-BL pair; ``U1 = (TL, BL, BR)``
+    and ``U2 = (TR, TL, BR)`` are the TL-BR pair. Row ``k`` of cell ``(i, j)`` is
+    half the bilinear interpolant's Jdet at corner ``BR, TL, BL, TR`` respectively,
+    so ``min over the 4 rows == 0.5 * cell_min_jdet_2d`` and all rows above
+    ``threshold`` certifies the bilinear map injective on every cell.
+    """
+    HW = H * W
+    dy = phi_flat[:HW].reshape(H, W)
+    dx = phi_flat[HW:].reshape(H, W)
+    T1, T2 = _triangle_areas_2d(dy, dx)
+    # Mirrored cell j' is original cell W-2-j' (hence the column reversal).
+    M1, M2 = _triangle_areas_2d(*_mirror_x(dy, dx))
+    return np.concatenate([T1.ravel(), T2.ravel(), M1[:, ::-1].ravel(), M2[:, ::-1].ravel()])
+
+
+def tri_grad_T_v_bilinear(phi_flat, H, W, v):
+    """J^T @ v for :func:`tri_areas_flat_bilinear`; ``v`` has length
+    ``4*(H-1)*(W-1)``, output ``[g_dy.ravel(), g_dx.ravel()]``."""
+    HW = H * W
+    m = (H - 1) * (W - 1)
+    g = tri_grad_T_v(phi_flat, H, W, v[: 2 * m])
+    my, mx = _mirror_x(phi_flat[:HW].reshape(H, W), phi_flat[HW:].reshape(H, W))
+    vm = v[2 * m :].reshape(2, H - 1, W - 1)[:, :, ::-1]
+    gm = tri_grad_T_v(np.concatenate([my.ravel(), mx.ravel()]), H, W, vm.ravel())
+    g_dy, g_dx = _mirror_x(gm[:HW].reshape(H, W), gm[HW:].reshape(H, W))
+    return g + np.concatenate([g_dy.ravel(), g_dx.ravel()])
+
+
 def build_full_grid_tri_jac(H, W, full_coverage):
     """Build a callable ``jac(z) -> (n_constr, n_vars) ndarray`` for the
     full-grid 2-triangle constraint.
@@ -398,7 +443,9 @@ _build_full_grid_tri_jac = build_full_grid_tri_jac
 __all__ = [
     'build_full_grid_tri_jac',
     'tri_areas_flat',
+    'tri_areas_flat_bilinear',
     'tri_areas_flat_full_coverage',
     'tri_grad_T_v',
+    'tri_grad_T_v_bilinear',
     'tri_grad_T_v_full_coverage',
 ]

@@ -28,6 +28,7 @@ from dvfopt.constraints import (
     JdetConstraint2D,
     JdetConstraint3D,
     TriConstraint2D,
+    TriConstraint2DBilinear,
     TriConstraint2DFullCoverage,
 )
 
@@ -77,6 +78,19 @@ def test_tri_constraint_2d_full_coverage_adjoint(shape, seed, amp):
     rng = np.random.default_rng(seed)
     phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
     c = TriConstraint2DFullCoverage((H, W))
+    flat = c.flatten(phi)
+    v = rng.normal(size=c.n_constraints)
+    err = float(np.abs(c.adjoint(flat, v) - _fd_jacobian_T_v(c, flat, v)).max())
+    assert err < 1e-6, f'shape={shape}: err={err:.2e}'
+
+
+@given(shape=shapes_2d, seed=seeds, amp=amps)
+@settings(max_examples=20, deadline=None)
+def test_tri_constraint_2d_bilinear_adjoint(shape, seed, amp):
+    H, W = shape
+    rng = np.random.default_rng(seed)
+    phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
+    c = TriConstraint2DBilinear((H, W))
     flat = c.flatten(phi)
     v = rng.normal(size=c.n_constraints)
     err = float(np.abs(c.adjoint(flat, v) - _fd_jacobian_T_v(c, flat, v)).max())
@@ -144,6 +158,7 @@ def test_tri_constraint_2d_sparse_jacobian_matches_dense(shape, seed, amp):
     [
         (TriConstraint2D, (5, 6)),
         (TriConstraint2DFullCoverage, (5, 6)),
+        (TriConstraint2DBilinear, (5, 6)),
         (JdetConstraint2D, (5, 6)),
         (JdetConstraint3D, (3, 4, 5)),
     ],

@@ -11,6 +11,17 @@ the library) plus an over-engineering cleanup.
 
 ### Added
 
+- **`TriConstraint2DBilinear`** (label `'bilinear'`) — the bilinear cell-min
+  Jacobian (`cell_min_jdet_2d`) as a constraint: four smooth triangle rows per
+  cell (both diagonal splits; math in `core/primitives/tri.py`, the TL-BR pair
+  reuses the TR-BL kernels on the x-mirrored field). `min` of the rows equals
+  `½·cell_min_jdet_2d`, so feasibility certifies the bilinear interpolant
+  injective on every cell — the sub-pixel guarantee plain 2-tri cannot make on
+  the opposite diagonal. Consumed by the constraint-generic strategies (barrier,
+  `ISQPWindowedStrategy` via a windowed-locality entry); the 2-tri-specialised
+  strategies reject it at construction. `auto_strategy` tiers it like Jdet
+  (barrier / `isqp_windowed`), and the non-Jdet 2D families no longer fall
+  through to the Jdet-only `slsqp_windowed` when `osqp` is missing.
 - **Windowed engine** — `dvfopt.core.windowed` (`windowed_correct`), the
   third shared engine: one small frozen-ring window per fold cluster,
   no-damage by construction, grow-on-failure, overlapping-tile decomposition

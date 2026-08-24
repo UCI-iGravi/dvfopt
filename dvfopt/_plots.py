@@ -104,15 +104,10 @@ def plot_feasibility(result, z=0, snapshot=-1, ax=None):
     min_val = float(T.min())
 
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4), constrained_layout=True)
-    if result.config.constraint in ('2tri', '2tri_standard') and T.ndim == 1:
-        n_cells = T.size // 2
-        T1 = T[:n_cells]
-        T2 = T[n_cells:]
+    if result.config.constraint in ('2tri', '2tri_standard', 'bilinear') and T.ndim == 1:
         phi2 = _extract_2d_slice(result.corrected, z)
         H, W = phi2.shape[1], phi2.shape[2]
-        T1 = T1.reshape(H - 1, W - 1)
-        T2 = T2.reshape(H - 1, W - 1)
-        tmap = np.minimum(T1, T2)
+        tmap = T.reshape(-1, H - 1, W - 1).min(0)  # per-cell min over the 2 or 4 triangle rows
     else:
         phi2 = _extract_2d_slice(result.corrected, z)
         H, W = phi2.shape[1], phi2.shape[2]
