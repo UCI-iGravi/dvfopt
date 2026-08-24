@@ -25,20 +25,20 @@ def test_fold_stats_default_threshold_feasible():
 def test_constraint_fold_stats_auto_2d():
     phi = planted_fold(10, 10, seed=0, scale=0.4)
     name, st = constraint_fold_stats(phi)
-    assert name == '2tri'
+    assert name == 'simplex'
     assert st.n_neg > 0
 
 
 def test_constraint_fold_stats_auto_3d():
     phi = planted_fold_3d()
     name, st = constraint_fold_stats(phi)
-    assert name == '6tet'
+    assert name == 'simplex_3d'
     assert st.n_neg > 0
 
 
 def test_constraint_fold_stats_matches_solver_init_stats():
     # The metrics module and Solver.fit must agree on what "folded" means.
     phi = planted_fold(10, 10, seed=0, scale=0.4)
-    _, st = constraint_fold_stats(phi, constraint='2tri')
-    res = correct_dvf(phi, constraint='2tri', objective='l1', strategy='auto')
+    _, st = constraint_fold_stats(phi, constraint='simplex')
+    res = correct_dvf(phi, constraint='simplex', objective='l1', strategy='auto')
     assert res.init_n_neg == st.n_neg

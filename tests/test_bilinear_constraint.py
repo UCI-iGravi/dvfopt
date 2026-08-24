@@ -1,4 +1,4 @@
-"""``TriConstraint2DBilinear`` — the bilinear cell-min-Jdet certificate as four
+"""``SimplexConstraint2DBilinear`` — the bilinear cell-min-Jdet certificate as four
 smooth triangle rows per cell (both diagonal splits).
 
 Contract under test: ``min over the 4 rows == 0.5 * cell_min_jdet_2d``, so
@@ -30,8 +30,8 @@ from dvfopt import (
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt.constraints import (
     _CONSTRAINT_REGISTRY,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
     make_constraint,
 )
 from dvfopt.core.primitives.coloring import dense_jacobian
@@ -63,21 +63,21 @@ def _certified(phi_out):
 
 
 def test_identity_is_half_everywhere():
-    c = TriConstraint2DBilinear((5, 7))
+    c = SimplexConstraint2DBilinear((5, 7))
     assert c.n_constraints == 4 * 4 * 6
     np.testing.assert_allclose(_rows(c, np.zeros((2, 5, 7))), 0.5)
 
 
 def test_cell_min_matches_cell_min_jdet_2d():
     phi = planted_fold(9, 11, seed=4, scale=0.6)
-    c = TriConstraint2DBilinear(phi.shape[1:])
+    c = SimplexConstraint2DBilinear(phi.shape[1:])
     np.testing.assert_allclose(_rows(c, phi).min(0), 0.5 * cell_min_jdet_2d(phi), atol=1e-12)
 
 
 def test_rows_are_the_2tri_pair_then_shoelaces_other_diagonal():
     phi = planted_fold(8, 6, seed=1)
-    c = TriConstraint2DBilinear(phi.shape[1:])
-    t = TriConstraint2D(phi.shape[1:])
+    c = SimplexConstraint2DBilinear(phi.shape[1:])
+    t = SimplexConstraint2D(phi.shape[1:])
     vals = c.values(c.flatten(phi))
     np.testing.assert_array_equal(vals[: t.n_constraints], t.values(t.flatten(phi)))
     # the same four triangles shoelace.py defines (its T1..T4 = our rows reversed)
@@ -88,12 +88,12 @@ def test_rows_are_the_2tri_pair_then_shoelaces_other_diagonal():
 
 def test_reflex_vertex_on_the_2tri_diagonal_is_invisible_to_2tri():
     """A reflex vertex ON the TR-BL diagonal folds the quad (bilinear map) without
-    folding either TR-BL triangle — invisible to 2-tri, caught by both diagonals."""
+    folding either TR-BL triangle — invisible to simplex (2D), caught by both diagonals."""
     phi = np.zeros((2, 3, 3))
     # push pixel (0, 1) — cell (0, 0)'s TR corner — inward past that cell's TL-BR diagonal
     phi[0, 0, 1], phi[1, 0, 1] = 0.7, -0.7
-    t = TriConstraint2D((3, 3))
-    c = TriConstraint2DBilinear((3, 3))
+    t = SimplexConstraint2D((3, 3))
+    c = SimplexConstraint2DBilinear((3, 3))
     assert t.values(t.flatten(phi)).min() > 0
     assert c.values(c.flatten(phi)).min() < 0
     assert cell_min_jdet_2d(phi).min() < 0
@@ -129,7 +129,7 @@ def test_cell_min_jdet_2d_is_the_bilinear_minimum():
 
 
 def test_registry_and_fold_stats():
-    assert isinstance(make_constraint('bilinear', (6, 6)), TriConstraint2DBilinear)
+    assert isinstance(make_constraint('bilinear', (6, 6)), SimplexConstraint2DBilinear)
     name, st = constraint_fold_stats(planted_fold(10, 10, seed=0), constraint='bilinear')
     assert name == 'bilinear' and st.n_neg > 0
     _, clean = constraint_fold_stats(np.zeros((2, 8, 8)), constraint='bilinear')
@@ -163,13 +163,13 @@ def test_auto_strategy_always_picks_an_accepting_strategy(
 def test_two_tri_specialised_strategies_reject_it_at_construction(strategy):
     with pytest.raises(IncompatibleConstraintError):
         Solver(
-            constraint=TriConstraint2DBilinear((12, 12)),
+            constraint=SimplexConstraint2DBilinear((12, 12)),
             objective=L1Objective(),
             strategy=strategy(),
         )
 
 
-@pytest.mark.parametrize('cls,k', [(TriConstraint2D, 2), (TriConstraint2DBilinear, 4)])
+@pytest.mark.parametrize('cls,k', [(SimplexConstraint2D, 2), (SimplexConstraint2DBilinear, 4)])
 def test_structural_sparsity_pattern_matches_the_probed_one(cls, k):
     """The windowed engine's index-arithmetic pattern is exactly what dense
     probing found (same columns, same order) — for both triangle families."""
@@ -188,7 +188,7 @@ def test_structural_sparsity_pattern_matches_the_probed_one(cls, k):
 
 def test_barrier_reaches_feasibility_and_certifies_the_cells():
     phi = planted_fold(14, 14, seed=3, scale=0.3)
-    c = TriConstraint2DBilinear(phi.shape[1:])
+    c = SimplexConstraint2DBilinear(phi.shape[1:])
     res = Solver(constraint=c, objective=L2Objective(), strategy=BarrierStrategy()).fit(phi)
     assert res.init_n_neg > 0
     assert res.final_n_neg == 0 and res.feasible
@@ -199,18 +199,18 @@ def test_slsqp_windowed_triangle_mode_solves_it():
     """The legacy windowed SLSQP's triangle mode enforces all four triangles —
     exactly this constraint — so it accepts and solves it."""
     phi = planted_fold(10, 10, seed=0)
-    c = TriConstraint2DBilinear(phi.shape[1:])
+    c = SimplexConstraint2DBilinear(phi.shape[1:])
     res = Solver(constraint=c, objective=L2Objective(), strategy=SLSQPWindowedStrategy()).fit(phi)
     assert res.init_n_neg > 0
     assert res.final_n_neg == 0 and res.feasible
     assert _certified(res.corrected)
 
 
-@pytest.mark.parametrize('label', ['2tri', 'bilinear', 'jdet', 'finite'])
+@pytest.mark.parametrize('label', ['simplex', 'bilinear', 'jdet', 'finite'])
 def test_facade_resolves_every_2d_label_and_plots(label):
     """The DVFopt facade goes through the constraint registry, and
     ``plot_feasibility`` maps every row layout (2/4 triangle rows, the default
-    '2tri' snapshot's corner-patch rows, per-pixel Jdet, per-cell finite)."""
+    'simplex' snapshot's corner-patch rows, per-pixel Jdet, per-cell finite)."""
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 

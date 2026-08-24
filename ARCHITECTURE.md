@@ -11,7 +11,7 @@ A solve is the composition of three independent choices:
 ```
               Constraint                 Objective              Strategy
      "what must stay feasible"      "what to minimise"      "how to get there"
-   TriConstraint2D / Tet6Con...    L1 / L2 / NoneObjective   SLP, Barrier, SLSQP*, ...
+   SimplexConstraint2D / -3D ...     L1 / L2 / NoneObjective   SLP, Barrier, SLSQP*, ...
                  │                          │                       │
                  └──────────────┬───────────┴───────────────────────┘
                                 ▼
@@ -25,8 +25,10 @@ actually take (`accepts_constraints`, `accepts_objectives`, `supports_3d`) and
 `Solver.__init__` rejects a bad triple at construction with
 `IncompatibleConstraintError` / `IncompatibleObjectiveError` — never mid-solve.
 
-`Solver.from_spec(constraint='2tri', objective='l1', strategy='slp')` builds the
+`Solver.from_spec(constraint='simplex', objective='l1', strategy='slp')` builds the
 same thing from string labels via the three registries.
+
+The **simplex metric** (labels `'simplex'` / `'simplex_standard'` / `'simplex_3d'`; formerly *2-tri* / *6-tet*) is the exact Jacobian determinant of the piecewise-linear interpolant on the fixed simplicial decomposition of the grid — 2 triangles per cell along the fixed BL–TR diagonal in 2D, 6 tetrahedra per cell in 3D — so feasibility is a genuine injectivity certificate for that interpolant. Strictness ordering: central-diff Jdet < `'finite'` (forward-diff = one triangle per cell) < simplex (both triangles). The old names *2-tri* / *6-tet* remain as registry aliases (`'2tri'`, `'2tri_standard'`, `'6tet'`, `'6tet_3d'`), and the old class names (`TriConstraint2D`, `TriConstraint2DFullCoverage`, `TriConstraint2DBilinear`, `Tet6Constraint3D`) remain importable.
 
 ## Dependency rules
 
@@ -77,17 +79,17 @@ plausible-looking wrong answer, so the layout is declared on the Constraint
 
 | Pack | Layout | Declared by | Modules |
 |---|---|---|---|
-| `PhiPack.DY_FIRST` | `phi[:N]=dy`, `phi[N:]=dx` | `TriConstraint2D`, `TriConstraint2DFullCoverage`, `TriConstraint2DBilinear` | `core/primitives/tri.py`, `core/barrier/tri2d.py`, `core/slsqp_fullgrid/tri2d.py`, `core/schwarz/{tri2d,_cluster}.py`, the 2D `core/wallbreakers/*`, `core/slp/{lp_direct_2tri,cluster_lp_2tri,tri_linearize}.py` |
-| `PhiPack.DX_FIRST` | `phi[:N]=dx`, `phi[N:2N]=dy` (3D: `phi[2N:]=dz`) | `JdetConstraint2D`, `JdetConstraint3D`, **`Tet6Constraint3D`** | `core/slsqp_windowed/*`, `core/primitives/{jdet2d,jdet3d}.py`, `core/barrier/{jdet2d,jdet3d,jdet3d_torch,tet3d_torch}.py`, `core/slsqp_fullgrid/tet3d.py`, `core/slp/{lp_direct_6tet,cluster_lp_6tet}.py`, the 3D `core/wallbreakers/*`, `jacobian/tetrahedron_sign.py` |
+| `PhiPack.DY_FIRST` | `phi[:N]=dy`, `phi[N:]=dx` | `SimplexConstraint2D`, `SimplexConstraint2DFullCoverage`, `SimplexConstraint2DBilinear` | `core/primitives/tri.py`, `core/barrier/tri2d.py`, `core/slsqp_fullgrid/tri2d.py`, `core/schwarz/{tri2d,_cluster}.py`, the 2D `core/wallbreakers/*`, `core/slp/{lp_direct_2tri,cluster_lp_2tri,tri_linearize}.py` |
+| `PhiPack.DX_FIRST` | `phi[:N]=dx`, `phi[N:2N]=dy` (3D: `phi[2N:]=dz`) | `JdetConstraint2D`, `JdetConstraint3D`, **`SimplexConstraint3D`** | `core/slsqp_windowed/*`, `core/primitives/{jdet2d,jdet3d}.py`, `core/barrier/{jdet2d,jdet3d,jdet3d_torch,tet3d_torch}.py`, `core/slsqp_fullgrid/tet3d.py`, `core/slp/{lp_direct_6tet,cluster_lp_6tet}.py`, the 3D `core/wallbreakers/*`, `jacobian/tetrahedron_sign.py` |
 
-Note the split is **not** "2-tri/6-tet vs Jdet": the 6-tet 3D family packs
+Note the split is **not** "simplex (2D)/simplex (3D) vs Jdet": the simplex (3D) 3D family packs
 `[dx, dy, dz]` so it can share the 3D barrier plumbing with `JdetConstraint3D`.
 `core/schwarz/_common.py` is pack-agnostic (it slices `(C, *shape)` arrays and
 never flattens).
 
 A flat vector from one family cannot be handed to the other without a channel
 swap. A helper that genuinely sees both — `core/marching/*` mixes a DX_FIRST
-6-tet stack with a DY_FIRST 2-tri term — asserts on the pack lengths at the
+simplex (3D) stack with a DY_FIRST simplex (2D) term — asserts on the pack lengths at the
 boundary. Copy that pattern; do not bridge silently.
 
 ## Add a method

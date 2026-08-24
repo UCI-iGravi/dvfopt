@@ -1,4 +1,4 @@
-"""Schwarz domain decomposition — one home for the 2-triangle/6-tet split.
+"""Schwarz domain decomposition — one home for the 2-triangle/simplex (3D) split.
 
 Modules: ``_common`` (generic ``cluster_schwarz_2d_tri`` /
 ``cluster_schwarz_3d_tet`` decomposition core, shared by the wallbreaker

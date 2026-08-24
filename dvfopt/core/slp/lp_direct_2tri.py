@@ -1,4 +1,4 @@
-"""LP-direct strategies for strict 2-tri feasibility.
+"""LP-direct strategies for strict simplex (2D) feasibility.
 
 Two variants:
 
@@ -81,13 +81,13 @@ def _m10_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     from dvfopt import (
         HarmonicALMBarrierStrategy,
         L1Objective,
+        SimplexConstraint2DFullCoverage,
         Solver,
-        TriConstraint2DFullCoverage,
     )
 
     H, W = phi_in_2hw.shape[1:]
     solver = Solver(
-        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        constraint=SimplexConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
         strategy=HarmonicALMBarrierStrategy(),
         threshold=threshold,
@@ -106,13 +106,13 @@ def _m14_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     from dvfopt import (
         HarmonicALMRefineRepairStrategy,
         L1Objective,
+        SimplexConstraint2DFullCoverage,
         Solver,
-        TriConstraint2DFullCoverage,
     )
 
     H, W = phi_in_2hw.shape[1:]
     solver = Solver(
-        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        constraint=SimplexConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
         strategy=HarmonicALMRefineRepairStrategy(
             stage1_mu_schedule=M14_SEED_STAGE1_MU_SCHEDULE,
@@ -134,13 +134,13 @@ def _m14_fast_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     from dvfopt import (
         HarmonicALMRefineRepairStrategy,
         L1Objective,
+        SimplexConstraint2DFullCoverage,
         Solver,
-        TriConstraint2DFullCoverage,
     )
 
     H, W = phi_in_2hw.shape[1:]
     solver = Solver(
-        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        constraint=SimplexConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
         strategy=HarmonicALMRefineRepairStrategy(
             polish_mu=(),
@@ -170,13 +170,13 @@ def _m14_quick_seed(phi_in_2hw: np.ndarray, threshold: float) -> np.ndarray:
     from dvfopt import (
         HarmonicALMRefineRepairStrategy,
         L1Objective,
+        SimplexConstraint2DFullCoverage,
         Solver,
-        TriConstraint2DFullCoverage,
     )
 
     H, W = phi_in_2hw.shape[1:]
     solver = Solver(
-        constraint=TriConstraint2DFullCoverage(shape=(H, W)),
+        constraint=SimplexConstraint2DFullCoverage(shape=(H, W)),
         objective=L1Objective(eps=1e-4),
         strategy=HarmonicALMRefineRepairStrategy(
             polish_mu=(),

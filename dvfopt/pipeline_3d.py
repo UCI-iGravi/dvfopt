@@ -1,7 +1,7 @@
 """End-to-end 3D fold-elimination orchestrator: ``correct_dvf_3d``.
 
 Composes the validated, audited stages into ONE reproducible call that
-drives a folded 3D displacement chunk toward strict 6-tet feasibility:
+drives a folded 3D displacement chunk toward strict simplex (3D) feasibility:
 
   Stage 0  Triage     — fixed-diagonal fold count + best-diagonal floor
                         (the "exists-a-positive-triangulation" predictor).
@@ -9,7 +9,7 @@ drives a folded 3D displacement chunk toward strict 6-tet feasibility:
   Stage 1  Bulk       — reduce the bulk of the folds. Routed by fold
                         sparsity: scattered folds -> active-band M10Tet
                         (per-cluster crops, ~70x); one big dense cluster ->
-                        global M10Tet (CPU) or the GPU 6-tet barrier.
+                        global M10Tet (CPU) or the GPU simplex (3D) barrier.
   Stage 2  Escape     — iterate the coupled k-ring SLSQP escape (+ local
                         M10Tet recovery) to break the shared-corner
                         local-minimum attractor that bulk solvers plateau
@@ -92,7 +92,7 @@ def correct_dvf_3d(
     sparse_span_cutoff: float = 0.6,
     verbose: int = 0,
 ):
-    """Drive a folded 3D DVF chunk toward strict 6-tet feasibility.
+    """Drive a folded 3D DVF chunk toward strict simplex (3D) feasibility.
 
     Parameters
     ----------
@@ -106,7 +106,7 @@ def correct_dvf_3d(
     bulk : {'auto','active_band','global','gpu'}, default 'auto'
         Bulk-reduction route. ``'auto'`` picks active-band when folds are
         spatially localized (fast) and global M10Tet when they span the
-        chunk. ``'gpu'`` uses the CUDA 6-tet barrier (for large dense
+        chunk. ``'gpu'`` uses the CUDA simplex (3D) barrier (for large dense
         chunks).
     max_escape_iters : int, default 8
         Max coupled-escape iterations to break the residual attractor.
@@ -127,7 +127,7 @@ def correct_dvf_3d(
     if phi.shape[0] != 3 or phi.ndim != 4:
         raise ValueError(f'phi must have shape (3, D, H, W), got {phi.shape}')
     phi0 = np.asarray(phi, dtype=np.float64)
-    # NaN-aware: the fused 6-tet min-volume kernel initialises at 1e300 and
+    # NaN-aware: the fused simplex (3D) min-volume kernel initialises at 1e300 and
     # uses `<` comparisons that NaN always fails, so a non-finite field would
     # otherwise sail through triage as "feasible" (silent success on
     # corrupted data).
@@ -141,14 +141,14 @@ def correct_dvf_3d(
     from dvfopt import (
         CoupledKRing3DStrategy,
         L1Objective,
+        SimplexConstraint3D,
         Solver,
-        Tet6Constraint3D,
     )
     from dvfopt.core.wallbreakers._coupled_kring_3d import (
         active_band_alm_recovery_3d,
     )
 
-    constraint = Tet6Constraint3D(shape=phi0.shape[1:])
+    constraint = SimplexConstraint3D(shape=phi0.shape[1:])
     objective = L1Objective(eps=1e-4)
 
     def _m10tet(p, thr, gpu=False):

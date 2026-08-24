@@ -58,7 +58,7 @@ def _interior_pack_unpack_2d(phi_win, interior_mask):
 
 
 # ---------------------------------------------------------------------------
-# Analytical 2-tri constraint Jacobian (interior vars only)
+# Analytical simplex (2D) constraint Jacobian (interior vars only)
 # ---------------------------------------------------------------------------
 
 

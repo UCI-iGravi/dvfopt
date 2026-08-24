@@ -40,9 +40,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from dvfopt.constraints import (
-    Tet6Constraint3D,
-    TriConstraint2D,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
 )
 from dvfopt.strategies.base import Strategy, _build_solve_info, register_strategy
 
@@ -95,7 +95,7 @@ class HarmonicALMBarrierStrategy(Strategy):
     time_budget_s: float = 600.0
 
     supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    accepts_constraints = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
 
     def solve(
         self,
@@ -169,7 +169,7 @@ class HarmonicALMRefineRepairStrategy(Strategy):
     time_budget_s: float = 600.0
 
     supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    accepts_constraints = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
 
     def solve(
         self,
@@ -239,7 +239,7 @@ class SchwarzHarmonicALMRefineRepairStrategy(Strategy):
     final_polish_max_iter: int = 200
 
     supports_3d: bool = False
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage)
+    accepts_constraints = (SimplexConstraint2D, SimplexConstraint2DFullCoverage)
 
     def solve(
         self,
@@ -326,7 +326,7 @@ M14SchwarzStrategy = SchwarzHarmonicALMRefineRepairStrategy
 @register_strategy('harmonic_3d')
 @dataclass
 class Harmonic3DStrategy(Strategy):
-    """3D harmonic-extension wallbreaker for the 6-tet constraint.
+    """3D harmonic-extension wallbreaker for the simplex (3D) constraint.
 
     3D analog of the harmonic step in :class:`M10Strategy`. Finds
     fold cores, dilates each by a ring of feasible boundary, and
@@ -362,7 +362,7 @@ class Harmonic3DStrategy(Strategy):
     polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -443,7 +443,7 @@ class Harmonic3DStrategy(Strategy):
 @register_strategy('alm_3d')
 @dataclass
 class ALM3DStrategy(Strategy):
-    """PHR augmented Lagrangian for the 3D 6-tet constraint.
+    """PHR augmented Lagrangian for the 3D simplex (3D) constraint.
 
     3D analog of the standalone 2D m03 ALM wallbreaker. Avoids the
     barrier's penalty-phase stall on dense folds — the inner problem
@@ -461,7 +461,7 @@ class ALM3DStrategy(Strategy):
     time_budget_s: float = 600.0
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -556,7 +556,7 @@ class HarmonicALMBarrier3DStrategy(Strategy):
     polish_grad_rtol: float = 0.0
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -718,7 +718,7 @@ class HarmonicALMRefineRepair3DStrategy(Strategy):
     time_budget_s: float = 600.0
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -765,7 +765,7 @@ M14TetStrategy = HarmonicALMRefineRepair3DStrategy
 @register_strategy('m14_schwarz_3d')  # back-compat alias
 @dataclass
 class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
-    """Cluster-localized RefineRepair-3D (Schwarz for 6-tet).
+    """Cluster-localized RefineRepair-3D (Schwarz for simplex (3D)).
 
     3D analog of :class:`SchwarzHarmonicALMRefineRepairStrategy` (2D). Detects
     connected fold components via 26-connectivity CCL, runs global
@@ -791,7 +791,7 @@ class SchwarzHarmonicALMRefineRepair3DStrategy(Strategy):
     time_budget_s: float = 600.0
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -967,7 +967,7 @@ class CoupledKRing3DStrategy(Strategy):
     use_analytical_jacobian: bool = False
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,
@@ -1114,7 +1114,7 @@ class ActiveBandALM3DStrategy(Strategy):
     the 2D per-slice pass). Finds the connected fold clusters, runs
     M10Tet on a padded crop around each (not the whole field), pastes
     back, and accepts only if the global fold count does not increase —
-    so the strict 6-tet guarantee is preserved and re-verified globally.
+    so the strict simplex (3D) guarantee is preserved and re-verified globally.
 
     Measured ~70x vs global M10Tet on a scattered-fold field (273 s →
     3.9 s, identical n_neg=0). On a pathological dense band where folds
@@ -1152,7 +1152,7 @@ class ActiveBandALM3DStrategy(Strategy):
     band_threshold: float | None = None
 
     supports_3d: bool = True
-    accepts_constraints = (Tet6Constraint3D,)
+    accepts_constraints = (SimplexConstraint3D,)
 
     def solve(
         self,

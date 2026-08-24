@@ -1,4 +1,4 @@
-"""2.5D marching sweep for inter-layer 6-tet fold repair.
+"""2.5D marching sweep for inter-layer simplex (3D) fold repair.
 
 This subpackage productizes the "marching full volume" experiment from
 ``research/strict_feasibility_3d``: each z-slice of a ``(3, D, H, W)``

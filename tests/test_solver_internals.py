@@ -252,13 +252,13 @@ class TestSolverFitLayoutCoercion:
         from dvfopt import (
             HarmonicALMRefineRepairStrategy,
             L1Objective,
+            SimplexConstraint2DFullCoverage,
             Solver,
-            TriConstraint2DFullCoverage,
         )
 
         phi = self._phi_3hw()
         res = Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(10, 10)),
             objective=L1Objective(),
             strategy=HarmonicALMRefineRepairStrategy(),
         ).fit(phi)
@@ -268,7 +268,7 @@ class TestSolverFitLayoutCoercion:
         assert not np.array_equal(res.corrected[1:], phi[1:])
 
     def test_slp_accepts_31hw_singleton_d(self):
-        from dvfopt import L1Objective, SLPStrategy, Solver, TriConstraint2DFullCoverage
+        from dvfopt import L1Objective, SimplexConstraint2DFullCoverage, SLPStrategy, Solver
 
         phi2 = _folded_2d()
         phi = np.zeros((3, 1, 10, 10))
@@ -276,7 +276,7 @@ class TestSolverFitLayoutCoercion:
         phi[1, 0] = phi2[0]
         phi[2, 0] = phi2[1]
         res = Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(10, 10)),
             objective=L1Objective(),
             strategy=SLPStrategy(n_workers=1),
         ).fit(phi)
@@ -284,11 +284,11 @@ class TestSolverFitLayoutCoercion:
         np.testing.assert_array_equal(res.corrected[0], 3.0)  # dz untouched
 
     def test_barrier_3hw_returns_same_shape_with_dz(self):
-        from dvfopt import BarrierStrategy, L1Objective, Solver, TriConstraint2DFullCoverage
+        from dvfopt import BarrierStrategy, L1Objective, SimplexConstraint2DFullCoverage, Solver
 
         phi = self._phi_3hw(dz_value=-2.5)
         res = Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(10, 10)),
             objective=L1Objective(),
             strategy=BarrierStrategy(),
         ).fit(phi)
@@ -297,11 +297,11 @@ class TestSolverFitLayoutCoercion:
         np.testing.assert_array_equal(res.corrected[0], -2.5)
 
     def test_canonical_2hw_input_passes_through(self):
-        from dvfopt import BarrierStrategy, L1Objective, Solver, TriConstraint2DFullCoverage
+        from dvfopt import BarrierStrategy, L1Objective, SimplexConstraint2DFullCoverage, Solver
 
         phi = _folded_2d()
         res = Solver(
-            constraint=TriConstraint2DFullCoverage(shape=(10, 10)),
+            constraint=SimplexConstraint2DFullCoverage(shape=(10, 10)),
             objective=L1Objective(),
             strategy=BarrierStrategy(),
         ).fit(phi)
@@ -394,14 +394,14 @@ class TestConstraintRegistryOverwriteGuard:
     def test_same_class_reregistration_is_silent(self):
         from dvfopt.constraints import (
             _CONSTRAINT_REGISTRY,
-            TriConstraint2D,
+            SimplexConstraint2D,
             register_constraint,
         )
 
         try:
-            register_constraint(self._LABEL)(TriConstraint2D)
-            register_constraint(self._LABEL)(TriConstraint2D)  # no raise
-            assert _CONSTRAINT_REGISTRY[self._LABEL] is TriConstraint2D
+            register_constraint(self._LABEL)(SimplexConstraint2D)
+            register_constraint(self._LABEL)(SimplexConstraint2D)  # no raise
+            assert _CONSTRAINT_REGISTRY[self._LABEL] is SimplexConstraint2D
         finally:
             _CONSTRAINT_REGISTRY.pop(self._LABEL, None)
 
@@ -409,14 +409,14 @@ class TestConstraintRegistryOverwriteGuard:
         from dvfopt.constraints import (
             _CONSTRAINT_REGISTRY,
             JdetConstraint2D,
-            TriConstraint2D,
+            SimplexConstraint2D,
             register_constraint,
         )
 
         try:
-            register_constraint(self._LABEL)(TriConstraint2D)
-            with pytest.raises(ValueError, match=r'TriConstraint2D.*JdetConstraint2D'):
+            register_constraint(self._LABEL)(SimplexConstraint2D)
+            with pytest.raises(ValueError, match=r'SimplexConstraint2D.*JdetConstraint2D'):
                 register_constraint(self._LABEL)(JdetConstraint2D)
-            assert _CONSTRAINT_REGISTRY[self._LABEL] is TriConstraint2D
+            assert _CONSTRAINT_REGISTRY[self._LABEL] is SimplexConstraint2D
         finally:
             _CONSTRAINT_REGISTRY.pop(self._LABEL, None)

@@ -84,10 +84,10 @@ class TestDVFoptTriFullCoverage:
         patches_init = _corner_patch_areas_2d(phi[0], phi[1])
         assert patches_init[0] < 0, "setup needs a planted corner fold"
 
-        # '2tri' (full-coverage by default) enforces the corner-patch
+        # 'simplex' (full-coverage by default) enforces the corner-patch
         # triangles, so the planted corner fold must be cleared.
         cfg = DVFoptConfig(
-            solver='barrier', constraint='2tri', strategy_kwargs={'max_iter': 400}, verbose=0
+            solver='barrier', constraint='simplex', strategy_kwargs={'max_iter': 400}, verbose=0
         )
         res = DVFopt(cfg).fit(phi)
         patches_final = _corner_patch_areas_2d(res.corrected[0], res.corrected[1])
@@ -114,7 +114,7 @@ class TestDVFoptNewSolverRouting:
         if int((T1 <= 0).sum() + (T2 <= 0).sum()) == 0:
             pytest.skip("seed produced no folds")
 
-        cfg = DVFoptConfig(solver=solver, constraint='2tri', verbose=0)
+        cfg = DVFoptConfig(solver=solver, constraint='simplex', verbose=0)
         res = DVFopt(cfg).fit(phi)
         assert res.slice_results[0].solver_used == solver
         assert res.feasible

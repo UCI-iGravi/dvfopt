@@ -27,8 +27,8 @@ from dvfopt import (
     L2Objective,
     SchwarzHarmonicALMRefineRepairStrategy,
     SchwarzWrapperStrategy,
+    SimplexConstraint2D,
     Solver,
-    TriConstraint2D,
 )
 from dvfopt.exceptions import IncompatibleConstraintError
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
@@ -106,7 +106,7 @@ class TestParity2D:
         phi = _planted_sparse_2d(20, 20, seed=1)
         assert _fold_count_2d(phi) >= 2
 
-        constraint = TriConstraint2D(shape=phi.shape[1:])
+        constraint = SimplexConstraint2D(shape=phi.shape[1:])
         objective = L2Objective()
 
         # Wrapper path.
@@ -165,7 +165,7 @@ class TestGenericInner:
         assert n0 >= 2
 
         result = Solver(
-            constraint=TriConstraint2D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint2D(shape=phi.shape[1:]),
             objective=L2Objective(),
             strategy=SchwarzWrapperStrategy(
                 inner=HarmonicALMBarrierStrategy(time_budget_s=60.0),
@@ -180,10 +180,10 @@ class TestGenericInner:
         )
 
     def test_inner_compatibility_check(self):
-        """An inner that doesn't accept TriConstraint2D should be
-        rejected when fitting on a TriConstraint2D problem.
+        """An inner that doesn't accept SimplexConstraint2D should be
+        rejected when fitting on a SimplexConstraint2D problem.
 
-        BarrierStrategy accepts both 2-tri and Jdet so it's
+        BarrierStrategy accepts both simplex (2D) and Jdet so it's
         compatible here — we instead test rejection via a real
         mismatch: HarmonicALMRefineRepairStrategy is 2D-tri-only,
         but if we tried to use the wrapper on a 3D constraint with
@@ -192,9 +192,9 @@ class TestGenericInner:
         We use ``_check_inner_compatible`` directly here for a
         focused unit test."""
         wrapper = SchwarzWrapperStrategy(inner=HarmonicALMRefineRepairStrategy())
-        # Compatible: TriConstraint2D is in HarmonicALMRefineRepair's
+        # Compatible: SimplexConstraint2D is in HarmonicALMRefineRepair's
         # accepts_constraints.
-        wrapper._check_inner_compatible(TriConstraint2D(shape=(8, 8)))
+        wrapper._check_inner_compatible(SimplexConstraint2D(shape=(8, 8)))
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ be before every constraint it influences is enforceable with the correct
   finite: 1 — forward-diff cell det is EXACT and depends on 3 corners; a free
            pixel's <=3 influenced cells are all in-patch once it is 1 in (like 2tri).
 
-``TriConstraint2DFullCoverage`` is deliberately NOT registered: its 2
+``SimplexConstraint2DFullCoverage`` is deliberately NOT registered: its 2
 extra opposite-diagonal corner rows need their own influenced-row
 handling, which is out of scope here (stage 2).
 """
@@ -35,8 +35,8 @@ from scipy import ndimage
 from dvfopt.constraints import (
     FiniteJdetConstraint2D,
     JdetConstraint2D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
 )
 from dvfopt.core.primitives.coloring import colored_jacobian, jacobian_coloring
 from dvfopt.exceptions import IncompatibleConstraintError
@@ -183,7 +183,7 @@ def _influenced_2tri(c, free_mask, ph, pw, borders):
 
     def jac_of(f):
         # coloring: 4k adjoint calls, not a full dense (kM x 2N) rebuild per iter
-        # (the native jacobian() densifies — ~43% of a 2-tri window's time).
+        # (the native jacobian() densifies — ~43% of a simplex (2D) window's time).
         return colored_jacobian(c, f, *coloring).tocsr()
 
     return enforced_idx, jac_of
@@ -212,12 +212,14 @@ LOCALITY: dict[type, WindowLocality] = {
     JdetConstraint2D: WindowLocality(
         ring=2, min_field=_min_field_jdet, influenced=_influenced_jdet
     ),
-    TriConstraint2D: WindowLocality(
-        ring=1, min_field=partial(_min_field_cells, TriConstraint2D), influenced=_influenced_2tri
-    ),
-    TriConstraint2DBilinear: WindowLocality(
+    SimplexConstraint2D: WindowLocality(
         ring=1,
-        min_field=partial(_min_field_cells, TriConstraint2DBilinear),
+        min_field=partial(_min_field_cells, SimplexConstraint2D),
+        influenced=_influenced_2tri,
+    ),
+    SimplexConstraint2DBilinear: WindowLocality(
+        ring=1,
+        min_field=partial(_min_field_cells, SimplexConstraint2DBilinear),
         influenced=_influenced_2tri,
     ),
     FiniteJdetConstraint2D: WindowLocality(

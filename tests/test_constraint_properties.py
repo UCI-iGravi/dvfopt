@@ -27,9 +27,9 @@ from hypothesis import strategies as st
 from dvfopt.constraints import (
     JdetConstraint2D,
     JdetConstraint3D,
-    TriConstraint2D,
-    TriConstraint2DBilinear,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
+    SimplexConstraint2DFullCoverage,
 )
 
 
@@ -61,7 +61,7 @@ def test_tri_constraint_2d_adjoint_matches_fd(shape, seed, amp):
     H, W = shape
     rng = np.random.default_rng(seed)
     phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
-    c = TriConstraint2D((H, W))
+    c = SimplexConstraint2D((H, W))
     flat = c.flatten(phi)
     v = rng.normal(size=c.n_constraints)
     ana = c.adjoint(flat, v)
@@ -77,7 +77,7 @@ def test_tri_constraint_2d_full_coverage_adjoint(shape, seed, amp):
     H, W = shape
     rng = np.random.default_rng(seed)
     phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
-    c = TriConstraint2DFullCoverage((H, W))
+    c = SimplexConstraint2DFullCoverage((H, W))
     flat = c.flatten(phi)
     v = rng.normal(size=c.n_constraints)
     err = float(np.abs(c.adjoint(flat, v) - _fd_jacobian_T_v(c, flat, v)).max())
@@ -90,7 +90,7 @@ def test_tri_constraint_2d_bilinear_adjoint(shape, seed, amp):
     H, W = shape
     rng = np.random.default_rng(seed)
     phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
-    c = TriConstraint2DBilinear((H, W))
+    c = SimplexConstraint2DBilinear((H, W))
     flat = c.flatten(phi)
     v = rng.normal(size=c.n_constraints)
     err = float(np.abs(c.adjoint(flat, v) - _fd_jacobian_T_v(c, flat, v)).max())
@@ -137,7 +137,7 @@ def test_tri_constraint_2d_sparse_jacobian_matches_dense(shape, seed, amp):
     H, W = shape
     rng = np.random.default_rng(seed)
     phi = np.stack([rng.normal(0, amp, (H, W)), rng.normal(0, amp, (H, W))])
-    c = TriConstraint2D((H, W))
+    c = SimplexConstraint2D((H, W))
     flat = c.flatten(phi)
     J_sparse = c.jacobian(flat).toarray()
     # Build dense Jacobian via FD column sweep — should match within FD tol.
@@ -156,9 +156,9 @@ def test_tri_constraint_2d_sparse_jacobian_matches_dense(shape, seed, amp):
 @pytest.mark.parametrize(
     'cls,shape',
     [
-        (TriConstraint2D, (5, 6)),
-        (TriConstraint2DFullCoverage, (5, 6)),
-        (TriConstraint2DBilinear, (5, 6)),
+        (SimplexConstraint2D, (5, 6)),
+        (SimplexConstraint2DFullCoverage, (5, 6)),
+        (SimplexConstraint2DBilinear, (5, 6)),
         (JdetConstraint2D, (5, 6)),
         (JdetConstraint3D, (3, 4, 5)),
     ],
@@ -183,13 +183,13 @@ def test_round_trip_flatten_unflatten(cls, shape):
 
 
 def test_tri_constraint_accepts_3channel_input():
-    """TriConstraint2D.coerce should accept (3, 1, H, W) and (3, H, W)."""
+    """SimplexConstraint2D.coerce should accept (3, 1, H, W) and (3, H, W)."""
     rng = np.random.default_rng(0)
     H, W = 6, 7
     phi_2 = np.stack([rng.normal(scale=0.1, size=(H, W)), rng.normal(scale=0.1, size=(H, W))])
     phi_3 = np.stack([np.zeros((H, W)), phi_2[0], phi_2[1]])
     phi_31hw = phi_3[:, None, :, :]
-    c = TriConstraint2D((H, W))
+    c = SimplexConstraint2D((H, W))
     f2 = c.flatten(phi_2)
     f3 = c.flatten(phi_3)
     f31hw = c.flatten(phi_31hw)
@@ -204,3 +204,21 @@ def test_jdet_constraint_2d_accepts_3channel_input():
     phi_3 = np.stack([np.zeros((H, W)), phi_2[0], phi_2[1]])
     c = JdetConstraint2D((H, W))
     np.testing.assert_array_equal(c.flatten(phi_2), c.flatten(phi_3))
+
+
+def test_legacy_simplex_aliases():
+    """Pre-simplex names/labels stay importable and resolve identically."""
+    import dvfopt
+    from dvfopt import make_constraint
+
+    assert dvfopt.TriConstraint2D is dvfopt.SimplexConstraint2D
+    assert dvfopt.TriConstraint2DFullCoverage is dvfopt.SimplexConstraint2DFullCoverage
+    assert dvfopt.TriConstraint2DBilinear is dvfopt.SimplexConstraint2DBilinear
+    assert dvfopt.Tet6Constraint3D is dvfopt.SimplexConstraint3D
+    for legacy, new, shape in [
+        ('2tri', 'simplex', (8, 8)),
+        ('2tri_standard', 'simplex_standard', (8, 8)),
+        ('6tet', 'simplex_3d', (4, 5, 6)),
+        ('6tet_3d', 'simplex_3d', (4, 5, 6)),
+    ]:
+        assert type(make_constraint(legacy, shape)) is type(make_constraint(new, shape))

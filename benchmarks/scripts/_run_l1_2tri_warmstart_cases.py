@@ -1,4 +1,4 @@
-"""Validate 2-tri + full-coverage on the cases in notebook 14.
+"""Validate simplex (2D) + full-coverage on the cases in notebook 14.
 
 Notebook ``14_l1-warmstart-2d-cases.ipynb`` claims full feasibility
 (``min_TR = +0.010``) on six synthetic cases:
@@ -55,7 +55,7 @@ def _l2(a, b):
 
 
 def _stats(phi):
-    """Full-coverage 2-tri stats: standard cells + 2 corner patches."""
+    """Full-coverage simplex (2D) stats: standard cells + 2 corner patches."""
     T1, T2 = _triangle_areas_2d(phi[0], phi[1])
     patches = _corner_patch_areas_2d(phi[0], phi[1])
     cell_neg = int((T1 <= 0).sum() + (T2 <= 0).sum())

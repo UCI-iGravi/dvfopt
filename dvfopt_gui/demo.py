@@ -15,7 +15,7 @@ toolbar once the window is up. ``--max-iter`` / ``--max-per-index-iter``
 seed the windowed-SLSQP spinbox values for convenience.
 
 The ``--*-3d`` options load a ``(3, D, H, W)`` volume and pre-select the
-``6-tet (3D)`` constraint, so the window opens straight into true-3D
+``Simplex (3D)`` constraint, so the window opens straight into true-3D
 mode — press **Run full** to solve the whole volume (M14Tet by default).
 """
 
@@ -64,7 +64,7 @@ def _synthetic_3d_volume() -> np.ndarray:
     """A small, data-free folded 3D volume for a quick true-3D demo.
 
     A localised ``dx`` bump across every z-slice of a ``(3, 4, 16, 16)``
-    field creates several inverted 6-tet cells — enough for M14Tet to
+    field creates several inverted simplex (3D) cells — enough for M14Tet to
     visibly drive the 3D fold count to zero in a couple of seconds.
     Returns the canonical ``(3, D, H, W)`` ``[dz, dy, dx]`` layout.
     """
@@ -109,7 +109,7 @@ def _bowtie_fixture() -> np.ndarray:
     exactly **two folded 2-triangle cells** and **zero neg-Jdet
     pixels** (the central-diff stencil's 2Δ symmetry cancels the
     artifact out). It's the manuscript's "Jdet-CD misses sub-pixel
-    folds that 2-tri catches" demonstration in its smallest form.
+    folds that simplex (2D) catches" demonstration in its smallest form.
 
     Returns the canonical ``(3, 1, H, W)`` layout the GUI expects.
     """
@@ -145,13 +145,13 @@ def _parse_args(argv=None) -> argparse.Namespace:
         default=None,
         metavar='N',
         dest='b0039_3d',
-        help='Load the first N z-slices of B0039 as a 3D volume (default 16); opens in 6-tet 3D mode.',
+        help='Load the first N z-slices of B0039 as a 3D volume (default 16); opens in simplex (3D) 3D mode.',
     )
     g.add_argument(
         '--synthetic-3d',
         action='store_true',
         dest='synthetic_3d',
-        help='Load a small data-free folded 3D volume; opens in 6-tet 3D mode.',
+        help='Load a small data-free folded 3D volume; opens in simplex (3D) 3D mode.',
     )
     p.add_argument(
         '--max-iter',

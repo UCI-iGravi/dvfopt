@@ -245,8 +245,9 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument(
         '--constraint',
         default='auto',
-        help="'auto' (2tri for 2D, 6tet for 3D) | 2tri | 2tri_standard | bilinear | finite | "
-        'jdet | jdet_3d | 6tet',
+        help="'auto' (simplex for 2D, simplex_3d for 3D) | simplex | simplex_standard | "
+        'bilinear | finite | jdet | jdet_3d | simplex_3d (legacy labels 2tri, '
+        '2tri_standard, 6tet, 6tet_3d still accepted)',
     )
     pi.add_argument('--check', action='store_true', help='exit 1 when not strictly feasible')
     pi.add_argument(
@@ -270,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
         'slices: per-slice 2D sweep over a (3,D,H,W) volume; '
         '25d: marching fold prevention (needs dz==0); 3d: full 3D fold repair',
     )
-    pc.add_argument('--constraint', default='2tri')
+    pc.add_argument('--constraint', default='simplex')
     pc.add_argument('--objective', default='l1')
     pc.add_argument('--strategy', default='auto')
     pc.add_argument(

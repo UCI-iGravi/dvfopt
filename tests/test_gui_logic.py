@@ -29,7 +29,7 @@ from dvfopt_gui.worker import (
 
 
 def _bowtie_2hw(H=7, W=7):
-    """7×7 shoelace bowtie: 0 neg-Jdet pixels but 2 folded 2-tri cells."""
+    """7×7 shoelace bowtie: 0 neg-Jdet pixels but 2 folded simplex (2D) cells."""
     phi = np.zeros((2, H, W))
     phi[1, 3, 3] = 1.2  # dx
     phi[1, 3, 4] = -1.2
@@ -114,7 +114,7 @@ def test_state_to_snapshot_outer_iter_none_becomes_zero():
 
 
 def test_metric_counts_2tri_catches_subpixel_fold():
-    # Bowtie: central-diff Jdet sees nothing, 2-tri sees two folded cells.
+    # Bowtie: central-diff Jdet sees nothing, simplex (2D) sees two folded cells.
     phi = _bowtie_2hw()
     n_neg_tri, min_T_tri = _metric_counts(phi, '2tri')
     n_neg_jdet, min_jdet = _metric_counts(phi, 'jdet')
@@ -156,7 +156,7 @@ def test_infeasible_count_zero_for_clearly_feasible_field():
 @pytest.mark.parametrize(
     'method_id,expected',
     [
-        ('slsqp_windowed_2tri', 'jdet'),  # SLSQP reports Jdet even with 2-tri flag
+        ('slsqp_windowed_2tri', 'jdet'),  # SLSQP reports Jdet even with simplex (2D) flag
         ('slsqp_windowed_jdet', 'jdet'),
         ('m14_2tri', '2tri'),
         ('m14_schwarz_2tri', '2tri'),
@@ -170,7 +170,7 @@ def test_trajectory_metric_kind(method_id, expected):
 
 
 def test_initial_snapshot_uses_run_metric():
-    # A 2-tri run must record the 2-tri fold count at step 0 (not Jdet 0),
+    # A simplex (2D) run must record the simplex (2D) fold count at step 0 (not Jdet 0),
     # so the convergence trajectory starts consistent with its tail.
     w = SolverWorker(deformation_i=_bowtie_deformation(), method_id='m14_2tri')
     w._emit_initial_snapshot('2tri')
@@ -497,7 +497,7 @@ def test_worker_3d_trajectory_metric_and_strategy():
 
 
 def test_worker_3d_experimental_strategies():
-    # The research 3D strategies are dispatchable + route to the 6-tet metric.
+    # The research 3D strategies are dispatchable + route to the simplex (3D) metric.
     from dvfopt import ActiveBandALM3DStrategy, CoupledKRing3DStrategy
 
     vol = np.zeros((3, 4, 8, 8))
@@ -603,7 +603,7 @@ def test_slp_and_auto_dispatch():
     wa = SolverWorker(deformation_i=phi, method_id='auto_2tri', params={'objective_id': 'l1'})
     strat = wa._build_strategy()
     assert strat is not None
-    # 2-tri + L1 now auto-routes to the SLP champion at every fold tier.
+    # simplex (2D) + L1 now auto-routes to the SLP champion at every fold tier.
     assert wa.resolved_strategy_label == 'slp'
     # Non-l1 objectives keep the legacy tiered routing.
     wl2 = SolverWorker(deformation_i=phi, method_id='auto_2tri', params={'objective_id': 'l2'})

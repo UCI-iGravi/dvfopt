@@ -18,7 +18,7 @@ sub-iteration. ``state`` carries:
 * ``phi`` — current ``(2, H, W)`` field (mutates! copy if you need it)
 * ``phi_init`` — original input field, same shape (immutable)
 * ``jacobian`` — current Jdet ``(1, H, W)`` (mutates! copy if you need it)
-* ``quality`` — current 2-tri quality ``(1, H, W)`` (when enforce_*= True;
+* ``quality`` — current simplex (2D) quality ``(1, H, W)`` (when enforce_*= True;
   for plain Jdet runs this is the same buffer as ``jacobian``)
 * ``neg_index`` — ``(y, x)`` tuple of the current worst-Jdet target pixel
 * ``window_center`` — ``(cy, cx)`` SLSQP active-window centre
@@ -248,7 +248,7 @@ def _metric_counts(phi_2hw, kind: str) -> tuple[int, float]:
 
     A run uses ONE metric for *every* snapshot it emits — init,
     per-stage, and final — so its convergence trajectory is internally
-    consistent (no Jdet-counted step 0 spliced onto a 2-tri-counted
+    consistent (no Jdet-counted step 0 spliced onto a simplex (2D)-counted
     tail). See :meth:`SolverWorker._trajectory_metric_kind`.
     """
     field = _metric_field(phi_2hw, kind)
@@ -271,7 +271,7 @@ def _infeasible_count(phi_2hw, kind: str, threshold: float = FEASIBILITY_THRESHO
 def _metric_field_3d(phi3d, kind: str) -> np.ndarray:
     """Per-cell 3D metric field for ``phi3d`` ``(3, D, H, W)`` ``[dz,dy,dx]``.
 
-    ``kind='tet3d'`` → per-cell min 6-tet signed volume
+    ``kind='tet3d'`` → per-cell min simplex (3D) signed volume
     ``(D-1, H-1, W-1)``; ``kind='jdet3d'`` → per-voxel 3D Jacobian
     determinant ``(D, H, W)``.
     """
@@ -585,7 +585,7 @@ class SolverWorker(QtCore.QThread):
         ``n_neg`` / ``min_T`` are computed under ``metric_kind`` (the same
         metric every later snapshot of this run uses), so step 0 lines up
         with the rest of the convergence trajectory rather than being a
-        Jdet count grafted onto a 2-tri tail."""
+        Jdet count grafted onto a simplex (2D) tail."""
         phi_2hw = np.stack(
             [
                 self._deformation_i[1, 0].astype(np.float64),
@@ -679,7 +679,7 @@ class SolverWorker(QtCore.QThread):
         synthetic snapshot lands in history.
 
         ``constraint_kind`` is ``'2tri'`` or ``'jdet'`` — picks
-        :class:`TriConstraint2DFullCoverage` vs :class:`JdetConstraint2D`.
+        :class:`SimplexConstraint2DFullCoverage` vs :class:`JdetConstraint2D`.
         ``metric_kind`` is the metric used to count folds in every
         snapshot (init/stage/final) — normally equal to
         ``constraint_kind``. The objective comes from
@@ -687,9 +687,9 @@ class SolverWorker(QtCore.QThread):
         """
         from dvfopt import (
             JdetConstraint2D,
+            SimplexConstraint2D,
+            SimplexConstraint2DFullCoverage,
             Solver,
-            TriConstraint2D,
-            TriConstraint2DFullCoverage,
         )
 
         # iterative_serial gets the (3, 1, H, W) layout; Solver takes
@@ -702,14 +702,14 @@ class SolverWorker(QtCore.QThread):
         )
         H, W = phi_2hw.shape[1:]
         if constraint_kind == '2tri':
-            constraint = TriConstraint2DFullCoverage(shape=(H, W))
+            constraint = SimplexConstraint2DFullCoverage(shape=(H, W))
             # A strategy that declares it does not accept the full-coverage
             # variant (ISQP-windowed: its locality registry covers the
-            # standard 2-tri only, full-coverage is stage 2) solves the
-            # standard 2-tri instead of failing Solver construction.
+            # standard simplex (2D) only, full-coverage is stage 2) solves the
+            # standard simplex (2D) instead of failing Solver construction.
             accepted = getattr(strategy, 'accepts_constraints', None)
             if accepted is not None and not isinstance(constraint, tuple(accepted)):
-                constraint = TriConstraint2D(shape=(H, W))
+                constraint = SimplexConstraint2D(shape=(H, W))
         elif constraint_kind == 'jdet':
             constraint = JdetConstraint2D(shape=(H, W))
         else:
@@ -785,14 +785,14 @@ class SolverWorker(QtCore.QThread):
         flag). Non-phased methods (slsqp_fullgrid, barrier, slsqp_windowed)
         run to completion and only the init + final snapshots land.
         """
-        from dvfopt import JdetConstraint3D, Solver, Tet6Constraint3D
+        from dvfopt import JdetConstraint3D, SimplexConstraint3D, Solver
 
         vol = np.asarray(self._deformation_i, dtype=np.float64)
         if vol.ndim != 4 or vol.shape[0] != 3:
             raise ValueError(f'3D run needs (3, D, H, W); got {vol.shape}')
         _, D, H, W = vol.shape
         if constraint_kind == 'tet3d':
-            constraint = Tet6Constraint3D(shape=(D, H, W))
+            constraint = SimplexConstraint3D(shape=(D, H, W))
         elif constraint_kind == 'jdet3d':
             constraint = JdetConstraint3D(shape=(D, H, W))
         else:
@@ -1007,7 +1007,7 @@ class SolverWorker(QtCore.QThread):
             return strategy
 
         if mid in ('auto_2tri', 'auto_jdet'):
-            from dvfopt import JdetConstraint2D, TriConstraint2DFullCoverage
+            from dvfopt import JdetConstraint2D, SimplexConstraint2DFullCoverage
 
             phi_2hw = np.stack(
                 [
@@ -1019,7 +1019,7 @@ class SolverWorker(QtCore.QThread):
             kind = '2tri' if mid.endswith('_2tri') else 'jdet'
             n_neg, min_T = _metric_counts(phi_2hw, kind)
             constraint = (
-                TriConstraint2DFullCoverage(shape=(H, W))
+                SimplexConstraint2DFullCoverage(shape=(H, W))
                 if kind == '2tri'
                 else JdetConstraint2D(shape=(H, W))
             )
@@ -1027,7 +1027,7 @@ class SolverWorker(QtCore.QThread):
                 constraint, n_neg, min_T, 'm14' if kind == '2tri' else 'barrier'
             )
         if mid in ('auto_tet3d', 'auto_jdet3d'):
-            from dvfopt import JdetConstraint3D, Tet6Constraint3D
+            from dvfopt import JdetConstraint3D, SimplexConstraint3D
 
             vol = np.asarray(self._deformation_i, dtype=np.float64)
             _, D, H, W = vol.shape
@@ -1038,7 +1038,7 @@ class SolverWorker(QtCore.QThread):
             # snapshot (same kind) doesn't recompute them.
             self._init_counts_3d = (kind, n_neg, min_T)
             constraint = (
-                Tet6Constraint3D(shape=(D, H, W))
+                SimplexConstraint3D(shape=(D, H, W))
                 if kind == 'tet3d'
                 else JdetConstraint3D(shape=(D, H, W))
             )
@@ -1050,12 +1050,12 @@ class SolverWorker(QtCore.QThread):
         trajectory (init + every stage + final).
 
         The windowed-SLSQP path reports Jdet stats straight from the
-        solver's own bookkeeping — regardless of its 2-tri *constraint*
+        solver's own bookkeeping — regardless of its simplex (2D) *constraint*
         flag — so its trajectory is Jdet-based. 3D methods (``_tet3d``
         / ``_jdet3d`` suffix) go through ``_run_via_solver_3d`` and use
         the 3D metric. Every other path goes through ``_run_via_solver``
         and counts folds with the constraint's own metric (``_2tri`` →
-        2-tri, ``_jdet`` → Jdet).
+        simplex (2D), ``_jdet`` → Jdet).
         """
         mid = self._method_id
         if mid.endswith('_tet3d'):

@@ -5,7 +5,7 @@ is decomposed into six tetrahedra that share the cell's main diagonal
 (``C0`` → ``C7``). A negative tet signed volume means that piece of the
 trilinear interpolant has flipped — a stronger / more localized check
 than the central-difference Jdet, and the natural building block for a
-future 3D 6-tet constraint.
+future 3D simplex (3D) constraint.
 
 The cube convention (axis order ``(z, y, x)``)::
 
@@ -207,7 +207,7 @@ if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False, parallel=True)
     def _six_tet_min_volume_kernel(dz, dy, dx, D, H, W):
-        """Fused per-cube min-of-6-tet-volumes kernel (parallel).
+        """Fused per-cube min-of-tet-volumes kernel (parallel).
 
         Computes ``min_k V_k`` for every cube directly, without
         materialising the full ``(6, D-1, H-1, W-1)`` volume array — the
@@ -333,9 +333,9 @@ def six_tet_fold_classification(phi: np.ndarray) -> np.ndarray:
 # Variable-diagonal (Kuhn-triangulation choice) feasibility
 # ---------------------------------------------------------------------------
 #
-# The default 6-tet test fixes ONE cube diagonal (corner 0 -> corner 7) for
+# The default simplex (3D) test fixes ONE cube diagonal (corner 0 -> corner 7) for
 # the Kuhn decomposition. But a cube has 4 main diagonals, each giving a
-# different valid 6-tet decomposition. The discrete-bijectivity literature's
+# different valid simplex (3D) decomposition. The discrete-bijectivity literature's
 # correct predicate is "there EXISTS a positive triangulation," i.e. the
 # cube is acceptable if ANY of its 4 diagonals yields all-positive tets —
 # the natural test for a HEX lattice (we triangulate only to check). Allowing
@@ -530,7 +530,7 @@ def n_neg_best_diagonal(phi: np.ndarray, threshold: float = 0.0) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Flat-pack constraint primitives (for Tet6Constraint3D / barrier path)
+# Flat-pack constraint primitives (for SimplexConstraint3D / barrier path)
 # ---------------------------------------------------------------------------
 #
 # Phi pack convention: ``[dx.ravel(), dy.ravel(), dz.ravel()]`` (DX_FIRST,
@@ -717,7 +717,7 @@ if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False, parallel=True)
     def _tet_grad_T_v_kernel(dz, dy, dx, v, D, H, W):
-        """J^T @ v on the 6-tet constraint, parallelised by 2-colour cz
+        """J^T @ v on the simplex (3D) constraint, parallelised by 2-colour cz
         sweep. Cube layer cz writes corner planes {cz, cz+1}; layers two
         apart are disjoint, so each colour's ``prange`` is race-free. The
         two colours run serially (a barrier between them) so the shared
@@ -737,7 +737,7 @@ if _HAVE_NUMBA:
 
 
 def tet_grad_T_v(phi_flat: np.ndarray, D: int, H: int, W: int, v: np.ndarray) -> np.ndarray:
-    """``J^T @ v`` for the 6-tet constraint Jacobian, analytically.
+    """``J^T @ v`` for the simplex (3D) constraint Jacobian, analytically.
 
     Uses a Numba @njit kernel when available (5-10x speedup on the hot
     L-BFGS-B gradient path); falls back to the pure-numpy implementation
@@ -793,7 +793,7 @@ def _tet_corner_offsets():
 
 
 def build_tet_sparse_jac(D: int, H: int, W: int):
-    """Build a callable ``jac(phi_flat) -> csr_matrix`` for the 6-tet constraint.
+    """Build a callable ``jac(phi_flat) -> csr_matrix`` for the simplex (3D) constraint.
 
     Variable layout: ``[dx, dy, dz]`` (length ``3*D*H*W``).
     Constraint layout: ``[V_0, V_1, ..., V_5]`` (length

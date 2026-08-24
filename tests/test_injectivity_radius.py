@@ -4,7 +4,7 @@ The bowtie field (notebooks 13/15) is the canonical adversarial case: the
 central-difference pixel Jdet stays positive (+0.40) while the cell is
 geometrically folded — the diagnostics here must flag what CD misses.
 The Nyquist and untracked-diagonal fields pin the two historical blind
-spots (spacing-2 stencils; 2-tri tracking only one diagonal per cell).
+spots (spacing-2 stencils; simplex (2D) tracking only one diagonal per cell).
 """
 
 import numpy as np
@@ -84,12 +84,12 @@ def test_cell_to_pixel_min_projects_fold_to_corners():
 
 def test_cell_certificate_catches_untracked_diagonal():
     # Single-pixel push along the anti-diagonal folds only the corner
-    # triangles the standard 2-tri split does not track: the field is
+    # triangles the standard simplex (2D) split does not track: the field is
     # strictly 2tri-feasible yet bilinear-folded.
     phi = np.zeros((2, 5, 5))
     phi[0, 2, 2] = -0.7
     phi[1, 2, 2] = +0.7
-    _, st = constraint_fold_stats(phi, constraint='2tri')
+    _, st = constraint_fold_stats(phi, constraint='simplex')
     assert st.feasible
     assert cell_min_jdet_2d(phi).min() < 0
 

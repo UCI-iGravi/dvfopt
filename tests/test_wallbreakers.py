@@ -353,7 +353,7 @@ class TestL2Refine2D:
 
 
 def _flat_pair(H, W, seed, scale=0.3):
-    """Random (phi_flat, phi_in_flat) pair in the 2-tri dy-first pack."""
+    """Random (phi_flat, phi_in_flat) pair in the simplex (2D) dy-first pack."""
     rng = np.random.default_rng(seed)
     phi_flat = rng.normal(0.0, scale, 2 * H * W)
     phi_in_flat = rng.normal(0.0, scale, 2 * H * W)

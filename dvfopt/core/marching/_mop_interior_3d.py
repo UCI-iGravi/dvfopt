@@ -1,4 +1,4 @@
-"""Frozen-rim 3D-interior elastic-SLP mop of residual 6-tet folds.
+"""Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
 The 2.5D marching sweep freezes one WHOLE slice and moves the other's
 interior, so it cannot fix folds that need BOTH slices of a folded pair to
@@ -50,10 +50,10 @@ def _stack(box):
 
 
 def _viol(box, D, H, W, thr3, thr2):
-    """Exact hinge violation: inter-layer 6-tet term + intra-slice 2-tri term.
+    """Exact hinge violation: inter-layer simplex (3D) term + intra-slice simplex (2D) term.
 
-    Bridges the two phi-pack conventions (CLAUDE.md): the 6-tet term consumes
-    the DX_FIRST pack ``[dx | dy | dz]`` built by ``_stack``; the 2-tri term
+    Bridges the two phi-pack conventions (CLAUDE.md): the simplex (3D) term consumes
+    the DX_FIRST pack ``[dx | dy | dz]`` built by ``_stack``; the simplex (2D) term
     consumes the DY_FIRST pack ``[dy | dx]``. The length asserts guard a
     channel-order regression (a swapped/dropped channel changes the pack
     length); they are O(1) size comparisons — no per-iteration cost.
@@ -65,7 +65,7 @@ def _viol(box, D, H, W, thr3, thr2):
     for s in range(D):
         # tri_areas_flat takes the DY_FIRST pack ([dy, dx]) -> concat order correct.
         p2 = np.concatenate([box[0, s].ravel(), box[1, s].ravel()])
-        assert p2.size == 2 * H * W, 'DY_FIRST 2-tri pack must be [dy|dx] of length 2*HW'
+        assert p2.size == 2 * H * W, 'DY_FIRST simplex (2D) pack must be [dy|dx] of length 2*HW'
         t2 = tri_areas_flat(p2, H, W)
         tot += float(np.maximum(0.0, thr2 - t2).sum())
     return tot
@@ -76,9 +76,9 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
 
     The elastic trust-region SLP loop lives in
     ``_elastic_engine.elastic_trust_solve``; this wrapper owns the
-    interior-column selection, the single linearized 6-tet constraint block,
+    interior-column selection, the single linearized simplex (3D) constraint block,
     and the exact-violation oracle — which ALSO includes the intra-slice
-    2-tri term (acceptance-only, no LP rows: any step that breaks a 2D area
+    simplex (2D) term (acceptance-only, no LP rows: any step that breaks a 2D area
     is rejected).
     """
     _, D, H, W = box.shape
@@ -111,8 +111,8 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         return out
 
     def blocks(b):
-        # 6-tet-only elastic LP block; the exact-violation acceptance (which
-        # includes intra-slice 2-tri) rejects any step that breaks a 2D area.
+        # simplex (3D)-only elastic LP block; the exact-violation acceptance (which
+        # includes intra-slice simplex (2D)) rejects any step that breaks a 2D area.
         pf = _stack(b)
         T3 = tet_volumes_flat(pf, D, H, W)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
@@ -137,7 +137,7 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
 def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
     """One repair pass over all current below-threshold clusters.
 
-    ``mv`` is the caller's already-measured per-cube min 6-tet volume of
+    ``mv`` is the caller's already-measured per-cube min simplex (3D) volume of
     ``full`` (no recompute here). Clusters on the sweep's predicate
     ``mv < thr3 - 1e-9`` — sub-threshold cubes are repaired, not just
     negatives. Returns n_fixed.
@@ -187,14 +187,14 @@ def mop_interior_3d(
     copy=True,
     verbose=0,
 ):
-    """Frozen-rim 3D-interior elastic-SLP mop of residual 6-tet folds.
+    """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
     Crops a small box around each residual below-threshold cluster (the
     sweep's predicate ``min_vol < thr3 - 1e-9`` — sub-threshold cubes are
     repaired, not just negatives), freezes the entire rim (all six faces,
     giving a seam-safe paste), and frees the true 3D interior
     ``(1:D-1, 1:H-1, 1:W-1)`` so both slices of a folded pair move together. Each cropped box is repaired with an elastic sequential-LP
-    (inter-layer 6-tet linearized rows + intra-slice 2-tri exact-violation
+    (inter-layer simplex (3D) linearized rows + intra-slice simplex (2D) exact-violation
     acceptance, trust-region). The 2.5D precondition ``dz == 0`` is preserved:
     only ``phi[1:3]`` (``[dy, dx]``) is ever written.
 
@@ -205,12 +205,12 @@ def mop_interior_3d(
         validated up front (raises ``ValueError`` on nonzero dz or any
         non-finite value). Operated on via a copy by default -- see ``copy``.
     threshold : float, default 0.01
-        The strict feasibility target for 6-tet volumes.
+        The strict feasibility target for simplex (3D) volumes.
     thr3 : float or None, default None
-        6-tet feasibility target with margin. Defaults to
+        simplex (3D) feasibility target with margin. Defaults to
         ``threshold + 1e-4`` when None (strict target with a small margin).
     thr2 : float, default 0.01
-        Intra-slice 2-tri area feasibility target.
+        Intra-slice simplex (2D) area feasibility target.
     mu : float, default 1000.0
         Elastic-slack penalty weight in the per-box LP objective.
     pass_pads : sequence of (zpad, pad), default ((2, 4), (3, 6))

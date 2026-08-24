@@ -13,7 +13,7 @@ Each mode is applied to the same residual field via
 :func:`windowed_escape.repair_residuals`; we record folds cleared, the L1/L2 correction
 footprint (the fidelity cost), the worst enforced-constraint margin, damage (must be 0),
 and wall time. Inputs are pre-solved residual fields (``.npy`` of a ``(2, H, W)``
-``[dy, dx]`` slice with a handful of leftover folds), e.g. the z=16 / z=0 2-tri outputs.
+``[dy, dx]`` slice with a handful of leftover folds), e.g. the z=16 / z=0 simplex (2D) outputs.
 
 Usage:
     python benchmarks/escape_bench.py --fields z16.npy z0.npy --family 2tri --objective l2

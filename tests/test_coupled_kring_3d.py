@@ -11,8 +11,8 @@ import pytest
 from dvfopt import (
     CoupledKRing3DStrategy,
     L1Objective,
+    SimplexConstraint3D,
     Solver,
-    Tet6Constraint3D,
 )
 from dvfopt.core.wallbreakers._coupled_kring_3d import (
     _build_problem,
@@ -125,9 +125,9 @@ class TestCoupledKRingModule:
 
 class TestCoupledKRing3DStrategy:
     def test_strategy_passes_constraint_check(self):
-        """Smoke: strategy can be constructed + accepts Tet6Constraint3D."""
+        """Smoke: strategy can be constructed + accepts SimplexConstraint3D."""
         strategy = CoupledKRing3DStrategy(k_ring=1, feasibility_thr=1e-3)
-        constraint = Tet6Constraint3D(shape=(5, 5, 5))
+        constraint = SimplexConstraint3D(shape=(5, 5, 5))
         # _check_constraint shouldn't raise.
         strategy._check_constraint(constraint)
 
@@ -135,7 +135,7 @@ class TestCoupledKRing3DStrategy:
         """Solver.fit() runs without error and returns a corrected field."""
         phi = _planted_fold_3d(scale=0.55)
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(k_ring=1, feasibility_thr=1e-3),
             threshold=0.01,
@@ -148,7 +148,7 @@ class TestCoupledKRing3DStrategy:
         phi = _planted_fold_3d()
         # Centre on a known interior cube; outcome is just "ran without error".
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(k_ring=1, feasibility_thr=1e-3, target_cube=(2, 2, 2)),
             threshold=0.01,
@@ -239,7 +239,7 @@ class TestClusterMode:
             mode='cluster',
         )
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=strategy,
             threshold=0.01,
@@ -254,7 +254,7 @@ class TestClusterMode:
         if loc is None:
             pytest.skip('synthetic test case did not plant a fold')
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(
                 k_ring=1,
@@ -296,7 +296,7 @@ class TestClusterMode:
         phi = np.zeros((3, 5, 5, 5))
         strategy = CoupledKRing3DStrategy(mode='nonsense')
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=strategy,
             threshold=0.01,
@@ -752,12 +752,12 @@ class TestActiveBandStrategy:
         from dvfopt import (
             ActiveBandALM3DStrategy,
             L1Objective,
+            SimplexConstraint3D,
             Solver,
-            Tet6Constraint3D,
         )
 
         res = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=ActiveBandALM3DStrategy(pad=2),
             threshold=0.01,
@@ -861,7 +861,7 @@ class TestRecoverMode:
         if find_worst_fold_cube(phi) is None:
             pytest.skip('no fold planted')
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=phi.shape[1:]),
+            constraint=SimplexConstraint3D(shape=phi.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=CoupledKRing3DStrategy(
                 k_ring=1,

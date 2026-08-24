@@ -22,7 +22,7 @@ def require_25d_input(phi, dz_tol=1e-12):
     if phi[0].size and float(np.abs(phi[0]).max()) > dz_tol:
         raise ValueError(
             'the 2.5D marching pipeline requires the through-plane channel '
-            'dz (phi[0]) to be identically zero: the 2.5D inter-layer 6-tet '
+            'dz (phi[0]) to be identically zero: the 2.5D inter-layer simplex (3D) '
             "math depends only on adjacent slices' in-plane displacement "
             '(dy/dx). '
             f'Found max|dz|={float(np.abs(phi[0]).max()):.3e} > dz_tol={dz_tol:.1e}. '

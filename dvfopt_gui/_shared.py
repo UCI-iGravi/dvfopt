@@ -222,15 +222,15 @@ CONSTRAINT_JDET = 'jdet'
 CONSTRAINT_TET3D = 'tet3d'
 CONSTRAINT_JDET3D = 'jdet3d'
 _CONSTRAINT_SPECS = [
-    (CONSTRAINT_2TRI, '2-tri (full-coverage; catches sub-pixel folds)'),
+    (CONSTRAINT_2TRI, 'Simplex (2D; full-coverage, catches sub-pixel folds)'),
     (CONSTRAINT_JDET, 'Jdet (central-diff; blind to sub-pixel folds)'),
-    (CONSTRAINT_TET3D, '6-tet (3D; whole-volume true 3D)'),
+    (CONSTRAINT_TET3D, 'Simplex (3D; whole-volume true 3D)'),
     (CONSTRAINT_JDET3D, 'Jdet (3D; whole-volume central-diff)'),
 ]
 DEFAULT_CONSTRAINT = CONSTRAINT_2TRI
 
-# Per-constraint method specs. Wallbreakers are 2-tri-only by design
-# (HarmonicALMBarrier/RefineRepair internally depend on the 2-tri
+# Per-constraint method specs. Wallbreakers are simplex (2D)-only by design
+# (HarmonicALMBarrier/RefineRepair internally depend on the simplex (2D)
 # adjoint). Jdet gets the legacy windowed-SLSQP, the penalty→barrier
 # path, and the NMVF heuristic smoother.
 _METHOD_SPECS_2TRI = [
@@ -241,8 +241,8 @@ _METHOD_SPECS_2TRI = [
     ('barrier', 'Barrier (penalty → log-barrier L-BFGS-B)'),
     ('slsqp_windowed', 'SLSQP windowed (live progress)'),
     ('isqp_windowed', 'ISQP windowed (no-damage elastic-QP; needs osqp)'),
-    ('slsqp_fullgrid', 'SLSQP full-grid (2-tri; KKT, smallest L1 on mild folds)'),
-    ('schwarz', 'Schwarz (2-tri; overlapping-tile decomposition)'),
+    ('slsqp_fullgrid', 'SLSQP full-grid (simplex (2D); KKT, smallest L1 on mild folds)'),
+    ('schwarz', 'Schwarz (simplex (2D); overlapping-tile decomposition)'),
     ('auto', 'Auto (pick by fold stats)'),
 ]
 _METHOD_SPECS_JDET = [

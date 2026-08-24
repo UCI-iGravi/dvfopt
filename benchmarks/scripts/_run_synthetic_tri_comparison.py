@@ -2,7 +2,7 @@
 
 Compares ``iterative_2d_tri_barrier`` under two coverage schemes:
 
-* ``standard`` — original 2-tri-per-cell TR-BL split. Vertices (0,0) and
+* ``standard`` — original simplex (2D)-per-cell TR-BL split. Vertices (0,0) and
   (H-1, W-1) are each in only ONE triangle constraint.
 * ``full_coverage`` — same plus two corner-patch triangles using the
   TL-BR diagonal at cells (0,0) and (H-2, W-2). Every vertex is now in

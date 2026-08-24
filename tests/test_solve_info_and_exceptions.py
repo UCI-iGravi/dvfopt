@@ -18,10 +18,10 @@ from dvfopt import (
     L2Objective,
     M10Strategy,
     PhaseInfo,
+    SimplexConstraint2D,
     SolveInfo,
     Solver,
     SolverConfigError,
-    TriConstraint2D,
 )
 
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ class TestSolveInfo:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             res = Solver(
-                constraint=TriConstraint2D((8, 8)),
+                constraint=SimplexConstraint2D((8, 8)),
                 objective=L1Objective(),
                 strategy=BarrierStrategy(),
             ).fit(phi, record_history=True)
@@ -64,7 +64,7 @@ class TestSolveInfo:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             res = Solver(
-                constraint=TriConstraint2D((8, 8)),
+                constraint=SimplexConstraint2D((8, 8)),
                 objective=L1Objective(),
                 strategy=BarrierStrategy(),
             ).fit(phi)  # record_history=False
@@ -98,7 +98,7 @@ class TestSolveInfo:
             warnings.simplefilter('ignore')
             res = DVFopt(
                 DVFoptConfig(
-                    constraint='2tri',
+                    constraint='simplex',
                     solver='barrier',
                     objective='l1',
                     verbose=0,

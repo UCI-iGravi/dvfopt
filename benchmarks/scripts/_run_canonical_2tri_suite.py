@@ -1,7 +1,7 @@
-"""Canonical 2-tri benchmark — declarative variant using BenchmarkSuite.
+"""Canonical simplex (2D) benchmark — declarative variant using BenchmarkSuite.
 
 This is the same comparison as ``_run_l1_2tri_warmstart_cases.py`` (the
-six notebook-14 cases × the production 2-tri solvers) but expressed
+six notebook-14 cases × the production simplex (2D) solvers) but expressed
 declaratively through :class:`BenchmarkSuite`. Demonstrates the
 intended migration path: each ``_run_*.py`` becomes a 30-line script
 that builds ``cases``, ``solvers``, and calls ``suite.run()``.
@@ -26,7 +26,7 @@ from dvfopt.testdata import canonical_2tri_2d
 
 
 def main():
-    # Cases — canonical 2-tri suite from notebook 14.
+    # Cases — canonical simplex (2D) suite from notebook 14.
     cases = {name: phi for (name, phi, _meta) in canonical_2tri_2d()}
 
     # Per-case shape sometimes differs (10×10 vs 20×20); the Solver's
@@ -46,39 +46,39 @@ def main():
 
     solvers = {
         'barrier_l1': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l1',
             strategy='barrier',
             shape=shape,
         ),
         'barrier_l2': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l2',
             strategy='barrier',
             shape=shape,
         ),
         'slsqp_l1': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l1',
             strategy='slsqp',
             shape=shape,
             strategy_kwargs=dict(max_iter=80, warm_max_iter=1200),
         ),
         'slsqp_l2': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l2',
             strategy='slsqp',
             shape=shape,
             strategy_kwargs=dict(max_iter=80, warm_max_iter=1200),
         ),
         'm10_l1': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l1',
             strategy='m10',
             shape=shape,
         ),
         'm14_l1': Solver.from_spec(
-            constraint='2tri',
+            constraint='simplex',
             objective='l1',
             strategy='m14',
             shape=shape,

@@ -372,12 +372,12 @@ def _default_m10tet_inner(threshold):
         from dvfopt import (  # local import to avoid import cycle
             HarmonicALMBarrier3DStrategy,
             L1Objective,
+            SimplexConstraint3D,
             Solver,
-            Tet6Constraint3D,
         )
 
         solver = Solver(
-            constraint=Tet6Constraint3D(shape=crop.shape[1:]),
+            constraint=SimplexConstraint3D(shape=crop.shape[1:]),
             objective=L1Objective(eps=1e-4),
             strategy=HarmonicALMBarrier3DStrategy(),
             threshold=threshold,
@@ -724,7 +724,7 @@ def active_band_alm_recovery_3d(
     padded box around EACH, runs M10Tet only on that crop, pastes it back,
     and accepts only if the global fold count did not increase. Cells
     outside every crop are untouched (and were already feasible), so the
-    strict 6-tet guarantee is preserved and re-verified globally.
+    strict simplex (3D) guarantee is preserved and re-verified globally.
 
     This is the crop-based realisation of the audit's "active-band
     restriction" — same wall-clock benefit as kernel-level DOF masking

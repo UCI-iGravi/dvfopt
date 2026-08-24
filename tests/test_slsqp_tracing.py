@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dvfopt import L1Objective, SLSQPFullGridStrategy, Solver, TriConstraint2D
+from dvfopt import L1Objective, SimplexConstraint2D, SLSQPFullGridStrategy, Solver
 from dvfopt.core.primitives.slsqp import HAS_TRACED_SLSQP
 
 
@@ -17,7 +17,7 @@ def _folded_field(h=8, w=8):
 def test_fullgrid_trace_in_solveinfo():
     phi = _folded_field()
     solver = Solver(
-        constraint=TriConstraint2D(shape=phi.shape[1:]),
+        constraint=SimplexConstraint2D(shape=phi.shape[1:]),
         objective=L1Objective(),
         strategy=SLSQPFullGridStrategy(),
     )

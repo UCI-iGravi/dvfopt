@@ -10,7 +10,7 @@ with declarative :class:`BenchmarkSuite` constructions:
             ...
         },
         solvers={
-            'barrier_l1':     Solver.from_spec(constraint='2tri', objective='l1',
+            'barrier_l1':     Solver.from_spec(constraint='simplex', objective='l1',
                                                 strategy='barrier', shape=...),
             'm14_l1':         Solver.from_spec(... 'm14'),
             ...
@@ -55,7 +55,7 @@ class BenchmarkSuite:
     cases : dict[str, ndarray]
         Map case label -> input field. The field's leading-channel
         layout must match what each ``Solver``'s constraint expects
-        (``(2, H, W)`` for 2D 2-tri; ``(3, D, H, W)`` for 3D Jdet).
+        (``(2, H, W)`` for 2D simplex (2D); ``(3, D, H, W)`` for 3D Jdet).
     solvers : dict[str, Solver]
         Map solver label -> configured Solver instance.
     threshold : float, optional

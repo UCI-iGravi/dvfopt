@@ -319,7 +319,7 @@ class TestDebugTracer:
 
 class TestPlotSolveInfo:
     def test_renders_real_solve_history(self):
-        from dvfopt import BarrierStrategy, L2Objective, Solver, TriConstraint2D
+        from dvfopt import BarrierStrategy, L2Objective, SimplexConstraint2D, Solver
         from dvfopt.viz import plot_solve_info
 
         rng = np.random.default_rng(3)
@@ -327,7 +327,7 @@ class TestPlotSolveInfo:
         phi = np.stack([rng.normal(0, 0.2, (H, W)), rng.normal(0, 0.2, (H, W))])
         phi[:, 4:6, 4:6] -= 1.2  # punch a fold
         result = Solver(
-            constraint=TriConstraint2D(shape=(H, W)),
+            constraint=SimplexConstraint2D(shape=(H, W)),
             objective=L2Objective(),
             strategy=BarrierStrategy(max_iter=50),
         ).fit(phi, record_history=True)

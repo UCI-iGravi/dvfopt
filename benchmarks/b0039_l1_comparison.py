@@ -1,5 +1,5 @@
 """Manuscript-grade L1-anchor comparison across 2D methods on the B0039
-Laplacian DVF + canonical synthetic suite — Jdet-CD vs 2-tri constraint
+Laplacian DVF + canonical synthetic suite — Jdet-CD vs simplex (2D) constraint
 families.
 
 Why this benchmark
@@ -9,8 +9,8 @@ We compare every 2D method exposed by ``dvfopt`` under a uniform
 
 * ``constraint='jdet'`` — central-difference Jacobian determinant
   (``jacobian_det2D``).
-* ``constraint='2tri'`` — full-coverage 2-triangle decomposition
-  (``TriConstraint2DFullCoverage``). Sees sub-pixel folds the Jdet
+* ``constraint='simplex'`` — full-coverage 2-triangle decomposition
+  (``SimplexConstraint2DFullCoverage``). Sees sub-pixel folds the Jdet
   stencil misses, so its ``n_neg`` count is consistently higher.
 
 Cases come from two datasets:
@@ -29,7 +29,7 @@ Cases come from two datasets:
 For each ``(case_id, constraint_family, strategy)`` triple we record:
 
 * feasibility metrics under BOTH views (because Jdet-CD misses
-  sub-pixel folds that 2-tri catches): ``init_n_neg_jdet``,
+  sub-pixel folds that simplex (2D) catches): ``init_n_neg_jdet``,
   ``init_n_neg_2tri``, ``final_n_neg_jdet``, ``final_n_neg_2tri``,
   plus the strategy-native ``final_n_neg`` / ``final_min_T``;
 * deviation metrics: ``l1_total``, ``l1_mean``, ``l2_total``, ``linf``;
@@ -107,7 +107,7 @@ EPS_L1 = 1e-4
 ERR_TOL = 1e-5
 
 # Equal-density buckets for the B0039 slice picker. The volume's
-# 2-tri fold count ranges roughly [280, 5300]; bucket ranges are
+# simplex (2D) fold count ranges roughly [280, 5300]; bucket ranges are
 # chosen so each spans roughly the same density-magnitude band.
 B0039_BUCKETS = [
     ('easy', 0, 600),  # 78 of 528 slices live here
@@ -124,17 +124,17 @@ METHOD_SPECS: list[tuple[str, str, str]] = [
     ('barrier_jdet', 'jdet', 'Barrier'),
     ('slsqp_windowed_jdet', 'jdet', 'SLSQPWindowed'),
     # ---- 2-triangle full-coverage ----
-    ('barrier_2tri', '2tri', 'Barrier'),
-    ('slsqp_fullgrid_2tri', '2tri', 'SLSQPFullGrid'),
-    ('slsqp_windowed_2tri', '2tri', 'SLSQPWindowed'),
+    ('barrier_2tri', 'simplex', 'Barrier'),
+    ('slsqp_fullgrid_2tri', 'simplex', 'SLSQPFullGrid'),
+    ('slsqp_windowed_2tri', 'simplex', 'SLSQPWindowed'),
     # Schwarz coverage — three variants so we can compare Schwarz around
     # different inner strategies (one of the manuscript's key claims).
-    ('schwarz_slsqp_2tri', '2tri', 'SchwarzSLSQP'),
-    ('schwarz_wrap_barrier_2tri', '2tri', 'SchwarzWrap(Barrier)'),
-    ('m10_2tri', '2tri', 'HarmonicALMBarrier'),
-    ('schwarz_wrap_m10_2tri', '2tri', 'SchwarzWrap(M10)'),
-    ('m14_2tri', '2tri', 'HarmonicALMRefineRepair'),
-    ('m14_schwarz_2tri', '2tri', 'SchwarzHarmonicALMRefineRepair'),
+    ('schwarz_slsqp_2tri', 'simplex', 'SchwarzSLSQP'),
+    ('schwarz_wrap_barrier_2tri', 'simplex', 'SchwarzWrap(Barrier)'),
+    ('m10_2tri', 'simplex', 'HarmonicALMBarrier'),
+    ('schwarz_wrap_m10_2tri', 'simplex', 'SchwarzWrap(M10)'),
+    ('m14_2tri', 'simplex', 'HarmonicALMRefineRepair'),
+    ('m14_schwarz_2tri', 'simplex', 'SchwarzHarmonicALMRefineRepair'),
 ]
 
 
@@ -276,12 +276,12 @@ def _make_strategy(method_id: str):
 
 
 def _make_constraint(constraint_label: str, shape: tuple[int, int]):
-    from dvfopt import JdetConstraint2D, TriConstraint2DFullCoverage
+    from dvfopt import JdetConstraint2D, SimplexConstraint2DFullCoverage
 
     if constraint_label == 'jdet':
         return JdetConstraint2D(shape=shape)
-    if constraint_label == '2tri':
-        return TriConstraint2DFullCoverage(shape=shape)
+    if constraint_label == 'simplex':
+        return SimplexConstraint2DFullCoverage(shape=shape)
     raise KeyError(f'unknown constraint_label={constraint_label!r}')
 
 
@@ -399,7 +399,7 @@ def _build_b0039_cases(slice_count_per_bucket: int) -> list[Case]:
 
 
 def _build_canonical_cases() -> list[Case]:
-    """The 6 canonical synthetic 2-tri 2D cases from :mod:`dvfopt.testdata`."""
+    """The 6 canonical synthetic simplex (2D) 2D cases from :mod:`dvfopt.testdata`."""
     try:
         from dvfopt.testdata import canonical_2tri_2d
     except Exception as exc:

@@ -1,7 +1,7 @@
 """Tests for the frozen-rim 3D-interior elastic-SLP mop.
 
 The mop preserves the 2.5D precondition ``dz == 0``: it only ever writes
-``phi[1:3]`` (``[dy, dx]``). We therefore plant an INTER-LAYER 6-tet fold
+``phi[1:3]`` (``[dy, dx]``). We therefore plant an INTER-LAYER simplex (3D) fold
 with ``dz`` left at zero, by making two adjacent slices' ``dy`` differ
 strongly (unlike ``tests/test_coupled_kring_3d.py``, which plants folds in
 channel 0 -- that would violate ``dz == 0`` here).
@@ -15,7 +15,7 @@ from dvfopt.jacobian.tetrahedron_sign import six_tet_min_volume_3d
 
 
 def _planted_inter_layer_fold():
-    """(3,6,20,20) field, dz==0, with a planted inter-layer 6-tet fold."""
+    """(3,6,20,20) field, dz==0, with a planted inter-layer simplex (3D) fold."""
     rng = np.random.default_rng(0)
     phi = rng.normal(0, 0.02, (3, 6, 20, 20)).astype(np.float64)
     phi[0] = 0.0  # dz == 0 (2.5D precondition)

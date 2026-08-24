@@ -1,4 +1,4 @@
-"""Soft-quadratic-penalty L-BFGS-B refinement for the 6-tet constraint (3D).
+"""Soft-quadratic-penalty L-BFGS-B refinement for the simplex (3D) constraint (3D).
 
 3D analog of :mod:`dvfopt.core.wallbreakers._l2_refine` (the 2D m12
 step). Replaces a log barrier (which freezes its active set in 1-2

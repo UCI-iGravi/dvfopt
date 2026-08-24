@@ -1,8 +1,8 @@
-"""Synthetic 3D single-tet-flip and 6-tet-bowtie cases.
+"""Synthetic 3D single-tet-flip and simplex (3D)-bowtie cases.
 
 Built directly as displacement arrays rather than via correspondences —
 the 3D Laplacian solver is heavier and the failure modes we want to
-exercise (single-vertex folds, 6-tet bowties) are easier to specify
+exercise (single-vertex folds, simplex (3D) bowties) are easier to specify
 explicitly. Mirrors the patterns from notebooks 12a and 12c.
 """
 
@@ -26,14 +26,14 @@ def synth3d_single_tet_flip():
 
 @register_case("synth3d_6tet_bowtie", category="synthetic_3d", dim=3)
 def synth3d_6tet_bowtie():
-    """Two adjacent vertices swapped — exercises the 6-tet decomposition.
+    """Two adjacent vertices swapped — exercises the simplex (3D) decomposition.
 
     Pattern: vertex (2, 2, 2) and (2, 2, 3) swap their displacements,
     creating a 3D analog of the 2D bowtie that fools central-diff Jacobians
-    in some triangulations but is caught by the strict 6-tet check.
+    in some triangulations but is caught by the strict simplex (3D) check.
     """
     D, H, W = 6, 6, 6
     dvf = np.zeros((3, D, H, W), dtype=np.float64)
     dvf[2, 2, 2, 2] = +2.0  # vertex A: dx +2 -> lands on B
     dvf[2, 2, 2, 3] = -2.0  # vertex B: dx -2 -> lands on A
-    return dvf, {"title": "6-tet bowtie (6x6x6)", "expected_folds": "moderate", "dim": 3}
+    return dvf, {"title": "simplex (3D) bowtie (6x6x6)", "expected_folds": "moderate", "dim": 3}

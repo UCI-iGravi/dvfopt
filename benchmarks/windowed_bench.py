@@ -194,7 +194,7 @@ METHOD = (
     "interior-cut edge rows use one-sided differences that disagree with the global "
     "field; the windowing enforces only the central-difference-valid rows and "
     "freezes a 2px context ring (true image borders excepted, where the global field "
-    "is also one-sided). The 2-tri metric uses exact triangle areas (no "
+    "is also one-sided). The simplex (2D) metric uses exact triangle areas (no "
     "finite-difference subtlety) with a 1px ring.\n"
     "- The `damage` column = folds created outside every window's free region. "
     "damage=0 across all slices is the proof that windowing never creates a fold in "

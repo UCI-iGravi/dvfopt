@@ -35,11 +35,13 @@ def _extract_2d_slice(deformation, z):
 
 def _compute_constraint_2d(phi2, kind):
     """Constraint values as a (n_constraints,) ndarray for plotting — the
-    standard 2-tri rows under ``'2tri'`` (no corner patches, so the rows
-    reshape onto the ``(H-1, W-1)`` cell grid)."""
+    standard simplex (2D) rows under ``'simplex'`` (no corner patches, so the
+    rows reshape onto the ``(H-1, W-1)`` cell grid)."""
     from dvfopt.constraints import make_constraint
 
-    c = make_constraint('2tri_standard' if kind == '2tri' else kind, phi2.shape[-2:])
+    if kind in ('simplex', '2tri'):
+        kind = 'simplex_standard'
+    c = make_constraint(kind, phi2.shape[-2:])
     return c.values(c.flatten(phi2))
 
 
@@ -110,7 +112,7 @@ def plot_feasibility(result, z=0, snapshot=-1, ax=None):
     elif result.config.constraint in ('jdet', 'jdet_2d'):
         tmap = T.reshape(H, W)  # per-pixel
     else:
-        # per-cell triangle rows (1, 2 or 4 per cell); a '2tri' snapshot also
+        # per-cell triangle rows (1, 2 or 4 per cell); a 'simplex' snapshot also
         # carries the 2 corner-patch rows — drop them before reshaping.
         m = (H - 1) * (W - 1)
         tmap = T[: T.size - T.size % m].reshape(-1, H - 1, W - 1).min(0)
@@ -144,8 +146,14 @@ def plot_gradient_region(result, z=0, ax=None):
 
     phi2 = _extract_2d_slice(result.corrected, z)
     H, W = phi2.shape[1], phi2.shape[2]
-    if result.config.constraint not in ('2tri', '2tri_standard', 'bilinear'):
-        raise ValueError('plot_gradient_region only implemented for the 2-tri families')
+    if result.config.constraint not in (
+        'simplex',
+        'simplex_standard',
+        '2tri',
+        '2tri_standard',
+        'bilinear',
+    ):
+        raise ValueError('plot_gradient_region only implemented for the simplex (2D) families')
     ref_y, ref_x = _ref_grid(H, W)
     dy, dx = phi2[0], phi2[1]
     def_x = ref_x + dx

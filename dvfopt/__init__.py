@@ -5,7 +5,8 @@ Correction of negative Jacobian determinants in 2D (and 3D) deformation
 axes:
 
 * :class:`Constraint`  — what makes a configuration "feasible"
-  (2-triangle areas, Jacobian determinant, 6-tet, ...).
+  (simplicial Jacobian — 'simplex', formerly simplex (2D)/simplex (3D) — per-pixel
+  Jacobian determinant, ...).
 * :class:`Objective`   — what to minimize subject to feasibility
   (L1, L2, or none = feasibility-only).
 * :class:`Strategy`    — how to actually optimize
@@ -17,11 +18,11 @@ facade::
     from dvfopt import Solver, correct_dvf
 
     # one-shot
-    result = correct_dvf(phi_in, constraint='2tri', objective='l1',
+    result = correct_dvf(phi_in, constraint='simplex', objective='l1',
                           strategy='auto')
 
     # explicit composition
-    solver = Solver.from_spec(constraint='2tri', objective='l1',
+    solver = Solver.from_spec(constraint='simplex', objective='l1',
                                strategy='m14_schwarz',
                                shape=(320, 456))
     result = solver.fit(phi_in)
@@ -37,8 +38,9 @@ Public API
 
     from dvfopt import (
         Solver, correct_dvf, auto_strategy,
-        Constraint, TriConstraint2D, TriConstraint2DFullCoverage,
-        TriConstraint2DBilinear, FiniteJdetConstraint2D,
+        Constraint, SimplexConstraint2D, SimplexConstraint2DFullCoverage,
+        SimplexConstraint2DBilinear, SimplexConstraint3D,
+        FiniteJdetConstraint2D,
         JdetConstraint2D, JdetConstraint3D, make_constraint,
         Objective, L1Objective, L2Objective, NoneObjective, make_objective,
         Strategy, NMVFStrategy, BarrierStrategy, SLSQPFullGridStrategy,
@@ -52,6 +54,15 @@ For Schwarz domain decomposition around an arbitrary inner strategy use
 :class:`SchwarzWrapperStrategy(inner=...)`. The dedicated
 ``SchwarzHarmonicALMRefineRepair*Strategy`` classes wire the inner to
 the refine-repair pipeline directly and are kept for back-compat.
+
+The constraint classes were renamed to the simplex terminology in
+0.6.0 (they are the Jacobian determinant of the piecewise-linear
+simplicial interpolant): ``SimplexConstraint2D`` (was
+``TriConstraint2D``), ``SimplexConstraint2DFullCoverage``,
+``SimplexConstraint2DBilinear`` and ``SimplexConstraint3D`` (was
+``Tet6Constraint3D``); the old class names and the ``'2tri'`` /
+``'2tri_standard'`` / ``'6tet'`` / ``'6tet_3d'`` registry labels remain
+as permanent aliases.
 
 The wallbreaker strategies also remain exported under their original
 ``M10Strategy`` / ``M14Strategy`` / ``M14SchwarzStrategy`` research
@@ -128,6 +139,10 @@ from dvfopt.constraints import (
     JdetConstraint2D,
     JdetConstraint3D,
     PhiPack,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
     Tet6Constraint3D,
     TriConstraint2D,
     TriConstraint2DBilinear,
@@ -295,6 +310,10 @@ __all__ = [
     'SchwarzHarmonicALMRefineRepairStrategy',
     'SchwarzStrategy',
     'SchwarzWrapperStrategy',
+    'SimplexConstraint2D',
+    'SimplexConstraint2DBilinear',
+    'SimplexConstraint2DFullCoverage',
+    'SimplexConstraint3D',
     'SliceResult',
     'SolveInfo',
     'SolveResult',

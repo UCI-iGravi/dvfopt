@@ -13,7 +13,7 @@ Jdet-target methods:
 
 Triangle-target methods:
   * iterative_serial(enforce_triangles=True)  (SLSQP windowed, strict 4-tri)
-  * iterative_2d_tri_barrier                  (penalty -> log-barrier, 2-tri)
+  * iterative_2d_tri_barrier                  (penalty -> log-barrier, simplex (2D))
 
 The four slices are the 'old ones' from data/test_cases:
   02a_64x91_slice90, 02b_64x91_slice200, 02c_64x91_slice350, 02d_64x91_slice500

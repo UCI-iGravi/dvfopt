@@ -1,6 +1,6 @@
 """Tests for the 2.5D marching sweep core.
 
-The marching sweep repairs inter-layer 6-tet folds between adjacent
+The marching sweep repairs inter-layer simplex (3D) folds between adjacent
 z-slices of a ``(3, D, H, W)`` field, holding dz identically zero (the
 2.5D precondition). Folds are therefore planted as strong dy mismatches
 between adjacent slices — NOT as dz displacements (which would violate
@@ -24,7 +24,7 @@ def _planted_pair(seed=0, H=20, W=20, amp=1.5):
     lower = rng.normal(0, 0.02, (2, H, W))  # [dy, dx]
     upper = rng.normal(0, 0.02, (2, H, W))
     lower[0, 8:11, 8:11] = +amp  # dy on lower slice
-    upper[0, 8:11, 8:11] = -amp  # dy on upper slice -> inter-layer 6-tet fold
+    upper[0, 8:11, 8:11] = -amp  # dy on upper slice -> inter-layer simplex (3D) fold
     return lower, upper
 
 

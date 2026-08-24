@@ -10,7 +10,7 @@ cluster's padded crop with frozen-edge corners, and splices the
 interior back into the full field.
 
 Same architecture as the 2D version, but with 3D bboxes, 3D dilation,
-6-tet constraint, 3D phi-pack convention (DX_FIRST: [dx, dy, dz]).
+simplex (3D) constraint, 3D phi-pack convention (DX_FIRST: [dx, dy, dz]).
 """
 
 from __future__ import annotations

@@ -31,7 +31,7 @@ def test_info_check_flags_folds(tmp_path, capsys):
     rc = main(['info', str(p), '--check'])
     report = json.loads(capsys.readouterr().out)
     assert rc == 1
-    assert report['constraint'] == '2tri' and report['n_neg'] > 0
+    assert report['constraint'] == 'simplex' and report['n_neg'] > 0
 
 
 def test_info_feasible_field(tmp_path, capsys):

@@ -9,7 +9,7 @@ Mechanism (see :mod:`dvfopt.core.slp`):
 
 * **Seed** the field feasible with an m14-family seed (harmonic → ALM →
   L2-refine), reusing the package wallbreaker strategies.
-* **Trust-region SLP**: repeatedly linearise the 2-tri areas, solve an
+* **Trust-region SLP**: repeatedly linearise the simplex (2D) areas, solve an
   L1-epigraph LP (HiGHS) inside a trust region, accept on exact-area
   feasibility.
 * For large slices, **decompose into fold clusters** solved concurrently
@@ -25,9 +25,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from dvfopt.constraints import (
-    Tet6Constraint3D,
-    TriConstraint2D,
-    TriConstraint2DFullCoverage,
+    SimplexConstraint2D,
+    SimplexConstraint2DFullCoverage,
+    SimplexConstraint3D,
 )
 from dvfopt.objectives import L1Objective, NoneObjective
 from dvfopt.strategies.base import (
@@ -66,9 +66,9 @@ def _run_gpu_untangler(untangle_fn, phi, threshold, verbose=0):
 @register_strategy('slp')
 @dataclass
 class SLPStrategy(Strategy):
-    """Per-cluster trust-region sequential-LP — the 2-tri L1 champion.
+    """Per-cluster trust-region sequential-LP — the simplex (2D) L1 champion.
 
-    Also accepts the 3D 6-tet constraint (promoted from
+    Also accepts the 3D simplex (3D) constraint (promoted from
     ``research/strict_feasibility_3d``): volumes route through the same
     small-global / large-cluster dispatch with the 3D SLP solvers and
     the research-validated ``seed_3d='m10'`` seed.
@@ -116,7 +116,7 @@ class SLPStrategy(Strategy):
     global_seed: str = 'm14'
     cluster_pixel_threshold: int = 5000
     accuracy: str = 'fast'
-    # 3D (6-tet) path knob. seed_3d='m10' is the research-validated 3D
+    # 3D (simplex (3D)) path knob. seed_3d='m10' is the research-validated 3D
     # default (m14 catastrophically overshoots on dense 3D folds — see
     # research/strict_feasibility_3d README). The 3D cluster path runs
     # serial (its per-call pool was removed on promotion; spawn + JIT
@@ -125,7 +125,11 @@ class SLPStrategy(Strategy):
     seed_3d: str = 'm10'
 
     supports_3d: bool = True
-    accepts_constraints = (TriConstraint2D, TriConstraint2DFullCoverage, Tet6Constraint3D)
+    accepts_constraints = (
+        SimplexConstraint2D,
+        SimplexConstraint2DFullCoverage,
+        SimplexConstraint3D,
+    )
     # The SLP solvers minimise L1 deviation from the anchor by construction
     # (the LP objective IS the L1 epigraph) — an L2Objective would be
     # silently ignored, so reject it at construction rather than mislead.
@@ -149,13 +153,13 @@ class SLPStrategy(Strategy):
         from dvfopt.core.slp import cluster_slp_iter, slp_iter
 
         self._check_constraint(constraint)
-        if isinstance(constraint, Tet6Constraint3D):
+        if isinstance(constraint, SimplexConstraint3D):
             return self._solve_3d(
                 phi_in,
                 threshold=threshold,
                 verbose=verbose,
             )
-        # 2-tri pack is DY_FIRST: phi_in is (2, H, W) = [dy, dx], exactly
+        # simplex (2D) pack is DY_FIRST: phi_in is (2, H, W) = [dy, dx], exactly
         # what the SLP solvers consume. The objective is implicit (the LP
         # minimises L1 deviation from phi_in); ``threshold`` is the per-tri
         # area lower bound.
@@ -222,7 +226,7 @@ class SLPStrategy(Strategy):
         return phi_out, _build_solve_info('SLPStrategy', info, threshold)
 
     def _solve_3d(self, phi_in, *, threshold, verbose=0):
-        """6-tet SLP path (promoted from ``research/strict_feasibility_3d``).
+        """simplex (3D) SLP path (promoted from ``research/strict_feasibility_3d``).
 
         Mirrors the 2D dispatch: small volumes take the global
         :func:`~dvfopt.core.slp.slp_iter_3d`; larger ones decompose into

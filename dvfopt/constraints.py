@@ -50,7 +50,7 @@ class PhiPack:
 class Constraint(ABC):
     """Smooth nonlinear constraint ``C(phi) >= threshold``.
 
-    Subclasses fix the constraint family (2-tri, Jdet, tetrahedral, etc.)
+    Subclasses fix the constraint family (simplex (2D), Jdet, tetrahedral, etc.)
     and the spatial dimensionality. The shape is bound at construction
     so the constraint object knows ``n_variables`` and ``n_constraints``
     without re-deriving them on every call.
@@ -86,7 +86,7 @@ class Constraint(ABC):
         family-specific shape contract.
 
         Subclasses may override to broaden the accepted layout family
-        (e.g. ``TriConstraint2D`` accepts ``(3, 1, H, W)`` and drops the
+        (e.g. ``SimplexConstraint2D`` accepts ``(3, 1, H, W)`` and drops the
         dz channel).
         """
         from dvfopt.validation import validate_dvf
@@ -208,7 +208,7 @@ class _Tri2DBase(Constraint):
         return np.stack([phi_flat[: H * W].reshape(H, W), phi_flat[H * W :].reshape(H, W)])
 
 
-class TriConstraint2D(_Tri2DBase):
+class SimplexConstraint2D(_Tri2DBase):
     """Standard per-cell 2-triangle constraint ``T1, T2 >= threshold``.
 
     Tiles each cell along the TR-BL diagonal into two triangles
@@ -223,10 +223,11 @@ class TriConstraint2D(_Tri2DBase):
         and edge vertices (2–3). In practice fold escapes through these
         corners are rare but possible.
 
-        For new code prefer the registry alias ``'2tri'``, which
-        resolves to :class:`TriConstraint2DFullCoverage` (adds two
+        For new code prefer the registry label ``'simplex'``, which
+        resolves to :class:`SimplexConstraint2DFullCoverage` (adds two
         opposite-diagonal corner patches at negligible cost). This
-        class is retained as ``'2tri_standard'`` for reproducibility
+        class is retained as ``'simplex_standard'`` (legacy ``'2tri_standard'``)
+        for reproducibility
         against benchmark numbers recorded before the default flipped.
 
     Phi pack: ``[dy.ravel(), dx.ravel()]`` (y-first).
@@ -263,10 +264,11 @@ class TriConstraint2D(_Tri2DBase):
         return sp.csr_matrix(builder(phi_flat))
 
 
-class TriConstraint2DFullCoverage(_Tri2DBase):
-    """``TriConstraint2D`` + two opposite-diagonal corner patches.
+class SimplexConstraint2DFullCoverage(_Tri2DBase):
+    """``SimplexConstraint2D`` + two opposite-diagonal corner patches.
 
-    This is the **default** for ``'2tri'`` in the registry. Adds two
+    This is the **default** for ``'simplex'`` (legacy ``'2tri'``) in the
+    registry. Adds two
     extra triangle constraints at cells ``(0, 0)``
     and ``(H-2, W-2)`` using the opposite (TL-BR) diagonal — one
     triangle each — so the grid vertices ``(0, 0)`` and ``(H-1, W-1)``,
@@ -277,7 +279,7 @@ class TriConstraint2DFullCoverage(_Tri2DBase):
     ``2*(H-1)*(W-1) + 2``. The two patches are *additive* — not a
     re-tiling — appended to the standard ``T1``/``T2`` stack.
 
-    The cost over :class:`TriConstraint2D` is 2 scalar evaluations + 6
+    The cost over :class:`SimplexConstraint2D` is 2 scalar evaluations + 6
     extra gradient terms total per call — measurable in microseconds
     on full slices, negligible relative to the rest of a barrier
     iteration. The defensive coverage is essentially free, so this is
@@ -300,7 +302,7 @@ class TriConstraint2DFullCoverage(_Tri2DBase):
         return tri_grad_T_v_full_coverage(phi_flat, *self.shape, v)
 
     def jacobian(self, phi_flat: np.ndarray) -> sp.csr_matrix:
-        # See TriConstraint2D.jacobian — cached builder, dense buffer
+        # See SimplexConstraint2D.jacobian — cached builder, dense buffer
         # wrapped to keep the documented sparse contract.
         from dvfopt.core.primitives.tri import build_full_grid_tri_jac
 
@@ -308,24 +310,24 @@ class TriConstraint2DFullCoverage(_Tri2DBase):
         return sp.csr_matrix(builder(phi_flat))
 
 
-class TriConstraint2DBilinear(_Tri2DBase):
+class SimplexConstraint2DBilinear(_Tri2DBase):
     """Bilinear cell-min Jdet as four smooth rows per cell (both diagonals).
 
     The bilinear interpolant's Jacobian determinant is biaffine on each
     cell, so its minimum over the cell is the minimum of the four corner
     Jdets — each twice the signed area of that corner's triangle. Enforcing
-    all four triangles (the TR-BL pair of :class:`TriConstraint2D` *and*
+    all four triangles (the TR-BL pair of :class:`SimplexConstraint2D` *and*
     the TL-BR pair) above ``threshold`` certifies the continuous bilinear
     interpolant injective on every cell — the sub-pixel statement
     :func:`dvfopt.jacobian.injectivity_radius.cell_min_jdet_2d` measures
-    and the one-diagonal 2-tri scheme cannot make on the opposite
+    and the one-diagonal simplex (2D) scheme cannot make on the opposite
     diagonal. Contract: ``values(f).reshape(4, H-1, W-1).min(0) ==
     0.5 * cell_min_jdet_2d(phi)``.
 
-    Strictly tighter feasible set than ``'2tri'`` (2x the rows), so expect
+    Strictly tighter feasible set than ``'simplex'`` (2x the rows), so expect
     more movement. Consumed by the constraint-generic strategies (barrier,
     the windowed engine) and by ``SLSQPWindowedStrategy`` (whose triangle
-    mode already enforces all four); the other 2-tri-specialised strategies
+    mode already enforces all four); the other simplex (2D)-specialised strategies
     (SLP, wallbreakers, SLSQP full-grid, Schwarz) reject it at construction.
 
     Output: ``[T1, T2, U1, U2]`` of length ``4*(H-1)*(W-1)`` — see
@@ -379,9 +381,9 @@ class JdetConstraint2D(Constraint):
         return H * W
 
     def coerce(self, phi) -> np.ndarray:
-        """Same shape acceptance as :class:`TriConstraint2D`. Reuses
+        """Same shape acceptance as :class:`SimplexConstraint2D`. Reuses
         the canonical 2D validator."""
-        return TriConstraint2D.coerce(self, phi)
+        return SimplexConstraint2D.coerce(self, phi)
 
     def flatten(self, phi: np.ndarray) -> np.ndarray:
         phi = self.coerce(phi)
@@ -420,7 +422,7 @@ class FiniteJdetConstraint2D(Constraint):
     forward edges — a local 2-pixel stencil, so unlike the central-diff
     :class:`JdetConstraint2D` it is NOT blind to high-frequency
     (checkerboard) folds. A middle strictness between the central-diff
-    Jdet and the exact 2-triangle areas of :class:`TriConstraint2D`.
+    Jdet and the exact 2-triangle areas of :class:`SimplexConstraint2D`.
     Promoted from ``benchmarks/finite_jdet.py`` (PR #64).
 
     Phi pack: ``[dx.ravel(), dy.ravel()]`` (x-first, matching
@@ -445,9 +447,9 @@ class FiniteJdetConstraint2D(Constraint):
         return (H - 1) * (W - 1)
 
     def coerce(self, phi) -> np.ndarray:
-        """Same shape acceptance as :class:`TriConstraint2D`. Reuses
+        """Same shape acceptance as :class:`SimplexConstraint2D`. Reuses
         the canonical 2D validator."""
-        return TriConstraint2D.coerce(self, phi)
+        return SimplexConstraint2D.coerce(self, phi)
 
     def flatten(self, phi: np.ndarray) -> np.ndarray:
         phi = self.coerce(phi)
@@ -540,10 +542,10 @@ class JdetConstraint3D(Constraint):
         return _jdet_grad_T_v(phi_flat, self.shape, v)
 
 
-class Tet6Constraint3D(Constraint):
+class SimplexConstraint3D(Constraint):
     """Per-voxel 6-tetrahedron signed volume ``V_k(phi) >= threshold``.
 
-    3D analogue of :class:`TriConstraint2D`. Each cubic voxel cell is
+    3D analogue of :class:`SimplexConstraint2D`. Each cubic voxel cell is
     decomposed into six tetrahedra sharing the main diagonal ``C0``→``C7``
     (see :func:`dvfopt.jacobian.tetrahedron_sign.six_tet_volumes_3d`).
     The constraint enforces every per-tet signed volume above
@@ -581,7 +583,7 @@ class Tet6Constraint3D(Constraint):
         if arr.shape != (3, *self.shape):
             raise SolverConfigError(
                 f'deformation spatial shape {arr.shape[1:]} does not match '
-                f'this Tet6Constraint3D (configured for {self.shape})'
+                f'this SimplexConstraint3D (configured for {self.shape})'
             )
         return arr
 
@@ -616,7 +618,7 @@ class Tet6Constraint3D(Constraint):
         ~1.8e5 × ~9.8e4 with ~2.2M non-zeros. SLSQP at this scale is
         impractical (the active-set QP step dominates). Use barrier
         for any realistic 3D problem; this exists for symmetry with
-        ``TriConstraint2D`` and for tiny-grid debugging.
+        ``SimplexConstraint2D`` and for tiny-grid debugging.
         """
         from dvfopt.jacobian.tetrahedron_sign import build_tet_sparse_jac
 
@@ -624,6 +626,16 @@ class Tet6Constraint3D(Constraint):
         # per instance instead of on every call.
         builder = self._cached_jac_builder(lambda: build_tet_sparse_jac(*self.shape))
         return builder(phi_flat)
+
+
+# Legacy aliases (pre-simplex terminology). The simplex metric — the exact
+# Jacobian determinant of the piecewise-linear simplicial interpolant
+# (2 triangles/cell in 2D, 6 tetrahedra/cell in 3D) — was historically
+# named "simplex (2D)" / "simplex (3D)". The old class names stay importable.
+TriConstraint2D = SimplexConstraint2D
+TriConstraint2DFullCoverage = SimplexConstraint2DFullCoverage
+TriConstraint2DBilinear = SimplexConstraint2DBilinear
+Tet6Constraint3D = SimplexConstraint3D
 
 
 # ---------------------------------------------------------------------------
@@ -639,10 +651,10 @@ def register_constraint(label: str):
     External packages adding new constraint families plug in by
     decorating their class::
 
-        @register_constraint('6tet')
-        class Tet6Constraint3D(Constraint): ...
+        @register_constraint('simplex_3d')
+        class SimplexConstraint3D(Constraint): ...
 
-    They become available via :func:`make_constraint('6tet', ...)`.
+    They become available via :func:`make_constraint('simplex_3d', ...)`.
 
     Re-registering the *same* class object under an existing label is a
     silent no-op (idempotent, e.g. module re-import). Registering a
@@ -669,24 +681,28 @@ def register_constraint(label: str):
 
 # Register built-ins.
 #
-# Note on the '2tri' default
-# --------------------------
-# ``'2tri'`` resolves to :class:`TriConstraint2DFullCoverage` — the
+# Note on the 'simplex' default
+# -----------------------------
+# ``'simplex'`` resolves to :class:`SimplexConstraint2DFullCoverage` — the
 # variant that adds two opposite-diagonal corner patches so every grid
 # vertex is in ≥ 2 triangles. The "standard" TR-BL-only scheme is
-# still available as ``'2tri_standard'`` for benchmark reproducibility
+# still available as ``'simplex_standard'`` for benchmark reproducibility
 # (existing recorded runs used that variant). The corner gap closure
 # costs 2 extra scalar constraints (~6 extra gradient terms) and is
 # essentially free.
-register_constraint('2tri')(TriConstraint2DFullCoverage)
-register_constraint('2tri_standard')(TriConstraint2D)
+register_constraint('simplex')(SimplexConstraint2DFullCoverage)
+register_constraint('simplex_standard')(SimplexConstraint2D)
 register_constraint('jdet')(JdetConstraint2D)  # alias
 register_constraint('jdet_2d')(JdetConstraint2D)
 register_constraint('finite')(FiniteJdetConstraint2D)
-register_constraint('bilinear')(TriConstraint2DBilinear)
+register_constraint('bilinear')(SimplexConstraint2DBilinear)
 register_constraint('jdet_3d')(JdetConstraint3D)
-register_constraint('6tet')(Tet6Constraint3D)
-register_constraint('6tet_3d')(Tet6Constraint3D)  # explicit alias
+register_constraint('simplex_3d')(SimplexConstraint3D)
+# Legacy labels (pre-simplex terminology) — kept registered as aliases.
+register_constraint('2tri')(SimplexConstraint2DFullCoverage)
+register_constraint('2tri_standard')(SimplexConstraint2D)
+register_constraint('6tet')(SimplexConstraint3D)
+register_constraint('6tet_3d')(SimplexConstraint3D)
 
 
 def make_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
@@ -694,7 +710,7 @@ def make_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
 
     Examples
     --------
-    >>> c = make_constraint('2tri', (10, 10))
+    >>> c = make_constraint('simplex', (10, 10))
     >>> c.values(c.flatten(phi))
     """
     try:
@@ -712,6 +728,11 @@ __all__ = [
     'JdetConstraint2D',
     'JdetConstraint3D',
     'PhiPack',
+    'SimplexConstraint2D',
+    'SimplexConstraint2DBilinear',
+    'SimplexConstraint2DFullCoverage',
+    'SimplexConstraint3D',
+    'Tet6Constraint3D',
     'TriConstraint2D',
     'TriConstraint2DBilinear',
     'TriConstraint2DFullCoverage',

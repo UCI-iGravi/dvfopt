@@ -29,7 +29,7 @@ def fold_counts(phi: np.ndarray, *, threshold: float = 0.01) -> dict:
         n_jdet = int((jdet < threshold).sum())
         # 3D triangle (= tetrahedron) sign check uses the sitk_jdet path;
         # for 3D we approximate fold_count_tri as fold_count_jdet here.
-        # When the strict 6-tet count helper lands in dvfopt this can be
+        # When the strict simplex (3D) count helper lands in dvfopt this can be
         # swapped in; for now report jdet as the proxy.
         n_tri = n_jdet
         max_viol = float(jdet.min() - threshold)

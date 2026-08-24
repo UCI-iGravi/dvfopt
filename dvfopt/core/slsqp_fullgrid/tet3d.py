@@ -3,9 +3,9 @@
 3D analogue of :mod:`dvfopt.core.slsqp_fullgrid.tri2d`. Drives
 :func:`dvfopt.core.primitives.slsqp.minimize_slsqp_traced` with:
 
-* ``Tet6Constraint3D.values`` as the constraint vector
+* ``SimplexConstraint3D.values`` as the constraint vector
   (length ``6 * (D-1) * (H-1) * (W-1)``).
-* ``Tet6Constraint3D.jacobian`` as the analytical sparse forward
+* ``SimplexConstraint3D.jacobian`` as the analytical sparse forward
   Jacobian (built via
   :func:`dvfopt.jacobian.tetrahedron_sign.build_tet_sparse_jac`).
 * A smoothed-L1 or L2 anchor against the input field — any
@@ -23,7 +23,7 @@ problem; this entry point exists for symmetry with the 2D path and for
 tiny-grid debugging where KKT semantics matter.
 
 Phi pack convention: ``[dx.ravel(), dy.ravel(), dz.ravel()]`` (DX_FIRST),
-matching :class:`dvfopt.constraints.Tet6Constraint3D` and the existing
+matching :class:`dvfopt.constraints.SimplexConstraint3D` and the existing
 3D barrier / Jdet paths.
 """
 
@@ -90,7 +90,7 @@ def iterative_3d_tet_slsqp(
         raise ValueError(f'expected (3, D, H, W) input; got shape {deformation.shape}')
     _, D, H, W = deformation.shape
 
-    # Pack as [dx, dy, dz] (DX_FIRST) — matches Tet6Constraint3D.flatten.
+    # Pack as [dx, dy, dz] (DX_FIRST) — matches SimplexConstraint3D.flatten.
     z_anchor = np.concatenate(
         [deformation[2].ravel(), deformation[1].ravel(), deformation[0].ravel()]
     )
@@ -145,7 +145,7 @@ def iterative_3d_tet_slsqp(
         # ``min_T`` is the canonical history key across the package — it's
         # what ``_build_solve_info`` / ``SolveInfo.from_legacy_history``
         # read to populate ``PhaseInfo.min_T`` and to detect feasibility.
-        # The legacy name is preserved across constraint families (2-tri
+        # The legacy name is preserved across constraint families (simplex (2D)
         # uses ``T`` for triangle areas, 3D-tet uses ``V`` for volumes;
         # the schema treats them uniformly as "the minimum constraint
         # value reached at this phase").
