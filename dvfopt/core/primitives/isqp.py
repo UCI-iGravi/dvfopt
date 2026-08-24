@@ -63,6 +63,8 @@ def isqp_solve(
     osqp_eps=None,
     monotone=False,
     log_every=0,
+    monotone_accept=False,
+    accept_tol=1e-4,
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -89,6 +91,13 @@ def isqp_solve(
     filter (Fletcher-Leyffer style). This subsumes ``protect`` (satisfied rows get
     a hard floor at 0) and closes its leak (sign-based protection leaves
     already-slightly-violated rows as a cheap dumping ground the QP drives deep).
+
+    ``monotone_accept=True`` extends monotonicity from the LINEAR model to the actual
+    step: a trust-region step is accepted only if no constraint row's nonlinear
+    violation grew (beyond ``accept_tol``, which must sit above the QP's own solution
+    noise — OSQP's ~``osqp_eps`` — or every step is vetoed) — a per-row filter. Without it the summed merit
+    can accept "fix one deep fold, create many shallow ones" trades that the QP
+    never planned (linearization overshoot).
 
     ``log_every=N`` prints a live progress line every N iterations (and on every
     rejected step) so long solves are observable mid-run, not only post-mortem.
@@ -181,8 +190,15 @@ def isqp_solve(
         s_up = (viol + 1e-6) if monotone else np.full(m, np.inf)
         eye_m = sparse.eye(m, format="csc")
         # z = [d (n_free); s (m)];  min 1/2 z^T P z + q^T z  s.t.  l <= A z <= u
-        hdv = hess_diag(x)[free]  # objective curvature over free vars
-        hd = sparse.diags(hdv)
+        hraw = hess_diag(x)  # curvature: length-n diagonal OR a sparse (n, n) operator
+        if sparse.issparse(hraw):
+            # non-local curvature (e.g. an elastic/Laplacian prior): a smooth-step
+            # metric that makes coordinated multi-node moves cheap in the QP
+            hd = sparse.csc_matrix(hraw)[free][:, free]
+            hdv = None
+        else:
+            hdv = np.asarray(hraw)[free]
+            hd = sparse.diags(hdv)
         p = sparse.block_diag([hd, sparse.csc_matrix((m, m))], format="csc")
         gx = obj_grad(x)[free]
         rho_vec = np.full(m, float(rho))
@@ -262,20 +278,39 @@ def isqp_solve(
             # vs the ACTUAL nonlinear merit reduction at the full bounded step.
             s_slack = z[nf : nf + m]
             pred = float(rho_vec @ viol) - (
-                float(gx @ z[:nf]) + 0.5 * float(z[:nf] @ (hdv * z[:nf])) + float(rho_vec @ s_slack)
+                float(gx @ z[:nf])
+                + 0.5 * float(z[:nf] @ (hd @ z[:nf]) if hdv is None else z[:nf] @ (hdv * z[:nf]))
+                + float(rho_vec @ s_slack)
             )
-            act = ph0 - mfun(x + d)
+            c_new = np.asarray(cons(x + d))
+            act = ph0 - (obj(x + d) + float(rho_vec @ np.clip(-c_new, 0.0, None)))
+            no_worse = (not monotone_accept) or bool(
+                (np.clip(-c_new, 0.0, None) <= viol + accept_tol).all()
+            )
             ratio = act / pred if pred > 1e-12 else float("nan")
             rec["ratio"] = ratio
             if pred <= 1e-8:
                 # model-flat regime (at/near the subproblem optimum): the ratio test
                 # is numerical noise there, so polish along d with the legacy
                 # backtracking and stop once even that cannot decrease the merit.
-                x, stepped = _backtrack(mfun, x, d, ph0)
+                if monotone_accept:
+                    # per-row filter also governs the polish: shrink alpha until
+                    # the merit decreases AND no row's violation grew.
+                    stepped, alpha = False, 1.0
+                    while alpha > 1e-4:
+                        xt = x + alpha * d
+                        ct = np.asarray(cons(xt))
+                        vt = np.clip(-ct, 0.0, None)
+                        if obj(xt) + float(rho_vec @ vt) < ph0 and (vt <= viol + accept_tol).all():
+                            x, stepped = xt, True
+                            break
+                        alpha *= 0.5
+                else:
+                    x, stepped = _backtrack(mfun, x, d, ph0)
                 if not stepped:
                     exit_reason = "model-flat"
             else:
-                stepped = act > 0.0 and ratio > 1e-3
+                stepped = act > 0.0 and ratio > 1e-3 and no_worse
                 if stepped:
                     x = x + d
                     if ratio > 0.75 and dn >= 0.9 * tr_delta:
