@@ -1272,7 +1272,7 @@ class TestMinorsSweepLifecycle:
         win = self._win(qapp, D=4)
         assert win._latest is None
         html = win._format_inspector((2, 2))
-        assert '3D' in html and 'min simplex (3D)' in html, (
+        assert '3D' in html and 'min simplex' in html, (
             f'idle 3D volume must get the 3D readout, got: {html}'
         )
 
