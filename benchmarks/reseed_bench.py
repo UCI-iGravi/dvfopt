@@ -36,7 +36,7 @@ from scipy import ndimage  # noqa: E402
 from dvfopt.constraints import TriConstraint2D  # noqa: E402
 from dvfopt.core.windowed import min_field, windowed_correct  # noqa: E402
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d  # noqa: E402
-from dvfopt.objectives import L2Objective  # noqa: E402
+from dvfopt.objectives import L2Objective, NoneObjective  # noqa: E402
 
 
 def fold_stats(phi, thr):
@@ -125,6 +125,12 @@ def main():
         "--radius", type=int, default=6, help="local mode: dilation of the hard-cell mask"
     )
     ap.add_argument("--maxiter", type=int, default=800)
+    ap.add_argument(
+        "--polish-objective",
+        default="l2",
+        choices=["l2", "none"],
+        help="polish anchored L2 to the seed, or pure feasibility (thin residuals are L2 traps)",
+    )
     a = ap.parse_args()
 
     thr = a.threshold
@@ -144,7 +150,12 @@ def main():
     )
     t = time.time()
     out, rep = windowed_correct(
-        seed, "isqp", constraint=c, objective=L2Objective(), threshold=thr, maxiter=a.maxiter
+        seed,
+        "isqp",
+        constraint=c,
+        objective=L2Objective() if a.polish_objective == "l2" else NoneObjective(),
+        threshold=thr,
+        maxiter=a.maxiter,
     )
     fo = fold_stats(out, thr)
     print(
