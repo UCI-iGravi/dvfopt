@@ -5,7 +5,7 @@ Correction of negative Jacobian determinants in 2D (and 3D) deformation
 axes:
 
 * :class:`Constraint`  — what makes a configuration "feasible"
-  (simplicial Jacobian — 'simplex', formerly simplex (2D)/simplex (3D) — per-pixel
+  (simplicial Jacobian — 'simplex', formerly 2-tri/6-tet — per-pixel
   Jacobian determinant, ...).
 * :class:`Objective`   — what to minimize subject to feasibility
   (L1, L2, or none = feasibility-only).

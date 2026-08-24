@@ -82,7 +82,7 @@ plausible-looking wrong answer, so the layout is declared on the Constraint
 | `PhiPack.DY_FIRST` | `phi[:N]=dy`, `phi[N:]=dx` | `SimplexConstraint2D`, `SimplexConstraint2DFullCoverage`, `SimplexConstraint2DBilinear` | `core/primitives/tri.py`, `core/barrier/tri2d.py`, `core/slsqp_fullgrid/tri2d.py`, `core/schwarz/{tri2d,_cluster}.py`, the 2D `core/wallbreakers/*`, `core/slp/{lp_direct_2tri,cluster_lp_2tri,tri_linearize}.py` |
 | `PhiPack.DX_FIRST` | `phi[:N]=dx`, `phi[N:2N]=dy` (3D: `phi[2N:]=dz`) | `JdetConstraint2D`, `JdetConstraint3D`, **`SimplexConstraint3D`** | `core/slsqp_windowed/*`, `core/primitives/{jdet2d,jdet3d}.py`, `core/barrier/{jdet2d,jdet3d,jdet3d_torch,tet3d_torch}.py`, `core/slsqp_fullgrid/tet3d.py`, `core/slp/{lp_direct_6tet,cluster_lp_6tet}.py`, the 3D `core/wallbreakers/*`, `jacobian/tetrahedron_sign.py` |
 
-Note the split is **not** "simplex (2D)/simplex (3D) vs Jdet": the simplex (3D) 3D family packs
+Note the split is **not** "simplex vs Jdet": the 3D simplex family packs
 `[dx, dy, dz]` so it can share the 3D barrier plumbing with `JdetConstraint3D`.
 `core/schwarz/_common.py` is pack-agnostic (it slices `(C, *shape)` arrays and
 never flattens).
