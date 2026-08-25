@@ -108,6 +108,40 @@ def test_correct_slices_pipeline(tmp_path):
     np.testing.assert_array_equal(corrected[0], phi[0])  # dz untouched
 
 
+def test_n_workers_defaults_to_none():
+    from dvfopt.cli import build_parser
+
+    args = build_parser().parse_args(['correct', 'in.npy', 'out.npy'])
+    assert args.n_workers is None
+    assert build_parser().parse_args(['correct', 'i', 'o', '--n-workers', '2']).n_workers == 2
+
+
+def test_correct_slices_n_workers_matches_serial(tmp_path):
+    # 3 slices, 16x16 each: below SLPStrategy.cluster_pixel_threshold, so the
+    # per-slice solves take the global (pool-free) path and stay quick.
+    phi = np.zeros((3, 3, 16, 16))
+    phi[1:] = np.stack([planted_fold(16, 16, seed=z, scale=0.4) for z in range(3)], axis=1)
+    p = tmp_path / 'vol.npy'
+    np.save(p, phi)
+
+    outs, summaries = [], []
+    for n in (1, 2):
+        out, rep = tmp_path / f'out{n}.npy', tmp_path / f'rep{n}'
+        argv = ['correct', str(p), str(out), '--pipeline', 'slices']
+        argv += ['--n-workers', str(n), '--report-dir', str(rep)]
+        assert main(argv) == 0
+        outs.append(np.load(out))
+        summaries.append(json.loads((rep / 'summary.json').read_text()))
+
+    np.testing.assert_array_equal(outs[1], outs[0])
+    for s in summaries:
+        s.pop('output')
+        for row in s['per_slice']:
+            row.pop('wall_time_s')
+    assert summaries[1] == summaries[0]
+    assert summaries[0]['final_n_neg'] == 0
+
+
 def test_correct_25d_pipeline_smoke(tmp_path):
     rng = np.random.default_rng(3)
     phi = np.zeros((3, 3, 8, 8))

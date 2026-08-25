@@ -29,6 +29,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`dvfopt correct --n-workers N`** — the `--pipeline slices` sweep solves N
+  z-slices at once in a `ProcessPoolExecutor` (module-level worker, picklable
+  args, spawn-safe; BLAS/OpenMP threads pinned to 1 per worker). Output order,
+  `summary.json` and the exit code are identical to the serial path, which is
+  unchanged for `N` in (unset, 0, 1) or a single-slice volume. Relatedly,
+  `dvfopt.core._pool.get_pool` now caps its request to 1 inside a worker
+  process, so no solver nests process pools.
 - **`DVFoptConfig(n_workers=N)`** — the DVFopt facade solves the z-slices of a
   volume in a `ProcessPoolExecutor` when `N > 1` and there is more than one
   slice (module-level worker, picklable args, spawn-safe). Serial otherwise;

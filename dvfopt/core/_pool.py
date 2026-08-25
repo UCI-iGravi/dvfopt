@@ -75,8 +75,15 @@ def get_pool(n_workers: int) -> ProcessPoolExecutor:
     warmup tax (~5-10 s/worker) and no caller depends on an exact pool
     size (extra workers simply idle). The pool is rebuilt only when the
     request GROWS past the current size. Thread-safe.
+
+    Never nests: inside a worker process (the CLI's ``--n-workers`` per-slice
+    pool, ``DVFopt(n_workers>1)``, a caller's own multiprocessing children) the
+    request is capped to 1 — that worker is already one core's worth of work, so
+    a sub-pool per worker would just multiply processes and oversubscribe.
     """
     global _POOL, _POOL_N
+    if multiprocessing.parent_process() is not None:
+        n_workers = 1
     with _LOCK:
         if _POOL is None or _POOL_N is None or n_workers > _POOL_N:
             if _POOL is not None:

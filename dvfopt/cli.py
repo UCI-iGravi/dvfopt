@@ -89,38 +89,82 @@ def _cmd_info(args) -> int:
     return 1 if (args.check and (not st.feasible or bilinear_folded)) else 0
 
 
+# Per-worker thread pinning: spawned children inherit the parent's environment
+# at interpreter start, which is the only point early enough for OpenBLAS/MKL to
+# honour it. Without it, N workers x M BLAS threads oversubscribe every core.
+_THREAD_ENV = ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS')
+
+
+def _correct_slice(job):
+    """Correct one 2D slice. Module-level, with picklable args and plain-value
+    results, so it doubles as a ``ProcessPoolExecutor`` worker under spawn."""
+    phi2, kwargs = job
+    from dvfopt import correct_dvf
+
+    res = correct_dvf(phi2, **kwargs)
+    return res.corrected, res.feasible, res.init_n_neg, res.final_n_neg, res.wall_time
+
+
+def _map_slices(jobs, n_workers):
+    """Run the per-slice jobs in a process pool; results stay in slice order."""
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+
+    saved = {k: os.environ.get(k) for k in _THREAD_ENV}
+    os.environ.update(dict.fromkeys(_THREAD_ENV, '1'))
+    try:
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            return list(ex.map(_correct_slice, jobs))
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def _correct_slices(phi, args, params):
-    """Per-slice 2D solver sweep over a (3, D, H, W) volume (pre-2.5D step)."""
+    """Per-slice 2D solver sweep over a (3, D, H, W) volume (pre-2.5D step).
+
+    Serial by default; ``--n-workers N`` (N > 1, more than one slice) solves the
+    slices in a process pool — each slice is an independent solve. Inner solves
+    stay serial there: :func:`dvfopt.core._pool.get_pool` refuses to nest pools.
+    """
     # ponytail: plain loop; the DVFopt facade adds per-slice dataframes/plots
     # (and a torch import) — reach for it in Python when you want those.
     import numpy as np
 
-    from dvfopt import correct_dvf
-
     if phi.ndim != 4:
         raise ValueError(f'--pipeline slices needs a (3, D, H, W) volume, got {phi.shape}')
     h, w = phi.shape[-2:]
+    kwargs = dict(
+        constraint=args.constraint,
+        objective=args.objective,
+        strategy=args.strategy,
+        shape=(h, w),
+        verbose=args.verbose,
+        **({} if args.threshold is None else {'threshold': args.threshold}),
+        **params,
+    )
+    jobs = [(phi[:, z : z + 1], kwargs) for z in range(phi.shape[1])]
+    n_workers = args.n_workers or 1
+    results = (
+        _map_slices(jobs, n_workers)
+        if n_workers > 1 and len(jobs) > 1
+        else [_correct_slice(job) for job in jobs]
+    )
+
     outs, rows, all_ok = [], [], True
-    for z in range(phi.shape[1]):
-        res = correct_dvf(
-            phi[:, z : z + 1],
-            constraint=args.constraint,
-            objective=args.objective,
-            strategy=args.strategy,
-            shape=(h, w),
-            verbose=args.verbose,
-            **({} if args.threshold is None else {'threshold': args.threshold}),
-            **params,
-        )
-        outs.append(res.corrected)
-        all_ok &= res.feasible
+    for z, (corrected, feasible, init_n_neg, final_n_neg, wall_time) in enumerate(results):
+        outs.append(corrected)
+        all_ok &= feasible
         rows.append(
             {
                 'z': z,
-                'feasible': res.feasible,
-                'init_n_neg': res.init_n_neg,
-                'final_n_neg': res.final_n_neg,
-                'wall_time_s': res.wall_time,
+                'feasible': feasible,
+                'init_n_neg': init_n_neg,
+                'final_n_neg': final_n_neg,
+                'wall_time_s': wall_time,
             }
         )
     out = np.concatenate(outs, axis=1)
@@ -280,6 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar='KEY=VALUE',
         default=[],
         help="extra strategy/pipeline kwarg (repeatable; values are literal-eval'd)",
+    )
+    pc.add_argument(
+        '--n-workers',
+        type=int,
+        default=None,
+        help='--pipeline slices: solve this many z-slices at once in worker '
+        'processes (default: serial; inner solves stay serial — no nested pools)',
     )
     pc.add_argument(
         '--report-dir',
