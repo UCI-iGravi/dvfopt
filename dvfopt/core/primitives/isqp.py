@@ -61,6 +61,7 @@ def isqp_solve(
     trust_region=True,
     protect=1.0,
     osqp_eps=None,
+    osqp_max_iter=None,
     monotone=False,
     log_every=0,
 ):
@@ -82,7 +83,11 @@ def isqp_solve(
     whack-a-mole seen on the z=0 dense cluster is built into the uniform
     formulation. Asymmetric costs (SNOPT-style elastic: relax only what is already
     broken) forbid that trade to first order. ``osqp_eps`` tightens the OSQP
-    subproblem tolerances (default ~1e-3 leaves a ~1e-5 violation noise floor).
+    subproblem tolerances (default ~1e-3 leaves a ~1e-5 violation noise floor);
+    ``osqp_max_iter`` caps the ADMM iterations per subproblem (``None`` = OSQP
+    setup default of 8000). A low cap trades subproblem accuracy for speed — the
+    windowed engine runs 2000 for normal window solves and 500 for its no-trust-
+    region fallback, both measured to keep feasibility while ~2x faster.
 
     ``monotone=True`` caps each slack at that row's CURRENT violation
     (``s_i <= viol_i + eps``): linearly, no row may get worse — a per-row hard
@@ -225,7 +230,7 @@ def isqp_solve(
                 verbose=False,
                 warm_starting=True,
                 polishing=True,
-                max_iter=8000,
+                max_iter=8000 if osqp_max_iter is None else int(osqp_max_iter),
                 **eps_kw,
             )
             a_pat = (a.indptr.copy(), a.indices.copy())

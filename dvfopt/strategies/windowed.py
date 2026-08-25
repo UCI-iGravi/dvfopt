@@ -77,6 +77,16 @@ class WindowedWrapperStrategy(Strategy):
         Margin for the terminal large-window mop pass (0 disables).
     time_budget_s : float, optional
         Wall-clock budget, checked at round/window boundaries.
+    no_tr_fallback : bool
+        Retry a failed window once with the trust region OFF (legacy
+        backtracking line search) before growing it. On by default: the
+        TR ratio test freezes on sliver-scale violations (~1e-4, inside
+        OSQP's noise) that the line search still clears.
+    fallback_maxiter : int
+        SQP iteration budget for that fallback retry (the line search
+        otherwise runs far past convergence).
+    qp_max_iter, qp_max_iter_fallback : int
+        OSQP ADMM iteration cap per subproblem, normal / fallback solves.
     """
 
     inner: Optional[str] = None
@@ -87,6 +97,10 @@ class WindowedWrapperStrategy(Strategy):
     max_window_area: int = 3000
     mop_margin: int = 25
     time_budget_s: Optional[float] = None
+    no_tr_fallback: bool = True
+    fallback_maxiter: int = 200
+    qp_max_iter: int = 2000
+    qp_max_iter_fallback: int = 500
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -128,6 +142,10 @@ class WindowedWrapperStrategy(Strategy):
             margin_delta=self.margin_delta,
             max_window_area=self.max_window_area,
             mop_margin=self.mop_margin,
+            no_tr_fallback=self.no_tr_fallback,
+            fallback_maxiter=self.fallback_maxiter,
+            qp_max_iter=self.qp_max_iter,
+            qp_max_iter_fallback=self.qp_max_iter_fallback,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

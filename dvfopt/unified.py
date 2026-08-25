@@ -113,6 +113,12 @@ class DVFoptConfig:
     # ---- output ----
     verbose: int = 1
     debug: bool = False
+    # Per-slice process parallelism. >1 solves the z-slices of a 3D volume in a
+    # ProcessPoolExecutor (each slice is an independent solve, so this scales
+    # near-linearly with cores); None/0/1 — or a single slice — runs serially.
+    # On spawn platforms (Windows/macOS) a SCRIPT calling fit() with n_workers>1
+    # must guard the call under ``if __name__ == '__main__':``.
+    n_workers: Optional[int] = None
     record_history: bool = True
     record_snapshots: bool = False  # for plot_feasibility
 
@@ -418,9 +424,7 @@ class DVFopt:
             )
 
         slice_results = []
-        for z in slices:
-            phi2 = _extract_2d_slice(corrected, z)
-            sr = self._run_slice(phi2, z)
+        for z, phi2, sr in self._solve_slices(corrected, slices):
             self._put_2d_slice(corrected, z, phi2)
             # Store a read-only (2, H, W) [dy, dx] VIEW into the assembled
             # volume rather than a per-slice copy — Result.corrected already
@@ -445,6 +449,31 @@ class DVFopt:
             slice_results=slice_results,
             total_wall_time=time.time() - t0,
         )
+
+    def _solve_slices(self, corrected, slices):
+        """Yield ``(z, phi2_out, SliceResult)`` per slice.
+
+        Serial by default; with ``config.n_workers > 1`` and more than one slice
+        the solves run in a ``ProcessPoolExecutor`` (module-level worker,
+        picklable ``(config, phi2, z)`` args — spawn-safe). Results are yielded
+        in slice order regardless.
+        """
+        n_workers = self.config.n_workers or 1
+        if n_workers > 1 and len(slices) > 1:
+            from concurrent.futures import ProcessPoolExecutor
+
+            with ProcessPoolExecutor(max_workers=n_workers) as ex:
+                futures = [
+                    ex.submit(_solve_slice_worker, self.config, _extract_2d_slice(corrected, z), z)
+                    for z in slices
+                ]
+                for z, fut in zip(slices, futures):
+                    phi2, sr = fut.result()
+                    yield z, phi2, sr
+            return
+        for z in slices:
+            phi2 = _extract_2d_slice(corrected, z)
+            yield z, phi2, self._run_slice(phi2, z)
 
     def _put_2d_slice(self, corrected, z, phi2):
         """Write a (2, H, W) slice back into the (3, D, H, W) corrected
@@ -618,6 +647,15 @@ class DVFopt:
 # ============================================================
 # Helpers (constraint + strategy plumbing)
 # ============================================================
+
+
+def _solve_slice_worker(config: DVFoptConfig, phi2: np.ndarray, z: int):
+    """One slice in a worker process (module-level so it is spawn-picklable).
+
+    Returns ``(phi2_out, SliceResult)``; the parent writes the slice back into
+    the assembled volume and re-attaches ``sr.corrected`` as a view into it.
+    """
+    return phi2, DVFopt(config)._run_slice(phi2, z)
 
 
 def _constraint_stats(constraint: Constraint, phi2: np.ndarray) -> tuple[int, float]:

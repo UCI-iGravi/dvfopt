@@ -6,6 +6,36 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — windowed isqp: faster and more robust (behavior change, defaults ON)
+
+- **Per-window no-trust-region fallback** (`no_tr_fallback=True`,
+  `fallback_maxiter=200`). A window that fails to reach its target is retried
+  ONCE on the same box with the trust region off (legacy backtracking line
+  search), warm-started from the failed iterate, *before* grow-on-failure. The
+  TR ratio test freezes on sliver-scale violations (~1e-4, inside OSQP's own
+  noise) that the line search still clears. The retry keeps whichever iterate
+  has the higher constraint minimum, so it is never worse.
+- **Two-tier OSQP iteration caps** — `qp_max_iter=2000` (normal window solves)
+  and `qp_max_iter_fallback=500` (the fallback solves), threaded into the new
+  `isqp_solve(osqp_max_iter=...)` argument (`None` keeps OSQP's 8000 default).
+  ~2x faster at unchanged feasibility.
+- All four knobs are exposed on `windowed_correct` and `ISQPWindowedStrategy`
+  (and hence editable in the GUI's Params → Strategy tab); `WindowRec.fallback`
+  records which windows used the retry.
+- Validated on the three hard B0039 crops with
+  `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed',
+  objective='none')`: simplex folds 645/598/0 → 0/0/0, damage 0, in
+  32s / 22s / 106s.
+
+### Added
+
+- **`DVFoptConfig(n_workers=N)`** — the DVFopt facade solves the z-slices of a
+  volume in a `ProcessPoolExecutor` when `N > 1` and there is more than one
+  slice (module-level worker, picklable args, spawn-safe). Serial otherwise;
+  results and slice order are identical to the serial path. A *script* calling
+  `fit()` with `n_workers > 1` on Windows/macOS must guard the call under
+  `if __name__ == '__main__':`.
+
 ### Changed — simplex terminology (pure rename, zero behavioral change)
 
 The "2-tri" / "6-tet" fold metrics are renamed to the **simplex** metric:

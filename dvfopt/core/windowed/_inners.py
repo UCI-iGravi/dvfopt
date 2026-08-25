@@ -37,7 +37,7 @@ class WindowSub:
     n_enforced: int
 
 
-def solve_window_inner(sub, inner, maxiter, trace=None):
+def solve_window_inner(sub, inner, maxiter, trace=None, trust_region=True, osqp_max_iter=None):
     """Solve a built window sub-problem with the chosen inner solver, returning
     ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
 
@@ -55,6 +55,11 @@ def solve_window_inner(sub, inner, maxiter, trace=None):
       whichever iterate reaches the higher constraint minimum (never worse than
       SLSQP alone).
 
+    ``trust_region`` / ``osqp_max_iter`` are ``isqp``-only knobs (ignored by
+    the SLSQP legs): the engine's per-window fallback re-solves a failed window
+    with ``trust_region=False`` (legacy line search), and caps the OSQP ADMM
+    iterations per subproblem. Their defaults are :func:`isqp_solve`'s own.
+
     ``trace`` (optional dict) is threaded to the inner solver — ``isqp`` and
     the traced SLSQP leg both fill it with per-iteration records + an explicit
     exit reason (house style: ``trace['iters']`` / ``trace['exit']``). Default
@@ -71,6 +76,8 @@ def solve_window_inner(sub, inner, maxiter, trace=None):
             hess_diag=sub.hess_diag,
             free_idx=sub.free_idx,
             trace=trace,
+            trust_region=trust_region,
+            osqp_max_iter=osqp_max_iter,
         )
     if inner not in _SLSQP_LABELS + _SLSQP_TC_LABELS:
         raise ValueError(f"unknown inner {inner!r}; valid labels: {list(INNER_LABELS)}")

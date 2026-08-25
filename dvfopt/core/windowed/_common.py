@@ -51,7 +51,7 @@ tiles with damage accounting — and deliberately does NOT reuse
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from scipy import ndimage
@@ -59,8 +59,22 @@ from scipy import ndimage
 from dvfopt._logging import log_warning
 from dvfopt.objectives import L2Objective, _kind_eps
 
-from ._inners import WindowSub, solve_window_inner
+from ._inners import _ISQP_LABELS, WindowSub, solve_window_inner
 from ._locality import _locality_of, min_field, pixel_fold_mask
+
+
+@dataclass(frozen=True)
+class _InnerOpts:
+    """Inner-solve knobs threaded from :func:`windowed_correct` to every window.
+
+    Bundled rather than passed as four more positionals through the round loop /
+    giant tiler / mop. See :func:`windowed_correct` for what each one does.
+    """
+
+    no_tr_fallback: bool = True
+    fallback_maxiter: int = 200
+    qp_max_iter: int | None = 2000  # None -> OSQP's own default (8000)
+    qp_max_iter_fallback: int | None = 500
 
 
 def _objective_fns(flat0, objective):
@@ -202,6 +216,7 @@ class WindowRec:
     n_enforced: int = 0
     inner_iters: int = 0
     grows: int = 0
+    fallback: bool = False  # the no-trust-region retry ran on this window
     min_before: float = 0.0
     min_after: float = 0.0
     feasible: bool = False
@@ -256,6 +271,10 @@ def windowed_correct(
     margin_delta=1e-3,
     max_window_area=3000,
     mop_margin=25,
+    no_tr_fallback=True,
+    fallback_maxiter=200,
+    qp_max_iter=2000,
+    qp_max_iter_fallback=500,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -290,6 +309,21 @@ def windowed_correct(
     tight frozen boundary can't clear but a large frozen-exterior window can (the
     analogue of the 2.5D pipeline's ``mop_interior_3d``). ``mop_margin=0`` disables.
 
+    Four knobs tune the inner solves (all ``isqp``-only, defaults measured on
+    the hard B0039 crops):
+
+    - ``no_tr_fallback`` (default on) — a window that fails to reach its target
+      is retried ONCE, same box, with the trust region off (legacy backtracking
+      line search) before grow-on-failure. The TR ratio test freezes on
+      sliver-scale violations (~1e-4, inside OSQP's own noise) that the line
+      search still clears; the retry warm-starts from the failed iterate and
+      keeps whichever result has the higher constraint minimum (never worse).
+      ``fallback_maxiter`` is that retry's SQP iteration budget (the line search
+      otherwise runs far past convergence).
+    - ``qp_max_iter`` / ``qp_max_iter_fallback`` — OSQP ADMM iteration cap per
+      subproblem for normal / fallback solves (``None`` = OSQP's 8000 default).
+      2000/500 keeps the hard crops at zero simplex folds at ~2x the speed.
+
     ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
     before each window solve; on expiry the engine stops, logs a warning, and
     finishes accounting on the best-so-far field. ``record_history=True`` fills
@@ -302,6 +336,7 @@ def windowed_correct(
     surface through the ``dvfopt`` logger regardless).
     """
     loc = _locality_of(constraint)
+    opts = _InnerOpts(no_tr_fallback, fallback_maxiter, qp_max_iter, qp_max_iter_fallback)
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
     ring = loc.ring
@@ -384,6 +419,7 @@ def windowed_correct(
                     rep,
                     margin_delta,
                     inner=inner,
+                    opts=opts,
                 )
                 if record_history:
                     rep.history.append(_stage_entry("giant", giant_w0))
@@ -400,6 +436,7 @@ def windowed_correct(
                 rep,
                 margin_delta=margin_delta,
                 inner=inner,
+                opts=opts,
             )
         if record_history:
             rep.history.append(_stage_entry(f"round{rep.rounds}", round_w0))
@@ -428,6 +465,7 @@ def windowed_correct(
                 mop_margin,
                 max_window_area,
                 inner=inner,
+                opts=opts,
             )
             rep.mop_cleared = before_mop - int(pixel_fold_mask(constraint, phi, threshold).sum())
             if record_history:
@@ -481,6 +519,7 @@ def _mop_pass(
     max_window_area,
     max_sweeps=3,
     inner="isqp",
+    opts=None,
 ):
     """Clear the boundary-stuck residual the round loop plateaued on. Each residual
     cluster is re-solved with a LARGE margin so its neighbourhood is free — no tight
@@ -515,6 +554,7 @@ def _mop_pass(
                     rep,
                     margin_delta,
                     inner=inner,
+                    opts=opts,
                 )
             else:
                 _solve_window(
@@ -528,6 +568,7 @@ def _mop_pass(
                     rep,
                     margin_delta=margin_delta,
                     inner=inner,
+                    opts=opts,
                 )
         if int(pixel_fold_mask(constraint, phi, threshold).sum()) >= n:
             break  # no progress -> genuine local floor
@@ -546,6 +587,7 @@ def _solve_giant_schwarz(
     tile=32,
     max_sweeps=8,
     inner="isqp",
+    opts=None,
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
@@ -593,6 +635,7 @@ def _solve_giant_schwarz(
                     margin_delta=margin_delta,
                     allow_grow=False,
                     inner=inner,
+                    opts=opts,
                 )
         nf = int((min_field(constraint, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
         if nf == 0 or (prev is not None and nf >= prev):
@@ -614,16 +657,38 @@ def _solve_window(
     margin_delta=1e-3,
     allow_grow=True,
     inner="isqp",
+    opts=None,
 ):
     """Solve one window; on infeasibility grow the blocked sides once and retry.
     Returns the inner solver's feasibility flag. ``allow_grow=False`` (used by the
     Schwarz tiler) keeps a tile at fixed size — growing a tile defeats tiling.
     ``inner`` picks the per-window solver (see
-    :func:`~dvfopt.core.windowed._inners.solve_window_inner`)."""
+    :func:`~dvfopt.core.windowed._inners.solve_window_inner`); ``opts`` carries
+    the inner knobs (:class:`_InnerOpts`)."""
     H, W = phi.shape[1:]
+    opts = _InnerOpts() if opts is None else opts
     sub = build_subproblem(constraint, phi, box, threshold, objective, margin_delta)
     t = time.perf_counter()
-    x, nit, ok = solve_window_inner(sub, inner, maxiter)
+    x, nit, ok = solve_window_inner(sub, inner, maxiter, osqp_max_iter=opts.qp_max_iter)
+    fell_back = False
+    if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
+        # The trust-region ratio test freezes on sliver-scale violations (~1e-4,
+        # inside OSQP's own noise) that the legacy backtracking line search still
+        # clears -- so retry the SAME window once with the TR off before paying
+        # for a grow. Warm-started from the failed iterate: the inner never moves
+        # frozen variables, so the ring stays pinned, and the objective closures
+        # stay anchored at the ORIGINAL flat0 (only the start point moves).
+        fell_back = True
+        x2, nit2, ok2 = solve_window_inner(
+            replace(sub, flat0=x),
+            inner,
+            opts.fallback_maxiter,
+            trust_region=False,
+            osqp_max_iter=opts.qp_max_iter_fallback,
+        )
+        nit += nit2
+        if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse
+            x, ok = x2, ok2
     dt = time.perf_counter() - t
     patch_out = np.asarray(sub.constraint.unflatten(x))
     py0, py1, px0, px1 = sub.patch_box
@@ -642,6 +707,7 @@ def _solve_window(
         n_enforced=sub.n_enforced,
         inner_iters=nit,
         grows=_grow,
+        fallback=fell_back,
         min_after=float(jpatch.min()),
         feasible=bool(ok),
         time_s=dt,
@@ -666,6 +732,7 @@ def _solve_window(
                 _grow + 1,
                 margin_delta,
                 inner=inner,
+                opts=opts,
             )
     return bool(ok)
 
