@@ -77,7 +77,9 @@ Imports flow one way. Breaking these is what re-tangles the package.
   freezes on sliver-scale violations the legacy line search clears. OSQP ADMM
   iterations are capped per subproblem — `qp_max_iter` / `qp_max_iter_fallback`.
   Measured: a cap-escalation ladder over these is slower and no more feasible;
-  do not add one.)*
+  do not add one. The giant tiler's tile size / sweep cap are `giant_tile`
+  (default 64) / `giant_max_sweeps`: 64 measured 1.9x faster than 32 on a full
+  raw B0039 slice at equal feasibility and a smaller move.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy

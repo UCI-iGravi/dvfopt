@@ -22,6 +22,15 @@ follows [Semantic Versioning](https://semver.org/).
 - All four knobs are exposed on `windowed_correct` and `ISQPWindowedStrategy`
   (and hence editable in the GUI's Params → Strategy tab); `WindowRec.fallback`
   records which windows used the retry.
+- **Giant-region tiler knobs** — `giant_tile` / `giant_max_sweeps` on
+  `windowed_correct` and `ISQPWindowedStrategy`, previously hard-wired inside
+  `_solve_giant_schwarz`. **The default tile changes 32 -> 64** (behavior
+  change: giant regions are now decomposed into fewer, larger overlapping
+  tiles). On a full raw B0039 z16 slice (bilinear rows, objective `none`)
+  tile 64 ran 362 s / 22 windows / 1 round / no mop vs tile 32's 685 s /
+  264 windows / 3 rounds / 4 mop — 1.9x faster, zero simplex folds and zero
+  damage on both, and a smaller move (L2 316 vs 404). Pass `giant_tile=32`
+  to restore the promoted-benchmark tiling.
 - Validated on the three hard B0039 crops with
   `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed',
   objective='none')`: simplex folds 645/598/0 → 0/0/0, damage 0, in
