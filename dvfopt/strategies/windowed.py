@@ -87,6 +87,14 @@ class WindowedWrapperStrategy(Strategy):
         otherwise runs far past convergence).
     qp_max_iter, qp_max_iter_fallback : int
         OSQP ADMM iteration cap per subproblem, normal / fallback solves.
+    giant_tile : int
+        Tile size for the overlapping-tile Schwarz decomposition of an
+        over-``max_window_area`` region. Bigger tiles mean fewer Schwarz
+        seams and fewer sweeps: 64 (the default) measured 1.9x faster
+        than 32 on a full raw B0039 slice at equal feasibility.
+    giant_max_sweeps : int
+        Sweep cap for that decomposition (it stops early once the region
+        is clear or stops improving).
     """
 
     inner: Optional[str] = None
@@ -101,6 +109,8 @@ class WindowedWrapperStrategy(Strategy):
     fallback_maxiter: int = 200
     qp_max_iter: int = 2000
     qp_max_iter_fallback: int = 500
+    giant_tile: int = 64
+    giant_max_sweeps: int = 8
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -146,6 +156,8 @@ class WindowedWrapperStrategy(Strategy):
             fallback_maxiter=self.fallback_maxiter,
             qp_max_iter=self.qp_max_iter,
             qp_max_iter_fallback=self.qp_max_iter_fallback,
+            giant_tile=self.giant_tile,
+            giant_max_sweeps=self.giant_max_sweeps,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

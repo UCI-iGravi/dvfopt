@@ -1,5 +1,5 @@
-"""Fast + robust windowed-isqp knobs: the no-trust-region fallback and the
-two-tier OSQP iteration caps.
+"""Fast + robust windowed-isqp knobs: the no-trust-region fallback, the
+two-tier OSQP iteration caps, and the giant-region tiler's tile / sweep caps.
 
 The engine retries a failed window ONCE with the trust region off (the TR
 ratio test freezes on sliver-scale violations the legacy line search clears)
@@ -104,6 +104,24 @@ def test_engine_knobs_reach_the_inner(monkeypatch):
     assert calls[1] == dict(trust_region=False, maxiter=11, osqp_max_iter=17)
 
 
+def test_giant_tile_knobs_reach_the_tiler(monkeypatch):
+    """``giant_tile`` / ``giant_max_sweeps`` ride ``_InnerOpts`` into the
+    giant-region Schwarz tiler (default 64/8; overridable per call)."""
+    seen = []
+    monkeypatch.setattr(
+        engine,
+        "_solve_giant_schwarz",
+        lambda *a, opts=None, **kw: seen.append((opts.giant_tile, opts.giant_max_sweeps)),
+    )
+    # max_window_area=1 sends every cluster down the giant path
+    _run(_sparse_folds(), monkeypatch, [], max_window_area=1)
+    assert seen and set(seen) == {(64, 8)}  # the new default tile
+
+    seen.clear()
+    _run(_sparse_folds(), monkeypatch, [], max_window_area=1, giant_tile=48, giant_max_sweeps=2)
+    assert seen and set(seen) == {(48, 2)}
+
+
 # ---------------------------------------------------------------------------
 # (b) osqp_max_iter reaches OSQP.setup
 # ---------------------------------------------------------------------------
@@ -156,7 +174,12 @@ def test_strategy_forwards_knobs(monkeypatch):
 
     monkeypatch.setattr(strat_mod, "windowed_correct", fake_windowed_correct)
     strategy = ISQPWindowedStrategy(
-        no_tr_fallback=False, fallback_maxiter=5, qp_max_iter=7, qp_max_iter_fallback=9
+        no_tr_fallback=False,
+        fallback_maxiter=5,
+        qp_max_iter=7,
+        qp_max_iter_fallback=9,
+        giant_tile=48,
+        giant_max_sweeps=2,
     )
     phi = np.zeros((2, 8, 8))
     strategy.solve(
@@ -168,7 +191,9 @@ def test_strategy_forwards_knobs(monkeypatch):
     assert seen["no_tr_fallback"] is False
     assert seen["fallback_maxiter"] == 5
     assert (seen["qp_max_iter"], seen["qp_max_iter_fallback"]) == (7, 9)
+    assert (seen["giant_tile"], seen["giant_max_sweeps"]) == (48, 2)
 
     defaults = ISQPWindowedStrategy()
     assert (defaults.no_tr_fallback, defaults.fallback_maxiter) == (True, 200)
     assert (defaults.qp_max_iter, defaults.qp_max_iter_fallback) == (2000, 500)
+    assert (defaults.giant_tile, defaults.giant_max_sweeps) == (64, 8)

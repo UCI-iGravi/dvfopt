@@ -65,9 +65,9 @@ from ._locality import _locality_of, min_field, pixel_fold_mask
 
 @dataclass(frozen=True)
 class _InnerOpts:
-    """Inner-solve knobs threaded from :func:`windowed_correct` to every window.
+    """Inner-solve and giant-tiler knobs threaded from :func:`windowed_correct`.
 
-    Bundled rather than passed as four more positionals through the round loop /
+    Bundled rather than passed as six more positionals through the round loop /
     giant tiler / mop. See :func:`windowed_correct` for what each one does.
     """
 
@@ -75,6 +75,8 @@ class _InnerOpts:
     fallback_maxiter: int = 200
     qp_max_iter: int | None = 2000  # None -> OSQP's own default (8000)
     qp_max_iter_fallback: int | None = 500
+    giant_tile: int = 64
+    giant_max_sweeps: int = 8
 
 
 def _objective_fns(flat0, objective):
@@ -275,6 +277,8 @@ def windowed_correct(
     fallback_maxiter=200,
     qp_max_iter=2000,
     qp_max_iter_fallback=500,
+    giant_tile=64,
+    giant_max_sweeps=8,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -324,6 +328,16 @@ def windowed_correct(
       subproblem for normal / fallback solves (``None`` = OSQP's 8000 default).
       2000/500 keeps the hard crops at zero simplex folds at ~2x the speed.
 
+    ``giant_tile`` / ``giant_max_sweeps`` size the overlapping-tile Schwarz
+    decomposition of an over-``max_window_area`` region: square tiles of
+    ``giant_tile`` px stepped by ``giant_tile - (2 * ring + 2)``, swept at most
+    ``giant_max_sweeps`` times (the sweep loop stops early once the region is
+    clear or stops improving). Bigger tiles mean fewer Schwarz seams and fewer
+    sweeps: on a full raw B0039 z16 slice (bilinear rows, objective ``none``)
+    ``giant_tile=64`` ran 362 s / 22 windows / 1 round / no mop vs 685 s /
+    264 windows / 3 rounds at 32 — 1.9x faster, zero simplex folds and zero
+    damage either way, and a *smaller* move (L2 316 vs 404). 64 is the default.
+
     ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
     before each window solve; on expiry the engine stops, logs a warning, and
     finishes accounting on the best-so-far field. ``record_history=True`` fills
@@ -336,7 +350,14 @@ def windowed_correct(
     surface through the ``dvfopt`` logger regardless).
     """
     loc = _locality_of(constraint)
-    opts = _InnerOpts(no_tr_fallback, fallback_maxiter, qp_max_iter, qp_max_iter_fallback)
+    opts = _InnerOpts(
+        no_tr_fallback,
+        fallback_maxiter,
+        qp_max_iter,
+        qp_max_iter_fallback,
+        giant_tile,
+        giant_max_sweeps,
+    )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
     ring = loc.ring
@@ -584,8 +605,6 @@ def _solve_giant_schwarz(
     ring,
     rep,
     margin_delta,
-    tile=32,
-    max_sweeps=8,
     inner="isqp",
     opts=None,
 ):
@@ -593,7 +612,8 @@ def _solve_giant_schwarz(
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
     tiles overlap so a fold on one tile's seam is interior to a neighbour, and
     repeated sweeps propagate the correction across the whole region. Returns folds
-    remaining in the region.
+    remaining in the region. Tile size / sweep cap come from ``opts``
+    (``giant_tile`` / ``giant_max_sweeps``, see :func:`windowed_correct`).
 
     Windowing-specific and NOT :mod:`dvfopt.core.schwarz` — that engine's
     crop-Strategy contract cannot freeze rings or restrict enforced rows, which
@@ -606,6 +626,8 @@ def _solve_giant_schwarz(
     leaves no fold unfixed. Image-border edges are not inset — no "outside" there.
     Without the inset, an infeasible edge-tile solve can leave a boundary guard row
     just outside the giant violated -> a damage fold (observed on B0039 z=0)."""
+    opts = _InnerOpts() if opts is None else opts
+    tile, max_sweeps = opts.giant_tile, opts.giant_max_sweeps
     H, W = phi.shape[1:]
     fy0, fy1, fx0, fx1 = giant_box
     it0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
