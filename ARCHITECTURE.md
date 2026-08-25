@@ -28,6 +28,14 @@ actually take (`accepts_constraints`, `accepts_objectives`, `supports_3d`) and
 `Solver.from_spec(constraint='simplex', objective='l1', strategy='slp')` builds the
 same thing from string labels via the three registries.
 
+The most robust from-raw triple currently known is
+`correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed', objective='none')`
+— bilinear feasibility implies simplex feasibility (its 4 rows/cell contain the 2
+simplex rows), and pure feasibility keeps the windowed isqp out of the
+objective-basin traps a distance anchor pins it in. Across a volume, the DVFopt
+facade parallelises the per-slice loop with `DVFoptConfig(n_workers=N)` (process
+pool; slices are independent solves).
+
 The **simplex metric** (labels `'simplex'` / `'simplex_standard'` / `'simplex_3d'`; formerly *2-tri* / *6-tet*) is the exact Jacobian determinant of the piecewise-linear interpolant on the fixed simplicial decomposition of the grid — 2 triangles per cell along the fixed BL–TR diagonal in 2D, 6 tetrahedra per cell in 3D — so feasibility is a genuine injectivity certificate for that interpolant. Strictness ordering: central-diff Jdet < `'finite'` (forward-diff = one triangle per cell) < simplex (both triangles). The old names *2-tri* / *6-tet* remain as registry aliases (`'2tri'`, `'2tri_standard'`, `'6tet'`, `'6tet_3d'`), and the old class names (`TriConstraint2D`, `TriConstraint2DFullCoverage`, `TriConstraint2DBilinear`, `Tet6Constraint3D`) remain importable.
 
 ## Dependency rules
@@ -63,6 +71,13 @@ Imports flow one way. Breaking these is what re-tangles the package.
   the cluster-windowed no-damage decomposition — frozen-ring windows around fold
   clusters with a label-selected inner solver). Any method package may import
   these; they carry no method logic of their own.
+  *(Windowed escalation order, isqp inner: solve → **no-trust-region retry**
+  (`no_tr_fallback`, warm-started from the failed iterate, `fallback_maxiter`
+  SQP iterations) → grow-on-failure → giant tiling / mop. The TR ratio test
+  freezes on sliver-scale violations the legacy line search clears. OSQP ADMM
+  iterations are capped per subproblem — `qp_max_iter` / `qp_max_iter_fallback`.
+  Measured: a cap-escalation ladder over these is slower and no more feasible;
+  do not add one.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy

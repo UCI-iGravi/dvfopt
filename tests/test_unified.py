@@ -411,6 +411,34 @@ class TestSliceResultMemory:
             assert '_legacy_history' not in sr.info.extras
 
 
+class TestPerSliceParallelism:
+    """``DVFoptConfig.n_workers`` — per-slice process pool (spawn-safe)."""
+
+    def test_n_workers_matches_serial(self):
+        rng = np.random.default_rng(2)
+        phi = rng.normal(0, 0.3, (3, 3, 10, 10))
+        kw = dict(solver="barrier", constraint="simplex", record_history=False, verbose=0)
+        serial = DVFopt(DVFoptConfig(**kw)).fit(phi)
+        parallel = DVFopt(DVFoptConfig(**kw, n_workers=2)).fit(phi)
+        np.testing.assert_array_equal(parallel.corrected, serial.corrected)
+        assert [s.z for s in parallel.slice_results] == [0, 1, 2]  # slice order preserved
+        assert [s.final_n_neg for s in parallel.slice_results] == [
+            s.final_n_neg for s in serial.slice_results
+        ]
+
+    def test_single_slice_stays_serial(self, monkeypatch):
+        import concurrent.futures
+
+        def _no_pool(*a, **kw):
+            raise AssertionError("a single slice must not spawn a process pool")
+
+        monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", _no_pool)
+        phi = _planted_fold_2d()
+        cfg = DVFoptConfig(solver="barrier", constraint="simplex", verbose=0, n_workers=4)
+        res = DVFopt(cfg).fit(phi)
+        assert res.corrected.shape == phi.shape
+
+
 class TestBarrierReducesFolds:
     """End-to-end: barrier should reduce or eliminate folds."""
 
