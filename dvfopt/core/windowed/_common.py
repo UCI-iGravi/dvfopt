@@ -50,6 +50,7 @@ tiles with damage accounting — and deliberately does NOT reuse
 ``core/schwarz/_common.py``, whose crop-Strategy contract cannot freeze rings.
 """
 
+import math
 import time
 from dataclasses import dataclass, field, replace
 
@@ -67,7 +68,7 @@ from ._locality import _locality_of, min_field, pixel_fold_mask
 class _InnerOpts:
     """Inner-solve and giant-tiler knobs threaded from :func:`windowed_correct`.
 
-    Bundled rather than passed as six more positionals through the round loop /
+    Bundled rather than passed as seven more positionals through the round loop /
     giant tiler / mop. See :func:`windowed_correct` for what each one does.
     """
 
@@ -77,6 +78,7 @@ class _InnerOpts:
     qp_max_iter_fallback: int | None = 500
     giant_tile: int = 64
     giant_max_sweeps: int = 8
+    giant_tile_fit: bool = True
 
 
 def _objective_fns(flat0, objective):
@@ -279,6 +281,7 @@ def windowed_correct(
     qp_max_iter_fallback=500,
     giant_tile=64,
     giant_max_sweeps=8,
+    giant_tile_fit=True,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -338,6 +341,12 @@ def windowed_correct(
     264 windows / 3 rounds at 32 — 1.9x faster, zero simplex folds and zero
     damage either way, and a *smaller* move (L2 316 vs 404). 64 is the default.
 
+    ``giant_tile_fit=True`` (default) makes ``giant_tile`` a *target* rather
+    than a literal size: the effective tile is fitted per region so an integer
+    number of near-equal tiles covers its longest side (:func:`_fit_tile`).
+    Tile size matters through grid *alignment* — the sweep-round count — not
+    through size itself. ``False`` restores the literal ``giant_tile``.
+
     ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
     before each window solve; on expiry the engine stops, logs a warning, and
     finishes accounting on the best-so-far field. ``record_history=True`` fills
@@ -357,6 +366,7 @@ def windowed_correct(
         qp_max_iter_fallback,
         giant_tile,
         giant_max_sweeps,
+        giant_tile_fit,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -595,6 +605,27 @@ def _mop_pass(
             break  # no progress -> genuine local floor
 
 
+def _fit_tile(h, w, target, lo_frac=0.75, hi_frac=1.5):
+    """Fit a giant region's tile size to its geometry: the largest tile no bigger
+    than ``target`` that covers the region's longest side with an integer number
+    of near-equal tiles, clamped to ``[lo_frac, hi_frac] * target``.
+
+    Tile size matters through *alignment* — how many Schwarz sweep rounds the
+    tiling needs — not through the size itself. A tile that leaves a thin
+    remainder strip along the long side costs an extra round to propagate
+    through. Measured on the raw B0039 z16 giant (a 125x152 box): tile 64
+    happens to align (1 round, 374 s) while 56 and 80 do not (2 rounds, ~600 s);
+    the fitted ``_fit_tile(125, 152, 64) == 51`` aligns by construction
+    (1 round, 345 s). The clamp keeps a region smaller than ``target`` from
+    collapsing the tile — and with it the point of tiling. A heuristic, not a
+    guarantee: tiles step by ``tile - overlap``, so exact integer coverage of
+    the side is approximate, and only the region's longest side is fitted.
+    """
+    n = max(1, -(-max(h, w) // target))  # tiles along the longest side
+    tile = -(-max(h, w) // n)
+    return int(min(max(tile, math.ceil(lo_frac * target)), math.ceil(hi_frac * target)))
+
+
 def _solve_giant_schwarz(
     phi,
     constraint,
@@ -613,7 +644,8 @@ def _solve_giant_schwarz(
     tiles overlap so a fold on one tile's seam is interior to a neighbour, and
     repeated sweeps propagate the correction across the whole region. Returns folds
     remaining in the region. Tile size / sweep cap come from ``opts``
-    (``giant_tile`` / ``giant_max_sweeps``, see :func:`windowed_correct`).
+    (``giant_tile`` / ``giant_max_sweeps`` / ``giant_tile_fit``, see
+    :func:`windowed_correct` and :func:`_fit_tile`).
 
     Windowing-specific and NOT :mod:`dvfopt.core.schwarz` — that engine's
     crop-Strategy contract cannot freeze rings or restrict enforced rows, which
@@ -630,6 +662,8 @@ def _solve_giant_schwarz(
     tile, max_sweeps = opts.giant_tile, opts.giant_max_sweeps
     H, W = phi.shape[1:]
     fy0, fy1, fx0, fx1 = giant_box
+    if opts.giant_tile_fit:
+        tile = _fit_tile(fy1 - fy0, fx1 - fx0, tile)
     it0 = fy0 + (ring if fy0 > 0 else 0)  # inset interior edges; keep image borders
     it1 = fy1 - (ring if fy1 < H else 0)
     ix0 = fx0 + (ring if fx0 > 0 else 0)

@@ -79,7 +79,11 @@ Imports flow one way. Breaking these is what re-tangles the package.
   Measured: a cap-escalation ladder over these is slower and no more feasible;
   do not add one. The giant tiler's tile size / sweep cap are `giant_tile`
   (default 64) / `giant_max_sweeps`: 64 measured 1.9x faster than 32 on a full
-  raw B0039 slice at equal feasibility and a smaller move.)*
+  raw B0039 slice at equal feasibility and a smaller move. `giant_tile_fit`
+  (default on) makes that a *target*, fitted per region so an integer number of
+  near-equal tiles covers its longest side: tile size acts through grid
+  ALIGNMENT — the sweep-round count — not through size, so a target that leaves
+  a remainder strip costs an extra round.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy
