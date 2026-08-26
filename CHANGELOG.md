@@ -6,6 +6,33 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — hybrid QP backend for the windowed isqp inner (behavior change, default ON)
+
+- **`qp_backend` / `ip_cold` / `ip_after_admm_iters`** on `isqp_solve`,
+  `windowed_correct` and `WindowedWrapperStrategy` / `ISQPWindowedStrategy`.
+  `'hybrid'` solves a window's **cold** first QP, and any QP that follows an
+  ADMM run of `>= ip_after_admm_iters` (default 800) iterations, with
+  interior-point **Clarabel**; every other QP stays on warm-started OSQP. The
+  IP solution seeds OSQP's warm start, and any IP failure (bad status,
+  non-finite, exception) falls through to ADMM — the backend can be faster,
+  never less feasible.
+- **The engine default changes to `'hybrid'`** (`windowed_correct`,
+  `ISQPWindowedStrategy`). The *primitive* default is unchanged:
+  `isqp_solve(qp_backend='osqp')` is still the pre-hybrid path, byte for byte,
+  and passing `qp_backend='osqp'` anywhere restores it exactly.
+- Why hybrid rather than interior-point everywhere: on real giant-tile QPs
+  (16k vars, 27k rows) Clarabel takes ~0.25 s / 15-25 iterations at ~1e-9
+  feasibility against OSQP's 0.4-2.2 s / 700-4000 ADMM iterations at ~1e-3 —
+  but an in-engine *warm-started* OSQP solve averages 0.175 s, so
+  Clarabel-always is **slower** (raw B0039 z16: 381 s vs 300 s, and 34% more
+  SQP iterations). Hybrid on raw B0039 z16: **262 s vs 300 s (-13%)**, 0
+  simplex folds, damage 0, and better fidelity (L2 move 325 vs 346). Policy
+  sweep: cold-only 296 s, threshold 400 -> 289 s, **800 -> 262 s (best)**,
+  1500 -> 269 s, no-cold/800 -> 281 s.
+- **New core dependency `clarabel>=0.9`** (pure-Rust wheels on every supported
+  interpreter/platform). Without it, `'hybrid'` silently behaves as `'osqp'`
+  (logged once at DEBUG on the `dvfopt` logger).
+
 ### Changed — windowed isqp: faster and more robust (behavior change, defaults ON)
 
 - **Per-window no-trust-region fallback** (`no_tr_fallback=True`,

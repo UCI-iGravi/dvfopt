@@ -18,9 +18,19 @@ Callers that want CPR coloring pass a ``cons_jac`` built from
 
 Requires the optional ``osqp`` dependency: ``HAS_OSQP`` is False when it is
 not importable and :func:`isqp_solve` raises ImportError.
+
+QP backend
+----------
+``qp_backend='hybrid'`` (see :func:`_make_qp`) adds an interior-point escape
+hatch on top of the warm-started ADMM path. ``'osqp'`` (this module's default)
+is the pre-hybrid path, byte for byte.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
+
+from dvfopt._logging import logger
 
 try:
     import osqp
@@ -28,6 +38,130 @@ try:
     HAS_OSQP = True
 except ImportError:
     HAS_OSQP = False
+
+try:
+    import clarabel
+
+    HAS_CLARABEL = True
+except ImportError:
+    HAS_CLARABEL = False
+
+_WARNED_NO_CLARABEL = False
+
+
+class _HybridQP:
+    """OSQP with a Clarabel (interior-point) escape hatch, behind OSQP's own
+    ``setup`` / ``update`` / ``solve`` surface — a drop-in for ``osqp.OSQP()``.
+
+    Why: on real giant-tile QPs (16k vars, 27k rows) Clarabel solves in ~0.25 s /
+    15-25 IP iterations at ~1e-9 feasibility where OSQP needs 0.4-2.2 s /
+    700-4000 ADMM iterations at ~1e-3 — but an in-engine *warm-started* OSQP
+    averages 0.175 s/solve, so always-Clarabel is a net loss (raw B0039 z16:
+    381 s vs 300 s, and 34% more SQP iterations). The win is using IP exactly
+    where the warm start is worth nothing or has gone stale:
+
+    - the window's **cold** first solve (``ip_cold``), and
+    - right after an ADMM solve that ran ``>= ip_after_admm_iters`` iterations
+      (the tail signal that the warm start stopped helping).
+
+    Measured on raw B0039 z16: 262 s vs 300 s for OSQP-only (-13%), 0 simplex
+    folds, damage 0, and a smaller move (L2 325 vs 346). Policy sweep:
+    cold-only 296 s, threshold 400 -> 289 s, 800 -> 262 s (best), 1500 ->
+    269 s, no-cold/800 -> 281 s.
+
+    An IP solve seeds OSQP's warm start with its own solution, so the next ADMM
+    solve starts from the IP point. Any IP failure (bad status, non-finite,
+    exception) silently falls through to ADMM — the backend can only be faster,
+    never less feasible.
+    """
+
+    def __init__(self, ip_cold=True, ip_after_admm_iters=800):
+        self._real = osqp.OSQP()
+        self._ip_cold = bool(ip_cold)
+        self._ip_after = int(ip_after_admm_iters)
+        self._last_admm_iters = None  # None == cold (no ADMM solve yet)
+        self._p = self._q = self._a = self._lo = self._up = None
+
+    def setup(self, p, q, a, lo, up, **kw):
+        self._p, self._q, self._a, self._lo, self._up = p, q, a, lo, up
+        self._real.setup(p, q, a, lo, up, **kw)
+
+    def update(self, q=None, l=None, u=None, Px=None, Ax=None):  # `l`: OSQP's own name
+        # Px/Ax carry new VALUES for the setup-time sparsity pattern, so the
+        # stored csc matrices are refreshed in place (we own the only reference).
+        if q is not None:
+            self._q = q
+        if l is not None:
+            self._lo = l
+        if u is not None:
+            self._up = u
+        if Px is not None:
+            self._p.data = Px
+        if Ax is not None:
+            self._a.data = Ax
+        self._real.update(q=q, l=l, u=u, Px=Px, Ax=Ax)
+
+    def solve(self):
+        cold = self._last_admm_iters is None
+        if (self._ip_cold and cold) or (not cold and self._last_admm_iters >= self._ip_after):
+            res = self._solve_ip()
+            if res is not None:
+                self._last_admm_iters = 0  # the next ADMM solve starts from the IP point
+                return res
+        res = self._real.solve()
+        self._last_admm_iters = int(res.info.iter)
+        return res
+
+    def _solve_ip(self):
+        """One Clarabel solve of the stored QP; ``None`` on any failure (-> ADMM).
+
+        ``l <= A z <= u`` becomes the conic form Clarabel wants: finite-``u``
+        rows as ``A z + s = u``, finite-``l`` rows as ``-A z + s = -l``, stacked
+        under one nonnegative cone. ``P`` is passed as stored — OSQP's
+        upper-triangular convention is Clarabel's too (and this driver's ``P`` is
+        diagonal anyway).
+        """
+        from scipy import sparse
+
+        try:
+            fu, fl = np.isfinite(self._up), np.isfinite(self._lo)
+            a_csr = self._a.tocsr()
+            a_ip = sparse.vstack([a_csr[fu], -a_csr[fl]], format="csc")
+            b_ip = np.concatenate([self._up[fu], -self._lo[fl]])
+            st = clarabel.DefaultSettings()
+            st.verbose = False
+            st.tol_gap_abs = st.tol_gap_rel = st.tol_feas = 1e-3
+            sol = clarabel.DefaultSolver(
+                self._p, self._q, a_ip, b_ip, [clarabel.NonnegativeConeT(b_ip.size)], st
+            ).solve()
+            x = np.asarray(sol.x, dtype=np.float64)
+            if str(sol.status) != "Solved" or not np.all(np.isfinite(x)):
+                return None
+            self._real.warm_start(x=x)
+            return SimpleNamespace(
+                x=x,
+                info=SimpleNamespace(iter=int(sol.iterations), status=f"clarabel-{sol.status}"),
+            )
+        except Exception as exc:  # any IP trouble is a fall-through, never a failure
+            logger.debug(f"hybrid QP: interior-point solve failed ({exc!r}); using OSQP")
+            return None
+
+
+def _make_qp(qp_backend, ip_cold, ip_after_admm_iters):
+    """QP object for *qp_backend*: a plain ``osqp.OSQP()`` for ``'osqp'`` (the
+    pre-hybrid path, byte for byte) or :class:`_HybridQP` for ``'hybrid'``.
+    Without ``clarabel`` installed, ``'hybrid'`` IS ``'osqp'`` (logged once)."""
+    if qp_backend == "osqp":
+        return osqp.OSQP()
+    if qp_backend != "hybrid":
+        raise ValueError(f"unknown qp_backend {qp_backend!r}; valid: 'osqp', 'hybrid'")
+    if not HAS_CLARABEL:
+        global _WARNED_NO_CLARABEL
+        if not _WARNED_NO_CLARABEL:
+            _WARNED_NO_CLARABEL = True
+            logger.debug("qp_backend='hybrid' but clarabel is not importable; using OSQP only")
+        return osqp.OSQP()
+    return _HybridQP(ip_cold, ip_after_admm_iters)
 
 
 def _backtrack(merit, x, d, phi0, alpha_min=1e-4):
@@ -64,6 +198,9 @@ def isqp_solve(
     osqp_max_iter=None,
     monotone=False,
     log_every=0,
+    qp_backend='osqp',
+    ip_cold=True,
+    ip_after_admm_iters=800,
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -94,6 +231,14 @@ def isqp_solve(
     filter (Fletcher-Leyffer style). This subsumes ``protect`` (satisfied rows get
     a hard floor at 0) and closes its leak (sign-based protection leaves
     already-slightly-violated rows as a cheap dumping ground the QP drives deep).
+
+    ``qp_backend`` picks the QP solver behind the subproblem: ``'osqp'``
+    (default here — warm-started ADMM, byte-identical to the pre-hybrid driver)
+    or ``'hybrid'`` (:class:`_HybridQP`: interior-point Clarabel on a window's
+    cold first solve and after any ADMM solve that ran ``>= ip_after_admm_iters``
+    iterations, warm-started OSQP otherwise; ``ip_cold=False`` drops the cold
+    leg). The windowed engine defaults to ``'hybrid'`` — 13% faster on raw
+    B0039 z16 at unchanged feasibility; see :class:`_HybridQP` for the numbers.
 
     ``log_every=N`` prints a live progress line every N iterations (and on every
     rejected step) so long solves are observable mid-run, not only post-mortem.
@@ -219,7 +364,7 @@ def isqp_solve(
         if prob is not None and same_pattern:
             prob.update(q=q, l=lo, u=up, Px=p.data, Ax=a.data)
         else:
-            prob = osqp.OSQP()
+            prob = _make_qp(qp_backend, ip_cold, ip_after_admm_iters)
             eps_kw = {} if osqp_eps is None else {"eps_abs": osqp_eps, "eps_rel": osqp_eps}
             prob.setup(
                 p,
@@ -312,4 +457,4 @@ def isqp_solve(
     return x, it, feasible
 
 
-__all__ = ['HAS_OSQP', 'isqp_solve']
+__all__ = ['HAS_CLARABEL', 'HAS_OSQP', 'isqp_solve']

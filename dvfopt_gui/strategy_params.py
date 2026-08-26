@@ -22,7 +22,7 @@ from dvfopt._defaults import DEFAULT_PARAMS as _DVFOPT_DEFAULTS
 # IncompatibleConstraintError, so it's excluded rather than rendered.
 _EXCLUDED_FIELDS = {'time_budget_s', 'supports_3d'}
 # Literal-choice fields (dataclasses can't express Literal defaults cleanly).
-_CHOICE_FIELDS = {'accuracy': ('fast', 'max')}
+_CHOICE_FIELDS = {'accuracy': ('fast', 'max'), 'qp_backend': ('hybrid', 'osqp')}
 # Spin SEEDS for ``float | None`` knobs when the user first ticks the
 # override checkbox. Detection is by dataclass ANNOTATION (any
 # float|None field with default None renders as optfloat); this table

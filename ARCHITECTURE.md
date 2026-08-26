@@ -77,7 +77,14 @@ Imports flow one way. Breaking these is what re-tangles the package.
   freezes on sliver-scale violations the legacy line search clears. OSQP ADMM
   iterations are capped per subproblem — `qp_max_iter` / `qp_max_iter_fallback`.
   Measured: a cap-escalation ladder over these is slower and no more feasible;
-  do not add one. The giant tiler's tile size / sweep cap are `giant_tile`
+  do not add one. The QP itself is solved by `qp_backend` (default `'hybrid'`):
+  interior-point Clarabel on a window's cold first solve and after any ADMM run
+  of `>= ip_after_admm_iters` (800) iterations, warm-started OSQP otherwise —
+  raw B0039 z16 262 s vs 300 s at 0 simplex folds / damage 0. Clarabel-*always*
+  is slower (381 s): a warm-started ADMM solve averages 0.175 s, so IP only pays
+  where the warm start is cold or stale. `'osqp'` reproduces the pre-hybrid
+  path byte for byte and is the automatic degradation when `clarabel` is
+  absent. The giant tiler's tile size / sweep cap are `giant_tile`
   (default 64) / `giant_max_sweeps`: 64 measured 1.9x faster than 32 on a full
   raw B0039 slice at equal feasibility and a smaller move. `giant_tile_fit`
   (default on) makes that a *target*, fitted per region so an integer number of

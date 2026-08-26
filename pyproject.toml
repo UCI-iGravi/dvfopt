@@ -6,6 +6,10 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy>=1.15,<1.19",
+    # Interior-point QP behind the windowed engine's default hybrid QP backend
+    # (dvfopt.core.primitives.isqp). Pure-Rust wheels on every CI target;
+    # without it qp_backend='hybrid' silently degrades to plain OSQP.
+    "clarabel>=0.9",
     "SimpleITK",
     "nibabel",
     "matplotlib",

@@ -37,7 +37,7 @@ def _fake_inner(calls):
     """Inner that FAILS every trust-region solve and clears the window without
     it (zeroing the free pixels restores the identity field there)."""
 
-    def inner(sub, label, maxiter, trace=None, trust_region=True, osqp_max_iter=None):
+    def inner(sub, label, maxiter, trace=None, trust_region=True, osqp_max_iter=None, **_qp):
         calls.append(dict(trust_region=trust_region, maxiter=maxiter, osqp_max_iter=osqp_max_iter))
         x = np.array(sub.flat0, dtype=float)
         if trust_region:

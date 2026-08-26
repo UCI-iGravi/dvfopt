@@ -79,6 +79,9 @@ class _InnerOpts:
     giant_tile: int = 64
     giant_max_sweeps: int = 8
     giant_tile_fit: bool = True
+    qp_backend: str = 'hybrid'
+    ip_cold: bool = True
+    ip_after_admm_iters: int = 800
 
 
 def _objective_fns(flat0, objective):
@@ -282,6 +285,9 @@ def windowed_correct(
     giant_tile=64,
     giant_max_sweeps=8,
     giant_tile_fit=True,
+    qp_backend='hybrid',
+    ip_cold=True,
+    ip_after_admm_iters=800,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -330,6 +336,15 @@ def windowed_correct(
     - ``qp_max_iter`` / ``qp_max_iter_fallback`` — OSQP ADMM iteration cap per
       subproblem for normal / fallback solves (``None`` = OSQP's 8000 default).
       2000/500 keeps the hard crops at zero simplex folds at ~2x the speed.
+    - ``qp_backend`` (default ``'hybrid'``) / ``ip_cold`` /
+      ``ip_after_admm_iters`` — which QP solver backs each subproblem.
+      ``'hybrid'`` runs interior-point Clarabel on a window's cold first solve
+      and after any ADMM solve that hit ``>= ip_after_admm_iters`` iterations
+      (the stale-warm-start signal), warm-started OSQP otherwise: raw B0039 z16
+      262 s vs 300 s (-13%), zero simplex folds, damage 0, smaller move (L2 325
+      vs 346). ``'osqp'`` restores the pre-hybrid path byte for byte, and is
+      what ``'hybrid'`` degrades to when ``clarabel`` is not installed. See
+      :class:`dvfopt.core.primitives.isqp._HybridQP` for the policy sweep.
 
     ``giant_tile`` / ``giant_max_sweeps`` size the overlapping-tile Schwarz
     decomposition of an over-``max_window_area`` region: square tiles of
@@ -367,6 +382,9 @@ def windowed_correct(
         giant_tile,
         giant_max_sweeps,
         giant_tile_fit,
+        qp_backend,
+        ip_cold,
+        ip_after_admm_iters,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -725,7 +743,15 @@ def _solve_window(
     opts = _InnerOpts() if opts is None else opts
     sub = build_subproblem(constraint, phi, box, threshold, objective, margin_delta)
     t = time.perf_counter()
-    x, nit, ok = solve_window_inner(sub, inner, maxiter, osqp_max_iter=opts.qp_max_iter)
+    x, nit, ok = solve_window_inner(
+        sub,
+        inner,
+        maxiter,
+        osqp_max_iter=opts.qp_max_iter,
+        qp_backend=opts.qp_backend,
+        ip_cold=opts.ip_cold,
+        ip_after_admm_iters=opts.ip_after_admm_iters,
+    )
     fell_back = False
     if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
         # The trust-region ratio test freezes on sliver-scale violations (~1e-4,
@@ -741,6 +767,9 @@ def _solve_window(
             opts.fallback_maxiter,
             trust_region=False,
             osqp_max_iter=opts.qp_max_iter_fallback,
+            qp_backend=opts.qp_backend,
+            ip_cold=opts.ip_cold,
+            ip_after_admm_iters=opts.ip_after_admm_iters,
         )
         nit += nit2
         if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse
