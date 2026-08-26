@@ -31,6 +31,18 @@ follows [Semantic Versioning](https://semver.org/).
   264 windows / 3 rounds / 4 mop — 1.9x faster, zero simplex folds and zero
   damage on both, and a smaller move (L2 316 vs 404). Pass `giant_tile=32`
   to restore the promoted-benchmark tiling.
+- **Geometry-fit giant tiles** — `giant_tile_fit=True` (default) on
+  `windowed_correct` / `ISQPWindowedStrategy` turns `giant_tile` into a
+  *target*: `_fit_tile` shrinks it to the largest tile covering the region's
+  longest side with an integer number of near-equal tiles (clamped to
+  `[0.75, 1.5] x giant_tile`). Tile size acts on cost through grid
+  **alignment** — how many Schwarz sweep rounds the tiling needs — not through
+  the size itself; a tile that leaves a thin remainder strip along the long
+  side costs an extra round. On the raw B0039 z16 giant (a 125x152 box) tile
+  64 happens to align (1 round, 374 s) while 56 and 80 do not (2 rounds,
+  ~600 s); the fitted 51 aligns by construction (1 round, 345 s).
+  `giant_tile_fit=False` is byte-identical to the previous literal-tile
+  behavior. Overlap semantics are unchanged.
 - Validated on the three hard B0039 crops with
   `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed',
   objective='none')`: simplex folds 645/598/0 → 0/0/0, damage 0, in

@@ -8,6 +8,7 @@ before paying for a grow, and caps the OSQP ADMM iterations per subproblem
 solvers, so only the strategy-level test needs osqp installed.
 """
 
+import math
 import types
 
 import numpy as np
@@ -123,6 +124,55 @@ def test_giant_tile_knobs_reach_the_tiler(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# (a2) giant_tile_fit: tile fitted to the region's geometry
+# ---------------------------------------------------------------------------
+
+
+def test_fit_tile():
+    """``_fit_tile`` divides the longest side into an integer number of
+    near-equal tiles, clamped to [0.75, 1.5] x target."""
+    assert engine._fit_tile(125, 152, 64) == 51  # measured B0039 z16 giant
+    assert engine._fit_tile(152, 125, 64) == 51  # longest side, either axis
+    assert engine._fit_tile(128, 128, 64) == 64  # exactly k * target -> target
+    assert engine._fit_tile(64, 64, 64) == 64
+    # smaller than the target: clamped up, never below ceil(0.75 * target)
+    assert engine._fit_tile(20, 20, 64) == 48
+    assert engine._fit_tile(1, 1, 64) == 48
+    assert engine._fit_tile(0, 0, 64) == 48  # degenerate box: no crash, no ZeroDivision
+    # huge regions and odd targets stay in band
+    for h, w, t in [(100000, 100000, 64), (3, 300000, 7), (999, 1, 10), (5, 5, 1)]:
+        assert math.ceil(0.75 * t) <= engine._fit_tile(h, w, t) <= math.ceil(1.5 * t)
+
+
+def test_giant_tile_fit_sizes_the_tiles(monkeypatch):
+    """fit=True tiles the region at the fitted size, fit=False at the raw
+    target — checked on the tile boxes the tiler actually builds."""
+    boxes = []
+    monkeypatch.setattr(engine, "_solve_window", lambda _phi, _c, tb, *a, **kw: boxes.append(tb))
+    phi = np.zeros((2, 200, 200))  # fold-free -> the tiler exits after one sweep
+    con = SimplexConstraint2D(shape=phi.shape[1:])
+
+    def max_tile(**opts_kw):
+        boxes.clear()
+        engine._solve_giant_schwarz(
+            phi,
+            con,
+            (10, 135, 10, 162),  # 125 x 152, the measured B0039 z16 giant
+            0.01,
+            NoneObjective(),
+            400,
+            1,
+            engine.SliceReport(),
+            1e-3,
+            opts=engine._InnerOpts(giant_tile=64, **opts_kw),
+        )
+        return max(max(b[1] - b[0], b[3] - b[2]) for b in boxes)
+
+    assert max_tile(giant_tile_fit=True) == 51
+    assert max_tile(giant_tile_fit=False) == 64
+
+
+# ---------------------------------------------------------------------------
 # (b) osqp_max_iter reaches OSQP.setup
 # ---------------------------------------------------------------------------
 
@@ -180,6 +230,7 @@ def test_strategy_forwards_knobs(monkeypatch):
         qp_max_iter_fallback=9,
         giant_tile=48,
         giant_max_sweeps=2,
+        giant_tile_fit=False,
     )
     phi = np.zeros((2, 8, 8))
     strategy.solve(
@@ -192,8 +243,10 @@ def test_strategy_forwards_knobs(monkeypatch):
     assert seen["fallback_maxiter"] == 5
     assert (seen["qp_max_iter"], seen["qp_max_iter_fallback"]) == (7, 9)
     assert (seen["giant_tile"], seen["giant_max_sweeps"]) == (48, 2)
+    assert seen["giant_tile_fit"] is False
 
     defaults = ISQPWindowedStrategy()
     assert (defaults.no_tr_fallback, defaults.fallback_maxiter) == (True, 200)
     assert (defaults.qp_max_iter, defaults.qp_max_iter_fallback) == (2000, 500)
     assert (defaults.giant_tile, defaults.giant_max_sweeps) == (64, 8)
+    assert defaults.giant_tile_fit is True

@@ -95,6 +95,13 @@ class WindowedWrapperStrategy(Strategy):
     giant_max_sweeps : int
         Sweep cap for that decomposition (it stops early once the region
         is clear or stops improving).
+    giant_tile_fit : bool
+        Treat ``giant_tile`` as a target and fit the effective tile to
+        each region's geometry, so an integer number of near-equal tiles
+        covers its longest side. Tile size matters through grid
+        alignment (sweep-round count), not size: on the raw B0039 z16
+        giant the fitted 51 and the lucky 64 both take 1 round, while
+        56 and 80 take 2 (~600 s vs ~350 s). ``False`` = literal tile.
     """
 
     inner: Optional[str] = None
@@ -111,6 +118,7 @@ class WindowedWrapperStrategy(Strategy):
     qp_max_iter_fallback: int = 500
     giant_tile: int = 64
     giant_max_sweeps: int = 8
+    giant_tile_fit: bool = True
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -158,6 +166,7 @@ class WindowedWrapperStrategy(Strategy):
             qp_max_iter_fallback=self.qp_max_iter_fallback,
             giant_tile=self.giant_tile,
             giant_max_sweeps=self.giant_max_sweeps,
+            giant_tile_fit=self.giant_tile_fit,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
