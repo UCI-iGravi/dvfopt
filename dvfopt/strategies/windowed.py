@@ -87,6 +87,36 @@ class WindowedWrapperStrategy(Strategy):
         otherwise runs far past convergence).
     qp_max_iter, qp_max_iter_fallback : int
         OSQP ADMM iteration cap per subproblem, normal / fallback solves.
+    qp_backend : str
+        QP solver behind each subproblem: ``'hybrid'`` (default —
+        interior-point Clarabel on a window's cold first solve and after
+        any ADMM solve that hit ``ip_after_admm_iters``, warm-started
+        OSQP otherwise) or ``'osqp'`` (the pre-hybrid path, byte for
+        byte). Hybrid measured 262 s vs 300 s on raw B0039 z16 at zero
+        simplex folds and damage 0.
+    ip_cold : bool
+        Use interior point for a window's cold first solve (where the
+        ADMM warm start is worth nothing). ``qp_backend='hybrid'`` only.
+    ip_after_admm_iters : int
+        Use interior point for the solve after any ADMM solve that ran
+        at least this many iterations — the tail signal that the warm
+        start has gone stale. 800 measured best (cold-only 296 s,
+        400 -> 289 s, 800 -> 262 s, 1500 -> 269 s).
+    giant_tile : int
+        Tile size for the overlapping-tile Schwarz decomposition of an
+        over-``max_window_area`` region. Bigger tiles mean fewer Schwarz
+        seams and fewer sweeps: 64 (the default) measured 1.9x faster
+        than 32 on a full raw B0039 slice at equal feasibility.
+    giant_max_sweeps : int
+        Sweep cap for that decomposition (it stops early once the region
+        is clear or stops improving).
+    giant_tile_fit : bool
+        Treat ``giant_tile`` as a target and fit the effective tile to
+        each region's geometry, so an integer number of near-equal tiles
+        covers its longest side. Tile size matters through grid
+        alignment (sweep-round count), not size: on the raw B0039 z16
+        giant the fitted 51 and the lucky 64 both take 1 round, while
+        56 and 80 take 2 (~600 s vs ~350 s). ``False`` = literal tile.
     """
 
     inner: Optional[str] = None
@@ -101,6 +131,12 @@ class WindowedWrapperStrategy(Strategy):
     fallback_maxiter: int = 200
     qp_max_iter: int = 2000
     qp_max_iter_fallback: int = 500
+    giant_tile: int = 64
+    giant_max_sweeps: int = 8
+    giant_tile_fit: bool = True
+    qp_backend: str = 'hybrid'
+    ip_cold: bool = True
+    ip_after_admm_iters: int = 800
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -146,6 +182,12 @@ class WindowedWrapperStrategy(Strategy):
             fallback_maxiter=self.fallback_maxiter,
             qp_max_iter=self.qp_max_iter,
             qp_max_iter_fallback=self.qp_max_iter_fallback,
+            giant_tile=self.giant_tile,
+            giant_max_sweeps=self.giant_max_sweeps,
+            giant_tile_fit=self.giant_tile_fit,
+            qp_backend=self.qp_backend,
+            ip_cold=self.ip_cold,
+            ip_after_admm_iters=self.ip_after_admm_iters,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

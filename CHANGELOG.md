@@ -6,6 +6,42 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — hybrid QP backend for the windowed isqp inner (behavior change, default ON)
+
+- **`qp_backend` / `ip_cold` / `ip_after_admm_iters`** on `isqp_solve`,
+  `windowed_correct` and `WindowedWrapperStrategy` / `ISQPWindowedStrategy`.
+  `'hybrid'` solves a window's **cold** first QP, and any QP that follows an
+  ADMM run of `>= ip_after_admm_iters` (default 800) iterations, with
+  interior-point **Clarabel**; every other QP stays on warm-started OSQP. The
+  IP solution seeds OSQP's warm start, and any IP failure (bad status,
+  non-finite, exception) falls through to ADMM — the backend can be faster,
+  never less feasible.
+- **The engine default changes to `'hybrid'`** (`windowed_correct`,
+  `ISQPWindowedStrategy`). The *primitive* default is unchanged:
+  `isqp_solve(qp_backend='osqp')` is still the pre-hybrid path, byte for byte,
+  and passing `qp_backend='osqp'` anywhere restores it exactly.
+- Why hybrid rather than interior-point everywhere: on real giant-tile QPs
+  (16k vars, 27k rows) Clarabel takes ~0.25 s / 15-25 iterations at ~1e-9
+  feasibility against OSQP's 0.4-2.2 s / 700-4000 ADMM iterations at ~1e-3 —
+  but an in-engine *warm-started* OSQP solve averages 0.175 s, so
+  Clarabel-always is **slower** (raw B0039 z16: 381 s vs 300 s, and 34% more
+  SQP iterations). Hybrid on raw B0039 z16: **262 s vs 300 s (-13%)**, 0
+  simplex folds, damage 0, and better fidelity (L2 move 325 vs 346). Policy
+  sweep: cold-only 296 s, threshold 400 -> 289 s, **800 -> 262 s (best)**,
+  1500 -> 269 s, no-cold/800 -> 281 s.
+- **New escalation rung, `report.backend_fallbacks` / `WindowRec.backend_fallback`.**
+  The IP legs change the SQP trajectory and on some windows steer it into a
+  basin with no escape. A real window (never a giant tile) left GENUINELY
+  folded — `cons < -margin_delta`, not merely short of the margin-shifted
+  target — is now re-attempted whole on plain OSQP from its ORIGINAL start
+  state, ahead of grow-on-failure. Without it the z0_cluster crop finishes one
+  triangle inverted at -1.2e-4; with it all three hard crops reach 0 simplex
+  folds and raw z16 is bit-identical to the un-rung run (264.5 s, L2 325.1, 0
+  fallbacks).
+- - **New core dependency `clarabel>=0.9`** (pure-Rust wheels on every supported
+  interpreter/platform). Without it, `'hybrid'` silently behaves as `'osqp'`
+  (logged once at DEBUG on the `dvfopt` logger).
+
 ### Changed — windowed isqp: faster and more robust (behavior change, defaults ON)
 
 - **Per-window no-trust-region fallback** (`no_tr_fallback=True`,
@@ -22,6 +58,27 @@ follows [Semantic Versioning](https://semver.org/).
 - All four knobs are exposed on `windowed_correct` and `ISQPWindowedStrategy`
   (and hence editable in the GUI's Params → Strategy tab); `WindowRec.fallback`
   records which windows used the retry.
+- **Giant-region tiler knobs** — `giant_tile` / `giant_max_sweeps` on
+  `windowed_correct` and `ISQPWindowedStrategy`, previously hard-wired inside
+  `_solve_giant_schwarz`. **The default tile changes 32 -> 64** (behavior
+  change: giant regions are now decomposed into fewer, larger overlapping
+  tiles). On a full raw B0039 z16 slice (bilinear rows, objective `none`)
+  tile 64 ran 362 s / 22 windows / 1 round / no mop vs tile 32's 685 s /
+  264 windows / 3 rounds / 4 mop — 1.9x faster, zero simplex folds and zero
+  damage on both, and a smaller move (L2 316 vs 404). Pass `giant_tile=32`
+  to restore the promoted-benchmark tiling.
+- **Geometry-fit giant tiles** — `giant_tile_fit=True` (default) on
+  `windowed_correct` / `ISQPWindowedStrategy` turns `giant_tile` into a
+  *target*: `_fit_tile` shrinks it to the largest tile covering the region's
+  longest side with an integer number of near-equal tiles (clamped to
+  `[0.75, 1.5] x giant_tile`). Tile size acts on cost through grid
+  **alignment** — how many Schwarz sweep rounds the tiling needs — not through
+  the size itself; a tile that leaves a thin remainder strip along the long
+  side costs an extra round. On the raw B0039 z16 giant (a 125x152 box) tile
+  64 happens to align (1 round, 374 s) while 56 and 80 do not (2 rounds,
+  ~600 s); the fitted 51 aligns by construction (1 round, 345 s).
+  `giant_tile_fit=False` is byte-identical to the previous literal-tile
+  behavior. Overlap semantics are unchanged.
 - Validated on the three hard B0039 crops with
   `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed',
   objective='none')`: simplex folds 645/598/0 → 0/0/0, damage 0, in
@@ -29,6 +86,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`dvfopt correct --n-workers N`** — the `--pipeline slices` sweep solves N
+  z-slices at once in a `ProcessPoolExecutor` (module-level worker, picklable
+  args, spawn-safe; BLAS/OpenMP threads pinned to 1 per worker). Output order,
+  `summary.json` and the exit code are identical to the serial path, which is
+  unchanged for `N` in (unset, 0, 1) or a single-slice volume. Relatedly,
+  `dvfopt.core._pool.get_pool` now caps its request to 1 inside a worker
+  process, so no solver nests process pools.
 - **`DVFoptConfig(n_workers=N)`** — the DVFopt facade solves the z-slices of a
   volume in a `ProcessPoolExecutor` when `N > 1` and there is more than one
   slice (module-level worker, picklable args, spawn-safe). Serial otherwise;

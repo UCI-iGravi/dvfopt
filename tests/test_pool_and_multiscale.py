@@ -38,6 +38,27 @@ class TestPersistentPool:
         finally:
             shutdown_pool()
 
+    def test_no_nested_pools_inside_a_worker(self, monkeypatch):
+        """Inside a worker process (CLI --n-workers, DVFopt(n_workers>1)) a
+        sub-pool would multiply processes — the request is capped to 1."""
+        import dvfopt.core._pool as poolmod
+
+        seen = {}
+
+        class _StubExec:
+            def __init__(self, max_workers=None, **kw):
+                seen['max_workers'] = max_workers
+
+            def shutdown(self, wait=False):
+                pass
+
+        monkeypatch.setattr(poolmod, 'ProcessPoolExecutor', _StubExec)
+        monkeypatch.setattr(poolmod.multiprocessing, 'parent_process', lambda: object())
+        monkeypatch.setattr(poolmod, '_POOL', None)
+        monkeypatch.setattr(poolmod, '_POOL_N', None)
+        poolmod.get_pool(8)
+        assert seen['max_workers'] == 1
+
     def test_pool_executes_warm(self):
         """A trivial task runs on the warmed pool (workers imported + JIT'd)."""
         from dvfopt.core._pool import get_pool, shutdown_pool
