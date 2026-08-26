@@ -34,7 +34,13 @@ The most robust from-raw triple currently known is
 simplex rows), and pure feasibility keeps the windowed isqp out of the
 objective-basin traps a distance anchor pins it in. Across a volume, the DVFopt
 facade parallelises the per-slice loop with `DVFoptConfig(n_workers=N)` (process
-pool; slices are independent solves).
+pool; slices are independent solves). Every pool in the package pins its workers
+to one compute thread each (`dvfopt.core._pool.pin_worker_threads` /
+`pinned_thread_env`) — numpy and scipy otherwise start a full-width
+OpenBLAS/OpenMP pool *each* (53 OS threads per worker, measured). Keep `N`
+**small — 2-4, not the core count**: the solves are memory-bandwidth bound, so
+measured throughput peaks at ~2.6x around 4 workers and *declines* past that,
+on a 16-physical-core box. See the CHANGELOG for the measured tables.
 
 The **simplex metric** (labels `'simplex'` / `'simplex_standard'` / `'simplex_3d'`; formerly *2-tri* / *6-tet*) is the exact Jacobian determinant of the piecewise-linear interpolant on the fixed simplicial decomposition of the grid — 2 triangles per cell along the fixed BL–TR diagonal in 2D, 6 tetrahedra per cell in 3D — so feasibility is a genuine injectivity certificate for that interpolant. Strictness ordering: central-diff Jdet < `'finite'` (forward-diff = one triangle per cell) < simplex (both triangles). The old names *2-tri* / *6-tet* remain as registry aliases (`'2tri'`, `'2tri_standard'`, `'6tet'`, `'6tet_3d'`), and the old class names (`TriConstraint2D`, `TriConstraint2DFullCoverage`, `TriConstraint2DBilinear`, `Tet6Constraint3D`) remain importable.
 

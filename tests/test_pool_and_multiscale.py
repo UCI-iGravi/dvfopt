@@ -130,6 +130,83 @@ class TestPersistentPool:
         assert live.shut is True
 
 
+@pytest.fixture
+def clean_thread_env(monkeypatch):
+    """Unset every thread-count var (monkeypatch restores them at teardown,
+    including any the test creates)."""
+    from dvfopt.core._pool import THREAD_ENV
+
+    for k in THREAD_ENV:
+        monkeypatch.delenv(k, raising=False)
+    return THREAD_ENV
+
+
+class TestThreadPinning:
+    """Pool workers get exactly one compute thread per library; without this,
+    N workers x a full-width BLAS pool each oversubscribe every core and
+    per-solve time grows linearly with the worker count."""
+
+    def test_pin_worker_threads_sets_everything(self, monkeypatch, clean_thread_env):
+        import os
+        import sys
+        import types
+
+        from dvfopt.core import _pool
+
+        fake_numba = types.SimpleNamespace(set_num_threads=lambda n: calls.append(n))
+        calls: list[int] = []
+        monkeypatch.setitem(sys.modules, 'numba', fake_numba)
+        monkeypatch.setattr(_pool.multiprocessing, 'parent_process', lambda: object())
+
+        _pool.pin_worker_threads()
+
+        assert {k: os.environ.get(k) for k in clean_thread_env} == dict.fromkeys(
+            clean_thread_env, '1'
+        )
+        assert calls == [1]
+
+    def test_pin_worker_threads_noop_in_main_process(self, clean_thread_env):
+        """The serial paths share the caller's process: no env rewriting."""
+        import os
+
+        from dvfopt.core._pool import pin_worker_threads
+
+        pin_worker_threads()
+        assert [os.environ.get(k) for k in clean_thread_env] == [None] * len(clean_thread_env)
+
+    def test_pinned_thread_env_restores(self, monkeypatch, clean_thread_env):
+        import os
+
+        from dvfopt.core._pool import pinned_thread_env
+
+        monkeypatch.setenv('OMP_NUM_THREADS', '8')  # a pre-existing value survives
+        with pinned_thread_env():
+            assert {k: os.environ[k] for k in clean_thread_env} == dict.fromkeys(
+                clean_thread_env, '1'
+            )
+        assert os.environ.get('OMP_NUM_THREADS') == '8'
+        assert os.environ.get('RAYON_NUM_THREADS') is None
+
+    def test_pool_workers_pin(self, monkeypatch):
+        """Both per-slice pool workers pin before doing any heavy work."""
+        from dvfopt.core import _pool
+
+        calls = []
+        monkeypatch.setattr(_pool, 'pin_worker_threads', lambda: calls.append(1))
+
+        from dvfopt.cli import _correct_slice
+
+        phi2 = np.zeros((2, 6, 6))
+        _correct_slice((phi2, {'verbose': 0}))
+        assert calls == [1]
+
+        from dvfopt.unified import DVFoptConfig, _solve_slice_worker
+
+        cfg = DVFoptConfig(solver='barrier', constraint='simplex', verbose=0)
+        _solve_slice_worker(cfg, phi2, 0)
+        assert calls == [1, 1]
+
+
 class TestMultiscaleSeed:
     def test_shape_helpers_roundtrip(self):
         from dvfopt.core.wallbreakers._multiscale_3d import (

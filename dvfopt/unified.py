@@ -462,11 +462,18 @@ class DVFopt:
         if n_workers > 1 and len(slices) > 1:
             from concurrent.futures import ProcessPoolExecutor
 
+            from dvfopt.core._pool import pinned_thread_env
+
             with ProcessPoolExecutor(max_workers=n_workers) as ex:
-                futures = [
-                    ex.submit(_solve_slice_worker, self.config, _extract_2d_slice(corrected, z), z)
-                    for z in slices
-                ]
+                # Workers spawn on submit and inherit the env, so the pinning
+                # only has to be live across the submits.
+                with pinned_thread_env():
+                    futures = [
+                        ex.submit(
+                            _solve_slice_worker, self.config, _extract_2d_slice(corrected, z), z
+                        )
+                        for z in slices
+                    ]
                 for z, fut in zip(slices, futures):
                     phi2, sr = fut.result()
                     yield z, phi2, sr
@@ -655,6 +662,9 @@ def _solve_slice_worker(config: DVFoptConfig, phi2: np.ndarray, z: int):
     Returns ``(phi2_out, SliceResult)``; the parent writes the slice back into
     the assembled volume and re-attaches ``sr.corrected`` as a view into it.
     """
+    from dvfopt.core._pool import pin_worker_threads
+
+    pin_worker_threads()
     return phi2, DVFopt(config)._run_slice(phi2, z)
 
 

@@ -6,6 +6,71 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — every process pool pins its workers to one compute thread
+
+- **One shared helper, `dvfopt.core._pool.pin_worker_threads()` /
+  `pinned_thread_env()`**, forcing `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, `NUMBA_NUM_THREADS` and
+  `RAYON_NUM_THREADS` to `1` (plus `numba.set_num_threads(1)` when numba is
+  importable). `pinned_thread_env()` wraps pool *submits* in the parent —
+  children inherit the environment at interpreter start, the only point early
+  enough for OpenBLAS/MKL, which read it once at import; `pin_worker_threads()`
+  runs at the top of each worker for late imports and nested pools.
+- **Wired into every pool in the package**: the CLI's `--n-workers` per-slice
+  pool (which pinned only the three BLAS vars), `DVFoptConfig(n_workers=...)`
+  (which pinned **nothing** — the actual gap), the persistent 3D pool's warmup
+  initializer and `pool_map`, `iterative_parallel`'s window pool, the Laplacian
+  correspondence pool, and the cohort benchmark's section pool.
+- **Serial paths are byte-identical**: `pin_worker_threads()` no-ops outside a
+  child process, so an in-process solve never has its environment rewritten.
+- **Thread census** (24-logical-core i7-13700, 8 P-cores + 8 E-cores). An
+  unpinned worker carries **53 OS threads** before it does any work: 4 baseline,
+  **+23 from `import numpy`**, **+26 more from scipy** — numpy and scipy each
+  start a full-width OpenBLAS/OpenMP pool. Clarabel contributes **zero** (its
+  qdldl path never starts a rayon pool, so `RAYON_NUM_THREADS` changes nothing —
+  it is pinned defensively). Pinned, the same worker carries 1-4 threads.
+
+### Changed — measured `n_workers` guidance: keep it SMALL (2-4), not the core count
+
+Pinning is resource hygiene, **not** a scaling fix — measuring it says so.
+24 identical `windowed_correct` solves of the 50x50 `z16_twist` crop
+(`inner='isqp'`, bilinear constraint, no objective), wall seconds for all 24 and
+mean per-solve; serial reference **34 s/solve** (pinned 34.0 s, unpinned 33.5 s —
+the solve is single-threaded work, so pinning costs it nothing):
+
+| workers | wall before | wall after | per-solve before | per-solve after |
+|---|---|---|---|---|
+| 6  | 399 s | 448 s | 99 s  | 111 s |
+| 12 | 624 s | 555 s | 310 s | 275 s |
+| 16 | —     | 560 s | —     | 321 s |
+| 24 | 646 s | 589 s | 633 s | 581 s |
+| 12 (`qp_backend='osqp'`) | 826 s | 617 s | 411 s | 307 s |
+
+So pinning buys 9-25% at >= 12 workers and is inside the noise at 6. The
+`'osqp'` A/B also **exonerates Clarabel**: with it out of the loop the unpinned
+collapse is *worse*, not better.
+
+The real ceiling is **memory bandwidth**. Pinned throughput on 8 jobs:
+
+| workers | 1 | 2 | 4 | 8 |
+|---|---|---|---|---|
+| wall | 277 s | 150 s | **106 s** | 123 s |
+| per-solve | 34 s | 37 s | 52 s | 120 s |
+| speedup | 1.0x | 1.8x | **2.6x** | 2.2x |
+
+Throughput peaks at ~2.6x around **4 workers** and declines past it. Two
+controls separate the causes: N single-threaded processes running a pure-integer
+loop inflate only 1.4x each at N=6 / 2.6x at N=24 (near-linear scaling, 4.4x /
+9.2x aggregate), while N processes *streaming a past-L3 array* inflate 3.2x /
+9.3x — matching the solve's 3.3x / 17x. SMT siblings and E-cores are not the
+issue and adding them does not help: 12 -> 24 workers makes wall time worse in
+both the pinned and unpinned runs.
+
+**Recommendation: `n_workers` / `--n-workers` of 2-4** on a machine like this,
+and measure rather than assume on a different one. Setting it to the physical
+(16) or logical (24) core count is 4-5x slower per solve and *lower* throughput
+than 4 workers.
+
 ### Changed — hybrid QP backend for the windowed isqp inner (behavior change, default ON)
 
 - **`qp_backend` / `ip_cold` / `ip_after_admm_iters`** on `isqp_solve`,

@@ -89,15 +89,12 @@ def _cmd_info(args) -> int:
     return 1 if (args.check and (not st.feasible or bilinear_folded)) else 0
 
 
-# Per-worker thread pinning: spawned children inherit the parent's environment
-# at interpreter start, which is the only point early enough for OpenBLAS/MKL to
-# honour it. Without it, N workers x M BLAS threads oversubscribe every core.
-_THREAD_ENV = ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS')
-
-
 def _correct_slice(job):
     """Correct one 2D slice. Module-level, with picklable args and plain-value
     results, so it doubles as a ``ProcessPoolExecutor`` worker under spawn."""
+    from dvfopt.core._pool import pin_worker_threads
+
+    pin_worker_threads()  # no-op in the parent, so the serial path is untouched
     phi2, kwargs = job
     from dvfopt import correct_dvf
 
@@ -107,20 +104,12 @@ def _correct_slice(job):
 
 def _map_slices(jobs, n_workers):
     """Run the per-slice jobs in a process pool; results stay in slice order."""
-    import os
     from concurrent.futures import ProcessPoolExecutor
 
-    saved = {k: os.environ.get(k) for k in _THREAD_ENV}
-    os.environ.update(dict.fromkeys(_THREAD_ENV, '1'))
-    try:
-        with ProcessPoolExecutor(max_workers=n_workers) as ex:
-            return list(ex.map(_correct_slice, jobs))
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    from dvfopt.core._pool import pinned_thread_env
+
+    with pinned_thread_env(), ProcessPoolExecutor(max_workers=n_workers) as ex:
+        return list(ex.map(_correct_slice, jobs))
 
 
 def _correct_slices(phi, args, params):
@@ -128,7 +117,9 @@ def _correct_slices(phi, args, params):
 
     Serial by default; ``--n-workers N`` (N > 1, more than one slice) solves the
     slices in a process pool — each slice is an independent solve. Inner solves
-    stay serial there: :func:`dvfopt.core._pool.get_pool` refuses to nest pools.
+    stay serial there: :func:`dvfopt.core._pool.get_pool` refuses to nest pools,
+    and :func:`dvfopt.core._pool.pin_worker_threads` gives each worker exactly
+    one compute thread (so N workers use N cores, not N x every core).
     """
     # ponytail: plain loop; the DVFopt facade adds per-slice dataframes/plots
     # (and a torch import) — reach for it in Python when you want those.
@@ -330,7 +321,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help='--pipeline slices: solve this many z-slices at once in worker '
-        'processes (default: serial; inner solves stay serial — no nested pools)',
+        'processes (default: serial; inner solves stay serial — no nested pools). '
+        'Keep it SMALL (2-4): the solves are memory-bandwidth bound, so throughput '
+        'peaks well below the core count',
     )
     pc.add_argument(
         '--report-dir',

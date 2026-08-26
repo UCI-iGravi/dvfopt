@@ -342,7 +342,13 @@ def iterative_parallel(
 
                 # Lazy-create executor on first parallel batch
                 if executor is None:
-                    executor = ProcessPoolExecutor(max_workers=max_workers)
+                    from dvfopt.core._pool import pin_worker_threads
+
+                    # initializer runs in each child before it imports the task
+                    # module (so before numpy/scipy start their BLAS pools).
+                    executor = ProcessPoolExecutor(
+                        max_workers=max_workers, initializer=pin_worker_threads
+                    )
 
                 batch_sizes = [_unpack_size(ws) for _, _, ws in batch]
                 batch_strs = [f"{sy}x{sx}" for sy, sx in batch_sizes]
