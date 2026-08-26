@@ -20,13 +20,78 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing
+import os
 import threading
+from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from typing import Optional
 
 _POOL: Optional[ProcessPoolExecutor] = None
 _POOL_N: Optional[int] = None
 _LOCK = threading.Lock()
+
+#: Every thread-count env var a dvfopt worker's dependencies honour. Measured
+#: on a 24-logical-core Windows box: an UNPINNED worker carries 53 OS threads
+#: (4 baseline + 23 from ``import numpy`` + 26 more from scipy) — i.e. numpy
+#: and scipy each spin up a full-width OpenBLAS/OpenMP pool, so N pool workers
+#: fight over N x 24 compute threads and per-solve time grows linearly with N.
+#: numexpr / numba (``prange`` kernels) / rayon (Clarabel's Rust runtime) are
+#: pinned defensively: measured here they add nothing (Clarabel's qdldl path
+#: never starts a rayon pool), but they are all-cores-by-default too.
+THREAD_ENV = (
+    'OMP_NUM_THREADS',
+    'OPENBLAS_NUM_THREADS',
+    'MKL_NUM_THREADS',
+    'NUMEXPR_NUM_THREADS',
+    'NUMBA_NUM_THREADS',
+    'RAYON_NUM_THREADS',
+)
+
+
+def pin_worker_threads() -> None:
+    """Force the CURRENT process down to one compute thread per library.
+
+    No-op outside a pool worker: a worker is one core's worth of work by
+    contract, but the serial paths share the caller's process and must not have
+    their environment rewritten underneath them.
+
+    Call it at the top of a worker function. It is a belt-and-braces companion
+    to :func:`pinned_thread_env` — OpenBLAS/MKL read the env once, at import,
+    which in a spawned worker has usually already happened by the time the
+    worker function runs; the env inherited from the parent is what pins those.
+    This call still covers late imports, numba's runtime API, and any nested
+    pool the worker itself creates.
+    """
+    if multiprocessing.parent_process() is None:
+        return
+    os.environ.update(dict.fromkeys(THREAD_ENV, '1'))
+    try:
+        import numba
+
+        numba.set_num_threads(1)
+    except Exception:  # pragma: no cover - numba optional / already pinned
+        pass
+
+
+@contextmanager
+def pinned_thread_env() -> Iterator[None]:
+    """Pin :data:`THREAD_ENV` to ``'1'`` for the duration, then restore.
+
+    Wrap pool CREATION in this: spawned children inherit the parent's
+    environment at interpreter start, which is the only point early enough for
+    OpenBLAS/MKL to honour it.
+    """
+    saved = {k: os.environ.get(k) for k in THREAD_ENV}
+    os.environ.update(dict.fromkeys(THREAD_ENV, '1'))
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def _warmup_worker():  # pragma: no cover - runs in subprocess
@@ -41,12 +106,7 @@ def _warmup_worker():  # pragma: no cover - runs in subprocess
     workers use N cores with no oversubscription, so process-level
     parallelism (over independent z-bands / clusters) composes cleanly
     with the kernels."""
-    try:
-        import numba
-
-        numba.set_num_threads(1)
-    except Exception:  # pragma: no cover
-        pass
+    pin_worker_threads()
 
     import numpy as np
 
@@ -117,8 +177,11 @@ def pool_map(worker, args, n_workers):
 
     ex = get_pool(n_workers)
     try:
+        # Workers spawn lazily, on the first submit — so the pinned env has to
+        # be live across the map, not merely across pool construction.
         # list() forces the lazy map generator, surfacing worker deaths here.
-        return list(ex.map(worker, args))
+        with pinned_thread_env():
+            return list(ex.map(worker, args))
     except (BrokenProcessPool, OSError, RuntimeError):
         # Only tear down the shared pool if it is STILL the executor we
         # used. Another thread may have resized the pool out from under us
@@ -157,4 +220,11 @@ def shutdown_pool() -> None:
 atexit.register(shutdown_pool)
 
 
-__all__ = ['get_pool', 'pool_map', 'shutdown_pool']
+__all__ = [
+    'THREAD_ENV',
+    'get_pool',
+    'pin_worker_threads',
+    'pinned_thread_env',
+    'pool_map',
+    'shutdown_pool',
+]

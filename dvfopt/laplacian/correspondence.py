@@ -506,7 +506,9 @@ def sliceToSlice3DLaplacian(
     log_every = max(1, n_slices // 20)
     results = []
     if slice_pairs:
-        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+        from dvfopt.core._pool import pinned_thread_env
+
+        with pinned_thread_env(), ProcessPoolExecutor(max_workers=n_workers) as ex:
             for i, r in enumerate(ex.map(_find_slice_correspondences, *zip(*slice_pairs)), start=1):
                 results.append(r)
                 if i % log_every == 0 or i == n_slices:

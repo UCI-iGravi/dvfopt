@@ -1018,7 +1018,9 @@ def run_cohort_2d_sections(
 
         if verbose:
             print(f"[2d] {len(work)} sections across {n_workers} workers ...", flush=True)
-        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+        from dvfopt.core._pool import pin_worker_threads
+
+        with ProcessPoolExecutor(max_workers=n_workers, initializer=pin_worker_threads) as ex:
             fut_id = {
                 ex.submit(
                     _process_section,
