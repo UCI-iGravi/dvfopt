@@ -79,6 +79,9 @@ class _InnerOpts:
     giant_tile: int = 64
     giant_max_sweeps: int = 8
     giant_tile_fit: bool = True
+    qp_backend: str = 'hybrid'
+    ip_cold: bool = True
+    ip_after_admm_iters: int = 800
 
 
 def _objective_fns(flat0, objective):
@@ -221,6 +224,7 @@ class WindowRec:
     inner_iters: int = 0
     grows: int = 0
     fallback: bool = False  # the no-trust-region retry ran on this window
+    backend_fallback: bool = False  # the QP-backend retry (hybrid -> osqp) ran
     min_before: float = 0.0
     min_after: float = 0.0
     feasible: bool = False
@@ -252,6 +256,9 @@ class SliceReport:
     # margin. mop_windows counts those solves; mop_cleared = folds cleared by them.
     mop_windows: int = 0
     mop_cleared: int = 0
+    # windows whose interior-point trajectory failed and were retried on plain
+    # warm-started ADMM (qp_backend='hybrid' only; see _solve_window).
+    backend_fallbacks: int = 0
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -282,6 +289,9 @@ def windowed_correct(
     giant_tile=64,
     giant_max_sweeps=8,
     giant_tile_fit=True,
+    qp_backend='hybrid',
+    ip_cold=True,
+    ip_after_admm_iters=800,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -330,6 +340,15 @@ def windowed_correct(
     - ``qp_max_iter`` / ``qp_max_iter_fallback`` — OSQP ADMM iteration cap per
       subproblem for normal / fallback solves (``None`` = OSQP's 8000 default).
       2000/500 keeps the hard crops at zero simplex folds at ~2x the speed.
+    - ``qp_backend`` (default ``'hybrid'``) / ``ip_cold`` /
+      ``ip_after_admm_iters`` — which QP solver backs each subproblem.
+      ``'hybrid'`` runs interior-point Clarabel on a window's cold first solve
+      and after any ADMM solve that hit ``>= ip_after_admm_iters`` iterations
+      (the stale-warm-start signal), warm-started OSQP otherwise: raw B0039 z16
+      262 s vs 300 s (-13%), zero simplex folds, damage 0, smaller move (L2 325
+      vs 346). ``'osqp'`` restores the pre-hybrid path byte for byte, and is
+      what ``'hybrid'`` degrades to when ``clarabel`` is not installed. See
+      :class:`dvfopt.core.primitives.isqp._HybridQP` for the policy sweep.
 
     ``giant_tile`` / ``giant_max_sweeps`` size the overlapping-tile Schwarz
     decomposition of an over-``max_window_area`` region: square tiles of
@@ -367,6 +386,9 @@ def windowed_correct(
         giant_tile,
         giant_max_sweeps,
         giant_tile_fit,
+        qp_backend,
+        ip_cold,
+        ip_after_admm_iters,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -725,26 +747,74 @@ def _solve_window(
     opts = _InnerOpts() if opts is None else opts
     sub = build_subproblem(constraint, phi, box, threshold, objective, margin_delta)
     t = time.perf_counter()
-    x, nit, ok = solve_window_inner(sub, inner, maxiter, osqp_max_iter=opts.qp_max_iter)
-    fell_back = False
-    if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
-        # The trust-region ratio test freezes on sliver-scale violations (~1e-4,
-        # inside OSQP's own noise) that the legacy backtracking line search still
-        # clears -- so retry the SAME window once with the TR off before paying
-        # for a grow. Warm-started from the failed iterate: the inner never moves
-        # frozen variables, so the ring stays pinned, and the objective closures
-        # stay anchored at the ORIGINAL flat0 (only the start point moves).
-        fell_back = True
-        x2, nit2, ok2 = solve_window_inner(
-            replace(sub, flat0=x),
+
+    def _attempt(backend):
+        """One full inner attempt at *backend*, always from the window's ORIGINAL
+        start state: the solve plus (if it fails) the no-trust-region retry.
+        Returns ``(x, n_iter, feasible, used_no_tr_retry)``."""
+        x, nit, ok = solve_window_inner(
+            sub,
             inner,
-            opts.fallback_maxiter,
-            trust_region=False,
-            osqp_max_iter=opts.qp_max_iter_fallback,
+            maxiter,
+            osqp_max_iter=opts.qp_max_iter,
+            qp_backend=backend,
+            ip_cold=opts.ip_cold,
+            ip_after_admm_iters=opts.ip_after_admm_iters,
         )
+        no_tr = False
+        if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
+            # The trust-region ratio test freezes on sliver-scale violations
+            # (~1e-4, inside OSQP's own noise) that the legacy backtracking line
+            # search still clears -- so retry the SAME window once with the TR off
+            # before paying for a grow. Warm-started from the failed iterate: the
+            # inner never moves frozen variables, so the ring stays pinned, and the
+            # objective closures stay anchored at the ORIGINAL flat0 (only the
+            # start point moves).
+            no_tr = True
+            x2, nit2, ok2 = solve_window_inner(
+                replace(sub, flat0=x),
+                inner,
+                opts.fallback_maxiter,
+                trust_region=False,
+                osqp_max_iter=opts.qp_max_iter_fallback,
+                qp_backend=backend,
+                ip_cold=opts.ip_cold,
+                ip_after_admm_iters=opts.ip_after_admm_iters,
+            )
+            nit += nit2
+            if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better
+                x, ok = x2, ok2
+        return x, nit, ok, no_tr
+
+    x, nit, ok, fell_back = _attempt(opts.qp_backend)
+    # Backend rung of the escalation ladder, ahead of grow-on-failure. The
+    # interior-point legs change the SQP trajectory, and on some windows they steer
+    # it into a basin with no escape: measured, the z0_cluster crop ends one triangle
+    # genuinely INVERTED at -1.2e-4 under 'hybrid' where plain ADMM clears it, and
+    # growing does not recover it. So retry the whole attempt on plain warm-started
+    # OSQP from the ORIGINAL start state -- the IP trajectory is exactly what led
+    # astray, so warm-starting from its failed iterate would keep the window in that
+    # basin. Two guards keep the retry off the paths that do not need it:
+    #
+    # - A GENUINE fold, not merely `not ok`: `ok` tests the margin-shifted target
+    #   (threshold + margin_delta), so a window landing at 0.0109 against a 0.011
+    #   target reports not-ok while being perfectly fold-free. Since
+    #   `cons = values - (threshold + margin_delta)`, an enforced row is truly below
+    #   `threshold` exactly when `cons < -margin_delta`.
+    # - Real windows only, never a giant tile (`allow_grow=False`). A second full
+    #   attempt per tile defeats tiling for the same reason growing one does: the
+    #   Schwarz loop already re-sweeps a tile that ends folded, and the terminal mop
+    #   re-windows whatever survives with a large margin (mop windows DO take this
+    #   rung). Measured on raw B0039 z16, retrying tiles cost 505 s vs 264 s at an
+    #   identical (zero) fold count and a worse move (L2 362 vs 325).
+    backend_fell_back = False
+    if not ok and allow_grow and opts.qp_backend != "osqp" and inner in _ISQP_LABELS:
+        backend_fell_back = bool(sub.cons(x).min() < -margin_delta)
+    if backend_fell_back:
+        x2, nit2, ok2, no_tr2 = _attempt("osqp")
         nit += nit2
         if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse
-            x, ok = x2, ok2
+            x, ok, fell_back = x2, ok2, no_tr2
     dt = time.perf_counter() - t
     patch_out = np.asarray(sub.constraint.unflatten(x))
     py0, py1, px0, px1 = sub.patch_box
@@ -764,11 +834,13 @@ def _solve_window(
         inner_iters=nit,
         grows=_grow,
         fallback=fell_back,
+        backend_fallback=backend_fell_back,
         min_after=float(jpatch.min()),
         feasible=bool(ok),
         time_s=dt,
     )
     rep.windows.append(rec)
+    rep.backend_fallbacks += int(backend_fell_back)
 
     # grow-on-failure: if still infeasible and the window can expand, widen and retry
     if allow_grow and not ok and _grow < 2:
