@@ -73,7 +73,10 @@ Imports flow one way. Breaking these is what re-tangles the package.
   these; they carry no method logic of their own.
   *(Windowed escalation order, isqp inner: solve → **no-trust-region retry**
   (`no_tr_fallback`, warm-started from the failed iterate, `fallback_maxiter`
-  SQP iterations) → grow-on-failure → giant tiling / mop. The TR ratio test
+  SQP iterations) → **backend retry** (`qp_backend='hybrid'` only: a real
+  window — never a giant tile — left GENUINELY folded is re-attempted whole on
+  plain OSQP from its ORIGINAL start state, since the interior-point trajectory
+  is what led astray) → grow-on-failure → giant tiling / mop. The TR ratio test
   freezes on sliver-scale violations the legacy line search clears. OSQP ADMM
   iterations are capped per subproblem — `qp_max_iter` / `qp_max_iter_fallback`.
   Measured: a cap-escalation ladder over these is slower and no more feasible;
@@ -84,7 +87,9 @@ Imports flow one way. Breaking these is what re-tangles the package.
   is slower (381 s): a warm-started ADMM solve averages 0.175 s, so IP only pays
   where the warm start is cold or stale. `'osqp'` reproduces the pre-hybrid
   path byte for byte and is the automatic degradation when `clarabel` is
-  absent. The giant tiler's tile size / sweep cap are `giant_tile`
+  absent. The backend retry above is what keeps hybrid's feasibility equal to
+  osqp's; it is free on the full slice (every candidate there is a tile) and
+  essential on small crops, where growing cannot recover the basin. The giant tiler's tile size / sweep cap are `giant_tile`
   (default 64) / `giant_max_sweeps`: 64 measured 1.9x faster than 32 on a full
   raw B0039 slice at equal feasibility and a smaller move. `giant_tile_fit`
   (default on) makes that a *target*, fitted per region so an integer number of

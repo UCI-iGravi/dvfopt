@@ -224,3 +224,96 @@ def test_strategy_knobs_reach_the_driver(monkeypatch):
     assert all(k["qp_backend"] == "osqp" for k in seen)
     assert all(k["ip_cold"] is False for k in seen)
     assert all(k["ip_after_admm_iters"] == 123 for k in seen)
+
+
+# --------------------------------------------------------------------------
+# The backend rung of the escalation ladder: a window whose interior-point
+# trajectory ends GENUINELY folded is retried on plain OSQP, from the ORIGINAL
+# start state, before grow-on-failure.
+# --------------------------------------------------------------------------
+def _backend_fake(calls):
+    """Inner that fails every 'hybrid' attempt (leaving the window folded) and
+    clears the window on 'osqp' (zeroing the free pixels restores identity)."""
+
+    def inner(
+        sub,
+        label,
+        maxiter,
+        trace=None,
+        trust_region=True,
+        osqp_max_iter=None,
+        qp_backend="osqp",
+        **_,
+    ):
+        calls.append(
+            dict(
+                qp_backend=qp_backend, trust_region=trust_region, start=np.asarray(sub.flat0).copy()
+            )
+        )
+        x = np.asarray(sub.flat0, dtype=float).copy()
+        if qp_backend != "osqp":
+            x[sub.free_idx] *= 1.5  # amplify the fold: still infeasible, and != flat0
+            return x, 1, False
+        x[sub.free_idx] = 0.0  # frozen vars stay at flat0 — no-damage still holds
+        return x, 1, True
+
+    return inner
+
+
+def test_backend_fallback_clears_window_without_growing(monkeypatch):
+    from dvfopt.core.windowed import _common as engine
+
+    calls = []
+    monkeypatch.setattr(engine, "solve_window_inner", _backend_fake(calls))
+    phi = _folded()
+    _out, rep = _run(phi, qp_backend="hybrid")
+
+    assert rep.folds_before > 0 and rep.folds_after == 0
+    assert rep.damage == 0
+    assert rep.backend_fallbacks > 0
+    assert any(w.backend_fallback for w in rep.windows)
+    assert all(w.grows == 0 for w in rep.windows)  # cleared without a single grow
+
+    # attempt 1 hybrid (TR on) -> no-TR retry from the FAILED iterate -> attempt 2
+    # on osqp from the ORIGINAL start state (the IP trajectory is what led astray).
+    assert [c["qp_backend"] for c in calls[:3]] == ["hybrid", "hybrid", "osqp"]
+    assert [c["trust_region"] for c in calls[:3]] == [True, False, True]
+    assert not np.array_equal(calls[1]["start"], calls[0]["start"])
+    assert np.array_equal(calls[2]["start"], calls[0]["start"])
+
+
+def test_osqp_backend_never_takes_the_backend_rung(monkeypatch):
+    """Nothing to fall back TO when the run is already on osqp."""
+    from dvfopt.core.windowed import _common as engine
+
+    calls = []
+    monkeypatch.setattr(engine, "solve_window_inner", _backend_fake(calls))
+    _out, rep = _run(_folded(), qp_backend="osqp")
+    assert rep.backend_fallbacks == 0
+    assert {c["qp_backend"] for c in calls} == {"osqp"}
+
+
+def test_giant_tiles_skip_the_backend_rung(monkeypatch):
+    """A tile (``allow_grow=False``) is re-swept by the Schwarz loop and then the
+    mop, so a second full attempt per tile defeats tiling exactly like growing
+    one does — measured at 505 s vs 264 s on raw B0039 z16 for no fold gain."""
+    from dvfopt.core.windowed import _common as engine
+
+    calls = []
+    monkeypatch.setattr(engine, "solve_window_inner", _backend_fake(calls))
+    phi = _folded()
+    rep = engine.SliceReport()
+    engine._solve_window(
+        phi,
+        JdetConstraint2D(shape=phi.shape[1:]),
+        (14, 24, 14, 24),
+        0.01,
+        L2Objective(),
+        400,
+        1,
+        rep,
+        allow_grow=False,
+        opts=engine._InnerOpts(qp_backend="hybrid"),
+    )
+    assert rep.backend_fallbacks == 0
+    assert {c["qp_backend"] for c in calls} == {"hybrid"}

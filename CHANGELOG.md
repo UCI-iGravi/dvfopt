@@ -29,7 +29,16 @@ follows [Semantic Versioning](https://semver.org/).
   simplex folds, damage 0, and better fidelity (L2 move 325 vs 346). Policy
   sweep: cold-only 296 s, threshold 400 -> 289 s, **800 -> 262 s (best)**,
   1500 -> 269 s, no-cold/800 -> 281 s.
-- **New core dependency `clarabel>=0.9`** (pure-Rust wheels on every supported
+- **New escalation rung, `report.backend_fallbacks` / `WindowRec.backend_fallback`.**
+  The IP legs change the SQP trajectory and on some windows steer it into a
+  basin with no escape. A real window (never a giant tile) left GENUINELY
+  folded — `cons < -margin_delta`, not merely short of the margin-shifted
+  target — is now re-attempted whole on plain OSQP from its ORIGINAL start
+  state, ahead of grow-on-failure. Without it the z0_cluster crop finishes one
+  triangle inverted at -1.2e-4; with it all three hard crops reach 0 simplex
+  folds and raw z16 is bit-identical to the un-rung run (264.5 s, L2 325.1, 0
+  fallbacks).
+- - **New core dependency `clarabel>=0.9`** (pure-Rust wheels on every supported
   interpreter/platform). Without it, `'hybrid'` silently behaves as `'osqp'`
   (logged once at DEBUG on the `dvfopt` logger).
 
