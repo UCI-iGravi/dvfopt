@@ -6,6 +6,40 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — `auto_strategy` routes the measured 2D zero-folds recipe (behaviour change)
+
+- **`'bilinear'` -> `'isqp_windowed'` at every fold tier**, for every objective
+  the engine accepts (l1/l2/none). It previously tiered like Jdet, i.e. dense
+  fields went to `barrier`.
+- **`'simplex_standard'` + `objective='none'` -> `'isqp_windowed'`** at every
+  fold tier (previously `slsqp` / `barrier` / the wallbreakers by density).
+- **`'simplex*'` + `'l1'` still routes to `'slp'`** — the L1-optimal champion.
+  An anchor is a different fidelity request and is never silently swapped out;
+  instead a one-line hint naming the recipe is logged, once per process, on the
+  `dvfopt` logger.
+- Both new routes need `osqp`; without it they fall through to the existing
+  fold-density heuristic (verified to still compose). `'simplex'`
+  (full coverage) has no windowed-engine locality entry, so only
+  `'simplex_standard'` takes the `none` route. **3D routing is untouched.**
+- Why: `constraint='bilinear'` + `strategy='isqp_windowed'` + `objective='none'`
+  reaches 0 simplex folds from the RAW field on every B0039 slice tested (z16:
+  3890 folds -> 0 in ~200 s, damage 0) where the 2-triangle-row methods stall on
+  twisted cells — the bilinear rows are what give non-degenerate constraint
+  gradients at bow-tie cells.
+- **New: [`docs/recipe-2d-zero-folds.md`](docs/recipe-2d-zero-folds.md)** — the
+  one-call recipe, what every engine default does and what bought it, the fast
+  crop pack, the measured dead ends (float32 OSQP, GPU batched ADMM, Newton-SQP,
+  dual warm starts, row pruning, OSQP settings), and the one known cost
+  (`z0_sliver` under `exact_ls`). Linked from README and CLAUDE.md; the routing
+  table is in CLAUDE.md, ARCHITECTURE.md and `dvfopt correct --strategy` help.
+- **`benchmarks/make_hard_crops.py`** no longer monkeypatches `isqp_solve` to
+  force `trust_region=False`, and no longer runs a retry loop: the per-window
+  no-TR fallback and the backend fallback are engine defaults now, so validation
+  calls `windowed_correct` once per gauge. The discriminator/recipe semantics are
+  unchanged and now uniform across all three crops (the discriminator leaves
+  bilinear folds — unclearable on `z16_twist`/`z0_cluster`, unseen on the
+  simplex-clean `z0_sliver`; the recipe clears both gauges to zero).
+
 ### Added — windowed engine: exact merit line search (now the default step rule)
 
 - **`step_rule='exact_ls'` (DEFAULT — behaviour change)** on `windowed_correct`,

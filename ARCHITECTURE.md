@@ -32,8 +32,21 @@ The most robust from-raw triple currently known is
 `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed', objective='none')`
 — bilinear feasibility implies simplex feasibility (its 4 rows/cell contain the 2
 simplex rows), and pure feasibility keeps the windowed isqp out of the
-objective-basin traps a distance anchor pins it in. Across a volume, the DVFopt
-facade parallelises the per-slice loop with `DVFoptConfig(n_workers=N)` (process
+objective-basin traps a distance anchor pins it in. The one-call recipe, the
+engine defaults behind it and the measured dead ends are written up in
+[docs/recipe-2d-zero-folds.md](docs/recipe-2d-zero-folds.md).
+
+`auto_strategy` routes to it: `'bilinear'` → `'isqp_windowed'` at any objective
+the engine accepts and at every fold tier, and `'simplex_standard'` → the same
+under `objective='none'`. It is never substituted for an L1/L2 request — that is
+a different fidelity ask, so `simplex` + `l1` keeps `'slp'` (and logs a one-line
+hint). Every such route needs `osqp`; without it the case falls through to the
+fold-density tier heuristic. `'simplex'` (full coverage) has no windowed-engine
+locality entry, so only `'simplex_standard'` takes the `none` route. 3D routing
+is unchanged.
+
+Across a volume, the DVFopt facade
+parallelises the per-slice loop with `DVFoptConfig(n_workers=N)` (process
 pool; slices are independent solves). Every pool in the package pins its workers
 to one compute thread each (`dvfopt.core._pool.pin_worker_threads` /
 `pinned_thread_env`) — numpy and scipy otherwise start a full-width

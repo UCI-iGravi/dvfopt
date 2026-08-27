@@ -119,6 +119,12 @@ the optimisation strategies above for accurate displacement.
 For Jdet (no wallbreakers): :class:`BarrierStrategy` for dense,
 :class:`SLSQPWindowedStrategy` for mild. 3D Jdet supported by both.
 
+**Just want zero folds from a raw 2D slice?**
+``correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed',
+objective='none')`` — the measured-robust recipe (0 simplex folds from
+raw on every B0039 slice tested, damage 0). See
+``docs/recipe-2d-zero-folds.md``.
+
 The :func:`auto_strategy` helper encodes this routing as a function.
 """
 

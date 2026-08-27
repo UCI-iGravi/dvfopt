@@ -35,7 +35,9 @@ print(result.info)  # SolveInfo: n_neg, min_T, L1/L2, runtime, phases
 
 For **Jdet** (no wallbreaker family): `BarrierStrategy` for dense, `SLSQPWindowedStrategy` for mild. Both support 3D.
 
-The `auto_strategy(constraint, init_n_neg, init_min, objective_label)` helper encodes this routing as a function — `strategy='auto'` in `correct_dvf` calls it.
+**Just want zero folds from a raw 2D slice?** `correct_dvf(phi, constraint='bilinear', strategy='isqp_windowed', objective='none')` — 0 simplex folds from raw on every B0039 slice tested, damage 0. See **[docs/recipe-2d-zero-folds.md](docs/recipe-2d-zero-folds.md)** for what each engine default does, the fast crop pack, and the measured dead ends.
+
+The `auto_strategy(constraint, init_n_neg, init_min, objective_label)` helper encodes this routing as a function — `strategy='auto'` in `correct_dvf` calls it. In 2D it routes `bilinear` (any objective) and `simplex_standard` + `none` to `isqp_windowed`, `simplex*` + `l1` to `slp`, and tiers everything else by fold density.
 
 ### 3D constraint choice: `simplex_3d` vs `jdet_3d`
 

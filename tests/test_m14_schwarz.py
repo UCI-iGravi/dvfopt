@@ -318,14 +318,22 @@ class TestUnifiedAPI:
         """The auto resolver picks m14_schwarz for large slices in the
         extreme-density tier when objective is neither 'l1' (which now
         routes to the SLP champion at every tier) nor 'l2' (m10)."""
+        import dvfopt.solver as solver_mod
         from dvfopt.constraints import SimplexConstraint2D
         from dvfopt.solver import auto_strategy
 
         c_big = SimplexConstraint2D((320, 456))
         c_small = SimplexConstraint2D((60, 60))
-        assert auto_strategy(c_big, 6000, -15.0, objective_label='none') == 'm14_schwarz'
-        # Small extreme dense — falls back to plain m14.
-        assert auto_strategy(c_small, 6000, -15.0, objective_label='none') == 'm14'
+        # With osqp installed, simplex_standard + 'none' routes to the
+        # windowed engine at every tier (the measured robust recipe) …
+        if solver_mod._isqp_windowed_ok(c_big):
+            assert auto_strategy(c_big, 6000, -15.0, objective_label='none') == 'isqp_windowed'
+        # … and without it the wallbreaker tail is still what 'none' reaches.
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(solver_mod, '_isqp_windowed_ok', lambda c: False)
+            assert auto_strategy(c_big, 6000, -15.0, objective_label='none') == 'm14_schwarz'
+            # Small extreme dense — falls back to plain m14.
+            assert auto_strategy(c_small, 6000, -15.0, objective_label='none') == 'm14'
         # L1 no longer reaches the wallbreakers via auto — SLP champion.
         assert auto_strategy(c_big, 6000, -15.0, objective_label='l1') == 'slp'
 

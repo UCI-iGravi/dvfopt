@@ -8,13 +8,16 @@ seconds-to-minutes instead of an hour+:
               that defeated every 2-tri-row method, all ladder variants, and M14.
 - z0_cluster: the ~3x-compressed dense cluster (area transport + twists + a
               three-corners-coincident cell) — hours for the full staged pipeline.
-- z0_sliver:  cells pinned at ~-4e-4 below threshold — the TR-acceptance
-              regression case (ratio tests freeze; line-search clears).
+- z0_sliver:  cells pinned at ~-4e-4 below threshold — simplex-clean on input,
+              so the 2tri rows are BLIND to it; only the bilinear gauge sees it.
 
-Validation per case: the DISCRIMINATOR (standard 2tri windowed isqp, objective
-none) should FAIL to clear it; the RECIPE (bilinear rows, TR pass + no-TR retry)
-should clear it to simplex 0 folds, fast. Crops are written to
-benchmarks/output/testcases/ (gitignored; this script regenerates them).
+Validation per case, both runs `windowed_correct` once on engine defaults: the
+DISCRIMINATOR (standard 2tri rows, objective none) leaves bilinear folds behind —
+either because it cannot clear them (z16_twist, z0_cluster) or because its rows
+never saw them (z0_sliver) — and the RECIPE (bilinear rows) clears the case to
+simplex 0 folds, fast (the bilinear residual is printed alongside). Crops are
+written to benchmarks/output/testcases/ (gitignored; this script regenerates
+them).
 """
 
 import argparse
@@ -27,7 +30,6 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 from scipy import ndimage  # noqa: E402
 
-import dvfopt.core.primitives.isqp as _isqp_mod  # noqa: E402
 from dvfopt.constraints import SimplexConstraint2D, SimplexConstraint2DBilinear  # noqa: E402
 from dvfopt.core.windowed import min_field, windowed_correct  # noqa: E402
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d  # noqa: E402
@@ -90,74 +92,53 @@ def build():
     return list(cases)
 
 
-def _run(phi, constraint, maxiter, no_tr=False):
-    orig = _isqp_mod.isqp_solve
-    if no_tr:
+def _run(phi, constraint, maxiter):
+    """One `windowed_correct` call on engine defaults.
 
-        def patched(*a, **k):
-            k["trust_region"] = False
-            return orig(*a, **k)
-
-        _isqp_mod.isqp_solve = patched
-        import dvfopt.core.windowed._inners as inners
-
-        if hasattr(inners, "isqp_solve"):
-            inners.isqp_solve = patched
-    try:
-        out, _rep = windowed_correct(
-            phi,
-            "isqp",
-            constraint=constraint,
-            objective=NoneObjective(),
-            threshold=THR,
-            maxiter=maxiter,
-        )
-    finally:
-        _isqp_mod.isqp_solve = orig
-        import dvfopt.core.windowed._inners as inners
-
-        if hasattr(inners, "isqp_solve"):
-            inners.isqp_solve = orig
+    The per-window no-TR fallback (PR #73) and backend fallback (PR #78) are
+    the engine's job — no monkeypatching, no retry loop out here.
+    """
+    out, _rep = windowed_correct(
+        phi,
+        "isqp",
+        constraint=constraint,
+        objective=NoneObjective(),
+        threshold=THR,
+        maxiter=maxiter,
+    )
     return out
+
+
+def bilinear_folds(phi):
+    return int((min_field(SimplexConstraint2DBilinear(shape=phi.shape[1:]), phi) < THR).sum())
 
 
 def validate(names):
     for name in names:
         phi = np.load(f"{OUT}/{name}.npy")
         H, W = phi.shape[1:]
-        if name == "z0_sliver":
-            # acceptance-rule regression case (simplex-clean input): bilinear TR-only
-            # must FREEZE on the slivers; the no-TR pass must clear them.
-            c = SimplexConstraint2DBilinear(shape=(H, W))
-            t = time.time()
-            frozen = int((min_field(c, _run(phi, c, maxiter=600)) < THR).sum())
-            t_tr = time.time() - t
-            t = time.time()
-            left = int((min_field(c, _run(phi, c, maxiter=800, no_tr=True)) < THR).sum())
-            disc = "HARD (acceptance-rule regression)" if frozen else "not discriminating"
-            print(
-                f"{name}: TR-only leaves {frozen} bilinear slivers in {t_tr:.0f}s -> {disc} | "
-                f"no-TR clears to {left} in {time.time() - t:.0f}s",
-                flush=True,
-            )
-            continue
+        # DISCRIMINATOR: the standard 2tri rows leave bilinear folds behind —
+        # either unclearable (z16_twist, z0_cluster) or unseen (z0_sliver, whose
+        # input is already simplex-clean).
         t = time.time()
-        out = _run(phi, SimplexConstraint2D(shape=(H, W)), maxiter=200)
-        f_std, mn_std = simplex_stats(out)
+        std = _run(phi, SimplexConstraint2D(shape=(H, W)), maxiter=200)
         t_std = time.time() - t
+        f_std, _ = simplex_stats(std)
+        bl_std = bilinear_folds(std)
+        # RECIPE: bilinear rows, one call, defaults.
         t = time.time()
         out = _run(phi, SimplexConstraint2DBilinear(shape=(H, W)), maxiter=600)
-        for _retry in range(2):  # no-TR retries close TR-vetoed slivers (2-tri gauge)
-            if simplex_stats(out)[0] == 0:
-                break
-            out = _run(out, SimplexConstraint2DBilinear(shape=(H, W)), maxiter=800, no_tr=True)
-        f_rec, mn_rec = simplex_stats(out)
         t_rec = time.time() - t
-        disc = "HARD (discriminates)" if f_std > 0 else "not discriminating"
+        f_rec, mn_rec = simplex_stats(out)
+        bl_rec = bilinear_folds(out)
+        disc = "HARD (discriminates)" if bl_std > 0 else "not discriminating"
+        # Pass/fail is the simplex gauge, as before; the bilinear residual is
+        # reported because it is what makes these crops hard in the first place.
         rec = "cleared" if f_rec == 0 else f"NOT cleared ({f_rec} folds)"
         print(
-            f"{name}: 2tri-standard leaves {f_std} folds (min {mn_std:+.4f}) in {t_std:.0f}s -> {disc} | "
-            f"recipe {rec} (min {mn_rec:+.4f}) in {t_rec:.0f}s",
+            f"{name}: 2tri-standard leaves {f_std} simplex / {bl_std} bilinear folds "
+            f"in {t_std:.0f}s -> {disc} | recipe {rec} "
+            f"(simplex min {mn_rec:+.4f}, bilinear residual {bl_rec}) in {t_rec:.0f}s",
             flush=True,
         )
 
