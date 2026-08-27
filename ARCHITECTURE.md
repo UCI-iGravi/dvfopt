@@ -101,7 +101,20 @@ Imports flow one way. Breaking these is what re-tangles the package.
   (default on) makes that a *target*, fitted per region so an integer number of
   near-equal tiles covers its longest side: tile size acts through grid
   ALIGNMENT — the sweep-round count — not through size, so a target that leaves
-  a remainder strip costs an extra round.)*
+  a remainder strip costs an extra round. `coarse_to_fine` (default on) prepends
+  a warm start: the same problem solved on a `coarse_factor`x coarsened field,
+  its correction prolongated back and MASKED to the free boxes `find_windows`
+  opens on the fine fold mask — that mask is what preserves the no-damage
+  invariant (the warm start moves only pixels the engine would free anyway) and
+  the final damage accounting still runs against the ORIGINAL input. Raw B0039
+  z16: 205 s / 909 SQP iterations (841 fine + a 16 s, 68-iteration coarse solve)
+  vs 283 s / 1320 cold — same fold count (0), same damage (0), slightly smaller
+  move (L2 320.6 vs 325.1). It is
+  skipped on a fold-free field or when `min(H, W) < 4 * giant_tile`, so small
+  crops keep the cold path byte for byte. The isqp trust region is sized by
+  `tr_delta` (2.0) / `tr_max` (16.0), no longer hard-coded; `tr_delta=1.0` runs
+  267 s / 1022 iterations but at L2 move 344 — speed bought with fidelity,
+  which coarse-to-fine is not.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy

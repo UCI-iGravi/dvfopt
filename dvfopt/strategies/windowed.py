@@ -117,6 +117,23 @@ class WindowedWrapperStrategy(Strategy):
         alignment (sweep-round count), not size: on the raw B0039 z16
         giant the fitted 51 and the lucky 64 both take 1 round, while
         56 and 80 take 2 (~600 s vs ~350 s). ``False`` = literal tile.
+    tr_delta, tr_max : float
+        Initial radius / cap of the ``isqp`` inner's trust region, in grid
+        units. 2.0 is what every measured windowed number was taken at;
+        ``tr_delta=1.0`` trades fidelity for speed (raw B0039 z16: 267 s /
+        1022 SQP iterations / L2 move 344 vs 300 s / 1320 / L2 325).
+        ``tr_max`` never binds on the measured B0039 windows.
+    coarse_to_fine : bool
+        Prepend a coarse-grid warm start: solve the same problem on a
+        ``coarse_factor`` x coarsened field and seed the fine solve with
+        the prolongated correction, masked to the window free boxes the
+        fine engine would open anyway (so no-damage is unchanged). Raw
+        B0039 z16: 205 s / 909 SQP iterations (841 fine + a 16 s,
+        68-iteration coarse solve) vs 283 s / 1320 cold, at a slightly
+        smaller L2 move (320.6 vs 325.1). Skipped — byte-identical to ``False`` — on a fold-free
+        field or one with ``min(H, W) < 4 * giant_tile``.
+    coarse_factor : int
+        Coarsening factor for that stage (box-average blocks).
     """
 
     inner: Optional[str] = None
@@ -137,6 +154,10 @@ class WindowedWrapperStrategy(Strategy):
     qp_backend: str = 'hybrid'
     ip_cold: bool = True
     ip_after_admm_iters: int = 800
+    tr_delta: float = 2.0
+    tr_max: float = 16.0
+    coarse_to_fine: bool = True
+    coarse_factor: int = 2
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -188,6 +209,10 @@ class WindowedWrapperStrategy(Strategy):
             qp_backend=self.qp_backend,
             ip_cold=self.ip_cold,
             ip_after_admm_iters=self.ip_after_admm_iters,
+            tr_delta=self.tr_delta,
+            tr_max=self.tr_max,
+            coarse_to_fine=self.coarse_to_fine,
+            coarse_factor=self.coarse_factor,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

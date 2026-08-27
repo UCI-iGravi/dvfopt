@@ -6,6 +6,55 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: coarse-to-fine warm start (on by default)
+
+- **`coarse_to_fine=True` / `coarse_factor=2`** on `windowed_correct` and
+  `WindowedWrapperStrategy` / `ISQPWindowedStrategy`. Before the round loop the
+  engine now solves the SAME problem on a `coarse_factor`x box-averaged field
+  (displacements rescaled into coarse pixel units), bilinearly prolongates the
+  resulting CORRECTION back (rescaled up), and starts the fine solve from
+  `phi + delta` instead of cold. The fine windows then converge in far fewer
+  SQP iterations. The coarse call always passes `coarse_to_fine=False` — never
+  recursive.
+- **No-damage is preserved by construction.** The prolongated delta is masked to
+  the free boxes `find_windows` opens on the fine fold mask, so the warm start
+  can only move pixels the engine was going to free anyway; healthy area outside
+  every fold neighbourhood stays byte-identical, and the final damage accounting
+  still runs against the ORIGINAL input (not the warmed field).
+- **Skipped** — leaving the path byte-identical to `coarse_to_fine=False` — on a
+  fold-free field or when `min(H, W) < 4 * giant_tile`: below that the coarse
+  problem is too small to be a useful preview and its own solve is not
+  amortised. Every small crop and the whole test suite take the skip path.
+- **New report counters**: `coarse_solve_s`, `coarse_folds_before`,
+  `coarse_folds_after`, `coarse_iters`, `warm_folds` on `SliceReport`
+  (`-1` = the stage did not run).
+
+Measured on the full raw B0039 z16 slice (bilinear rows, objective `none`,
+threshold 0.01, maxiter 600, BLAS/OMP pinned to 1):
+
+| | wall | SQP iterations | simplex folds | damage | L2 move |
+|---|---|---|---|---|---|
+| `coarse_to_fine=True` (default) | **205 s** (incl. 16 s coarse) | **909** (841 fine + 68 coarse) | 3890 -> 0 | 0 | 320.6 |
+| `coarse_to_fine=False` | 283 s | 1320 | 3890 -> 0 | 0 | 325.1 |
+
+-28% wall and -31% SQP iterations, and the speed is not bought with fidelity —
+the move is slightly *smaller*. The coarse solve cleared 1054 -> 0 folds on its
+own grid in 16 s / 68 iterations; the warmed fine field still had 2840 folds, so
+the win is a better basin for the fine windows, not folds removed up front.
+
+### Added — the isqp trust region is now a knob, not a constant
+
+- **`tr_delta=2.0` / `tr_max=16.0`** on `dvfopt.core.primitives.isqp.isqp_solve`
+  (initial radius / cap, grid units), threaded through `solve_window_inner`,
+  `windowed_correct` and the windowed strategy dataclasses. They were hard-coded
+  locals; **the defaults are unchanged, so every prior measurement stands and
+  the default path is byte-identical.**
+- The measured trade, raw B0039 z16: `tr_delta=1.0` runs **267 s / 1022 SQP
+  iterations at L2 move 344** vs 300 s / 1320 / L2 325 at 2.0 — -11% wall and
+  -23% iterations, but a visibly larger departure from the input. 2.0 stays the
+  default; coarse-to-fine is the speedup that costs no fidelity. `tr_max` never
+  binds on the measured B0039 windows.
+
 ### Fixed — every process pool pins its workers to one compute thread
 
 - **One shared helper, `dvfopt.core._pool.pin_worker_threads()` /

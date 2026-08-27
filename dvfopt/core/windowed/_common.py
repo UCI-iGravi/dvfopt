@@ -52,7 +52,7 @@ tiles with damage accounting — and deliberately does NOT reuse
 
 import math
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 
 import numpy as np
 from scipy import ndimage
@@ -82,6 +82,8 @@ class _InnerOpts:
     qp_backend: str = 'hybrid'
     ip_cold: bool = True
     ip_after_admm_iters: int = 800
+    tr_delta: float = 2.0
+    tr_max: float = 16.0
 
 
 def _objective_fns(flat0, objective):
@@ -259,6 +261,14 @@ class SliceReport:
     # windows whose interior-point trajectory failed and were retried on plain
     # warm-started ADMM (qp_backend='hybrid' only; see _solve_window).
     backend_fallbacks: int = 0
+    # coarse-to-fine warm start (see _coarse_warm_start). -1 == the stage did not
+    # run (disabled, no folds, or the field too small for a meaningful coarse
+    # problem); coarse_solve_s stays 0.0 then.
+    coarse_solve_s: float = 0.0
+    coarse_folds_before: int = -1
+    coarse_folds_after: int = -1
+    coarse_iters: int = 0  # SQP iterations spent on the coarse grid
+    warm_folds: int = -1  # folds left after applying the prolongated correction
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -267,6 +277,72 @@ class SliceReport:
     # ``extras`` with damage / n_windows / giant_regions / mop_cleared /
     # l1_move / l2_move). Empty list otherwise.
     history: list = field(default_factory=list)
+
+
+def _restrict(phi, factor):
+    """Box-average ``factor`` x ``factor`` blocks of a ``(2, H, W)`` field.
+
+    Displacements are divided by ``factor`` so they stay in COARSE pixel units —
+    the coarse field is then an ordinary deformation field on its own grid and the
+    same constraint/threshold means the same thing there. A trailing partial block
+    (odd ``H``/``W``) is dropped.
+    """
+    hc, wc = (d // factor for d in phi.shape[1:])
+    trimmed = phi[:, : factor * hc, : factor * wc]
+    return trimmed.reshape(2, hc, factor, wc, factor).mean(axis=(2, 4)) / factor
+
+
+def _prolongate(delta_c, shape, factor):
+    """Bilinear ``factor`` x upsample of a coarse-grid CORRECTION back to ``shape``.
+
+    Displacements are multiplied by ``factor`` (the inverse of :func:`_restrict`'s
+    rescale). Rows/cols the integer factor cannot cover (odd ``H``/``W``) stay
+    zero — the fine solve handles that strip itself.
+    """
+    h, w = shape
+    out = np.zeros((2, h, w))
+    for c in range(2):
+        up = ndimage.zoom(delta_c[c] * factor, factor, order=1)
+        hh, ww = min(h, up.shape[0]), min(w, up.shape[1])
+        out[c, :hh, :ww] = up[:hh, :ww]
+    return out
+
+
+def _coarse_warm_start(phi, constraint, objective, threshold, factor, margin, ring, inner, sub_kw):
+    """Warm-start delta from a solve of the SAME problem on a coarser grid.
+
+    Restrict (:func:`_restrict`), run the engine on the coarse field
+    (``coarse_to_fine=False`` — never recursive), prolongate the correction back
+    (:func:`_prolongate`), and MASK it to the fine-level window free boxes
+    :func:`find_windows` would open on the original fold mask. The mask is what
+    keeps the no-damage invariant: the warm start can only move pixels the engine
+    was going to free anyway, so healthy area outside every fold neighbourhood
+    stays byte-identical. Returns ``(delta, coarse_report)``.
+
+    Why it pays: the coarse solve is ~1/factor**2 the work and lands the fine
+    windows near a solution, so their SQP loops converge in far fewer iterations.
+    Raw B0039 z16 (3890 simplex folds, bilinear rows, objective ``none``,
+    maxiter 600): 205 s / 909 SQP iterations — 841 fine plus a 16 s, 68-iteration
+    coarse solve — vs 283 s / 1320 cold. -28% wall, -31% iterations, 0 folds and
+    damage 0 either way, and a slightly SMALLER move (L2 320.6 vs 325.1).
+    """
+    coarse = _restrict(phi, factor)
+    out_c, rep_c = windowed_correct(
+        coarse,
+        inner,
+        constraint=type(constraint)(shape=coarse.shape[1:]),
+        objective=objective,
+        threshold=threshold,
+        coarse_to_fine=False,
+        **sub_kw,
+    )
+    delta = _prolongate(out_c - coarse, phi.shape[1:], factor)
+    allow = np.zeros(phi.shape[1:], bool)
+    fine_mask = pixel_fold_mask(constraint, phi, threshold)
+    for fy0, fy1, fx0, fx1 in find_windows(fine_mask, margin, ring):
+        allow[fy0:fy1, fx0:fx1] = True
+    delta[:, ~allow] = 0.0
+    return delta, rep_c
 
 
 def windowed_correct(
@@ -292,6 +368,10 @@ def windowed_correct(
     qp_backend='hybrid',
     ip_cold=True,
     ip_after_admm_iters=800,
+    tr_delta=2.0,
+    tr_max=16.0,
+    coarse_to_fine=True,
+    coarse_factor=2,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -360,6 +440,28 @@ def windowed_correct(
     264 windows / 3 rounds at 32 — 1.9x faster, zero simplex folds and zero
     damage either way, and a *smaller* move (L2 316 vs 404). 64 is the default.
 
+    ``tr_delta`` (2.0) / ``tr_max`` (16.0) size the ``isqp`` inner's trust
+    region — initial radius and cap, in grid units. The default is what every
+    measured windowed number was taken at; ``tr_delta=1.0`` buys speed with
+    fidelity (raw B0039 z16: 267 s / 1022 SQP iterations / L2 move 344 vs 300 s
+    / 1320 / L2 325). ``tr_max`` never binds on the measured B0039 windows.
+
+    ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
+    same problem is solved on a ``coarse_factor`` x coarsened field and the
+    prolongated correction seeds the fine solve, so the fine windows start near a
+    solution instead of cold (raw B0039 z16: 205 s / 909 SQP iterations — 841 fine
+    plus a 16 s, 68-iteration coarse solve — vs 283 s / 1320 cold, at a slightly
+    smaller L2 move, 320.6 vs 325.1).
+    The warm-start delta is MASKED to the window free boxes the fine engine would
+    open anyway, so the no-damage invariant holds unchanged and the final damage
+    accounting still runs against the ORIGINAL input. It is skipped — leaving the
+    path byte-identical to ``coarse_to_fine=False`` — when the field has no folds
+    or when ``min(H, W) < 4 * max(giant_tile, coarse_factor)`` (below that the
+    coarse problem is too small to be a meaningful preview, and its own solve is
+    not amortised; the ``coarse_factor`` leg only bites for absurd factors).
+    ``report.coarse_solve_s`` / ``coarse_folds_before`` / ``coarse_folds_after``
+    / ``coarse_iters`` / ``warm_folds`` record the stage (``-1`` = skipped).
+
     ``giant_tile_fit=True`` (default) makes ``giant_tile`` a *target* rather
     than a literal size: the effective tile is fitted per region so an integer
     number of near-equal tiles covers its longest side (:func:`_fit_tile`).
@@ -389,6 +491,8 @@ def windowed_correct(
         qp_backend,
         ip_cold,
         ip_after_admm_iters,
+        tr_delta,
+        tr_max,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -429,6 +533,44 @@ def windowed_correct(
             "min_T": float(mf.min()),
             "wall_s": time.perf_counter() - t0,
         }
+
+    # Coarse-grid warm start: solve small, prolongate the correction, then run the
+    # normal fine loop from the warmed field. Skipped when there is nothing to do
+    # or the field is too small for the coarse problem to be a useful preview.
+    if coarse_to_fine and rep.folds_before > 0 and min(H, W) >= 4 * max(giant_tile, coarse_factor):
+        t_coarse = time.perf_counter()
+        delta, rep_c = _coarse_warm_start(
+            phi,
+            constraint,
+            objective,
+            threshold,
+            coarse_factor,
+            margin,
+            ring,
+            inner,
+            dict(
+                margin=margin,
+                maxiter=maxiter,
+                max_rounds=max_rounds,
+                margin_delta=margin_delta,
+                max_window_area=max_window_area,
+                mop_margin=mop_margin,
+                time_budget_s=time_budget_s,
+                verbose=verbose,
+                **asdict(opts),
+            ),
+        )
+        phi += delta
+        rep.coarse_solve_s = time.perf_counter() - t_coarse
+        rep.coarse_folds_before = rep_c.folds_before
+        rep.coarse_folds_after = rep_c.folds_after
+        rep.coarse_iters = int(sum(w.inner_iters for w in rep_c.windows))
+        rep.warm_folds = int(pixel_fold_mask(constraint, phi, threshold).sum())
+        if record_history:
+            entry = _stage_entry("coarse", len(rep.windows))
+            entry["n_iter"] = rep.coarse_iters  # coarse windows are not in rep.windows
+            rep.history.append(entry)
+        _fire("coarse", phi)
 
     budget_hit = False
     prev_nfold = None
@@ -760,6 +902,8 @@ def _solve_window(
             qp_backend=backend,
             ip_cold=opts.ip_cold,
             ip_after_admm_iters=opts.ip_after_admm_iters,
+            tr_delta=opts.tr_delta,
+            tr_max=opts.tr_max,
         )
         no_tr = False
         if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
@@ -780,6 +924,8 @@ def _solve_window(
                 qp_backend=backend,
                 ip_cold=opts.ip_cold,
                 ip_after_admm_iters=opts.ip_after_admm_iters,
+                tr_delta=opts.tr_delta,
+                tr_max=opts.tr_max,
             )
             nit += nit2
             if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better

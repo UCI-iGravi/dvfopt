@@ -201,6 +201,8 @@ def isqp_solve(
     qp_backend='osqp',
     ip_cold=True,
     ip_after_admm_iters=800,
+    tr_delta=2.0,
+    tr_max=16.0,
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -251,6 +253,14 @@ def isqp_solve(
     no decreasing alpha — a backtrack can only SHORTEN a stale direction, while a
     trust region RE-COMPUTES it under the bound and shrinks instead of quitting.
     ``trust_region=False`` restores the legacy backtracking behaviour.
+
+    ``tr_delta`` (initial radius, grid units) / ``tr_max`` (cap) size that trust
+    region; the shrink floor stays fixed at 1e-6. The default 2.0 is what every
+    measured windowed number was taken at. A tighter start trades fidelity for
+    speed — raw B0039 z16, windowed engine defaults: ``tr_delta=1.0`` runs 267 s
+    / 1022 SQP iterations at L2 move 344 vs 300 s / 1320 / L2 325 at 2.0 (-11%
+    wall, -23% iterations, a bigger departure from the input). ``tr_max`` never
+    binds on the measured B0039 windows.
 
     ``trace`` (optional dict) turns on pyslsqp-style convergence tracking: it is
     filled with ``iters`` (per-iteration ``max_viol`` / ``n_viol`` / ``merit`` /
@@ -316,7 +326,8 @@ def isqp_solve(
     a_pat = None  # (indptr, indices) of A at setup — guards the in-place update
     it = 0
     exit_reason = "maxiter"
-    tr_delta, tr_min, tr_max = 2.0, 1e-6, 16.0  # trust-region radius (grid units)
+    tr_delta, tr_max = float(tr_delta), float(tr_max)  # trust-region radius (grid units)
+    tr_min = 1e-6  # shrink floor -> 'tr-collapse' exit
     if trace is not None:
         trace["iters"] = []
     while it < maxiter:
