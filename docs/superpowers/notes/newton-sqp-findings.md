@@ -3,7 +3,22 @@
 Research prototype on `proto-newton-sqp`. Code: `benchmarks/isqp_newton.py` (patched
 driver) + `benchmarks/newton_sqp_proto.py` (checks + harness). No library change.
 
-**Verdict: DO NOT PROMOTE.** _(numbers below)_
+**Verdict: DO NOT PROMOTE.**
+
+One-paragraph summary: the per-row Hessians are derived, verified exhaustively against
+finite differences (rel err 4.4e-12), and correctly assembled — but the Lagrangian
+Hessian is *useless here for a structural reason*. With `NoneObjective` the true
+multipliers at the solution are zero, and away from the solution the elastic
+formulation pins every violated row's dual at exactly `-rho = -1e3`, so the "Newton"
+term models a big-M penalty whose curvature is genuinely indefinite and must be
+convexified away — the required shift is ~8-10x the coupling it models (measured
+`tau ~ 1.2e4` against `hess_diag = 2.0`). Raw-multiplier Newton makes every case
+strictly worse (max violation rises, and one crop never finished in 35 min against a
+29.6 s baseline). A capped variant does cut iterations on two small crops, but it
+regresses 2.2x on a third, needs MORE iterations than the baseline on the real
+B0039 z16 slice, and a coupling-free control (all shift, zero second-order info)
+matches or beats it — so even that win is regularization, not curvature. The QP-side
+worry (denser `P` costing ADMM iterations) did not materialise.
 
 ---
 
@@ -227,12 +242,23 @@ Only the variants that converge per-window are measurable end to end:
 | z0_sliver | baseline | **59.4** | **540** | 208650 | 415 | 0 | 0 | 0 | 25.3 |
 | z0_sliver | newton-psd-cap3 | 131.4 | 1054 | 427300 | 421 | 0 | 0 | 0 | 26.6 |
 | z0_sliver | ls-salvage | 120.9 | 859 | 394250 | 482 | 0 | 0 | 0 | 25.1 |
+| **rawz16** | baseline | **186.9** | **762** (+18 coarse) | 301025 | 484 | 0 | 0 | 0 | **280.3** |
+| **rawz16** | newton-psd-cap3 | 176.3 | 836 (+10 coarse) | 326300 | 476 | 0 | 0 | 0 | 294.7 |
+| **rawz16** | ls-salvage | 185.8 | 811 (+10 coarse) | 274500 | 404 | 0 | 0 | 0 | 278.7 |
+
+The baseline reproduces the recorded reference for raw B0039 z16 exactly (186.9 s /
+762 fine iterations / L2 280.3 / 0 folds vs the recorded ~182 s / 762 / 280 / 0), so
+these rows are directly comparable to the existing engine numbers.
 
 Every variant reaches the same quality everywhere (0 simplex folds, damage 0), so the
-only axis is cost — and on that axis **neither candidate is consistent**:
-`newton-psd-cap3` is -18% / -5% / **+121%** wall across the three crops, `ls-salvage`
--32% / -1% / **+104%**. A win on two cases and a 2x regression on the third is not a
-promotable change; it is a knob that would have to be tuned per case.
+only axis is cost — and on that axis **neither candidate is consistent**.
+`newton-psd-cap3` is -18% / -5% / **+121%** wall across the three crops, and on the real
+full slice its crop-level iteration win **inverts**: 836 SQP iterations vs the baseline's
+762 (+10%) for a 6% wall difference and a *larger* move (L2 294.7 vs 280.3).
+`ls-salvage` is -32% / -1% / **+104%** on the crops and also flat on the real slice
+(185.8 s / 811 iterations vs 186.9 / 762). A win on two small crops, a 2x regression on a
+third, and no win at all on the real slice is not a promotable change — for either
+candidate.
 
 ### 3c. The ADMM-cost side effect, measured
 
@@ -273,9 +299,11 @@ QUALITY, never in the QP solve.
    shift required is always ~8-10x the coupling being modelled.
 
 3. **The only configuration that ever wins is a capped heuristic; its win is not
-   curvature, and it is not consistent.** `newton-psd-cap3` (multipliers clipped to
-   `|lam| <= 3`) cuts iterations on two crops (-34% z16_twist, -22% z0_cluster) but is
-   **2.2x slower on z0_sliver** (131.4 s / 1054 iterations vs 59.4 s / 540). And where it
+   curvature, it is not consistent, and it does not survive the real slice.**
+   `newton-psd-cap3` (multipliers clipped to `|lam| <= 3`) cuts iterations on two crops
+   (-34% z16_twist, -22% z0_cluster) but is **2.2x slower on z0_sliver** (131.4 s /
+   1054 iterations vs 59.4 s / 540), and on **raw B0039 z16 it needs MORE iterations
+   than the baseline** (836 vs 762) for a 6% wall difference and a larger move. Where it
    does win, the control `psd-cap1-nocoupling` — same per-row diagonal blocks, x–y
    coupling zeroed, i.e. **all of the regularization and none of the second-order
    information** — matches or beats it per-window (56 vs 75 iterations on z0_cluster;
@@ -306,11 +334,11 @@ step count and step quality.
   whole extra QP solve. Salvaging it with the existing `_backtrack` before shrinking gave
   -32% wall / -33% SQP iterations on `z16_twist` end to end with a *smaller* move
   (L2 113.3 vs 125.7), and -55% iterations on that case's largest window. But it is
-  neutral on `z0_cluster` and **2x slower on `z0_sliver`** — the same inconsistency as
-  the capped-Newton variant, for none of the machinery. If anything on this axis is
-  pursued, this is the cheaper thing to tune (e.g. salvage only when the ratio is
-  positive but below threshold, rather than on every rejection), and it needs the full
-  B0039 sweep, not three crops.
+  neutral on `z0_cluster`, **2x slower on `z0_sliver`**, and flat on raw z16 (185.8 s /
+  811 iterations vs 186.9 / 762) — the same inconsistency as the capped-Newton variant,
+  for none of the machinery. If anything on this axis is pursued, this is the cheaper
+  thing to tune (e.g. salvage only when the ratio is positive but below threshold, rather
+  than on every rejection), and it needs the full B0039 sweep, not three crops.
 - **The exact 1-D constraint model.** The same derivation that produced the constant
   Hessians says each row is *exactly quadratic along any line*:
   `c_i(x + alpha*d) = c_i + alpha*(Jd)_i + alpha^2 * q_i` with
