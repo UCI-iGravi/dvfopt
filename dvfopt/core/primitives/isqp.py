@@ -24,6 +24,13 @@ QP backend
 ``qp_backend='hybrid'`` (see :func:`_make_qp`) adds an interior-point escape
 hatch on top of the warm-started ADMM path. ``'osqp'`` (this module's default)
 is the pre-hybrid path, byte for byte.
+
+Step rule
+---------
+``step_rule='exact_ls'`` replaces the trust-region ratio test's accept/reject
+with the EXACT minimiser of the merit function along the QP step (2D only —
+:func:`_exact_line_min`). ``'tr'`` (this module's default) is the stock path,
+byte for byte.
 """
 
 from types import SimpleNamespace
@@ -180,6 +187,80 @@ def _backtrack(merit, x, d, phi0, alpha_min=1e-4):
     return x, False
 
 
+def _line_events(c0, g, q, a_hi):
+    """Roots of ``c_i(a) = c0 + g a + q a**2`` inside ``(0, a_hi)``, vectorised.
+
+    Returns ``(roots, flags, rows)`` with ``flag = +1`` where the row ENTERS the
+    violated region (``c`` goes negative) and ``-1`` where it LEAVES — the
+    breakpoints of the merit's hinge terms. A row with ``q > 0`` is negative
+    BETWEEN its roots, with ``q < 0`` outside them; a linear row (``q == 0``)
+    switches once.
+    """
+    lin = q == 0.0
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        disc = g * g - 4.0 * q * c0
+        sq = np.sqrt(np.where(disc > 0.0, disc, 0.0))
+        # numerically stable quadratic: t = -(g + sign(g) sqrt(disc)) / 2, roots are
+        # t/q and c0/t (never the cancelling (-g + sq) / 2q form)
+        t = -0.5 * (g + np.where(g >= 0.0, 1.0, -1.0) * sq)
+        ra = np.where(lin, np.inf, t / np.where(lin, 1.0, q))
+        rb = np.where(t == 0.0, ra, c0 / np.where(t == 0.0, 1.0, t))
+        rb = np.where(lin, np.inf, rb)
+        rlin = np.where(lin & (g != 0.0), -c0 / np.where(g == 0.0, 1.0, g), np.inf)
+    r1, r2 = np.minimum(ra, rb), np.maximum(ra, rb)
+    quad_ok = (~lin) & (disc >= 0.0)
+    up = q > 0.0
+    roots = np.concatenate([r1, r2, rlin])
+    flags = np.concatenate(
+        [
+            np.where(up, 1.0, -1.0),  # first root of a quadratic row
+            np.where(up, -1.0, 1.0),  # second root
+            np.where(g < 0.0, 1.0, -1.0),  # linear row
+        ]
+    )
+    idx = np.arange(c0.size)
+    rows = np.concatenate([idx, idx, idx])
+    keep = (
+        np.concatenate([quad_ok, quad_ok, lin & (g != 0.0)])
+        & np.isfinite(roots)
+        & (roots > 0.0)
+        & (roots < a_hi)
+    )
+    return roots[keep], flags[keep], rows[keep]
+
+
+def _exact_line_min(c0, g, q, w, fco, a_hi=1.0):
+    """Exact minimiser of the merit ``m(a) = f(a) + sum_i w_i max(0, -c_i(a))``
+    on ``[0, a_hi]``, where ``c_i(a) = c0 + g a + q a**2`` and ``f`` has the
+    quadratic coefficients ``fco = (f0, f1, f2)``.
+
+    ``m`` is piecewise quadratic with breakpoints exactly at the roots of the
+    rows (:func:`_line_events`): sort them, sweep the active set with a
+    cumulative sum over ``(w*-c0, w*-g, w*-q)``, and take the best of every
+    interval's endpoints and its parabola vertex. O(m log m), fully vectorised.
+    Returns ``(a_star, m_star, m_zero)``.
+    """
+    r, fl, rows = _line_events(c0, g, q, a_hi)
+    order = np.argsort(r, kind="stable")
+    r, fl, rows = r[order], fl[order], rows[order]
+    # active-set coefficient sums: a violated row contributes w*(-c) to the merit
+    wc, wg, wq = w * (-c0), w * (-g), w * (-q)
+    act = c0 < 0.0
+    a0 = np.concatenate([[wc[act].sum()], wc[rows] * fl]).cumsum()
+    a1 = np.concatenate([[wg[act].sum()], wg[rows] * fl]).cumsum()
+    a2 = np.concatenate([[wq[act].sum()], wq[rows] * fl]).cumsum()
+    k0, k1, k2 = fco[0] + a0, fco[1] + a1, fco[2] + a2
+    edges = np.concatenate([[0.0], r, [a_hi]])
+    lo, hi = edges[:-1], edges[1:]
+    pos = k2 > 0.0
+    vert = np.clip(np.where(pos, -k1 / np.where(pos, 2.0 * k2, 1.0), lo), lo, hi)
+    aa = np.concatenate([lo, hi, vert])
+    kk0, kk1, kk2 = np.tile(k0, 3), np.tile(k1, 3), np.tile(k2, 3)
+    vv = kk0 + kk1 * aa + kk2 * aa * aa
+    b = int(np.argmin(vv))
+    return float(aa[b]), float(vv[b]), float(k0[0])
+
+
 def isqp_solve(
     flat0,
     cons,
@@ -203,6 +284,7 @@ def isqp_solve(
     ip_after_admm_iters=800,
     tr_delta=2.0,
     tr_max=16.0,
+    step_rule='tr',
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -262,9 +344,45 @@ def isqp_solve(
     wall, -23% iterations, a bigger departure from the input). ``tr_max`` never
     binds on the measured B0039 windows.
 
+    ``step_rule`` picks how the QP step ``d`` is turned into an iterate.
+    ``'tr'`` (this driver's default) is the stock trust-region ratio test:
+    accept the whole step or reject it and re-solve under a shrunken radius.
+    ``'exact_ls'`` instead takes the EXACT minimiser of the merit along ``d``.
+    It is exact because every 2D row family here (2tri, bilinear, jdet, finite)
+    is a BILINEAR form in ``(dy, dx)``, so along the line ``x + a d`` a row is
+    exactly quadratic::
+
+        c(a) = c + a (J d) + a**2 q,     q = cons(x + d) - c - J d
+
+    and that ``cons(x + d)`` is the evaluation the ratio test already makes — so
+    the model is free (no extra constraint evaluation) and needs no per-family
+    Hessian table. The merit ``m(a) = f(a) + rho . max(0, -c(a))`` is then
+    piecewise quadratic and its global minimiser on ``[0, 1]`` (the trust region
+    already bounds the QP) is closed form — :func:`_exact_line_min`. The
+    objective along the line is fitted from ``obj`` at ``a = 0, 1/2, 1``: EXACT
+    for a quadratic objective (``NoneObjective`` / ``L2Objective``), an
+    approximation for the eps-smoothed L1 — so the TRUE merit at ``a*`` is
+    checked before the step is taken and this iteration falls back to the ``'tr'``
+    acceptance if it did not decrease. The trust region is still built, still
+    bounds the QP and is still adapted (now from the achieved ``a*``), and the
+    ratio test's own futility threshold (achieved <= 1e-3 x predicted) is kept as
+    the ``tr-collapse`` termination signal — an exact minimiser always finds SOME
+    decrease, so without it a hopeless window grinds instead of handing off to
+    the caller's escalation ladder.
+
+    ``'exact_ls'`` is **2D only** (a 6-tet volume row is trilinear, hence cubic
+    along a line); :func:`dvfopt.core.windowed.windowed_correct` — the only
+    caller — guards that at its entry. Measured there on raw B0039 z16: 200 s /
+    563 SQP iterations vs 244 s / 780 at ``'tr'`` (-18% / -28%), 0 folds, damage
+    0 and a SMALLER move (L2 268 vs 280); over a 9-real-slice B0039 sample, 9/9
+    wall AND iteration wins, -19% wall / -27% iterations in total, with a smaller
+    L2 move on every slice. A maximal fold-free step cap was measured and REFUTED
+    (it strangles the elastic mechanism); do not add one.
+
     ``trace`` (optional dict) turns on pyslsqp-style convergence tracking: it is
     filled with ``iters`` (per-iteration ``max_viol`` / ``n_viol`` / ``merit`` /
-    ``step_norm`` / ``osqp_status`` / ``delta`` / ``ratio`` / ``stepped``), the
+    ``step_norm`` / ``osqp_status`` / ``delta`` / ``ratio`` / ``stepped``, plus
+    ``alpha`` / ``rule`` under ``step_rule='exact_ls'``), the
     ``exit`` reason (``osqp-nonfinite`` / ``step-tol`` / ``linesearch-stall`` /
     ``tr-collapse`` / ``maxiter``), ``feasible`` and ``nit`` — so a stall is
     attributable, not silent.
@@ -284,6 +402,8 @@ def isqp_solve(
         raise ImportError(
             "isqp_solve requires osqp (optional dependency) — pip install dvfopt[solvers]"
         )
+    if step_rule not in ('tr', 'exact_ls'):
+        raise ValueError(f"unknown step_rule {step_rule!r}; valid: 'tr', 'exact_ls'")
     from scipy import sparse
 
     x = np.asarray(flat0, dtype=np.float64).copy()
@@ -398,7 +518,8 @@ def isqp_solve(
         d = np.zeros(n)
         d[free] = z[:nf]  # scatter the free-var step back into the full vector
         dn = float(np.linalg.norm(d))
-        ph0 = obj(x) + float(rho_vec @ viol)  # merit(x), reusing the computed c
+        fx = obj(x)
+        ph0 = fx + float(rho_vec @ viol)  # merit(x), reusing the computed c
 
         def mfun(y, _w=rho_vec):  # this iteration's weighted merit
             return merit_w(y, _w)
@@ -417,6 +538,54 @@ def isqp_solve(
             _emit(rec)
             exit_reason = "step-tol"
             break
+        if step_rule == 'exact_ls':
+            # Exact merit line minimisation in place of the ratio test's
+            # accept/reject. The rows are exactly quadratic along the line (see the
+            # docstring), and q reuses the cons(x + d) the ratio test already makes.
+            gl = np.asarray(j @ z[:nf])  # (J d)_i, exact linear term
+            ql = np.asarray(cons(x + d)) - c - gl  # exact quadratic term, no table
+            fh, f1 = float(obj(x + 0.5 * d)), float(obj(x + d))
+            fco = (fx, 4.0 * fh - f1 - 3.0 * fx, 2.0 * f1 + 2.0 * fx - 4.0 * fh)
+            a_star, _m_star, _m0 = _exact_line_min(c, gl, ql, rho_vec, fco, 1.0)
+            # Guard: only the objective part of the line model is fitted (exact for
+            # a quadratic objective, approximate for L1), so verify the TRUE merit
+            # before stepping — 'exact_ls' can then never regress a window.
+            m_true = mfun(x + a_star * d) if a_star > 0.0 else ph0
+            rec['alpha'] = a_star
+            rec['rule'] = 'exact_ls'
+            if m_true < ph0:
+                x = x + a_star * d
+                if a_star * dn < tol:
+                    rec['stepped'] = True
+                    _emit(rec)
+                    exit_reason = "step-tol"
+                    break
+                if trust_region:
+                    # An exact minimiser always finds SOME decrease, so it never fires
+                    # the ratio test's fast bail-out — and a window that cannot be
+                    # solved at this size then grinds instead of escalating. Reuse the
+                    # ratio test's OWN futility threshold as a termination signal (the
+                    # step is still taken); measured load-bearing on sliver-scale
+                    # windows (z0_sliver 229 s -> 139 s).
+                    pred = float(rho_vec @ viol) - (
+                        float(gx @ z[:nf])
+                        + 0.5 * float(z[:nf] @ (hdv * z[:nf]))
+                        + float(rho_vec @ z[nf : nf + m])
+                    )
+                    if pred > 1e-8 and (ph0 - m_true) <= 1e-3 * pred:
+                        tr_delta *= 0.25
+                        if tr_delta < tr_min:
+                            exit_reason = "tr-collapse"
+                    elif a_star >= 0.9 and dn >= 0.9 * tr_delta:
+                        tr_delta = min(tr_delta * 2.0, tr_max)
+                    elif a_star < 0.25:
+                        tr_delta = max(tr_delta * 0.5, tr_min)
+                rec['stepped'] = True
+                _emit(rec)
+                if exit_reason == "tr-collapse":
+                    break
+                continue
+            rec['rule'] = 'tr'  # the fitted objective misled -> stock acceptance
         if trust_region:
             # ratio test: predicted merit reduction from the QP model (at d=0 the
             # feasible slack is the current violation, so q(0) = rho*sum(viol))

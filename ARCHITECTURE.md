@@ -114,7 +114,23 @@ Imports flow one way. Breaking these is what re-tangles the package.
   crops keep the cold path byte for byte. The isqp trust region is sized by
   `tr_delta` (2.0) / `tr_max` (16.0), no longer hard-coded; `tr_delta=1.0` runs
   267 s / 1022 iterations but at L2 move 344 — speed bought with fidelity,
-  which coarse-to-fine is not.)*
+  which coarse-to-fine is not. `step_rule` (default `'exact_ls'`) picks how a QP
+  step becomes an iterate: the EXACT minimiser of the merit along the step
+  rather than the ratio test's accept/reject. It is exact because the 2D rows are
+  bilinear in `(dy, dx)`, hence exactly quadratic along a line, and free because
+  the model's quadratic term `q = cons(x + d) - c - J d` reuses the `cons(x + d)`
+  the ratio test already evaluates — no per-family Hessian table, no extra
+  constraint evaluation. Raw B0039 z16: 200 s / 563 SQP iterations vs 244 s /
+  780 at `'tr'`, 0 folds, damage 0, smaller move (L2 268 vs 280); 9/9 wall AND
+  iteration wins over a 9-real-slice sample, -19% wall / -27% iterations. Only the objective
+  part of the line model is fitted (from `obj` at a = 0, 1/2, 1 — exact for
+  L2/none, approximate for L1), so the TRUE merit at `a*` is checked before the
+  step and the iteration falls back to the `'tr'` acceptance otherwise. The
+  ratio test's futility threshold is KEPT as the `tr-collapse` trigger — an exact
+  minimiser always finds some decrease, so without it a hopeless window grinds
+  instead of escalating. 2D only (a 6-tet row is cubic along a line), guarded at
+  `windowed_correct`'s entry. The maximal fold-free step cap tried alongside it
+  is REFUTED — it strangles the elastic mechanism; do not add one.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy

@@ -123,6 +123,17 @@ class WindowedWrapperStrategy(Strategy):
         ``tr_delta=1.0`` trades fidelity for speed (raw B0039 z16: 267 s /
         1022 SQP iterations / L2 move 344 vs 300 s / 1320 / L2 325).
         ``tr_max`` never binds on the measured B0039 windows.
+    step_rule : str
+        How the ``isqp`` inner turns a QP step into an iterate:
+        ``'exact_ls'`` (default) minimises the merit EXACTLY along the
+        step — free, since the 2D rows are exactly quadratic along a
+        line and the model reuses an evaluation the ratio test already
+        makes — or ``'tr'``, the trust-region ratio test that was the
+        engine's only rule before this knob (byte for byte). Raw B0039
+        z16: 200 s / 563 SQP iterations vs 244 s / 780 (-18% / -28%) at
+        0 folds, damage 0 and a smaller move (L2 268 vs 280); 9/9 wall
+        and iteration wins over a 9-real-slice sample (-19% / -27%).
+        2D only (a 6-tet row is cubic along a line).
     coarse_to_fine : bool
         Prepend a coarse-grid warm start: solve the same problem on a
         ``coarse_factor`` x coarsened field and seed the fine solve with
@@ -156,6 +167,7 @@ class WindowedWrapperStrategy(Strategy):
     ip_after_admm_iters: int = 800
     tr_delta: float = 2.0
     tr_max: float = 16.0
+    step_rule: str = 'exact_ls'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
 
@@ -211,6 +223,7 @@ class WindowedWrapperStrategy(Strategy):
             ip_after_admm_iters=self.ip_after_admm_iters,
             tr_delta=self.tr_delta,
             tr_max=self.tr_max,
+            step_rule=self.step_rule,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             time_budget_s=self.time_budget_s,

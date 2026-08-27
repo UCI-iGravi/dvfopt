@@ -6,6 +6,104 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: exact merit line search (now the default step rule)
+
+- **`step_rule='exact_ls'` (DEFAULT — behaviour change)** on `windowed_correct`,
+  `WindowedWrapperStrategy` / `ISQPWindowedStrategy` and
+  `dvfopt.core.primitives.isqp.isqp_solve` (whose own default stays `'tr'`, so
+  direct callers of the primitive are unchanged). Instead of accepting or
+  rejecting the whole QP step by the trust-region ratio test, the inner now takes
+  the **exact minimiser of the merit along that step**.
+- **Why it is exact, and why it is free.** Every 2D row family the engine serves
+  (2tri, bilinear, jdet, finite) is a BILINEAR form in `(dy, dx)`, so along the
+  line `x + a d` a row is exactly quadratic:
+  `c(a) = c + a (J d) + a^2 q` with `q = cons(x + d) - c - J d` — and that
+  `cons(x + d)` is the evaluation the ratio test **already makes**, so the model
+  costs no extra constraint evaluation and needs no per-family Hessian table. The
+  merit `m(a) = f(a) + rho . max(0, -c(a))` is then piecewise quadratic with
+  breakpoints exactly at the rows' roots, and its global minimiser on `[0, 1]`
+  (the trust region already bounds the QP) is a vectorised O(m log m) breakpoint
+  sweep. The trust region is still built, still bounds the QP and is still
+  adapted — now from the achieved `a*`.
+- **Guarded.** Only the objective along the line is *fitted* (from `obj` at
+  `a = 0, 1/2, 1`: exact for `NoneObjective` / `L2Objective`, an approximation
+  for the eps-smoothed L1), so the TRUE merit at `a*` is evaluated before the
+  step is taken; if it did not decrease, that iteration falls back to the `'tr'`
+  acceptance. `'exact_ls'` therefore cannot regress a window.
+- **The futility bail is kept.** An exact minimiser always finds SOME decrease,
+  so it never fires the ratio test's fast bail-out — and a window that cannot be
+  solved at its current size then grinds instead of handing off to the engine's
+  escalation ladder. The ratio test's own threshold (achieved <= 1e-3 x
+  predicted, the existing constant — no new knob) is retained purely as the
+  `tr-collapse` termination signal.
+- **`'tr'` is the stock path byte for byte** (a test sabotages the line minimiser
+  and pins an unchanged `'tr'` run). New trace fields under `'exact_ls'`:
+  `alpha` (the accepted `a*`) and `rule` per iteration.
+- **2D only** — a 6-tet volume row is trilinear, hence *cubic* along a line, so
+  neither the model nor the identity transfers. `windowed_correct` rejects
+  `step_rule='exact_ls'` on a non-2D field at its entry.
+- **REFUTED, not shipped**: the maximal fold-free step cap (the nonlinear
+  analogue of `monotone=True`). On real windows `a_max` is ~1e-3-1e-1, which
+  strangles the elastic mechanism — measured end violations of 40-84 against the
+  baseline's 0.027. Do not add one.
+
+Measured on this branch (bilinear rows, objective `none`, threshold 0.01,
+maxiter 600, engine defaults, OMP/BLAS/RAYON pinned to 1). **Every row has 0
+simplex folds and damage 0** — the only axes that move are cost and L2 move:
+
+| case | rule | wall | SQP iterations | L2 move |
+|---|---|---|---|---|
+| z16_twist (crop) | **exact_ls** | **25.2 s** | **47** | **103.4** |
+| z16_twist (crop) | tr | 39.6 s | 128 | 125.7 |
+| z0_cluster (crop) | **exact_ls** | **56.9 s** | **328** | **535.1** |
+| z0_cluster (crop) | tr | 57.6 s | 387 | 542.7 |
+| z0_sliver (crop) | exact_ls | 350.5 s | 1684 | 39.7 |
+| z0_sliver (crop) | **tr** | **76.7 s** | **540** | **25.3** |
+| **raw B0039 z16** | **exact_ls** | **200.4 s** | **552** (+11 coarse) | **268.4** |
+| **raw B0039 z16** | tr | 244.1 s | 762 (+18 coarse) | 280.3 |
+
+The `tr` rows reproduce the recorded reference exactly (raw z16: 762 fine
+iterations, L2 280.3), so these are directly comparable to the existing engine
+numbers.
+
+**`z0_sliver` is the one regression, and it is a chaos artifact, not a trend.**
+That crop starts with 0 simplex folds (min +0.0110 against a 0.01 threshold) and
+only ~1e-4-scale bilinear violations, i.e. every decision in it is made at
+OSQP's own noise floor and the escalation ladder amplifies the outcome ~10x. In
+the prototype, four *mathematically equivalent* framings of this same method
+spanned 138.7 / 228.8 / 256.1 / 286.7 s on it — two of them differing only in
+whether `q` came from a constant-Hessian table or the identity above, which agree
+to 1e-13. The mechanism is understood: the window starts at violation 0.0114 and
+NEITHER rule can clear it; `'tr'` discovers that in 11 iterations and hands the
+window straight to the escalation ladder, while an exact minimiser always finds
+*some* decrease and grinds to `step-tol` first. Nothing on real slices behaves
+this way (see the sweep below).
+
+**The real-data sweep is what settles the default.** Nine real B0039 slices
+(the reference z16 plus every 48th from z=64, fold counts 835-3890), same engine
+defaults, same thread pinning. SQP iterations include the coarse warm-start
+solve. **Every row: 0 simplex folds, damage 0, for both rules.**
+
+| slice | folds in | tr wall / iters | exact_ls wall / iters | d wall | d iters | L2 tr -> exact_ls |
+|---|---|---|---|---|---|---|
+| z16 | 3890 | 244.1 s / 780 | **200.4 s / 563** | -18% | -28% | 280.3 -> **268.4** |
+| z64 | 1392 | 166.8 s / 726 | **146.9 s / 587** | -12% | -19% | 72.0 -> **67.7** |
+| z112 | 835 | 63.0 s / 181 | **52.7 s / 139** | -16% | -23% | 27.6 -> **27.1** |
+| z160 | 1193 | 82.7 s / 374 | **55.6 s / 248** | -33% | -34% | 42.8 -> **41.2** |
+| z208 | 2560 | 289.5 s / 858 | **222.8 s / 706** | -23% | -18% | 77.1 -> **73.3** |
+| z256 | 2413 | 339.2 s / 1165 | **254.8 s / 695** | -25% | -40% | 76.9 -> **75.1** |
+| z304 | 3167 | 500.4 s / 1488 | **393.6 s / 1095** | -21% | -26% | 95.3 -> **91.7** |
+| z400 | 2238 | 166.9 s / 591 | **133.3 s / 452** | -20% | -24% | 79.1 -> **76.2** |
+| z496 | 2052 | 421.1 s / 1378 | **370.5 s / 1023** | -12% | -26% | 85.7 -> **79.8** |
+| **total** | | **2273.7 s / 7541** | **1830.6 s / 5508** | **-19%** | **-27%** | |
+
+**9 of 9 wall wins, 9 of 9 iteration wins, and a SMALLER L2 move on every single
+slice** — the speed is not bought with fidelity. The mechanism is visible in the
+iteration counts: the ratio test throws away 92 QP directions on raw z16 and pays
+a whole extra QP solve to re-derive each one, while the exact minimiser never
+rejects — every solved QP produces a step.
+
+
 ### Added — windowed engine: coarse-to-fine warm start (on by default)
 
 - **`coarse_to_fine=True` / `coarse_factor=4`** (default factor raised 2 -> 4: 182 s / L2 280 vs 189 s / L2 321 on raw z16) on `windowed_correct` and

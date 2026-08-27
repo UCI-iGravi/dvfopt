@@ -84,6 +84,7 @@ class _InnerOpts:
     ip_after_admm_iters: int = 800
     tr_delta: float = 2.0
     tr_max: float = 16.0
+    step_rule: str = 'exact_ls'
 
 
 def _objective_fns(flat0, objective):
@@ -370,6 +371,7 @@ def windowed_correct(
     ip_after_admm_iters=800,
     tr_delta=2.0,
     tr_max=16.0,
+    step_rule='exact_ls',
     coarse_to_fine=True,
     coarse_factor=4,
     time_budget_s=None,
@@ -446,6 +448,24 @@ def windowed_correct(
     fidelity (raw B0039 z16: 267 s / 1022 SQP iterations / L2 move 344 vs 300 s
     / 1320 / L2 325). ``tr_max`` never binds on the measured B0039 windows.
 
+    ``step_rule`` (default ``'exact_ls'``) picks how the ``isqp`` inner turns a
+    QP step into an iterate. ``'exact_ls'`` replaces the trust-region ratio
+    test's accept/reject with the EXACT minimiser of the merit along the step —
+    free, because the 2D rows are exactly quadratic along a line and the model's
+    quadratic term reuses the ``cons(x + d)`` the ratio test already evaluates
+    (see :func:`~dvfopt.core.primitives.isqp.isqp_solve`). Measured on raw B0039
+    z16: 200 s / 563 SQP iterations vs 244 s / 780 at ``'tr'`` (-18% / -28%),
+    0 folds, damage 0, smaller move (L2 268 vs 280); across a 9-real-slice
+    sample, 9/9 wall AND iteration wins (-19% wall / -27% iterations in total)
+    with a smaller L2 move on every slice. It applies on the no-trust-region
+    fallback rung too — scoping it out of that rung was measured WORSE. One
+    documented crop regression: ``z0_sliver`` 351 s vs 77 s, a case built
+    entirely at OSQP's noise floor (0 simplex folds to begin with, ~1e-4
+    violations) where four mathematically equivalent framings of the same method
+    span 139-287 s — a chaos detector, with no counterpart on real slices.
+    ``'tr'`` restores the ratio-test path byte for byte. ``'exact_ls'`` is
+    2D-only and rejected at this entry otherwise.
+
     ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
     same problem is solved on a ``coarse_factor`` x coarsened field and the
     prolongated correction seeds the fine solve, so the fine windows start near a
@@ -479,6 +499,13 @@ def windowed_correct(
     verbosity contract (the engine itself emits no progress lines; warnings
     surface through the ``dvfopt`` logger regardless).
     """
+    if step_rule not in ('tr', 'exact_ls'):
+        raise ValueError(f"unknown step_rule {step_rule!r}; valid: 'tr', 'exact_ls'")
+    if step_rule == 'exact_ls' and np.asarray(phi_in).ndim != 3:
+        # The exact line model needs rows that are BILINEAR in (dy, dx) — true of
+        # every 2D family here, false in 3D (a 6-tet volume is trilinear, hence
+        # cubic along a line). Guarded here, at the only caller, not in the driver.
+        raise ValueError("step_rule='exact_ls' requires a 2D (2, H, W) field")
     loc = _locality_of(constraint)
     opts = _InnerOpts(
         no_tr_fallback,
@@ -493,6 +520,7 @@ def windowed_correct(
         ip_after_admm_iters,
         tr_delta,
         tr_max,
+        step_rule,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -904,6 +932,7 @@ def _solve_window(
             ip_after_admm_iters=opts.ip_after_admm_iters,
             tr_delta=opts.tr_delta,
             tr_max=opts.tr_max,
+            step_rule=opts.step_rule,
         )
         no_tr = False
         if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
@@ -926,6 +955,7 @@ def _solve_window(
                 ip_after_admm_iters=opts.ip_after_admm_iters,
                 tr_delta=opts.tr_delta,
                 tr_max=opts.tr_max,
+                step_rule=opts.step_rule,
             )
             nit += nit2
             if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better
