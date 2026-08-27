@@ -8,7 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added — windowed engine: coarse-to-fine warm start (on by default)
 
-- **`coarse_to_fine=True` / `coarse_factor=2`** on `windowed_correct` and
+- **`coarse_to_fine=True` / `coarse_factor=4`** (default factor raised 2 -> 4: 182 s / L2 280 vs 189 s / L2 321 on raw z16) on `windowed_correct` and
   `WindowedWrapperStrategy` / `ISQPWindowedStrategy`. Before the round loop the
   engine now solves the SAME problem on a `coarse_factor`x box-averaged field
   (displacements rescaled into coarse pixel units), bilinearly prolongates the

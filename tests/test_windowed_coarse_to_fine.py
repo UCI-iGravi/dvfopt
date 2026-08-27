@@ -251,4 +251,4 @@ def test_strategy_forwards_new_knobs(monkeypatch):
 
     d = ISQPWindowedStrategy()
     assert (d.tr_delta, d.tr_max) == (2.0, 16.0)
-    assert (d.coarse_to_fine, d.coarse_factor) == (True, 2)
+    assert (d.coarse_to_fine, d.coarse_factor) == (True, 4)
