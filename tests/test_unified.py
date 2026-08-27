@@ -12,11 +12,18 @@ DVFopt is a thin per-slice orchestrator on top of the parameterized
 * end-to-end barrier reducing folds.
 """
 
+import importlib.util
+
 import numpy as np
 import pytest
 
 from dvfopt import DVFopt, DVFoptConfig
-from dvfopt.constraints import JdetConstraint2D, SimplexConstraint2D
+from dvfopt.constraints import (
+    JdetConstraint2D,
+    SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
+    SimplexConstraint2DFullCoverage,
+)
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d
 from dvfopt.solver import auto_strategy
 
@@ -93,14 +100,18 @@ class TestAutoStrategy:
 
     def test_extreme_picks_wallbreaker(self):
         # Wallbreaker routing in the extreme tier now applies to non-l1,
-        # non-l2 objectives (l1 routes to 'slp'; l2 to 'm10' below).
-        c_small = SimplexConstraint2D((20, 20))
+        # non-l2 objectives (l1 routes to 'slp'; l2 to 'm10' below) on a
+        # constraint the windowed engine cannot serve — the full-coverage
+        # family has no locality entry, so 'none' does NOT route to
+        # isqp_windowed there (unlike 'simplex_standard', see
+        # TestAutoStrategyWindowedRouting).
+        c_small = SimplexConstraint2DFullCoverage((20, 20))
         # Smaller slice (<20K corners) still picks m14 instead of m14_schwarz.
         assert (
             auto_strategy(c_small, init_n_neg=6000, init_min=-15, objective_label='none') == "m14"
         )
         # Large slice (>20K corners) routes to m14_schwarz.
-        c_big = SimplexConstraint2D((320, 456))
+        c_big = SimplexConstraint2DFullCoverage((320, 456))
         assert (
             auto_strategy(c_big, init_n_neg=6000, init_min=-15, objective_label='none')
             == "m14_schwarz"
@@ -184,6 +195,100 @@ class TestAutoStrategySLPRouting:
             == _jdet_mild_label()
         )
         assert auto_strategy(c, init_n_neg=5000, init_min=-1.5, objective_label='l1') == 'barrier'
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec('osqp') is None, reason='windowed isqp routing needs osqp'
+)
+class TestAutoStrategyWindowedRouting:
+    """The measured robust 2D recipe: bilinear rows on the windowed engine.
+
+    ``constraint='bilinear'`` + ``strategy='isqp_windowed'`` +
+    ``objective='none'`` clears raw B0039 slices to 0 simplex folds where
+    the 2-triangle-row methods stall on twisted cells, so ``auto`` routes
+    there — for bilinear at any objective, and for the standard simplex
+    rows only under ``'none'`` (an L1/L2 anchor is a different fidelity
+    request and keeps its own route).
+    """
+
+    TIERS = TestAutoStrategySLPRouting.TIERS
+
+    @pytest.mark.parametrize('n_neg,init_min', TIERS)
+    @pytest.mark.parametrize('objective', ['l1', 'l2', 'none'])
+    def test_bilinear_routes_to_isqp_windowed_every_tier(self, n_neg, init_min, objective):
+        c = SimplexConstraint2DBilinear((20, 20))
+        assert (
+            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label=objective)
+            == 'isqp_windowed'
+        )
+
+    @pytest.mark.parametrize('n_neg,init_min', TIERS)
+    def test_simplex_standard_none_routes_to_isqp_windowed_every_tier(self, n_neg, init_min):
+        c = SimplexConstraint2D((20, 20))
+        assert (
+            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='none')
+            == 'isqp_windowed'
+        )
+
+    @pytest.mark.parametrize('n_neg,init_min', TIERS)
+    def test_full_coverage_none_keeps_legacy_tiering(self, n_neg, init_min):
+        """The full-coverage family has no windowed-engine locality entry."""
+        c = SimplexConstraint2DFullCoverage((20, 20))
+        assert (
+            auto_strategy(c, init_n_neg=n_neg, init_min=init_min, objective_label='none')
+            != 'isqp_windowed'
+        )
+
+    def test_l1_keeps_slp_and_logs_the_recipe_hint(self):
+        """L1 fidelity semantics are never swapped out — but the recipe is hinted."""
+        import io
+        import logging
+
+        from dvfopt._logging import logger
+        from dvfopt.solver import _log_bilinear_recipe_hint
+
+        _log_bilinear_recipe_hint.cache_clear()
+        buf = io.StringIO()
+        handler = logging.StreamHandler(buf)
+        prev_level = logger.level
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        try:
+            c = SimplexConstraint2D((20, 20))
+            assert auto_strategy(c, init_n_neg=6000, init_min=-15, objective_label='l1') == 'slp'
+            assert 'bilinear' in buf.getvalue() and 'isqp_windowed' in buf.getvalue()
+            # Once per process, not once per slice.
+            buf.truncate(0), buf.seek(0)
+            auto_strategy(c, init_n_neg=6000, init_min=-15, objective_label='l1')
+            assert buf.getvalue() == ''
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(prev_level)
+
+
+class TestAutoStrategyWindowedRoutingWithoutOSQP:
+    """Without ``osqp`` every windowed route falls back to the tier heuristic."""
+
+    @pytest.fixture
+    def no_osqp(self, monkeypatch):
+        real = importlib.util.find_spec
+        monkeypatch.setattr(
+            importlib.util, 'find_spec', lambda n, *a: None if n == 'osqp' else real(n, *a)
+        )
+
+    @pytest.mark.parametrize('label', ['bilinear', 'simplex_standard'])
+    @pytest.mark.parametrize('objective', ['l1', 'l2', 'none'])
+    def test_falls_back_to_an_accepting_strategy(self, no_osqp, label, objective):
+        from dvfopt import Solver
+        from dvfopt.constraints import make_constraint
+        from dvfopt.objectives import make_objective
+        from dvfopt.strategies import make_strategy
+
+        c = make_constraint(label, (20, 20))
+        picked = auto_strategy(c, init_n_neg=6000, init_min=-15, objective_label=objective)
+        assert picked != 'isqp_windowed'
+        # Whatever it picks must still compose.
+        Solver(constraint=c, objective=make_objective(objective), strategy=make_strategy(picked))
 
 
 class TestConfigValidation:

@@ -36,14 +36,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Any, Optional, Union
 
 import numpy as np
 
 from dvfopt._defaults import DEFAULT_PARAMS
+from dvfopt._logging import log_info
 from dvfopt.constraints import (
     Constraint,
     SimplexConstraint2D,
+    SimplexConstraint2DBilinear,
     SimplexConstraint2DFullCoverage,
     make_constraint,
 )
@@ -420,7 +423,8 @@ def correct_dvf(
 
     With ``strategy='auto'``, picks a strategy based on the constraint
     family, objective, and initial fold density (see
-    :func:`auto_strategy`; simplex (2D) + L1 always routes to ``'slp'``).
+    :func:`auto_strategy` for the routing table; simplex (2D) + L1 always
+    routes to ``'slp'``, ``'bilinear'`` always to ``'isqp_windowed'``).
 
     .. note::
         The default objective here is ``'l1'``, matching
@@ -452,10 +456,62 @@ def correct_dvf(
     ).fit(phi_in, verbose=verbose, record_history=record_history)
 
 
+def _isqp_windowed_ok(constraint: Constraint) -> bool:
+    """Can the windowed elastic-QP engine serve *constraint* on this install?
+
+    Needs a locality entry (2D only — see
+    :data:`dvfopt.core.windowed.LOCALITY`, mirrored by
+    ``ISQPWindowedStrategy.accepts_constraints``) AND ``osqp`` importable.
+    ``SimplexConstraint2DFullCoverage`` (label ``'simplex'``) has no
+    locality entry, so only ``'simplex_standard'`` routes there.
+    """
+    import importlib.util
+
+    from dvfopt.strategies.windowed import ISQPWindowedStrategy
+
+    return (
+        isinstance(constraint, ISQPWindowedStrategy.accepts_constraints)
+        and importlib.util.find_spec('osqp') is not None
+    )
+
+
+@cache
+def _log_bilinear_recipe_hint() -> None:
+    """One-line, once-per-process hint alongside the simplex+L1 -> ``slp`` route."""
+    log_info(
+        "auto: simplex + l1 -> 'slp' (the L1-optimal route, kept). The measured "
+        "robust 0-fold recipe is constraint='bilinear', strategy='isqp_windowed', "
+        "objective='none' - different fidelity semantics (no L1 anchor), so it is "
+        'not selected for you.'
+    )
+
+
 def auto_strategy(
     constraint: Constraint, init_n_neg: int, init_min: float, objective_label: str = 'l1'
 ) -> str:
     """Pick a strategy label given initial fold stats and constraint family.
+
+    2D routing table (every ``isqp_windowed`` row needs ``osqp``
+    installed; without it the row falls through to the tiering below):
+
+    ====================  ==========  ==========================================
+    constraint            objective   strategy
+    ====================  ==========  ==========================================
+    ``bilinear``          any         ``isqp_windowed`` (every fold tier)
+    ``simplex_standard``  ``none``    ``isqp_windowed`` (every fold tier)
+    ``simplex*``          ``l1``      ``slp`` (every fold tier)
+    ``simplex*``          ``l2``      density-tiered (see below)
+    ``jdet`` / ``finite`` any         ``barrier`` dense, ``isqp_windowed`` mild
+    ====================  ==========  ==========================================
+
+    ``bilinear`` + ``isqp_windowed`` + ``none`` is the measured robust
+    recipe (see ``docs/recipe-2d-zero-folds.md``): on B0039 it reaches 0
+    simplex folds from the RAW field on every slice tested (z16: 3890
+    folds -> 0), where the 2-triangle-row methods stall on twisted cells.
+    It is auto-selected for ``bilinear`` at any objective the engine
+    accepts, and for ``simplex_standard`` only under ``objective='none'``
+    — an L1/L2 anchor is a different fidelity request, never silently
+    swapped out. 3D routing is untouched by these rules.
 
     For the 2-triangle constraint:
 
@@ -465,7 +521,11 @@ def auto_strategy(
       the m14/m10 wallbreakers on wall time at equal-or-better L1; it
       auto-routes small vs large slices internally via
       ``cluster_pixel_threshold``, so no fold-density tiering is needed.
-    * **Other objectives (l2, none, …)** — legacy tiering:
+      A one-line hint about the ``bilinear`` recipe is logged (once per
+      process) on the ``dvfopt`` logger.
+    * **``none`` objective** — ``isqp_windowed`` at every fold tier when
+      the engine can serve the constraint; otherwise the legacy tiering.
+    * **Other objectives (l2, …)** — legacy tiering:
 
       * **Extreme** (``n_neg > 5000`` or ``init_min < -10``) —
         wallbreakers. ``m10`` for L2 (its ALM phase is L2-optimal);
@@ -486,19 +546,29 @@ def auto_strategy(
     ``n_neg > 500`` or ``init_min < -1``; the mild tier below that
     prefers ``isqp_windowed`` (the no-damage windowed elastic-QP
     engine) when ``osqp`` is installed and the constraint is 2D, else
-    ``slsqp_windowed``. The other 2D families that reach this tier
-    (``'bilinear'``, ``'finite'``) tier the same way; without ``osqp``
-    they fall back to ``slsqp_windowed`` only if it accepts them
-    (``'finite'`` has no windowed-SLSQP mode and keeps ``barrier``).
+    ``slsqp_windowed``. ``'finite'`` tiers the same way; without ``osqp``
+    it keeps ``barrier`` (there is no windowed-SLSQP mode for it).
+    ``'bilinear'`` no longer reaches this tail — it is routed above.
     """
     from dvfopt.constraints import SimplexConstraint3D
 
+    # The bilinear cell-min rows are the measured robust 2D recipe — route
+    # them to the windowed engine at every fold tier, for every objective
+    # the engine accepts.
+    if isinstance(constraint, SimplexConstraint2DBilinear) and _isqp_windowed_ok(constraint):
+        return 'isqp_windowed'
     is_tri = isinstance(constraint, (SimplexConstraint2D, SimplexConstraint2DFullCoverage))
     if is_tri:
         if objective_label == 'l1':
             # The SLP champion is the validated L1 regime at every fold
-            # tier; it handles small/large routing itself.
+            # tier; it handles small/large routing itself. Don't silently
+            # trade its fidelity semantics for the bilinear recipe — hint.
+            _log_bilinear_recipe_hint()
             return 'slp'
+        if objective_label == 'none' and _isqp_windowed_ok(constraint):
+            # Pure feasibility: the windowed engine clears raw slices the
+            # 2-triangle-row wallbreakers stall on, at damage 0.
+            return 'isqp_windowed'
         if init_n_neg > 5000 or init_min < -10.0:
             if objective_label == 'l2':
                 return 'm10'

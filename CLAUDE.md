@@ -124,7 +124,17 @@ The **simplex metric** (labels `'simplex'` / `'simplex_standard'` / `'simplex_3d
 
 `accepts_constraints`, `accepts_objectives` and `supports_3d` class attrs declare compatibility (`None` = accept anything); `Solver.__init__` checks all three at construction and raises `IncompatibleConstraintError` / `IncompatibleObjectiveError` (both `dvfopt.exceptions`, both `TypeError` subclasses) rather than failing mid-solve. `SLPStrategy` declares `accepts_objectives = (L1Objective, NoneObjective)` — it is an L1 method and cannot honour an L2 anchor. `BarrierStrategy(objective_override=...)` lets a composed pipeline pin the barrier leg's objective independently of the Solver's.
 
-**Solver** ([dvfopt/solver.py](dvfopt/solver.py)) — composes the three; provides `from_spec(constraint='simplex', ...)` string-based construction and one-shot `correct_dvf(phi, ...)`. `auto_strategy(constraint, init_n_neg, init_min, objective_label)` encodes the strategy-selection heuristic: the simplex (2D) constraint family with the L1 objective auto-routes to `'slp'` (the champion) at every fold tier; other regimes keep the density-tiered heuristic. simplex (3D) 3D tiers like 2D: extremes (n_neg > 5000 or min < -10) route to the 3D wallbreakers (`m10_3d` for L2, `m14_schwarz_3d` on >200K-voxel volumes, else `m14_3d`); everything else keeps `barrier`. The Jdet mild tier prefers `'isqp_windowed'` when `osqp` is installed (2D only), else `'slsqp_windowed'`.
+**Solver** ([dvfopt/solver.py](dvfopt/solver.py)) — composes the three; provides `from_spec(constraint='simplex', ...)` string-based construction and one-shot `correct_dvf(phi, ...)`. `auto_strategy(constraint, init_n_neg, init_min, objective_label)` encodes the strategy-selection heuristic. **2D routing table** (every `isqp_windowed` row needs `osqp`; without it the row falls through to the tier heuristic):
+
+| constraint | objective | strategy |
+|---|---|---|
+| `bilinear` | any | `isqp_windowed`, every fold tier |
+| `simplex_standard` | `none` | `isqp_windowed`, every fold tier |
+| `simplex*` | `l1` | `slp` (the L1 champion), every fold tier |
+| `simplex*` | `l2` | density-tiered: `slsqp` mild → `barrier` → `m10` extreme |
+| `jdet` / `finite` | any | `barrier` dense, `isqp_windowed` (else `slsqp_windowed`) mild |
+
+`bilinear` + `isqp_windowed` + `none` is the measured robust 0-fold recipe — see [docs/recipe-2d-zero-folds.md](docs/recipe-2d-zero-folds.md). It is never silently substituted for an L1/L2 request (a different fidelity ask); `simplex`+`l1` keeps `'slp'` and logs a one-line hint. Note `'simplex'` = full-coverage has no windowed-engine locality entry, so only `'simplex_standard'` takes the `none` row. 3D routing is untouched: simplex (3D) tiers like 2D — extremes (n_neg > 5000 or min < -10) route to the 3D wallbreakers (`m10_3d` for L2, `m14_schwarz_3d` on >200K-voxel volumes, else `m14_3d`); everything else keeps `barrier`.
 
 **SolveInfo** — every `Strategy.solve` normalises its return through `_build_solve_info`, so callers always get `(phi_out, SolveInfo)` with `.phases` / `.total_iter` / `.extras`. With `record_history=True` the SLSQP strategies also lift each run's per-major-iteration trace (from the traced driver) to the stable path `SolveInfo.extras['slsqp_trace']` — a list of `{'phase': ..., 'iters': [...]}` — so the GUI and reports never reach into per-phase `PhaseInfo.extras`.
 

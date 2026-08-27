@@ -306,9 +306,25 @@ def build_parser() -> argparse.ArgumentParser:
         'slices: per-slice 2D sweep over a (3,D,H,W) volume; '
         '25d: marching fold prevention (needs dz==0); 3d: full 3D fold repair',
     )
-    pc.add_argument('--constraint', default='simplex')
-    pc.add_argument('--objective', default='l1')
-    pc.add_argument('--strategy', default='auto')
+    pc.add_argument(
+        '--constraint',
+        default='simplex',
+        help="simplex | simplex_standard | bilinear | finite | jdet | jdet_3d | "
+        'simplex_3d (default: simplex)',
+    )
+    pc.add_argument('--objective', default='l1', help='l1 | l2 | none (default: l1)')
+    pc.add_argument(
+        '--strategy',
+        default='auto',
+        help="a strategy label, or 'auto' (default). auto routing, 2D: bilinear -> "
+        "isqp_windowed at any objective; simplex_standard + 'none' -> isqp_windowed; "
+        "simplex* + 'l1' -> slp; simplex* + 'l2' -> density-tiered "
+        '(slsqp/barrier/m10); jdet and finite -> barrier when dense, isqp_windowed '
+        'when mild. The isqp_windowed routes need osqp installed and fall back to '
+        'the tier heuristic without it; 3D routing is unchanged. The measured robust '
+        "0-fold 2D recipe is --constraint bilinear --strategy isqp_windowed "
+        '--objective none (docs/recipe-2d-zero-folds.md)',
+    )
     pc.add_argument(
         '--param',
         action='append',
