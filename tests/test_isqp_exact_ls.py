@@ -94,6 +94,7 @@ def test_tr_never_touches_the_exact_machinery(monkeypatch):
 
 
 def test_unknown_step_rule_raises():
+    pytest.importorskip('osqp')  # isqp_solve checks the optional osqp dep before validating arguments
     with pytest.raises(ValueError, match="step_rule"):
         isqp_mod.isqp_solve(np.zeros(2), None, None, None, 1, step_rule="nope")
     with pytest.raises(ValueError, match="step_rule"):
