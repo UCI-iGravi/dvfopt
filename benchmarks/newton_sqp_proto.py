@@ -272,6 +272,7 @@ VARIANTS = {
     "newton-psd-cap0.1": dict(newton=True, convexify="psd_row", lam_cap=0.1),
     "newton-psd-cap3": dict(newton=True, convexify="psd_row", lam_cap=3.0),
     "psd-cap1-nocoupling": dict(newton=True, convexify="psd_row", lam_cap=1.0, coupling=0.0),
+    "psd-cap3-nocoupling": dict(newton=True, convexify="psd_row", lam_cap=3.0, coupling=0.0),
     "psd-cap1-2xcoupling": dict(newton=True, convexify="psd_row", lam_cap=1.0, coupling=2.0),
 }
 

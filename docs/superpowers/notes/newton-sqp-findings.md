@@ -161,7 +161,9 @@ retry cascade on top. `maxiter=150`. This is where step count is actually decide
 |---|---|---|---|---|---|---|---|
 | baseline | 108 | no | 0.0270 | tr-collapse | 27.3 | 440 | — |
 | newton | 150 | no | **0.1910** | maxiter | 29.7 | 320 | **11920** |
+| newton-damped (lam×0.5) | 150 | no | 0.2621 | maxiter | 34.8 | 392 | 5960 |
 | newton-psd | 150 | no | 0.0463 | maxiter | 37.4 | 413 | — |
+| newton-psd-damped | 150 | no | 0.0364 | maxiter | 36.8 | 412 | — |
 | newton-psd-cap1 | 101 | no | 0.0265 | tr-collapse | 28.0 | 460 | — |
 | newton-psd-cap3 | 83 | **yes** | 0.0 | model-flat | 24.2 | 510 | — |
 | psd-cap1-nocoupling | 96 | no | 0.0343 | tr-collapse | 23.3 | 397 | — |
@@ -173,7 +175,9 @@ retry cascade on top. `maxiter=150`. This is where step count is actually decide
 |---|---|---|---|---|
 | baseline | 27 | yes | 0.4 | 548 |
 | newton | 150 | **no** (viol 0.038) | 1.2 | 171 |
+| newton-damped (lam×0.5) | 110 | yes | 0.9 | 221 |
 | newton-psd | 67 | yes | 0.8 | 412 |
+| newton-psd-damped | 43 | yes | 0.6 | 469 |
 | newton-psd-cap1 | **9** | yes | 0.2 | 1095 |
 | newton-psd-cap3 | 15 | yes | 0.2 | 725 |
 | psd-cap1-nocoupling | 15 | yes | 0.2 | 346 |
@@ -185,7 +189,9 @@ retry cascade on top. `maxiter=150`. This is where step count is actually decide
 |---|---|---|---|---|---|---|
 | baseline | 115 | 0.0243 | tr-collapse | 14.6 | 708 | — |
 | newton | 150 | **11.6151** | maxiter | 5.2 | 91 | **11920** |
+| newton-damped (lam×0.5) | 150 | **8.4679** | maxiter | 6.6 | 149 | 5960 |
 | newton-psd | 113 | 0.0112 | tr-collapse | 14.2 | 672 | — |
+| newton-psd-damped | 83 | 0.0112 | model-flat | 12.5 | 875 | — |
 | newton-psd-cap0.1 | 113 | 0.0111 | model-flat | 18.1 | 1019 | — |
 | newton-psd-cap1 | 75 | 0.0112 | model-flat | 12.1 | 988 | — |
 | newton-psd-cap3 | 63 | 0.0111 | model-flat | 10.7 | 1092 | — |
@@ -197,9 +203,36 @@ retry cascade on top. `maxiter=150`. This is where step count is actually decide
 TR-acceptance regression case. Every variant freezes at the sliver (0.0114) in 8–13
 iterations; the no-TR retry is what clears it. No discrimination here.
 
-### 3b. Full engine
+### 3b. Full engine (`windowed_correct`, stock knobs, `maxiter=600`)
 
-_(filled in below)_
+The uncapped Newton variants could not be measured here at all. `newton` on
+`z16_twist` (baseline 29.6 s) was **aborted after ~35 minutes without finishing**, at
+`maxiter=150` — a >70x blowup. The mechanism is the engine's escalation ladder: a
+window that never converges triggers the no-TR retry (`fallback_maxiter=200`), then the
+backend retry (a whole second attempt on plain OSQP), then grow-on-failure twice, then
+another round, then the mop — so a per-window regression is multiplied by ~10 before it
+ever reaches the report. That amplification is itself a reason not to ship a variant
+that regresses per-window convergence.
+
+Only the variants that converge per-window are measurable end to end:
+
+| case | variant | wall s | SQP iters | ADMM iters | ADMM/QP | simplex folds | bilinear folds | damage | L2 move |
+|---|---|---|---|---|---|---|---|---|---|
+| z16_twist | baseline | 30.2 | 128 | 45250 | 411 | 0 | 0 | 0 | 125.7 |
+| z16_twist | newton-psd-cap3 | **24.7** | **84** | 36175 | 510 | 0 | 0 | 0 | 120.4 |
+| z16_twist | ls-salvage | **20.5** | 86 | 33300 | 438 | 0 | 0 | 0 | 113.3 |
+| z0_cluster | baseline | 45.0 | 387 | 211675 | 630 | 0 | 1 | 0 | 542.7 |
+| z0_cluster | newton-psd-cap3 | 42.6 | **301** | 198200 | 783 | 0 | 1 | 0 | 547.2 |
+| z0_cluster | ls-salvage | 44.7 | 393 | 205025 | 598 | 0 | 1 | 0 | 545.4 |
+| z0_sliver | baseline | **59.4** | **540** | 208650 | 415 | 0 | 0 | 0 | 25.3 |
+| z0_sliver | newton-psd-cap3 | 131.4 | 1054 | 427300 | 421 | 0 | 0 | 0 | 26.6 |
+| z0_sliver | ls-salvage | 120.9 | 859 | 394250 | 482 | 0 | 0 | 0 | 25.1 |
+
+Every variant reaches the same quality everywhere (0 simplex folds, damage 0), so the
+only axis is cost — and on that axis **neither candidate is consistent**:
+`newton-psd-cap3` is -18% / -5% / **+121%** wall across the three crops, `ls-salvage`
+-32% / -1% / **+104%**. A win on two cases and a 2x regression on the third is not a
+promotable change; it is a knob that would have to be tuned per case.
 
 ### 3c. The ADMM-cost side effect, measured
 
@@ -215,6 +248,74 @@ QUALITY, never in the QP solve.
 
 ---
 
-## 4. Verdict and what to do instead
+## 4. Verdict
 
-_(filled in below)_
+**DO NOT PROMOTE the Newton-type SQP.**
+
+1. **The true Lagrangian Hessian is unusable here, and it is not an implementation
+   problem.** With raw multipliers the Gershgorin shift is `tau ~ 1.2e4` against
+   `hess_diag = 2.0` — three to four orders of magnitude of artificial curvature — and
+   the iterate stops moving: `max_viol` goes *up* (0.027 → 0.191 on z16_twist w0;
+   0.024 → 11.6 on z0_cluster). Halving the multipliers (`lam x 0.5`) halves `tau` and
+   changes nothing qualitatively (0.262 and 8.47). The per-row PSD projection avoids the
+   global shift and is the better of the two, but still never beats the baseline with
+   raw multipliers (150 vs 108 iterations on z16 w0, 67 vs 27 on z16 w1).
+
+2. **The multipliers being used are not multipliers.** With `NoneObjective` the KKT
+   multipliers at any feasible point are exactly zero (`g = 0` so `J'mu = 0`), so
+   `Hess(L) = H_obj` and there is nothing to add. Away from feasibility, a row with a
+   positive elastic slack has its dual pinned at exactly `-rho = -1e3` by complementarity
+   with the slack cost — a big-M penalty weight. The Newton term is therefore modelling
+   the *penalty* curvature, which is genuinely indefinite (the exact merit
+   `f + rho*sum max(0, -c)` has Hessian `-rho*Hc` on violated rows, eigenvalues ±870), and
+   any PSD model of it must add ~that much positive curvature back. There is no
+   convexification that escapes this: each `Hc_i` has a symmetric ± spectrum, so the
+   shift required is always ~8-10x the coupling being modelled.
+
+3. **The only configuration that ever wins is a capped heuristic; its win is not
+   curvature, and it is not consistent.** `newton-psd-cap3` (multipliers clipped to
+   `|lam| <= 3`) cuts iterations on two crops (-34% z16_twist, -22% z0_cluster) but is
+   **2.2x slower on z0_sliver** (131.4 s / 1054 iterations vs 59.4 s / 540). And where it
+   does win, the control `psd-cap1-nocoupling` — same per-row diagonal blocks, x–y
+   coupling zeroed, i.e. **all of the regularization and none of the second-order
+   information** — matches or beats it per-window (56 vs 75 iterations on z0_cluster;
+   96 vs 101 on z16 w0). What helps is a local, violation-weighted Tikhonov shift on the
+   QP diagonal, not the Lagrangian Hessian. Shipping ~200 lines of exact-Hessian
+   machinery to obtain an inconsistent regularizer that a one-line diagonal bump
+   reproduces is not a trade worth making.
+
+4. **Engine-level amplification makes a per-window regression far worse than it looks.**
+   `newton` on `z16_twist` never finished in 35 minutes against a 29.6 s baseline,
+   because the escalation ladder (no-TR retry → backend retry → grow x2 → extra round →
+   mop) multiplies a non-converging window ~10x. Any candidate for this engine must be
+   validated per-window first; the `--micro` mode added here does that in seconds.
+
+### The one measured side effect the design worried about: it does not happen
+
+Denser `P` costing ADMM iterations was the stated risk. Measured: it does not. `P` gains
+only 6 (gershgorin) or 18 (psd_row) nonzeros per enforced row against a Jacobian block
+that already carries 12, so ADMM iterations per QP are statistically unchanged for
+`psd_row`, and for `gershgorin` they *drop sharply* (91-320/QP vs 411-708 baseline)
+because the huge shift makes each subproblem trivially conditioned. The entire cost is
+step count and step quality.
+
+### What to look at instead
+
+- **`ls-salvage` (measured here, no Hessian, ~5 lines) — promising but NOT ready
+  either.** Today a rejected trust-region direction is discarded and re-derived by a
+  whole extra QP solve. Salvaging it with the existing `_backtrack` before shrinking gave
+  -32% wall / -33% SQP iterations on `z16_twist` end to end with a *smaller* move
+  (L2 113.3 vs 125.7), and -55% iterations on that case's largest window. But it is
+  neutral on `z0_cluster` and **2x slower on `z0_sliver`** — the same inconsistency as
+  the capped-Newton variant, for none of the machinery. If anything on this axis is
+  pursued, this is the cheaper thing to tune (e.g. salvage only when the ratio is
+  positive but below threshold, rather than on every rejection), and it needs the full
+  B0039 sweep, not three crops.
+- **The exact 1-D constraint model.** The same derivation that produced the constant
+  Hessians says each row is *exactly quadratic along any line*:
+  `c_i(x + alpha*d) = c_i + alpha*(Jd)_i + alpha^2 * q_i` with
+  `q_i = sum over the 6 pairs of v * d_yQ * d_xP` — closed form, no evaluation. That makes
+  the merit function along `d` an exact piecewise quadratic with computable breakpoints,
+  so the maximal fold-free step and the exact line minimiser are both available in closed
+  form. That is a much better use of "the constraints are exactly quadratic" than putting
+  the indefinite Hessian into a QP that must then convexify it away. Not prototyped here.
