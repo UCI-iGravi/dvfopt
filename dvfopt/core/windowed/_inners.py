@@ -49,6 +49,7 @@ def solve_window_inner(
     ip_after_admm_iters=800,
     tr_delta=2.0,
     tr_max=16.0,
+    step_rule="tr",
 ):
     """Solve a built window sub-problem with the chosen inner solver, returning
     ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
@@ -68,13 +69,16 @@ def solve_window_inner(
       SLSQP alone).
 
     ``trust_region`` / ``osqp_max_iter`` / ``qp_backend`` / ``ip_cold`` /
-    ``ip_after_admm_iters`` / ``tr_delta`` / ``tr_max`` are ``isqp``-only knobs
+    ``ip_after_admm_iters`` / ``tr_delta`` / ``tr_max`` / ``step_rule`` are
+    ``isqp``-only knobs
     (ignored by the SLSQP legs): the engine's per-window fallback re-solves a failed window with
     ``trust_region=False`` (legacy line search), caps the OSQP ADMM iterations
     per subproblem, and ``qp_backend='hybrid'`` routes the cold / long-tail QPs
     to interior-point Clarabel (see
     :class:`dvfopt.core.primitives.isqp._HybridQP`); ``tr_delta`` / ``tr_max``
-    size the trust region. Their defaults are :func:`isqp_solve`'s own.
+    size the trust region; ``step_rule='exact_ls'`` swaps the trust-region ratio
+    test for the exact merit line minimiser (2D only — the engine guards that).
+    Their defaults are :func:`isqp_solve`'s own.
 
     ``trace`` (optional dict) is threaded to the inner solver — ``isqp`` and
     the traced SLSQP leg both fill it with per-iteration records + an explicit
@@ -99,6 +103,7 @@ def solve_window_inner(
             ip_after_admm_iters=ip_after_admm_iters,
             tr_delta=tr_delta,
             tr_max=tr_max,
+            step_rule=step_rule,
         )
     if inner not in _SLSQP_LABELS + _SLSQP_TC_LABELS:
         raise ValueError(f"unknown inner {inner!r}; valid labels: {list(INNER_LABELS)}")
