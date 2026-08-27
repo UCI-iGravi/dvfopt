@@ -157,7 +157,7 @@ class WindowedWrapperStrategy(Strategy):
     tr_delta: float = 2.0
     tr_max: float = 16.0
     coarse_to_fine: bool = True
-    coarse_factor: int = 2
+    coarse_factor: int = 4
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)

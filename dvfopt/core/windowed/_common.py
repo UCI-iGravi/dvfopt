@@ -371,7 +371,7 @@ def windowed_correct(
     tr_delta=2.0,
     tr_max=16.0,
     coarse_to_fine=True,
-    coarse_factor=2,
+    coarse_factor=4,
     time_budget_s=None,
     verbose=1,
     record_history=False,
