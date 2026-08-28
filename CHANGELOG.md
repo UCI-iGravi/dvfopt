@@ -6,6 +6,24 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: patience rung (bail-free exact-LS continuation) in the window ladder
+
+- **`patience_retry=True`** on `windowed_correct` / `WindowedWrapperStrategy` /
+  `ISQPWindowedStrategy` — the last rung of the per-window escalation ladder
+  before grow-on-failure. A window still *genuinely* folded after the solve, the
+  no-TR retry and the backend retry continues its `exact_ls` iteration from the
+  best iterate with the a\*-collapse bail off (`exact_ls_fallback_steps=0`).
+- **Why.** The 7-brain cohort sweep's residual clusters all sit on prescribed
+  Laplacian correspondences whose displacement disagrees with their neighbours by
+  tens of pixels (8/8 clusters on B0039 z11 within 4 px of a pin vs a 5% base
+  rate; B0304 z181's cluster on five pins 174 px off the slice median). There the
+  bail (default 3) stops the window after a few tiny but *productive* steps and
+  hands it to rungs that cannot continue it (the no-TR line search stalls, the
+  backend retry bails again, grow repeats the pattern). Measured on a crop of the
+  B0304 z181 residual: full ladder → folded at −0.044 after 101 s; the same
+  window with the bail off → +0.011 in **1 s** (L2 move 46 — it walked the pin
+  out). `report.patience_fallbacks` / `WindowRec.patience_fallback` count the rung.
+
 ### Fixed — windowed engine: no-damage accounting and the deadline on budget-cut runs
 
 - **Coarse-to-fine warm start + `time_budget_s` could report `damage > 0`.** The
