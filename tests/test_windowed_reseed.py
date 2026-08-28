@@ -113,6 +113,7 @@ def test_stage_never_runs_on_a_field_the_mop_cleared():
     assert np.array_equal(out_on, out_off)
 
 
+@needs_osqp  # the strategy checks for osqp before calling the (patched) engine
 def test_strategy_forwards_the_reseed_knobs(monkeypatch):
     from dvfopt.strategies.windowed import ISQPWindowedStrategy
 
