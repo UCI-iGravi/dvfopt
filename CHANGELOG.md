@@ -39,6 +39,80 @@ follows [Semantic Versioning](https://semver.org/).
   unchanged and now uniform across all three crops (the discriminator leaves
   bilinear folds — unclearable on `z16_twist`/`z0_cluster`, unseen on the
   simplex-clean `z0_sliver`; the recipe clears both gauges to zero).
+### Added — windowed engine: optional post-feasibility re-anchor stage
+
+- **`reanchor='none'` (DEFAULT — opt-in, no behaviour change)** on
+  `windowed_correct` and `WindowedWrapperStrategy` / `ISQPWindowedStrategy`, with
+  `'l2'` / `'l1'` selecting a new stage that runs after the mop. Knobs:
+  `reanchor_maxiter=60`, `reanchor_sweeps=3`, `reanchor_tile=48`.
+- **Why.** The robust recipe solves with `objective='none'` — pure feasibility,
+  which is what keeps the windowed isqp out of the objective-basin traps a
+  distance anchor pins it in (the measured trap). The price is that the
+  correction is close to the input only *by construction*: nothing in the solve
+  is minimising the departure. Once the field is fold-free there is no fold left
+  to trap the inner, so the fidelity can be bought back separately.
+- **What it does.** Tile the MOVED region (`reanchor_tile` px, overlapping by 8),
+  build each tile with the engine's own `build_subproblem` on the *current*
+  field, swap only the objective triplet for one anchored at the INPUT patch
+  (`'l2'` = `||x - ref||^2`, `'l1'` = the eps-smoothed L1 — both from the
+  engine's existing `_objective_fns`), solve it with the configured inner for
+  `reanchor_maxiter` iterations, and **accept the tile only if every enforced row
+  is still at or above `threshold`** and the tile actually reduced the distance —
+  otherwise revert it. Up to `reanchor_sweeps` sweeps, stopping once a sweep buys
+  < 1% of the L2 move.
+- **The no-damage invariant is unaffected.** Each tile's free set is intersected
+  with the moved mask (new optional `build_subproblem(..., free_extra=)`), so the
+  stage only ever moves pixels the main solve already moved — the moved set can
+  shrink, never grow — and those pixels, plus the rows they influence, are inside
+  `touched` by construction. Damage accounting reads exactly the same. A global
+  re-check after the stage reverts the whole thing and logs a warning if a fold
+  appeared anyway (unreachable given the per-tile verification, but guarded).
+- **Gated on feasibility.** The stage is skipped when the main solve left a fold
+  in the engine's own constraint (`z0_cluster` below is that case: 1 residual
+  bilinear row, so no re-anchor runs) — fidelity is never traded for the
+  certificate.
+- **`report.reanchor_sweeps_run` / `reanchor_tiles` / `reanchor_accepted` /
+  `reanchor_l2_before` / `reanchor_l2_after`** record the stage; `0` sweeps means
+  it did not run.
+
+Measured on this branch (bilinear rows, objective `none`, threshold 0.01,
+maxiter 600, engine defaults, OMP/BLAS/RAYON pinned to 1). **Every row is 0
+simplex folds and damage 0** — the axes that move are the move norms and cost.
+Wall times were taken on a loaded box (another job running) and are indicative
+only; the fidelity columns are the point.
+
+| case | reanchor | wall | L2 move | L1 move | tiles (accepted) | sweeps |
+|---|---|---|---|---|---|---|
+| z16_twist (crop) | none | 143 s | 103.4 | 3559 | — | 0 |
+| z16_twist (crop) | l2 | 306 s | 102.4 | 3476 | 4 (3) | 1 |
+| z16_twist (crop) | **l1** | 677 s | **69.9** | **1565** | 12 (11) | 3 |
+| z0_cluster (crop) | none | 118 s | 535.1 | 17550 | — | 0 |
+| z0_cluster (crop) | l2 | 109 s | 535.1 | 17550 | — | 0 (skipped) |
+| z0_cluster (crop) | l1 | 110 s | 535.1 | 17550 | — | 0 (skipped) |
+| z0_sliver (crop) | none | 865 s | 39.7 | 1227 | — | 0 |
+| z0_sliver (crop) | l2 | 927 s | 38.6 | 1152 | 8 (5) | 2 |
+| z0_sliver (crop) | **l1** | 800 s | **31.8** | **807** | 8 (5) | 2 |
+| B0039 z16 (raw slice) | none | 893 s | 268.4 | 24812 | — | 0 |
+| B0039 z16 (raw slice) | l2 | 2494 s | 255.7 | 22347 | 38 (16) | 2 |
+| B0039 z16 (raw slice) | **l1** | 2804 s | **208.1** | **12876** | 57 (50) | 3 |
+
+`z0_cluster` is the feasibility gate firing: that solve leaves 1 residual
+bilinear row, so the stage does not run and the three rows are identical.
+
+- **Headline:** on the raw B0039 z16 slice `reanchor='l1'` takes the L2 move
+  268.4 -> 208.1 (**-22%**) and the L1 move 24812 -> 12876 (**-48%**) at 0 simplex
+  folds and damage 0, accepting 50 of 57 tiles over 3 sweeps.
+- **`'l1'` is the stronger re-anchor, even measured in L2.** The smoothed-L1
+  Gauss-Newton diagonal floors at 0.1 against a unit gradient, so each SQP
+  iteration proposes a steady sign-directed step the trust region caps at
+  `tr_delta`; the L2 diagonal (2.0) against a `2 d` gradient proposes the whole
+  jump to the reference, which the constraints clip hard. On `z16_twist` the L2
+  leg's first sweep bought only 0.95% and the < 1% rule stopped it, while `'l1'`
+  ran the full 3 sweeps.
+- **It is not free.** The stage roughly doubles-to-triples the wall time of a
+  slice, which is why it is opt-in and off by default: the zero-fold certificate
+  is one concern, fidelity another.
+
 
 ### Added — windowed engine: exact merit line search (now the default step rule)
 
