@@ -88,6 +88,7 @@ class _InnerOpts:
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
     patience_retry: bool = True
+    orientation_delta: object = None  # float -> linear orientation rows in every window (2D)
 
 
 @dataclass(frozen=True)
@@ -152,7 +153,14 @@ def _objective_fns(flat0, objective):
 
 
 def build_subproblem(
-    constraint, phi_dydx, free_box, threshold, objective=None, margin_delta=1e-3, free_extra=None
+    constraint,
+    phi_dydx,
+    free_box,
+    threshold,
+    objective=None,
+    margin_delta=1e-3,
+    free_extra=None,
+    orientation_delta=None,
 ):
     """Build the window sub-problem for a free box ``(fy0, fy1, fx0, fx1)`` (global).
 
@@ -164,6 +172,14 @@ def build_subproblem(
     ``margin_delta`` is enforced ON TOP of ``threshold`` (constraints are driven to
     ``threshold + margin_delta``) so that OSQP's ~1e-5 tolerance landing a hair
     short of the active bound still clears the strict ``< threshold`` fold check.
+
+    ``orientation_delta`` (optional float) appends the LINEAR orientation rows of
+    :func:`_orientation_rows` (deformed grid edges keep a positive projection of at
+    least ``orientation_delta`` on their own direction, plus the anti-diagonal
+    convexity rows) for every edge / cell with a free pixel. A cell on the rotated
+    orientation branch violates them, so with the rows the QP never heads there --
+    and they are linear, hence exact in the QP (no thin-cell linearisation error).
+    2D, ``PhiPack.DY_FIRST`` families only.
 
     ``free_extra`` (optional global ``(H, W)`` bool mask) is INTERSECTED with the
     free box, so a caller can free a subset of it — the re-anchor stage frees only
@@ -204,6 +220,19 @@ def build_subproblem(
     def cons_jac(f):  # sparse (n_enforced, n_vars) — enforced rows only
         return jac_of(f)[enforced_idx]
 
+    n_rows = enforced_idx.size
+    if orientation_delta is not None:
+        a_or, b_or = _orientation_rows(c, free_mask, float(orientation_delta))
+        base_cons, base_jac = cons, cons_jac
+
+        def cons(f, _a=a_or, _b=b_or):
+            return np.concatenate([base_cons(f), _a @ np.asarray(f) + _b])
+
+        def cons_jac(f, _a=a_or):
+            return sparse.vstack([sparse.csr_matrix(base_jac(f)), _a], format='csr')
+
+        n_rows += a_or.shape[0]
+
     obj, grad, hess = _objective_fns(flat0, L2Objective() if objective is None else objective)
     return WindowSub(
         c,
@@ -216,8 +245,53 @@ def build_subproblem(
         free_idx,
         free_mask,
         (py0, py1, px0, px1),
-        enforced_idx.size,
+        n_rows,
     )
+
+
+def _orientation_rows(c, free_mask, delta):
+    """Sparse ``(A, b)`` with ``A @ x + b >= 0`` the linear orientation rows of a patch.
+
+    For every horizontal edge ``1 + dx[i,j+1] - dx[i,j] >= delta``, every vertical edge
+    ``1 + dy[i+1,j] - dy[i,j] >= delta``, and every cell the two anti-diagonal convexity
+    rows ``1 + dx[i,j+1] - dx[i+1,j] >= delta`` / ``1 + dy[i+1,j] - dy[i,j+1] >= delta``
+    (:mod:`dvfopt.jacobian.monotonicity`'s injectivity conditions), restricted to
+    edges / cells with at least one free pixel. ``x`` is the patch flat vector in the
+    ``DY_FIRST`` pack (``[dy, dx]``), asserted on the constraint's ``pack``.
+    """
+    from dvfopt.constraints import PhiPack
+
+    if getattr(c, 'pack', None) != PhiPack.DY_FIRST or free_mask.ndim != 2:
+        raise ValueError('orientation rows need a 2D DY_FIRST (simplex-family) constraint')
+    ph, pw = free_mask.shape
+    n = ph * pw
+    rows, cols, vals, rhs = [], [], [], []
+    r = 0
+
+    def add(ia, ib):  # row: x[ia] - x[ib] + (1 - delta) >= 0
+        nonlocal r
+        rows.extend((r, r))
+        cols.extend((ia, ib))
+        vals.extend((1.0, -1.0))
+        rhs.append(1.0 - delta)
+        r += 1
+
+    fm = free_mask
+    for i in range(ph):
+        for j in range(pw - 1):
+            if fm[i, j] or fm[i, j + 1]:
+                add(n + i * pw + j + 1, n + i * pw + j)
+    for i in range(ph - 1):
+        for j in range(pw):
+            if fm[i, j] or fm[i + 1, j]:
+                add((i + 1) * pw + j, i * pw + j)
+    for i in range(ph - 1):
+        for j in range(pw - 1):
+            if fm[i, j] or fm[i, j + 1] or fm[i + 1, j] or fm[i + 1, j + 1]:
+                add(n + i * pw + j + 1, n + (i + 1) * pw + j)
+                add((i + 1) * pw + j, i * pw + j + 1)
+    a = sparse.csr_matrix((vals, (rows, cols)), shape=(r, 2 * n))
+    return a, np.asarray(rhs)
 
 
 def find_windows(mask, margin, ring):
@@ -432,6 +506,7 @@ def windowed_correct(
     step_rule='exact_ls',
     exact_ls_fallback_steps=3,
     patience_retry=True,
+    orientation_delta=None,
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -612,6 +687,19 @@ def windowed_correct(
     throughout. ``report.reanchor_sweeps_run`` / ``reanchor_tiles`` /
     ``reanchor_accepted`` / ``reanchor_l2_before`` / ``reanchor_l2_after`` record it.
 
+    ``orientation_delta`` (``None`` = off; a float, e.g. ``0.01``) appends the LINEAR
+    orientation rows (:func:`_orientation_rows`: deformed grid edges keep a
+    positive projection of at least ``orientation_delta`` on their own direction,
+    plus the anti-diagonal convexity rows) to every window sub-problem. The residual
+    the ladder plateaus on is a cluster driven onto the ROTATED orientation branch
+    (see ``reseed_rounds``); a rotated cell violates these rows, so with them the QP
+    never heads there -- prevention, where the re-seed is repair -- and they are
+    linear, hence exact in the QP. Measured from raw with the re-seed off: B0304 ext
+    z128 8956 -> 0 folds (3643 s, L2 1405 vs 1395 for the re-seed path), B0032 ext
+    z1 4556 -> 0 in 1066 s / 1 round / 31 windows where the plain engine left 70
+    after 8902 s / 374 windows (L2 1988 vs 1973). 2D simplex-family only; raises
+    on other packs.
+
     ``reseed_rounds`` (default 3, 0 = off) / ``reseed_radius`` (default 2) add a
     **terminal harmonic re-seed stage** for the residual the round loop AND the mop
     plateau on. Such residual clusters are, measured on every non-clean slice of
@@ -669,6 +757,7 @@ def windowed_correct(
         step_rule,
         exact_ls_fallback_steps,
         patience_retry,
+        orientation_delta,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1350,7 +1439,15 @@ def _solve_window(
     the inner knobs (:class:`_InnerOpts`)."""
     H, W = phi.shape[1:]
     opts = _InnerOpts() if opts is None else opts
-    sub = build_subproblem(constraint, phi, box, threshold, objective, margin_delta)
+    sub = build_subproblem(
+        constraint,
+        phi,
+        box,
+        threshold,
+        objective,
+        margin_delta,
+        orientation_delta=opts.orientation_delta,
+    )
     t = time.perf_counter()
 
     def _attempt(backend):
