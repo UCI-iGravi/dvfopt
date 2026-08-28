@@ -8,6 +8,10 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added — windowed engine: patience rung (bail-free exact-LS continuation) in the window ladder
 
+- **Fix (follow-up):** the rung re-solves the window from its ORIGINAL start state
+  with the bail off, not from the failed iterate — measured on the plateaued B0304
+  z181 slice, the continuation from the failed iterate dies by `tr-collapse` at
+  −0.044 while the same solve from the original state clears the pin (0 folds, 37 s).
 - **`patience_retry=True`** on `windowed_correct` / `WindowedWrapperStrategy` /
   `ISQPWindowedStrategy` — the last rung of the per-window escalation ladder
   before grow-on-failure. A window still *genuinely* folded after the solve, the

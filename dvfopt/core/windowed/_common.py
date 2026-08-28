@@ -548,8 +548,9 @@ def windowed_correct(
 
     ``patience_retry`` (default True) is the bail's counterpart, the LAST rung of
     the window escalation ladder before grow: a window still GENUINELY folded
-    after the solve, the no-TR retry and the backend retry continues its exact-LS
-    iteration from the best iterate with the bail OFF. The bail is cheap because
+    after the solve, the no-TR retry and the backend retry is re-solved from its
+    ORIGINAL start state with the bail OFF (the failed iterate is a basin the
+    continuation cannot leave: measured, it dies by ``tr-collapse``). The bail is cheap because
     the rungs above clear most windows it stops; on a window pinned by a
     prescribed correspondence whose displacement disagrees with its neighbours
     by tens of pixels (every residual cluster of the 7-brain cohort sweep sits on
@@ -1284,8 +1285,12 @@ def _solve_window(
         and sub.cons(x).min() < -margin_delta
     ):
         patience_fell_back = True
+        # From the window's ORIGINAL start state, like the backend rung -- not the
+        # failed iterate: measured on the plateaued B0304 z181 slice, the bail-free
+        # continuation from the failed iterate dies by `tr-collapse` at -0.044 while
+        # the same solve from the original state clears the pin (0 folds, 37 s).
         x2, nit2, ok2 = solve_window_inner(
-            replace(sub, flat0=x),
+            sub,
             inner,
             maxiter,
             osqp_max_iter=opts.qp_max_iter,
