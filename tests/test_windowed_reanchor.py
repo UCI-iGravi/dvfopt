@@ -93,6 +93,7 @@ def _feasible_pair(H=32, W=32):
     return ref, phi
 
 
+@needs_osqp
 def test_infeasible_tile_is_reverted(monkeypatch):
     ref, phi = _feasible_pair()
     before = phi.copy()
@@ -117,6 +118,7 @@ def test_infeasible_tile_is_reverted(monkeypatch):
     assert np.array_equal(phi, before)
 
 
+@needs_osqp
 def test_tile_that_buys_nothing_is_reverted(monkeypatch):
     """Feasible but no fidelity gain -> still reverted (the stage is monotone)."""
     ref, phi = _feasible_pair()
@@ -177,6 +179,7 @@ def test_unknown_reanchor_kind_raises():
 # ---------------------------------------------------------------------------
 
 
+@needs_osqp
 def test_strategy_forwards_the_reanchor_knobs(monkeypatch):
     seen = {}
 
