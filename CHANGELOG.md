@@ -6,6 +6,31 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: linear orientation rows (`orientation_delta`, off by default)
+
+- **`orientation_delta=None`** on `windowed_correct` and the windowed strategies. A
+  float (e.g. `0.01`) appends the LINEAR orientation rows to every window
+  sub-problem: each deformed grid edge keeps a positive projection of at least
+  `orientation_delta` on its own direction, plus the anti-diagonal convexity rows
+  (the injectivity conditions of `dvfopt.jacobian.monotonicity`), for every edge /
+  cell with a free pixel. A cell on the rotated orientation branch (the residual
+  the re-seed stage repairs) violates them, so with the rows the QP never heads
+  there — *prevention*, where the re-seed is *repair* — and they are linear, hence
+  exact in the QP (no thin-cell linearisation error). 2D simplex-family
+  (`DY_FIRST`) only; other packs raise.
+- **Measured from raw with the re-seed off:** every plateau slice of the cohort
+  clears — B0304 ext z128 8956 → 0 (200 windows, 3643 s), B0032 ext z1 4556 → 0
+  (1 round / 31 windows / 1066 s where the plain engine left 70 after 8902 s / 374
+  windows), B0039 lap_all z11 4633 → 0 (1 round / 37 windows), B0039 ext z1
+  3957 → 0 (2 rounds / 47 windows); damage 0 throughout.
+- **Why it is not the default:** fidelity. The rows are stricter than "no fold"
+  (they exclude legitimately fold-free cells rotated by more than 90°), and the
+  cost is case-dependent: +0.7 % / +0.8 % / +1.7 % L2 on z128 / B0032 z1 / B0039
+  z1, but **+69 %** on z11 (1566 vs 929) where the re-seed path reaches 0 folds at
+  1017 (+9.5 %). On the small crops the over-constraint shows as +50–70 % L2. So
+  the re-seed stage stays the default repair and the rows are an opt-in speed
+  lever (one round instead of many on the hardest slices).
+
 ### Added — windowed engine: terminal harmonic re-seed stage (default on) — 0 folds on every cohort residual
 
 - **`reseed_rounds=3` / `reseed_radius=2`** on `windowed_correct` and the windowed
