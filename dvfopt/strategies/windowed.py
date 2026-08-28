@@ -206,6 +206,8 @@ class WindowedWrapperStrategy(Strategy):
     reanchor_maxiter: int = 60
     reanchor_sweeps: int = 3
     reanchor_tile: int = 48
+    reseed_rounds: int = 3
+    reseed_radius: int = 2
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -268,6 +270,8 @@ class WindowedWrapperStrategy(Strategy):
             reanchor_maxiter=self.reanchor_maxiter,
             reanchor_sweeps=self.reanchor_sweeps,
             reanchor_tile=self.reanchor_tile,
+            reseed_rounds=self.reseed_rounds,
+            reseed_radius=self.reseed_radius,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
