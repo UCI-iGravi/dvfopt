@@ -6,6 +6,34 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: terminal harmonic re-seed stage (default on) — 0 folds on every cohort residual
+
+- **`reseed_rounds=3` / `reseed_radius=2`** on `windowed_correct` and the windowed
+  strategies. After the round loop and the mop, while folds remain (bounded
+  rounds, deadline-aware), each residual fold cluster's neighbourhood (its cells'
+  corner pixels dilated by `reseed_radius`) is replaced by the discrete-harmonic
+  interpolation of its ring and the engine polishes the re-seeded field
+  (recursively, stage off). `report.reseed_rounds_run` / `reseed_px` /
+  `reseed_folds_before` / `reseed_folds_after` record it.
+- **Why (the deep dive).** Every residual cluster of the 7-brain cohort sweep is a
+  set of cells whose corner images the solver drove onto the ROTATED orientation
+  branch: both edge factors of the bilinear area negative, product positive —
+  locally fold-free, but not joinable to the surrounding un-rotated field, and the
+  seam between the branches is a merit *maximum*. Measured on the plateaued
+  B0304 z181 cluster: every axis-aligned move (splitting the glued pins, shifting
+  the pin column into its neighbours' interval) raises the merit *linearly*, and
+  the per-iteration traces show every rung, step rule and trust radius failing
+  identically (`a*` → 0, `step-tol` / `a-collapse` / `tr-collapse`). A local
+  method cannot cross the seam; the harmonic interpolation of the ring is on the
+  right branch by construction, so re-seeding + polishing crosses it.
+- **Measured on the five plateaued cohort slices** (B0304 z181 / z128, B0039 z11 /
+  ext z1, B0032 ext z1; 7–79 residual cells each, every rung exhausted):
+  **0 simplex and 0 bilinear folds on all five, damage 0, 10–40 s** for the
+  re-seed + polish. From-raw reruns and the crop-pack / raw-z16 byte-identity
+  (the stage never fires on a field the mop cleared) are reported on the PR.
+- The re-seeded pixels are fold neighbourhoods and the polish's window footprints
+  join `touched`, so the no-damage invariant is unchanged.
+
 ### Added — windowed engine: patience rung (bail-free exact-LS continuation) in the window ladder
 
 - **`patience_retry=True`** on `windowed_correct` / `WindowedWrapperStrategy` /
