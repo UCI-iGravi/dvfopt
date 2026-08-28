@@ -6,6 +6,27 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — windowed engine: no-damage accounting and the deadline on budget-cut runs
+
+- **Coarse-to-fine warm start + `time_budget_s` could report `damage > 0`.** The
+  warm start's prolongated correction is masked to the window boxes
+  `find_windows` opens on the input fold mask, but those boxes were not marked
+  *touched* — only windows the fine loop actually solved were. On a run the
+  budget cut before the fine loop reached a warm-started box, a fold the warm
+  start created there was booked as damage to untouched area. It is a residual
+  inside a fold neighbourhood (the warm start IS a move over the engine's own
+  boxes), and is now accounted as `residual_in_window`. Found by the 7-brain
+  cohort sweep (B0304 z181 / z128, both budget-cut: "damage" 3440 / 38);
+  reproduced on raw B0039 z16 under a 40 s budget (damage 3 with the warm
+  start, 0 without). Completed runs are unaffected — every box with a fold left
+  is opened and solved, so the invariant already held there — and the output
+  field is byte-identical either way; only the damage / residual split of a
+  budget-cut report changes.
+- **The giant-region tiler now checks the deadline between tiles.** A giant
+  region is many window solves, not one; the 40 s budget above ran 189 s before
+  the check existed. The tiler returns early (`-1` if no sweep completed) and
+  the engine finishes on the best-so-far field as documented.
+
 ### Changed — `auto_strategy` routes the measured 2D zero-folds recipe (behaviour change)
 
 - **`'bilinear'` -> `'isqp_windowed'` at every fold tier**, for every objective

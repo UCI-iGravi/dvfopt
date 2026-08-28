@@ -99,9 +99,9 @@ def test_warm_start_and_output_leave_healthy_area_byte_identical(monkeypatch):
     real = engine._coarse_warm_start
 
     def spy(*a, **kw):
-        delta, rep_c = real(*a, **kw)
-        warm["delta"] = delta
-        return delta, rep_c
+        res = real(*a, **kw)
+        warm["delta"] = res[0]
+        return res
 
     monkeypatch.setattr(engine, "_coarse_warm_start", spy)
     out, rep = _solve(phi, giant_tile=8)  # 4*8 <= 64 -> the stage runs
@@ -126,7 +126,7 @@ def test_warm_delta_is_confined_to_the_engines_own_window_boxes():
     allow = np.zeros(phi.shape[1:], bool)
     for fy0, fy1, fx0, fx1 in find_windows(pixel_fold_mask(c, phi, 0.01), MARGIN, RING):
         allow[fy0:fy1, fx0:fx1] = True
-    delta, _rep_c = engine._coarse_warm_start(
+    delta, _rep_c, _boxes = engine._coarse_warm_start(
         phi, c, NoneObjective(), 0.01, 2, MARGIN, RING, "isqp", dict(giant_tile=8)
     )
     assert np.any(delta[:, allow] != 0.0)  # it did something
@@ -252,3 +252,65 @@ def test_strategy_forwards_new_knobs(monkeypatch):
     d = ISQPWindowedStrategy()
     assert (d.tr_delta, d.tr_max) == (2.0, 16.0)
     assert (d.coarse_to_fine, d.coarse_factor) == (True, 4)
+
+
+# (d) a run cut by ``time_budget_s`` before the fine loop reaches a warm-started box
+
+
+@needs_osqp
+def test_budget_cut_after_warm_start_books_no_damage(monkeypatch):
+    """The warm start is a move over the engine's own window boxes, so a fold it
+    creates there on a run the budget cuts before the fine loop reaches it is a
+    RESIDUAL inside a fold neighbourhood — never damage to untouched area.
+    (Measured before the fix: raw B0039 z16 under a 40 s budget -> damage 3.)"""
+    phi = _localized_fold()
+    c = SimplexConstraint2D(shape=phi.shape[1:])
+    boxes = find_windows(pixel_fold_mask(c, phi, 0.01), MARGIN, RING)
+
+    def folding_warm_start(
+        phi, constraint, objective, threshold, factor, margin, ring, inner, sub_kw
+    ):
+        # a deliberately bad "correction" confined to the engine's boxes: it folds them
+        delta = np.zeros_like(phi)
+        for fy0, fy1, fx0, fx1 in boxes:
+            delta[0, fy0:fy1, fx0:fx1] = 3.0 * np.arange(fx1 - fx0)[None, :]
+        return delta, engine.SliceReport(), boxes
+
+    monkeypatch.setattr(engine, "_coarse_warm_start", folding_warm_start)
+    out, rep = _solve(phi, giant_tile=8, time_budget_s=0)  # expires before any fine window
+    assert rep.coarse_solve_s >= 0 and rep.rounds == 0  # the stage ran, the fine loop did not
+    assert rep.folds_after > 0  # the bad warm start left folds behind ...
+    assert rep.damage == 0  # ... booked as residual, not damage
+    assert rep.residual_in_window == rep.folds_after
+    outside = np.ones(phi.shape[1:], bool)
+    for fy0, fy1, fx0, fx1 in boxes:
+        outside[fy0:fy1, fx0:fx1] = False
+    assert np.array_equal(out[:, outside], phi[:, outside])
+
+
+def test_giant_tiler_stops_at_the_deadline(monkeypatch):
+    """``_solve_giant_schwarz`` checks ``expired`` between tiles — a giant region is
+    many window solves, not one (measured: a 40 s budget ran 189 s before this)."""
+    calls = []
+    monkeypatch.setattr(engine, "_solve_window", lambda *a, **k: calls.append(a[2]))
+    ticks = iter(range(100))
+    expired = lambda: next(ticks) >= 1  # False for the first tile, True after  # noqa: E731
+    phi = np.zeros((2, 64, 64))
+    c = SimplexConstraint2D(shape=(64, 64))
+    rep = engine.SliceReport()
+    r = engine._solve_giant_schwarz(
+        phi,
+        c,
+        (0, 64, 0, 64),
+        0.01,
+        NoneObjective(),
+        50,
+        RING,
+        rep,
+        1e-3,
+        inner="isqp",
+        opts=engine._InnerOpts(giant_tile=16),
+        expired=expired,
+    )
+    assert len(calls) == 1  # one tile solved, then the deadline stopped the sweep
+    assert r == -1  # no completed sweep to report a residual count for
