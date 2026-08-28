@@ -202,7 +202,12 @@ def test_patience_rung_continues_a_bailed_window(monkeypatch):
     phi = np.asarray(make_random_dvf("03a_10x10_random_seed_42"))[1:, 0].copy()
     c = SimplexConstraint2D(shape=phi.shape[1:])
     kw = dict(
-        constraint=c, objective=NoneObjective(), threshold=0.01, verbose=0, coarse_to_fine=False
+        constraint=c,
+        objective=NoneObjective(),
+        threshold=0.01,
+        verbose=0,
+        coarse_to_fine=False,
+        reseed_rounds=0,  # the stub inner never moves; the terminal re-seed fill would
     )
     _out, rep = windowed_correct(phi, "isqp", **kw)
     assert 0 in seen  # the bail-free continuation was attempted ...
