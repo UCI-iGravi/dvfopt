@@ -358,7 +358,12 @@ def _coarse_warm_start(phi, constraint, objective, threshold, factor, margin, ri
     :func:`find_windows` would open on the original fold mask. The mask is what
     keeps the no-damage invariant: the warm start can only move pixels the engine
     was going to free anyway, so healthy area outside every fold neighbourhood
-    stays byte-identical. Returns ``(delta, coarse_report)``.
+    stays byte-identical. Returns ``(delta, coarse_report, boxes)`` — the caller
+    marks ``boxes`` as touched, because the warm start IS a move over them: on a
+    run cut by ``time_budget_s`` before the fine loop reaches a box, a fold the
+    prolongated correction created there is a residual inside a fold
+    neighbourhood, not damage to untouched area (measured: raw B0039 z16 under a
+    40 s budget booked 3 such folds as damage before this).
 
     Why it pays: the coarse solve is ~1/factor**2 the work and lands the fine
     windows near a solution, so their SQP loops converge in far fewer iterations.
@@ -380,10 +385,11 @@ def _coarse_warm_start(phi, constraint, objective, threshold, factor, margin, ri
     delta = _prolongate(out_c - coarse, phi.shape[1:], factor)
     allow = np.zeros(phi.shape[1:], bool)
     fine_mask = pixel_fold_mask(constraint, phi, threshold)
-    for fy0, fy1, fx0, fx1 in find_windows(fine_mask, margin, ring):
+    boxes = find_windows(fine_mask, margin, ring)
+    for fy0, fy1, fx0, fx1 in boxes:
         allow[fy0:fy1, fx0:fx1] = True
     delta[:, ~allow] = 0.0
-    return delta, rep_c
+    return delta, rep_c, boxes
 
 
 def windowed_correct(
@@ -659,7 +665,7 @@ def windowed_correct(
     # or the field is too small for the coarse problem to be a useful preview.
     if coarse_to_fine and rep.folds_before > 0 and min(H, W) >= 4 * max(giant_tile, coarse_factor):
         t_coarse = time.perf_counter()
-        delta, rep_c = _coarse_warm_start(
+        delta, rep_c, warm_boxes = _coarse_warm_start(
             phi,
             constraint,
             objective,
@@ -681,6 +687,8 @@ def windowed_correct(
             ),
         )
         phi += delta
+        for fy0, fy1, fx0, fx1 in warm_boxes:  # the warm start is a move over these
+            touched[max(0, fy0 - ring) : fy1 + ring, max(0, fx0 - ring) : fx1 + ring] = True
         rep.coarse_solve_s = time.perf_counter() - t_coarse
         rep.coarse_folds_before = rep_c.folds_before
         rep.coarse_folds_after = rep_c.folds_after
@@ -735,6 +743,7 @@ def windowed_correct(
                     margin_delta,
                     inner=inner,
                     opts=opts,
+                    expired=_expired,
                 )
                 if record_history:
                     rep.history.append(_stage_entry("giant", giant_w0))
@@ -1063,6 +1072,7 @@ def _solve_giant_schwarz(
     margin_delta,
     inner="isqp",
     opts=None,
+    expired=None,
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
@@ -1103,6 +1113,11 @@ def _solve_giant_schwarz(
     prev = None
     for _sweep in range(max_sweeps):
         for tb in tiles:
+            if expired is not None and expired():
+                # ``time_budget_s`` is checked between tiles as between windows —
+                # a giant region is many window solves, not one (measured: a 40 s
+                # budget ran 189 s on raw B0039 z16 before this check existed).
+                return prev if prev is not None else -1
             if tb[1] > tb[0] and tb[3] > tb[2]:
                 _solve_window(
                     phi,
