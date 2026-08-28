@@ -199,6 +199,7 @@ class WindowedWrapperStrategy(Strategy):
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
+    patience_retry: bool = True
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
@@ -260,6 +261,7 @@ class WindowedWrapperStrategy(Strategy):
             tr_max=self.tr_max,
             step_rule=self.step_rule,
             exact_ls_fallback_steps=self.exact_ls_fallback_steps,
+            patience_retry=self.patience_retry,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             reanchor=self.reanchor,

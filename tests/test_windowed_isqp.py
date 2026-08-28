@@ -18,7 +18,8 @@ from dvfopt.constraints import (
 from dvfopt.core.primitives.isqp import HAS_OSQP
 from dvfopt.core.windowed import build_subproblem, min_field, windowed_correct
 from dvfopt.jacobian.numpy_jdet import _numpy_jdet_2d
-from dvfopt.objectives import L1Objective, L2Objective
+from dvfopt.objectives import L1Objective, L2Objective, NoneObjective
+from dvfopt.testdata import make_random_dvf
 
 if not HAS_OSQP:
     pytest.skip("osqp not installed", allow_module_level=True)
@@ -184,3 +185,32 @@ def test_no_damage_on_severe_field():
         phi[1, cy - 3 : cy + 4, cx - 3 : cx + 4] += rng.normal(0, 4.0, (7, 7))
     _, rep = windowed_correct(phi, constraint=_c("jdet", phi), objective=_obj("l2"), threshold=0.01)
     assert rep.damage == 0
+
+
+def test_patience_rung_continues_a_bailed_window(monkeypatch):
+    """A window every rung leaves GENUINELY folded is retried with the a*-collapse
+    bail off (the patience rung), counted on the report, and skipped when off."""
+    from dvfopt.core.windowed import _common as engine
+
+    seen = []
+
+    def stuck_inner(sub, inner, maxiter, **kw):  # never moves: every rung ends folded
+        seen.append(kw.get("exact_ls_fallback_steps"))
+        return np.asarray(sub.flat0, dtype=float).copy(), 1, False
+
+    monkeypatch.setattr(engine, "solve_window_inner", stuck_inner)
+    phi = np.asarray(make_random_dvf("03a_10x10_random_seed_42"))[1:, 0].copy()
+    c = SimplexConstraint2D(shape=phi.shape[1:])
+    kw = dict(
+        constraint=c, objective=NoneObjective(), threshold=0.01, verbose=0, coarse_to_fine=False
+    )
+    _out, rep = windowed_correct(phi, "isqp", **kw)
+    assert 0 in seen  # the bail-free continuation was attempted ...
+    assert rep.patience_fallbacks >= 1 and any(w.patience_fallback for w in rep.windows)
+    assert np.array_equal(_out, phi)  # ... and a no-progress inner leaves the field untouched
+    seen.clear()
+    _out, rep = windowed_correct(phi, "isqp", patience_retry=False, **kw)
+    assert 0 not in seen and rep.patience_fallbacks == 0  # off when asked
+    seen.clear()
+    _out, rep = windowed_correct(phi, "isqp", exact_ls_fallback_steps=0, **kw)
+    assert rep.patience_fallbacks == 0  # nothing to continue when the bail is already off

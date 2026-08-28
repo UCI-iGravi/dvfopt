@@ -86,6 +86,7 @@ class _InnerOpts:
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
+    patience_retry: bool = True
 
 
 @dataclass(frozen=True)
@@ -259,6 +260,7 @@ class WindowRec:
     grows: int = 0
     fallback: bool = False  # the no-trust-region retry ran on this window
     backend_fallback: bool = False  # the QP-backend retry (hybrid -> osqp) ran
+    patience_fallback: bool = False  # the no-bail exact_ls retry (patience rung) ran
     min_before: float = 0.0
     min_after: float = 0.0
     feasible: bool = False
@@ -293,6 +295,7 @@ class SliceReport:
     # windows whose interior-point trajectory failed and were retried on plain
     # warm-started ADMM (qp_backend='hybrid' only; see _solve_window).
     backend_fallbacks: int = 0
+    patience_fallbacks: int = 0  # windows that took the patience rung
     # coarse-to-fine warm start (see _coarse_warm_start). -1 == the stage did not
     # run (disabled, no folds, or the field too small for a meaningful coarse
     # problem); coarse_solve_s stays 0.0 then.
@@ -419,6 +422,7 @@ def windowed_correct(
     tr_max=16.0,
     step_rule='exact_ls',
     exact_ls_fallback_steps=3,
+    patience_retry=True,
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -542,6 +546,20 @@ def windowed_correct(
     (z0_sliver 2350 iterations): mid-run the ratio test accepts tiny steps rather
     than rejecting them, so it grinds too. Stopping is the whole mechanism.
 
+    ``patience_retry`` (default True) is the bail's counterpart, the LAST rung of
+    the window escalation ladder before grow: a window still GENUINELY folded
+    after the solve, the no-TR retry and the backend retry continues its exact-LS
+    iteration from the best iterate with the bail OFF. The bail is cheap because
+    the rungs above clear most windows it stops; on a window pinned by a
+    prescribed correspondence whose displacement disagrees with its neighbours
+    by tens of pixels (every residual cluster of the 7-brain cohort sweep sits on
+    such a pin) the tiny ``a*`` steps are slow but productive and no other rung
+    can continue them. Measured on a crop of the B0304 z181 residual: the full
+    ladder ends folded at -0.044 after 101 s, the bail-free continuation clears
+    it to +0.011 in 1 s. Real windows and mop windows only (never a giant tile),
+    and never on a window that is merely short of the margin-shifted target.
+    ``report.patience_fallbacks`` / ``WindowRec.patience_fallback`` count it.
+
     ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
     same problem is solved on a ``coarse_factor`` x coarsened field and the
     prolongated correction seeds the fine solve, so the fine windows start near a
@@ -619,6 +637,7 @@ def windowed_correct(
         tr_max,
         step_rule,
         exact_ls_fallback_steps,
+        patience_retry,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1241,6 +1260,46 @@ def _solve_window(
         nit += nit2
         if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse
             x, ok, fell_back = x2, ok2, no_tr2
+    # Patience rung, last before grow: the a*-collapse bail (`exact_ls_fallback_steps`)
+    # stops a window after a few tiny exact-LS steps and hands it to the rungs above --
+    # which is what makes the bail cheap on windows those rungs then clear. But on a
+    # window pinned by a prescribed correspondence whose displacement disagrees with
+    # its neighbours by tens of pixels (the cohort's residual clusters), the tiny
+    # steps are slow but PRODUCTIVE, and none of the rungs above can continue them:
+    # the no-TR line search stalls, the backend retry bails again, growing repeats
+    # the pattern. Measured on a crop of the B0304 z181 residual: the full ladder
+    # ends folded at -0.044 after 101 s; the same window with the bail OFF clears
+    # to +0.011 in 1 s (L2 move 46 -- it walked the pin out). So, only when the
+    # window is still GENUINELY folded after every rung above, continue the
+    # exact-LS iteration from the best iterate with the bail off. Same guards as
+    # the backend rung (genuine fold, real windows and mop windows only).
+    patience_fell_back = False
+    if (
+        not ok
+        and allow_grow
+        and opts.patience_retry
+        and opts.step_rule == 'exact_ls'
+        and opts.exact_ls_fallback_steps
+        and inner in _ISQP_LABELS
+        and sub.cons(x).min() < -margin_delta
+    ):
+        patience_fell_back = True
+        x2, nit2, ok2 = solve_window_inner(
+            replace(sub, flat0=x),
+            inner,
+            maxiter,
+            osqp_max_iter=opts.qp_max_iter,
+            qp_backend=opts.qp_backend,
+            ip_cold=opts.ip_cold,
+            ip_after_admm_iters=opts.ip_after_admm_iters,
+            tr_delta=opts.tr_delta,
+            tr_max=opts.tr_max,
+            step_rule=opts.step_rule,
+            exact_ls_fallback_steps=0,
+        )
+        nit += nit2
+        if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse
+            x, ok = x2, ok2
     dt = time.perf_counter() - t
     patch_out = np.asarray(sub.constraint.unflatten(x))
     py0, py1, px0, px1 = sub.patch_box
@@ -1261,12 +1320,14 @@ def _solve_window(
         grows=_grow,
         fallback=fell_back,
         backend_fallback=backend_fell_back,
+        patience_fallback=patience_fell_back,
         min_after=float(jpatch.min()),
         feasible=bool(ok),
         time_s=dt,
     )
     rep.windows.append(rec)
     rep.backend_fallbacks += int(backend_fell_back)
+    rep.patience_fallbacks += int(patience_fell_back)
 
     # grow-on-failure: if still infeasible and the window can expand, widen and retry
     if allow_grow and not ok and _grow < 2:
