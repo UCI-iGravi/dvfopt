@@ -82,7 +82,8 @@ def test_fallback_clears_window_without_growing(monkeypatch):
 def test_no_tr_fallback_off_falls_through_to_grow(monkeypatch):
     calls = []
     phi = _sparse_folds()
-    _out, rep = _run(phi, monkeypatch, calls, no_tr_fallback=False)
+    # reseed off: the terminal re-seed stage would clear this deliberate plateau
+    _out, rep = _run(phi, monkeypatch, calls, no_tr_fallback=False, reseed_rounds=0)
 
     assert rep.folds_after > 0  # the TR-only fake never clears anything
     assert not any(c["trust_region"] is False for c in calls)

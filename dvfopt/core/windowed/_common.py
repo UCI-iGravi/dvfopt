@@ -55,7 +55,8 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 
 import numpy as np
-from scipy import ndimage
+from scipy import ndimage, sparse
+from scipy.sparse.linalg import spsolve
 
 from dvfopt._logging import log_warning
 from dvfopt.objectives import L2Objective, _kind_eps, make_objective
@@ -313,6 +314,14 @@ class SliceReport:
     reanchor_accepted: int = 0
     reanchor_l2_before: float = 0.0  # ||phi - input|| before / after the stage
     reanchor_l2_after: float = 0.0
+    # terminal harmonic re-seed stage (``reseed_rounds > 0``): residual fold clusters the
+    # round loop + mop plateaued on are re-seeded (interior replaced by the harmonic
+    # interpolation of their ring) and polished again. ``reseed_rounds_run == 0`` means
+    # the stage did not run (field already fold-free, or off).
+    reseed_rounds_run: int = 0
+    reseed_px: int = 0  # pixels re-seeded (all rounds)
+    reseed_folds_before: int = -1  # folds when the stage started / when it ended
+    reseed_folds_after: int = -1
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -429,6 +438,8 @@ def windowed_correct(
     reanchor_maxiter=60,
     reanchor_sweeps=3,
     reanchor_tile=48,
+    reseed_rounds=3,
+    reseed_radius=2,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -600,6 +611,26 @@ def windowed_correct(
     already-feasible fields: B0039 z16 L2 move 76.7 -> 59.9, z0 194 -> 170, 0 folds
     throughout. ``report.reanchor_sweeps_run`` / ``reanchor_tiles`` /
     ``reanchor_accepted`` / ``reanchor_l2_before`` / ``reanchor_l2_after`` record it.
+
+    ``reseed_rounds`` (default 3, 0 = off) / ``reseed_radius`` (default 2) add a
+    **terminal harmonic re-seed stage** for the residual the round loop AND the mop
+    plateau on. Such residual clusters are, measured on every non-clean slice of
+    the 7-brain cohort, cells whose corner images have been driven onto the
+    ROTATED orientation branch (both edge factors of the area negative, product
+    positive): locally fold-free, but not joinable to the surrounding field, and
+    the seam between the branches is a merit MAXIMUM no local step crosses -- every
+    rung, step rule and trust radius fails there identically. The stage resets the
+    branch: each residual cluster's neighbourhood (its cells' corner pixels
+    dilated by ``reseed_radius``) is replaced by the discrete-harmonic
+    interpolation of its ring, and the engine polishes the re-seeded field
+    (recursively, with this stage off). Up to ``reseed_rounds`` rounds. Measured
+    on the five plateaued cohort slices (29-79 residual cells each, every rung
+    exhausted): **0 simplex and 0 bilinear folds on all five, damage 0, 10-40 s**.
+    The re-seeded pixels are fold neighbourhoods, and the polish's windows join
+    ``touched``, so the no-damage invariant is unchanged; the stage never fires on
+    a field the mop cleared, so those runs are byte-identical.
+    ``report.reseed_rounds_run`` / ``reseed_px`` / ``reseed_folds_before`` /
+    ``reseed_folds_after`` record it.
 
     ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
     before each window solve; on expiry the engine stops, logs a warning, and
@@ -814,6 +845,39 @@ def windowed_correct(
             if record_history:
                 rep.history.append(_stage_entry("mop", mop_w0))
             _fire("mop", phi)
+
+    # Terminal harmonic re-seed: the residual both the round loop and the mop
+    # plateau on sits on the rotated orientation branch (see the docstring); reset
+    # the branch and polish. Bounded rounds, deadline-aware, off on a clean field.
+    if reseed_rounds > 0 and not budget_hit:
+        _reseed_stage(
+            phi,
+            constraint,
+            threshold,
+            objective,
+            inner,
+            opts,
+            rep,
+            touched,
+            ring,
+            reseed_rounds,
+            reseed_radius,
+            dict(
+                margin=margin,
+                maxiter=maxiter,
+                max_rounds=max_rounds,
+                margin_delta=margin_delta,
+                max_window_area=max_window_area,
+                mop_margin=mop_margin,
+                verbose=verbose,
+                **asdict(opts),
+            ),
+            expired=_expired,
+        )
+        if record_history and rep.reseed_rounds_run:
+            rep.history.append(_stage_entry("reseed", len(rep.windows)))
+        if rep.reseed_rounds_run:
+            _fire("reseed", phi)
 
     # Post-feasibility re-anchor: recover fidelity now that no fold is left to trap
     # the inner in an objective basin. Only on a fold-free field, and reverted whole
@@ -1056,6 +1120,110 @@ def _reanchor_pass(
         if prev - cur < _REANCHOR_MIN_GAIN * prev:
             break  # a sweep that buys < 1% of the move is not worth the next one
         prev = cur
+
+
+def _harmonic_fill(phi, mask):
+    """Replace ``phi[:, mask]`` by the discrete-harmonic (4-neighbour Laplacian)
+    interpolation of ``phi`` on the mask's boundary, in place. One sparse solve per
+    channel over the masked pixels (a few hundred on real residuals)."""
+    H, W = mask.shape
+    ys, xs = np.nonzero(mask)
+    n = len(ys)
+    if n == 0:
+        return
+    idx = np.full((H, W), -1, dtype=np.int64)
+    idx[ys, xs] = np.arange(n)
+    rows, cols, vals = [], [], []
+    rhs = np.zeros((phi.shape[0], n))
+    for k, (y, x) in enumerate(zip(ys, xs)):
+        deg = 0
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            y2, x2 = y + dy, x + dx
+            if not (0 <= y2 < H and 0 <= x2 < W):
+                continue
+            deg += 1
+            if mask[y2, x2]:
+                rows.append(k)
+                cols.append(idx[y2, x2])
+                vals.append(-1.0)
+            else:
+                rhs[:, k] += phi[:, y2, x2]
+        rows.append(k)
+        cols.append(k)
+        vals.append(float(deg))
+    lap = sparse.csc_matrix((vals, (rows, cols)), shape=(n, n))
+    for ch in range(phi.shape[0]):
+        phi[ch, ys, xs] = spsolve(lap, rhs[ch])
+
+
+def _reseed_stage(
+    phi,
+    constraint,
+    threshold,
+    objective,
+    inner,
+    opts,
+    rep,
+    touched,
+    ring,
+    rounds,
+    radius,
+    sub_kw,
+    expired,
+):
+    """Harmonic re-seed of every residual fold cluster, then a recursive polish; in place.
+
+    A residual cell's corner pixels (the cell and its +1 row/column) dilated by
+    ``radius`` form the re-seed mask; its interior is replaced by the harmonic
+    interpolation of the ring, which puts the cluster back on the ring's orientation
+    branch. The polish is :func:`windowed_correct` on the re-seeded field with this
+    stage off (never recursive) and the coarse warm start off; its windows' patch
+    boxes join ``touched`` so the outer damage accounting stays exact. Stops when
+    the field is fold-free, the deadline passes, or a round makes no progress.
+    """
+    fold0 = pixel_fold_mask(constraint, phi, threshold)
+    if not fold0.any():
+        return
+    rep.reseed_folds_before = int(fold0.sum())
+    prev = rep.reseed_folds_before
+    for _ in range(rounds):
+        fold = pixel_fold_mask(constraint, phi, threshold)
+        nf = int(fold.sum())
+        if nf == 0 or expired():
+            break
+        rep.reseed_rounds_run += 1
+        corners = fold.copy()
+        corners[1:, :] |= fold[:-1, :]
+        corners[:, 1:] |= fold[:, :-1]
+        corners[1:, 1:] |= fold[:-1, :-1]
+        mask = ndimage.binary_dilation(corners, iterations=radius)
+        _harmonic_fill(phi, mask)
+        rep.reseed_px += int(mask.sum())
+        touched |= ndimage.binary_dilation(mask, iterations=ring)
+        out, rep_in = windowed_correct(
+            phi,
+            inner,
+            constraint=constraint,
+            objective=objective,
+            threshold=threshold,
+            coarse_to_fine=False,
+            reseed_rounds=0,
+            reanchor="none",
+            time_budget_s=None,
+            **sub_kw,
+        )
+        phi[...] = out
+        for w in rep_in.windows:  # the polish's enforced footprints
+            py0, px0 = max(0, w.fy0 - ring), max(0, w.fx0 - ring)
+            touched[py0 : py0 + w.ph, px0 : px0 + w.pw] = True
+        rep.windows.extend(rep_in.windows)
+        rep.backend_fallbacks += rep_in.backend_fallbacks
+        rep.patience_fallbacks += rep_in.patience_fallbacks
+        nf_after = int(pixel_fold_mask(constraint, phi, threshold).sum())
+        if nf_after >= prev:
+            break  # no progress -> stop rather than churn
+        prev = nf_after
+    rep.reseed_folds_after = int(pixel_fold_mask(constraint, phi, threshold).sum())
 
 
 def _fit_tile(h, w, target, lo_frac=0.75, hi_frac=1.5):
