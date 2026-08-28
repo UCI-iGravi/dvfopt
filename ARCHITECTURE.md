@@ -143,7 +143,18 @@ Imports flow one way. Breaking these is what re-tangles the package.
   minimiser always finds some decrease, so without it a hopeless window grinds
   instead of escalating. 2D only (a 6-tet row is cubic along a line), guarded at
   `windowed_correct`'s entry. The maximal fold-free step cap tried alongside it
-  is REFUTED — it strangles the elastic mechanism; do not add one.)*
+  is REFUTED — it strangles the elastic mechanism; do not add one.
+  `reanchor` (default `'none'`) appends an optional **post-feasibility
+  re-anchor stage**. The robust recipe's `objective='none'` buys its trap-free
+  feasibility by carrying no fidelity term at all, so once the field is
+  fold-free this stage tiles the MOVED region and re-solves each tile against
+  the distance-to-INPUT objective (`'l2'` / `'l1'`), keeping a tile only if
+  every enforced row stays at or above `threshold` and the tile actually
+  reduced the distance. Each tile's free set is intersected with the moved mask
+  (`build_subproblem(..., free_extra=)`), so the stage only moves pixels the
+  main solve already moved — the no-damage accounting is unchanged — and the
+  whole stage is reverted if a global re-check finds a fold anyway. Opt-in:
+  fidelity is a concern separate from the zero-fold certificate.)*
 - **Objectives are pure.** An `Objective` is `(diff) -> (value, grad)` and
   nothing else — no state, no constraint knowledge, no I/O. Kernels that cannot
   call back into Python (numba, torch autograd) take the legacy

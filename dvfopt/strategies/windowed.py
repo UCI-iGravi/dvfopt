@@ -145,6 +145,26 @@ class WindowedWrapperStrategy(Strategy):
         field or one with ``min(H, W) < 4 * giant_tile``.
     coarse_factor : int
         Coarsening factor for that stage (box-average blocks).
+    reanchor : str
+        Optional post-feasibility **re-anchor stage**: ``'none'``
+        (default — off), ``'l2'`` or ``'l1'``. The robust recipe
+        solves with ``objective='none'`` (pure feasibility, which keeps
+        the inner out of the objective-basin traps a distance anchor
+        pins it in) and is therefore close to the input only by
+        construction. When the field comes out fold-free this stage
+        tiles the MOVED region and re-solves each tile minimising the
+        chosen distance to the INPUT, keeping a tile only if every
+        enforced row stays at or above ``threshold``. It frees only
+        pixels the main solve already moved, so no-damage accounting is
+        unchanged. Measured on already-feasible fields: B0039 z16 L2
+        move 76.7 -> 59.9, z0 194 -> 170, 0 folds throughout.
+    reanchor_maxiter : int
+        Inner-solver iteration budget per re-anchor tile.
+    reanchor_sweeps : int
+        Maximum re-anchor sweeps (stops early once a sweep buys < 1% of
+        the L2 move).
+    reanchor_tile : int
+        Re-anchor tile size in px (tiles overlap by 8).
     """
 
     inner: Optional[str] = None
@@ -170,6 +190,10 @@ class WindowedWrapperStrategy(Strategy):
     step_rule: str = 'exact_ls'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
+    reanchor: str = 'none'
+    reanchor_maxiter: int = 60
+    reanchor_sweeps: int = 3
+    reanchor_tile: int = 48
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -226,6 +250,10 @@ class WindowedWrapperStrategy(Strategy):
             step_rule=self.step_rule,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
+            reanchor=self.reanchor,
+            reanchor_maxiter=self.reanchor_maxiter,
+            reanchor_sweeps=self.reanchor_sweeps,
+            reanchor_tile=self.reanchor_tile,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

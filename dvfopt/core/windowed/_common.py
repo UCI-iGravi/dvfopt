@@ -58,7 +58,7 @@ import numpy as np
 from scipy import ndimage
 
 from dvfopt._logging import log_warning
-from dvfopt.objectives import L2Objective, _kind_eps
+from dvfopt.objectives import L2Objective, _kind_eps, make_objective
 
 from ._inners import _ISQP_LABELS, WindowSub, solve_window_inner
 from ._locality import _locality_of, min_field, pixel_fold_mask
@@ -85,6 +85,26 @@ class _InnerOpts:
     tr_delta: float = 2.0
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
+
+
+@dataclass(frozen=True)
+class _ReanchorOpts:
+    """Knobs of the optional post-feasibility re-anchor stage (:func:`_reanchor_pass`).
+
+    ``kind`` is ``'none'`` (the stage never runs — the default) / ``'l2'`` / ``'l1'``.
+    See :func:`windowed_correct` for what the rest do.
+    """
+
+    kind: str = 'none'
+    maxiter: int = 60
+    sweeps: int = 3
+    tile: int = 48
+
+
+_REANCHOR_KINDS = ('none', 'l2', 'l1')
+_REANCHOR_MIN_GAIN = 0.01  # stop sweeping once a sweep buys < 1% of the L2 move
+_REANCHOR_TOL = 1e-9  # accepted rows must clear `threshold` by this much
+_REANCHOR_OVERLAP = 8  # tile overlap, in px (48 stepped by 40 in the prototype)
 
 
 def _objective_fns(flat0, objective):
@@ -128,7 +148,9 @@ def _objective_fns(flat0, objective):
     raise ValueError(f"unknown objective {kind!r}")
 
 
-def build_subproblem(constraint, phi_dydx, free_box, threshold, objective=None, margin_delta=1e-3):
+def build_subproblem(
+    constraint, phi_dydx, free_box, threshold, objective=None, margin_delta=1e-3, free_extra=None
+):
     """Build the window sub-problem for a free box ``(fy0, fy1, fx0, fx1)`` (global).
 
     Expands the free box by the family ring to a patch, instantiates a
@@ -139,6 +161,12 @@ def build_subproblem(constraint, phi_dydx, free_box, threshold, objective=None, 
     ``margin_delta`` is enforced ON TOP of ``threshold`` (constraints are driven to
     ``threshold + margin_delta``) so that OSQP's ~1e-5 tolerance landing a hair
     short of the active bound still clears the strict ``< threshold`` fold check.
+
+    ``free_extra`` (optional global ``(H, W)`` bool mask) is INTERSECTED with the
+    free box, so a caller can free a subset of it — the re-anchor stage frees only
+    pixels the main solve moved. ``None`` (default) frees the whole box. The patch
+    is still the box expanded by the family ring, so the enforced rows a free pixel
+    influences are all in-patch either way.
     """
     H, W = phi_dydx.shape[1:]
     loc = _locality_of(constraint)
@@ -154,6 +182,8 @@ def build_subproblem(constraint, phi_dydx, free_box, threshold, objective=None, 
     # free pixels (patch-local): the free box, clipped into the patch
     free_mask = np.zeros((ph, pw), bool)
     free_mask[fy0 - py0 : fy1 - py0, fx0 - px0 : fx1 - px0] = True
+    if free_extra is not None:
+        free_mask &= free_extra[py0:py1, px0:px1]
 
     enforced_idx, jac_of = loc.influenced(
         c, free_mask, ph, pw, (py0 == 0, py1 == H, px0 == 0, px1 == W)
@@ -270,6 +300,15 @@ class SliceReport:
     coarse_folds_after: int = -1
     coarse_iters: int = 0  # SQP iterations spent on the coarse grid
     warm_folds: int = -1  # folds left after applying the prolongated correction
+    # optional post-feasibility re-anchor stage (``reanchor != 'none'``): tiles over
+    # the MOVED region re-solved against the distance-to-INPUT objective, each kept
+    # only if it stays fold-free. ``reanchor_sweeps_run == 0`` means the stage did
+    # not run (off, the field still folded, or the budget was spent).
+    reanchor_sweeps_run: int = 0
+    reanchor_tiles: int = 0
+    reanchor_accepted: int = 0
+    reanchor_l2_before: float = 0.0  # ||phi - input|| before / after the stage
+    reanchor_l2_after: float = 0.0
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -374,6 +413,10 @@ def windowed_correct(
     step_rule='exact_ls',
     coarse_to_fine=True,
     coarse_factor=4,
+    reanchor='none',
+    reanchor_maxiter=60,
+    reanchor_sweeps=3,
+    reanchor_tile=48,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -488,6 +531,25 @@ def windowed_correct(
     Tile size matters through grid *alignment* — the sweep-round count — not
     through size itself. ``False`` restores the literal ``giant_tile``.
 
+    ``reanchor`` (``'none'`` — the DEFAULT, ``'l2'``, ``'l1'``) adds an optional
+    **post-feasibility re-anchor stage**, opt-in because fidelity is a concern
+    separate from the zero-fold certificate. With ``objective='none'`` (the robust
+    recipe — pure feasibility keeps the inner out of the objective-basin traps a
+    distance anchor pins it in) the correction is only close to the input by
+    construction; when the field comes out feasible this stage recovers the
+    fidelity, with no fold left to trap it: the MOVED region is tiled
+    (``reanchor_tile`` px, overlapping), each tile is re-solved minimising the
+    chosen distance to the INPUT under the same constraint rows
+    (``reanchor_maxiter`` inner iterations), and a tile is kept only if every
+    enforced row stays at or above ``threshold`` — otherwise it is reverted. Up to
+    ``reanchor_sweeps`` sweeps, stopping once a sweep buys < 1% of the L2 move. The
+    stage frees only pixels the main solve already moved, so **no-damage accounting
+    is unaffected** (see :func:`_reanchor_pass`); the whole stage is reverted and a
+    warning logged if a global re-check finds a fold anyway. Measured on
+    already-feasible fields: B0039 z16 L2 move 76.7 -> 59.9, z0 194 -> 170, 0 folds
+    throughout. ``report.reanchor_sweeps_run`` / ``reanchor_tiles`` /
+    ``reanchor_accepted`` / ``reanchor_l2_before`` / ``reanchor_l2_after`` record it.
+
     ``time_budget_s`` (``None`` = unlimited) is checked at round boundaries and
     before each window solve; on expiry the engine stops, logs a warning, and
     finishes accounting on the best-so-far field. ``record_history=True`` fills
@@ -501,6 +563,8 @@ def windowed_correct(
     """
     if step_rule not in ('tr', 'exact_ls'):
         raise ValueError(f"unknown step_rule {step_rule!r}; valid: 'tr', 'exact_ls'")
+    if reanchor not in _REANCHOR_KINDS:
+        raise ValueError(f"unknown reanchor {reanchor!r}; valid: {list(_REANCHOR_KINDS)}")
     if step_rule == 'exact_ls' and np.asarray(phi_in).ndim != 3:
         # The exact line model needs rows that are BILINEAR in (dy, dx) — true of
         # every 2D family here, false in 3D (a 6-tet volume is trilinear, hence
@@ -695,6 +759,36 @@ def windowed_correct(
                 rep.history.append(_stage_entry("mop", mop_w0))
             _fire("mop", phi)
 
+    # Post-feasibility re-anchor: recover fidelity now that no fold is left to trap
+    # the inner in an objective basin. Only on a fold-free field, and reverted whole
+    # if it somehow breaks that (per-tile verification should make this unreachable).
+    if reanchor != 'none' and not budget_hit and not _expired():
+        if int(pixel_fold_mask(constraint, phi, threshold).sum()) == 0:
+            saved = phi.copy()
+            _reanchor_pass(
+                phi,
+                np.asarray(phi_in, dtype=np.float64),
+                constraint,
+                threshold,
+                _ReanchorOpts(reanchor, reanchor_maxiter, reanchor_sweeps, reanchor_tile),
+                margin_delta,
+                rep,
+                inner,
+                opts,
+                expired=_expired,
+            )
+            if int(pixel_fold_mask(constraint, phi, threshold).sum()) > 0:
+                log_warning(
+                    "windowed_correct: re-anchor stage created a fold despite per-tile "
+                    "verification; reverting the whole stage"
+                )
+                phi[:] = saved
+                rep.reanchor_accepted = 0
+                rep.reanchor_l2_after = rep.reanchor_l2_before
+            if record_history:
+                rep.history.append(_stage_entry("reanchor", len(rep.windows)))
+            _fire("reanchor", phi)
+
     jf = min_field(constraint, phi)
     after_fold = jf < threshold
     new = after_fold & ~orig_fold
@@ -795,6 +889,117 @@ def _mop_pass(
                 )
         if int(pixel_fold_mask(constraint, phi, threshold).sum()) >= n:
             break  # no progress -> genuine local floor
+
+
+def _reanchor_tile(
+    phi, phi_ref, constraint, box, threshold, obj_ref, moved, ropts, margin_delta, inner, opts
+):
+    """Re-solve one tile against the distance-to-INPUT objective; keep it or revert.
+
+    Returns True if the tile was accepted. The subproblem is the engine's OWN
+    (:func:`build_subproblem` on the current field), with only the objective
+    triplet swapped for one anchored at the input patch — so the enforced-row set,
+    the frozen ring and the paste-back are exactly the main solve's.
+    """
+    sub = build_subproblem(constraint, phi, box, threshold, None, margin_delta, free_extra=moved)
+    if sub.free_idx.size == 0 or sub.n_enforced == 0:
+        return False
+    py0, py1, px0, px1 = sub.patch_box
+    ref = np.asarray(sub.constraint.flatten(np.ascontiguousarray(phi_ref[:, py0:py1, px0:px1])))
+    # Same helper the engine builds its own objective with, re-anchored at the INPUT
+    # patch instead of the current one (L1's eps rides on the Objective, as there).
+    obj, grad, hess = _objective_fns(ref, obj_ref)
+    sub = replace(sub, obj=obj, obj_grad=grad, hess_diag=hess)
+    x, _nit, _ok = solve_window_inner(
+        sub,
+        inner,
+        ropts.maxiter,
+        osqp_max_iter=opts.qp_max_iter,
+        qp_backend=opts.qp_backend,
+        ip_cold=opts.ip_cold,
+        ip_after_admm_iters=opts.ip_after_admm_iters,
+        tr_delta=opts.tr_delta,
+        tr_max=opts.tr_max,
+        step_rule=opts.step_rule,
+    )
+    # Verify-and-revert. `cons = values - (threshold + margin_delta)`, so an
+    # enforced row is still fold-free exactly when `cons >= -margin_delta`; the
+    # second test refuses a tile that did not actually buy fidelity, so the stage
+    # is monotone in the move it is minimising and can never make the field worse.
+    if sub.cons(x).min() < -margin_delta + _REANCHOR_TOL or obj(x) >= obj(sub.flat0):
+        return False
+    patch_out = np.asarray(sub.constraint.unflatten(x))
+    dst = phi[:, py0:py1, px0:px1]
+    dst[:, sub.free_mask] = patch_out[:, sub.free_mask]
+    return True
+
+
+def _reanchor_pass(
+    phi, phi_ref, constraint, threshold, ropts, margin_delta, rep, inner, opts, expired=None
+):
+    """Pull a FEASIBLE corrected field back toward ``phi_ref`` (the input) in place.
+
+    The robust recipe solves with ``objective='none'`` — pure feasibility, which
+    keeps the windowed isqp out of the objective-basin traps a distance anchor pins
+    it in, but leaves the correction close to the input only by construction. This
+    stage recovers the fidelity afterwards, when there is no fold left to trap it:
+    tile the MOVED region, re-solve each tile minimising the distance to the input
+    under the same constraint rows, and accept the tile only if every enforced row
+    stays at or above ``threshold`` (per-tile verify-and-revert).
+
+    No-damage is untouched. The free set of every tile is intersected with the
+    moved mask, so the stage only ever moves pixels the main solve already moved —
+    the moved set can shrink, never grow — and those pixels are inside ``touched``
+    by construction, as are the rows they influence (``touched`` is the free boxes
+    dilated by the ring). Damage accounting therefore reads exactly the same.
+
+    Measured (benchmarks prototype, on already-feasible fields): B0039 z16 L2 move
+    76.7 -> 59.9 and z0 194 -> 170, at 0 folds throughout.
+    """
+    moved = np.any(np.abs(phi - phi_ref) > 1e-9, axis=0)
+    if not moved.any():
+        return
+    obj_ref = make_objective(ropts.kind)
+    tile = max(1, ropts.tile)
+    step = max(1, tile - _REANCHOR_OVERLAP)  # overlap so a seam is a neighbour's interior
+    ys, xs = np.nonzero(moved)
+    y0, y1, x0, x1 = int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+
+    def l2_move():
+        return float(np.linalg.norm((phi - phi_ref).ravel()))
+
+    rep.reanchor_l2_before = rep.reanchor_l2_after = prev = l2_move()
+    for _sweep in range(max(0, ropts.sweeps)):
+        rep.reanchor_sweeps_run += 1
+        for ty in range(y0, y1, step):
+            for tx in range(x0, x1, step):
+                box = (ty, min(ty + tile, y1), tx, min(tx + tile, x1))
+                if not moved[box[0] : box[1], box[2] : box[3]].any():
+                    continue
+                if expired is not None and expired():
+                    rep.reanchor_l2_after = l2_move()
+                    return
+                rep.reanchor_tiles += 1
+                rep.reanchor_accepted += int(
+                    _reanchor_tile(
+                        phi,
+                        phi_ref,
+                        constraint,
+                        box,
+                        threshold,
+                        obj_ref,
+                        moved,
+                        ropts,
+                        margin_delta,
+                        inner,
+                        opts,
+                    )
+                )
+        cur = l2_move()
+        rep.reanchor_l2_after = cur
+        if prev - cur < _REANCHOR_MIN_GAIN * prev:
+            break  # a sweep that buys < 1% of the move is not worth the next one
+        prev = cur
 
 
 def _fit_tile(h, w, target, lo_frac=0.75, hi_frac=1.5):
