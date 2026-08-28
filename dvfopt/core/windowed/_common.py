@@ -85,6 +85,7 @@ class _InnerOpts:
     tr_delta: float = 2.0
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
+    exact_ls_fallback_steps: int = 3
 
 
 @dataclass(frozen=True)
@@ -411,6 +412,7 @@ def windowed_correct(
     tr_delta=2.0,
     tr_max=16.0,
     step_rule='exact_ls',
+    exact_ls_fallback_steps=3,
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -501,13 +503,38 @@ def windowed_correct(
     0 folds, damage 0, smaller move (L2 268 vs 280); across a 9-real-slice
     sample, 9/9 wall AND iteration wins (-19% wall / -27% iterations in total)
     with a smaller L2 move on every slice. It applies on the no-trust-region
-    fallback rung too — scoping it out of that rung was measured WORSE. One
-    documented crop regression: ``z0_sliver`` 351 s vs 77 s, a case built
-    entirely at OSQP's noise floor (0 simplex folds to begin with, ~1e-4
-    violations) where four mathematically equivalent framings of the same method
-    span 139-287 s — a chaos detector, with no counterpart on real slices.
+    fallback rung too — scoping it out of that rung was measured WORSE (re-measured
+    on the shipped implementation: ``z0_sliver`` 1918 SQP iterations vs 1684).
     ``'tr'`` restores the ratio-test path byte for byte. ``'exact_ls'`` is
     2D-only and rejected at this entry otherwise.
+
+    ``exact_ls_fallback_steps`` (default 3, 0 = off) is what keeps ``'exact_ls'``
+    from grinding on a window it cannot solve. The exact minimiser always finds
+    SOME decrease, so it need not trip the ratio test's futility test and NEVER
+    trips it on the no-trust-region rung (which has none) — so after this many
+    consecutive steps with ``a* < 0.25`` the window stops (``exit='a-collapse'``)
+    and hands itself to the escalation ladder, exactly as ``'tr-collapse'`` does.
+    3 is the measured setting: it never fires on the window ``'exact_ls'`` turns
+    from a 108-iteration failure into a 46-iteration solve (longest collapse run
+    there: 2) and fires immediately on ``z0_sliver`` (run of 4) and ``z0_cluster``
+    (6). Bilinear rows, objective ``none``, threshold 0.01, maxiter 600, engine
+    defaults; **every row 0 simplex folds, damage 0**:
+
+    ==================  =========  =========  ====================
+    case                ``'tr'``   exact_ls   exact_ls + bail (3)
+    ==================  =========  =========  ====================
+    z16_twist (crop)    128        47         47
+    z0_cluster (crop)   387        328        287
+    z0_sliver (crop)    540        1684       **212**
+    raw B0039 z16       780        563        **396**
+    ==================  =========  =========  ====================
+
+    (SQP iterations, coarse warm start included.) The L2 move falls too —
+    z0_sliver 25.3 / 39.7 / **19.4**, raw z16 280.3 / 268.4 / **268.0** — so the
+    bail is not buying speed with fidelity. Handing the remaining iterations to
+    the ``'tr'`` acceptance instead of stopping was measured and is WORSE
+    (z0_sliver 2350 iterations): mid-run the ratio test accepts tiny steps rather
+    than rejecting them, so it grinds too. Stopping is the whole mechanism.
 
     ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
     same problem is solved on a ``coarse_factor`` x coarsened field and the
@@ -585,6 +612,7 @@ def windowed_correct(
         tr_delta,
         tr_max,
         step_rule,
+        exact_ls_fallback_steps,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1138,6 +1166,7 @@ def _solve_window(
             tr_delta=opts.tr_delta,
             tr_max=opts.tr_max,
             step_rule=opts.step_rule,
+            exact_ls_fallback_steps=opts.exact_ls_fallback_steps,
         )
         no_tr = False
         if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
@@ -1161,6 +1190,7 @@ def _solve_window(
                 tr_delta=opts.tr_delta,
                 tr_max=opts.tr_max,
                 step_rule=opts.step_rule,
+                exact_ls_fallback_steps=opts.exact_ls_fallback_steps,
             )
             nit += nit2
             if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better

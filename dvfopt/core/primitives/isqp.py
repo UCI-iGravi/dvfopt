@@ -285,6 +285,7 @@ def isqp_solve(
     tr_delta=2.0,
     tr_max=16.0,
     step_rule='tr',
+    exact_ls_fallback_steps=0,
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -370,6 +371,27 @@ def isqp_solve(
     decrease, so without it a hopeless window grinds instead of handing off to
     the caller's escalation ladder.
 
+    ``exact_ls_fallback_steps`` (0 = off) closes the rest of that hole. The
+    futility test only fires when the achieved decrease is small RELATIVE to the
+    QP's prediction; a window whose ``a*`` has collapsed keeps clearing that bar
+    by a hair while going nowhere, and on the caller's no-trust-region rung there
+    is no futility test at all. So count CONSECUTIVE accepted exact steps with
+    ``a* < 0.25`` (the same threshold the trust region shrinks at) and, after that
+    many, STOP with ``exit`` reason ``'a-collapse'`` — the step is still taken, and
+    the caller's escalation ladder (no-TR retry, backend retry, grow) is what
+    actually clears such a window. ``'tr-collapse'`` is only cheap because it
+    stops; this is the same stop on the signal ``'exact_ls'`` can see.
+    **Handing the remaining iterations to the ``'tr'`` acceptance instead of
+    stopping was measured and is WORSE** — mid-run the ratio test lands in the
+    regime where it ACCEPTS tiny steps rather than rejecting them, so it grinds
+    too (z0_sliver: 2350 SQP iterations vs 1684 with no bail at all).
+    The consecutive-run length is the discriminator measurement picked: over the
+    crop set's first-round windows the longest run of ``a* < 0.25`` is 2 on
+    ``z16_twist`` (the window ``'exact_ls'`` turns from a 108-iteration failure
+    into a 46-iteration solve) against 4 on ``z0_sliver`` and 6 on ``z0_cluster``,
+    so a default of 3 spares the winner and fires on the pathologies. See
+    :func:`dvfopt.core.windowed.windowed_correct` for the engine-level table.
+
     ``'exact_ls'`` is **2D only** (a 6-tet volume row is trilinear, hence cubic
     along a line); :func:`dvfopt.core.windowed.windowed_correct` — the only
     caller — guards that at its entry. Measured there on raw B0039 z16: 200 s /
@@ -384,7 +406,7 @@ def isqp_solve(
     ``step_norm`` / ``osqp_status`` / ``delta`` / ``ratio`` / ``stepped``, plus
     ``alpha`` / ``rule`` under ``step_rule='exact_ls'``), the
     ``exit`` reason (``osqp-nonfinite`` / ``step-tol`` / ``linesearch-stall`` /
-    ``tr-collapse`` / ``maxiter``), ``feasible`` and ``nit`` — so a stall is
+    ``tr-collapse`` / ``a-collapse`` / ``maxiter``), ``feasible`` and ``nit`` — so a stall is
     attributable, not silent.
 
     quadprog is dense O((n+m)^3); OSQP exploits that the constraint Jacobian is
@@ -406,6 +428,7 @@ def isqp_solve(
         raise ValueError(f"unknown step_rule {step_rule!r}; valid: 'tr', 'exact_ls'")
     from scipy import sparse
 
+    n_small = 0  # consecutive accepted exact steps with a* < the shrink threshold
     x = np.asarray(flat0, dtype=np.float64).copy()
     n = x.size
     free = np.arange(n) if free_idx is None else np.asarray(free_idx)
@@ -555,6 +578,26 @@ def isqp_solve(
             rec['rule'] = 'exact_ls'
             if m_true < ph0:
                 x = x + a_star * d
+                # a*-collapse bail. A collapsed a* is the exact minimiser nibbling
+                # along a direction it cannot use — but it still DECREASES the merit,
+                # so the futility test below (which compares against the QP's
+                # predicted decrease) need not fire, and the window grinds instead of
+                # escalating. Count consecutive collapses on the SAME threshold the
+                # trust region shrinks at and, after that many, STOP — the caller's
+                # escalation ladder is what actually clears such a window, and
+                # 'tr-collapse' is only cheap because it stops. (Handing the rest of
+                # the call to the ratio test instead was measured WORSE: mid-run it
+                # lands in the regime where the ratio test ACCEPTS tiny steps rather
+                # than rejecting them, so it grinds too — z0_sliver 2350 SQP
+                # iterations vs 1684 with no bail at all.) Also covers the caller's
+                # no-trust-region rung, which has no futility test whatsoever.
+                small = a_star < 0.25
+                n_small = n_small + 1 if small else 0
+                if exact_ls_fallback_steps and n_small >= exact_ls_fallback_steps:
+                    rec['stepped'] = True
+                    _emit(rec)
+                    exit_reason = "a-collapse"
+                    break
                 if a_star * dn < tol:
                     rec['stepped'] = True
                     _emit(rec)
@@ -578,7 +621,7 @@ def isqp_solve(
                             exit_reason = "tr-collapse"
                     elif a_star >= 0.9 and dn >= 0.9 * tr_delta:
                         tr_delta = min(tr_delta * 2.0, tr_max)
-                    elif a_star < 0.25:
+                    elif small:  # a_star < 0.25 — the collapse threshold above
                         tr_delta = max(tr_delta * 0.5, tr_min)
                 rec['stepped'] = True
                 _emit(rec)

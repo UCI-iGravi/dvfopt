@@ -114,7 +114,7 @@ bilinear row, so the stage does not run and the three rows are identical.
   is one concern, fidelity another.
 
 
-### Added — windowed engine: exact merit line search (now the default step rule)
+### Added — windowed engine: exact merit line search + its a\*-collapse bail (now the default step rule)
 
 - **`step_rule='exact_ls'` (DEFAULT — behaviour change)** on `windowed_correct`,
   `WindowedWrapperStrategy` / `ISQPWindowedStrategy` and
@@ -150,10 +150,35 @@ bilinear row, so the stage does not run and the three rows are identical.
 - **2D only** — a 6-tet volume row is trilinear, hence *cubic* along a line, so
   neither the model nor the identity transfers. `windowed_correct` rejects
   `step_rule='exact_ls'` on a non-2D field at its entry.
+- **`exact_ls_fallback_steps=3` — the a\*-collapse bail** (engine / strategy
+  default; `isqp_solve`'s own default is `0` = off, so direct callers of the
+  primitive are unchanged). The futility test above is *relative* — achieved
+  <= 1e-3 x the QP's PREDICTED decrease — so a window whose `a*` has collapsed
+  keeps clearing it by a hair while going nowhere, and on the engine's
+  no-trust-region rung there is no futility test at all, so `'exact_ls'` burns
+  the whole `fallback_maxiter` there. After this many CONSECUTIVE accepted exact
+  steps with `a* < 0.25` (the same threshold the trust region shrinks at) the
+  window now STOPS — `trace['exit'] == 'a-collapse'`, the step still taken — and
+  hands itself to the escalation ladder, which is precisely what makes
+  `'tr-collapse'` cheap. **Stopping is the whole mechanism**: handing the
+  remaining iterations to the `'tr'` *acceptance* instead was measured and is
+  WORSE (z0_sliver 2350 SQP iterations vs 1684 with no bail at all), because
+  mid-run the ratio test lands in the regime where it ACCEPTS tiny steps rather
+  than rejecting them, so it grinds too.
+- **Why 3.** The discriminator is the consecutive-collapse run length on real
+  windows: over the crops' first-round windows the longest run of `a* < 0.25` is
+  **2** on `z16_twist` — the window `'exact_ls'` turns from a 108-iteration
+  failure into a 46-iteration solve, so 3 never fires there — against **4** on
+  `z0_sliver` and **6** on `z0_cluster`. 5 was measured too and is too loose (it
+  never fires on `z0_sliver`).
 - **REFUTED, not shipped**: the maximal fold-free step cap (the nonlinear
   analogue of `monotone=True`). On real windows `a_max` is ~1e-3-1e-1, which
   strangles the elastic mechanism — measured end violations of 40-84 against the
   baseline's 0.027. Do not add one.
+- **RE-MEASURED and still refuted**: scoping `'exact_ls'` out of the engine's
+  no-trust-region rung (the prototype's `ls_exact_tr`). On the shipped
+  implementation that costs `z0_sliver` 1918 SQP iterations against 1684 — the
+  rung is not the problem, the missing stop signal was.
 
 Measured on this branch (bilinear rows, objective `none`, threshold 0.01,
 maxiter 600, engine defaults, OMP/BLAS/RAYON pinned to 1). **Every row has 0
@@ -174,18 +199,57 @@ The `tr` rows reproduce the recorded reference exactly (raw z16: 762 fine
 iterations, L2 280.3), so these are directly comparable to the existing engine
 numbers.
 
-**`z0_sliver` is the one regression, and it is a chaos artifact, not a trend.**
-That crop starts with 0 simplex folds (min +0.0110 against a 0.01 threshold) and
-only ~1e-4-scale bilinear violations, i.e. every decision in it is made at
-OSQP's own noise floor and the escalation ladder amplifies the outcome ~10x. In
-the prototype, four *mathematically equivalent* framings of this same method
-spanned 138.7 / 228.8 / 256.1 / 286.7 s on it — two of them differing only in
-whether `q` came from a constant-Hessian table or the identity above, which agree
-to 1e-13. The mechanism is understood: the window starts at violation 0.0114 and
-NEITHER rule can clear it; `'tr'` discovers that in 11 iterations and hands the
-window straight to the escalation ladder, while an exact minimiser always finds
-*some* decrease and grinds to `step-tol` first. Nothing on real slices behaves
-this way (see the sweep below).
+`z0_sliver` was the one regression in that table, and the a\*-collapse bail
+removes it. The mechanism the bail attacks is exactly the one that table
+exposes: that crop starts with 0 simplex folds (min +0.0110 against a 0.01
+threshold) and only ~1e-4-scale bilinear violations, its one hard window starts
+at violation 0.0114 and NEITHER rule can clear it — `'tr'` discovers that in 11
+iterations and hands the window straight to the escalation ladder, while an exact
+minimiser always finds *some* decrease and grinds to `step-tol` first.
+
+**With the bail at its default** (same settings). An unrelated job shared the
+machine throughout this measurement, so the three variants were re-run
+back-to-back in ONE process for a like-for-like wall comparison: within a row the
+walls are comparable, but they run ~1.4-2.4x the uncontended figures in the table
+above. SQP iteration counts are deterministic and reproduce that table exactly.
+**Every entry: 0 simplex folds, damage 0.**
+
+| case | `'tr'` | `exact_ls` | `exact_ls` + bail (default) |
+|---|---|---|---|
+| z16_twist (crop) | 72.1 s / 128 / L2 125.7 | 70.7 s / **47** / 103.4 | 75.1 s / **47** / 103.4 |
+| z0_cluster (crop) | 94.7 s / 387 / 542.7 | 88.0 s / 328 / 535.1 | 88.7 s / **287** / 535.1 |
+| z0_sliver (crop) | 181.6 s / 540 / 25.3 | 768.2 s / 1684 / 39.7 | **170.0 s / 212 / 19.4** |
+| **raw B0039 z16** | 552.0 s / 780 / 280.3 | 436.6 s / 563 / 268.4 | **344.5 s / 396 / 268.0** |
+
+(wall / SQP iterations including the coarse warm start / L2 move.)
+
+`z0_sliver` goes from 3.1x `'tr'`'s iterations to **0.39x** — the bail does not
+merely erase the regression, it beats the rule the regression was measured
+against, on the case built to expose it, at a *smaller* L2 move than either
+(19.4 vs 25.3 / 39.7). `z16_twist` — the case carrying `'exact_ls'`'s biggest win
+— is **bit-identical**: 47 iterations, L2 103.4, the bail never fires there.
+`z0_cluster` improves (-12% iterations, identical L2), and the real slice
+improves again on top of `'exact_ls'`'s own win: **-30% iterations / -21% wall**,
+i.e. -49% iterations against `'tr'`, with the move unchanged (268.0 vs 268.4).
+
+Extended to five real B0039 slices (SQP iterations including the coarse warm
+start; `exact_ls_fallback_steps=0` reproduces the `'exact_ls'` column above
+exactly, which is how the baselines below were cross-checked). **Every row: 0
+simplex folds, damage 0.**
+
+| slice | `exact_ls` iters | + bail iters | d iters | L2 `exact_ls` -> + bail |
+|---|---|---|---|---|
+| z16 | 563 | **396** | -30% | 268.4 -> **268.0** |
+| z112 | 139 | 139 | 0% | 27.1 -> 27.1 |
+| z256 | 695 | **654** | -6% | 75.1 -> **74.5** |
+| z304 | 1095 | **793** | -28% | 91.7 -> **89.9** |
+| z496 | 1023 | **887** | -13% | 79.8 -> **77.8** |
+| **total** | **3515** | **2869** | **-18%** | |
+
+No slice regresses on either axis, and the L2 move is smaller or identical on
+every one — the bail only ever removes iterations a window was spending without
+getting anywhere. z112 is the shape to expect where `'exact_ls'` is already
+healthy: bit-identical, because no window there collapses three times running.
 
 **The real-data sweep is what settles the default.** Nine real B0039 slices
 (the reference z16 plus every 48th from z=64, fold counts 835-3890), same engine

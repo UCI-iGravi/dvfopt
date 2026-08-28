@@ -134,6 +134,16 @@ class WindowedWrapperStrategy(Strategy):
         0 folds, damage 0 and a smaller move (L2 268 vs 280); 9/9 wall
         and iteration wins over a 9-real-slice sample (-19% / -27%).
         2D only (a 6-tet row is cubic along a line).
+    exact_ls_fallback_steps : int
+        Consecutive ``'exact_ls'`` steps with ``a* < 0.25`` after which a
+        window stops and hands itself to the escalation ladder (0 =
+        off). The exact minimiser always finds SOME decrease, so on a
+        window it cannot solve it never fires the ratio test's fast
+        bail-out — this is the same stop on the signal it CAN see. 3 is
+        measured: it never fires on the window ``'exact_ls'`` turns from
+        a failure into a solve, and takes the ``z0_sliver`` crop from
+        1684 SQP iterations to 212 (``'tr'``: 540) while also cutting
+        raw B0039 z16 from 563 to 396 and every case's L2 move.
     coarse_to_fine : bool
         Prepend a coarse-grid warm start: solve the same problem on a
         ``coarse_factor`` x coarsened field and seed the fine solve with
@@ -188,6 +198,7 @@ class WindowedWrapperStrategy(Strategy):
     tr_delta: float = 2.0
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
+    exact_ls_fallback_steps: int = 3
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
@@ -248,6 +259,7 @@ class WindowedWrapperStrategy(Strategy):
             tr_delta=self.tr_delta,
             tr_max=self.tr_max,
             step_rule=self.step_rule,
+            exact_ls_fallback_steps=self.exact_ls_fallback_steps,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             reanchor=self.reanchor,

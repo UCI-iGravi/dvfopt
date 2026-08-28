@@ -141,9 +141,21 @@ Imports flow one way. Breaking these is what re-tangles the package.
   step and the iteration falls back to the `'tr'` acceptance otherwise. The
   ratio test's futility threshold is KEPT as the `tr-collapse` trigger — an exact
   minimiser always finds some decrease, so without it a hopeless window grinds
-  instead of escalating. 2D only (a 6-tet row is cubic along a line), guarded at
-  `windowed_correct`'s entry. The maximal fold-free step cap tried alongside it
-  is REFUTED — it strangles the elastic mechanism; do not add one.
+  instead of escalating. That threshold is *relative* to the QP's predicted
+  decrease and is absent entirely on the no-trust-region rung, so
+  `exact_ls_fallback_steps` (default 3) adds the absolute signal: after that many
+  consecutive steps with `a* < 0.25` the window STOPS (`exit='a-collapse'`) and
+  hands itself to the escalation ladder. That is what removed the one documented
+  `exact_ls` regression — `z0_sliver` 1684 -> 212 SQP iterations (`'tr'`: 540) —
+  while raw B0039 z16 also fell 563 -> 396 and every case's L2 move shrank (five
+  real slices: 3515 -> 2869 iterations, -18%, none regressing on either axis).
+  Stopping is the mechanism: handing the remaining iterations to the `'tr'`
+  ACCEPTANCE instead was measured worse (2350), because mid-run the ratio test
+  accepts tiny steps rather than rejecting them. 2D only (a 6-tet row is cubic
+  along a line), guarded at `windowed_correct`'s entry. The maximal fold-free step
+  cap tried alongside it is REFUTED — it strangles the elastic mechanism; do not
+  add one, and do not scope `exact_ls` out of the no-TR rung (re-measured on the
+  shipped implementation: 1918 vs 1684 on `z0_sliver`).
   `reanchor` (default `'none'`) appends an optional **post-feasibility
   re-anchor stage**. The robust recipe's `objective='none'` buys its trap-free
   feasibility by carrying no fidelity term at all, so once the field is

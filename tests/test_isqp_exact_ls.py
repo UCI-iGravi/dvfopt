@@ -257,3 +257,84 @@ def test_both_rules_clear_the_field_without_damage(rule, objective):
     # `damage` is the engine's own no-damage accounting against the ORIGINAL
     # input: any pixel outside every window's enforced footprint that moved.
     assert rep.folds_before > 0 and rep.folds_after == 0 and rep.damage == 0
+
+
+# ---------------------------------------------------------------------------
+# (g) the a*-collapse bail (``exact_ls_fallback_steps``)
+# ---------------------------------------------------------------------------
+
+
+@needs_osqp
+@pytest.mark.parametrize("k", [1, 3])
+def test_a_star_collapse_hands_the_window_to_the_escalation_ladder(monkeypatch, k):
+    """A scripted a*-collapse: the minimiser always returns a tiny step that still
+    decreases the merit, so neither the futility test nor step-tol would ever give
+    up on the window. After ``k`` consecutive collapses the call must stop, with
+    the step taken and the reason attributable."""
+    sub = _first_sub(_localized_fold(), cls=SimplexConstraint2D)
+    monkeypatch.setattr(isqp_mod, "_exact_line_min", lambda *a: (0.01, 0.0, 0.0))
+    trace = {}
+    isqp_mod.isqp_solve(
+        sub.flat0,
+        sub.cons,
+        sub.cons_jac,
+        sub.obj_grad,
+        40,
+        obj=sub.obj,
+        hess_diag=sub.hess_diag,
+        free_idx=sub.free_idx,
+        trace=trace,
+        step_rule="exact_ls",
+        exact_ls_fallback_steps=k,
+    )
+    assert trace["exit"] == "a-collapse"
+    assert trace["nit"] == k  # stopped on the k-th collapse, not one later
+    assert all(r["stepped"] and r["rule"] == "exact_ls" for r in trace["iters"])
+
+
+@needs_osqp
+def test_a_star_collapse_bail_is_off_at_zero(monkeypatch):
+    """``exact_ls_fallback_steps=0`` disables the bail: the same scripted collapse
+    keeps taking exact steps for the whole budget."""
+    sub = _first_sub(_localized_fold(), cls=SimplexConstraint2D)
+    monkeypatch.setattr(isqp_mod, "_exact_line_min", lambda *a: (0.01, 0.0, 0.0))
+    trace = {}
+    isqp_mod.isqp_solve(
+        sub.flat0,
+        sub.cons,
+        sub.cons_jac,
+        sub.obj_grad,
+        12,
+        obj=sub.obj,
+        hess_diag=sub.hess_diag,
+        free_idx=sub.free_idx,
+        trace=trace,
+        step_rule="exact_ls",
+        exact_ls_fallback_steps=0,
+    )
+    assert trace["exit"] != "a-collapse" and trace["nit"] > 3  # never stops on the collapse
+    assert all("alpha" in r for r in trace["iters"])
+
+
+@needs_osqp
+def test_collapse_bail_knob_reaches_the_driver(monkeypatch):
+    """Strategy dataclass -> windowed_correct -> _InnerOpts -> isqp_solve, and the
+    strategy default is the engine default the gate was measured at."""
+    from dvfopt import ISQPWindowedStrategy
+    from dvfopt.core.windowed import _inners
+
+    default = engine._InnerOpts().exact_ls_fallback_steps
+    assert ISQPWindowedStrategy().exact_ls_fallback_steps == default
+    seen = []
+    real = _inners.isqp_solve
+    monkeypatch.setattr(
+        _inners, "isqp_solve", lambda *a, **kw: (seen.append(kw), real(*a, **kw))[1]
+    )
+    phi = _localized_fold()
+    ISQPWindowedStrategy(exact_ls_fallback_steps=7).solve(
+        phi,
+        constraint=SimplexConstraint2D(shape=phi.shape[1:]),
+        objective=NoneObjective(),
+        threshold=THR,
+    )
+    assert seen and all(k["exact_ls_fallback_steps"] == 7 for k in seen)
