@@ -175,6 +175,27 @@ The engine integration restricts the QP's variables to the fold neighbourhoods
 slices, and books the moved pixels as `touched` exactly like the coarse warm
 start (no-damage unchanged).
 
+### 4.4 What is "bloat" and what is not — the minimal engine
+
+With the orientation rows in every window and *every* fallback off (no no-TR /
+backend / patience rungs, no grow, no mop, no re-seed, no coarse warm start),
+the windowed I-SLSQP alone reaches 0 folds on the hard cases — z11 (2913 s,
+L2 1382) and full-resolution z=2 (4651 s with `objective='none'`, L2 2557;
+4372 s with an in-solve **L2** objective, L2 2502). Two lessons: (i) once the
+feasible set is single-basin the ladder is no longer needed for *robustness*,
+and the in-solve distance objective no longer traps residual folds — feasibility
+and fidelity fit in one formulation; (ii) the coarse warm start and the ladder
+are *speed*, not bloat: the full engine with rows solves z=2 in 1577 s, 3×
+faster than the stripped one. Windowing itself is locality, not bloat: a
+9,660-free-pixel window costs 3.7 s per SQP iteration.
+
+The bounded-shear (cone) rows cannot be applied locally: restricted to the fold
+neighbourhoods (margin 3) the QP is **primal infeasible** on both z11 and z=2 —
+a free pixel next to a healthy-but-sheared fixed neighbour is asked to fit a cone
+anchored on it, and healthy tissue routinely shears more than κ. The "identity is
+feasible" guarantee needs the whole slice free (the 3172 s solve). Monotone
+(edge-only) rows do not have this failure.
+
 ## 5. Other engine changes in the campaign (all merged)
 
 - #85 `auto_strategy` routes `bilinear` → `isqp_windowed`; crop script de-monkeypatched; `docs/recipe-2d-zero-folds.md`.
