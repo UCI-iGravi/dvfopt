@@ -201,7 +201,8 @@ Measured L2 move vs the raw input (0 folds in every cell of the table):
 |---|---|---|---|
 | re-seed path (default engine) | 268 | 2732 | 1017 |
 | rows (all) + `none` | — | 2760 | 1566 |
-| rows (all) + in-solve L2 | — | pending | 1306 |
+| rows (all) + in-solve L2 | 524 | 2441 | 1306 |
+| rows on folded cells only (+1 ring) + `none` | — | 2575 | 1315 |
 | **edge rows only** + `none` | 317 | **2327** | 980 (re-seed fired once) |
 | two-phase monotone QP + polish | — | 2270 | 1306–1350 |
 | minimal engine (rows all) + L2 | — | 2502 | 1153 |
