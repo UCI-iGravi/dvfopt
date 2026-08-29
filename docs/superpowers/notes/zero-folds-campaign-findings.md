@@ -138,6 +138,11 @@ full-resolution z=2: 581,354 rows × 291,840 variables, OSQP 775 iterations,
 folds, damage 0**. Total 349 s vs 10,168 s for the plain engine (29×), at
 **L2 2270 vs 2732 (−17 %)** — faster *and* closer to the input.
 
+On the hardest cohort slice, B0039 lap_all z=11 (4633 folds; re-seed path from
+raw: 14,372 s on a loaded box, L2 1017; rows-always 1604 s, L2 1566): phase 1 at
+δ = 0.1 (215 s) + engine polish (362 s, 22 windows) = **577 s → 0 folds, damage 0,
+L2 1350**; at δ = 0.05: 218 + 434 s, L2 1306. No re-seed fired in either polish.
+
 Caveat found on the way: the monotonicity rows do **not** by themselves imply
 positive cell areas. A *dart* cell (fourth corner pulled inside the triangle of
 the other three) satisfies the row/column monotonicity and both anti-diagonal
