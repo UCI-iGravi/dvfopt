@@ -36,7 +36,17 @@ follows [Semantic Versioning](https://semver.org/).
   harness reads the stage-0 (16×16) feature map instead: at 1000 steps loss 0.074
   and 3 % off-image with a genuinely local field, vs 0.103 / 60 % for the
   bottleneck, 5.7× faster. `meta['off_image_frac']` is the collapse detector
-  (`feature_stage=None` restores the notebook's design).
+  (`feature_stage=None` restores the notebook's design) and rides into the sweep CSV.
+- **Measured (seed 0, CPU, 64², simplex cells of 3969):** VoxelMorph direct **850
+  folded cells in 5 clusters** (median 75, max 591), min −7.5, loss 0.040, 147 s;
+  VoxelMorph diffeo (7 squarings) **415 cells / 22 clusters, 179 bilinear-only**, min
+  −1.6, 181 s — a learned diffeomorphism still folding at the discrete level, i.e.
+  mechanism 4's signature from a mechanism-3 tool; TransMorph-style direct **680
+  cells / 5 clusters**, min −11.9, loss 0.052, 3 % off-image, 275 s. TransMorph-style
+  diffeo does not train on this setup: seeds 0 and 1 collapse off-image
+  (`off_image_frac` 1.0, loss = mean(target²) 0.079), seed 2 stays at the identity
+  (loss 0.114, zero displacement) — the row is kept, flagged by the CSV column, and is
+  not a usable field. All three real rows rebuild byte-identically on this machine.
 
 ### Fixed — `load_dvf_sitk` honours image geometry (direction matrix + spacing)
 
