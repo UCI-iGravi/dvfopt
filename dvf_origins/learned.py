@@ -57,6 +57,10 @@ def _finish(tool, source, disp, warped, losses, t0, **params):
     field = phi[1:, 0]  # the RETURNED channels, so a swap in the packing would show here
     rmse = float(np.sqrt(((_warp_image(source, field) - warped) ** 2).mean()))
     rmse_swapped = float(np.sqrt(((_warp_image(source, field[::-1]) - warped) ** 2).mean()))
+    H, W = source.shape
+    Y, X = np.mgrid[0:H, 0:W]
+    sy, sx = Y + field[0], X + field[1]
+    off_image = float(((sy < 0) | (sy > H - 1) | (sx < 0) | (sx > W - 1)).mean())
     meta = dict(
         source='learned',
         tool=tool,
@@ -64,6 +68,9 @@ def _finish(tool, source, disp, warped, losses, t0, **params):
         train_s=round(time.perf_counter() - t0, 1),
         warp_rmse=rmse,
         warp_rmse_swapped=rmse_swapped,
+        # collapse detector: a network that shifts everything off-image samples only the
+        # (black) border, gets a low MSE for free, and both RMSEs above read 0 — see transmorph
+        off_image_frac=off_image,
         **params,
     )
     return phi, meta
@@ -162,11 +169,24 @@ def transmorph(
     steps_per_epoch=50,
     lr=1e-3,
     lambda_smooth=0.05,
+    feature_stage=0,
     device=None,
 ):
     """The notebook's ``SwinRegNet`` — a Swin-Tiny encoder (timm, 2-channel
     input, no pretraining) + small ConvNet decoder regressing a displacement;
-    ``integration_steps=0`` direct, ``7`` scaling-and-squaring."""
+    ``integration_steps=0`` direct, ``7`` scaling-and-squaring.
+
+    One deliberate deviation from the notebook: the decoder reads the encoder's
+    ``feature_stage`` feature map (stage 0 = 16x16 tokens at 64 px) instead of
+    the final 2x2 bottleneck. Measured on the notebook's design (10k steps, CPU):
+    the bottleneck can only emit near-global fields and settles on a constant
+    -58 px translation that shifts the whole source off-image — the border
+    padding then returns black, the MSE equals mean(target²) ≈ 0.08, and the
+    "field" is a fold-free translation (``off_image_frac`` 1.0). At 1000 steps
+    stage 0 reaches loss 0.074 with 3 % off-image and a genuinely local field
+    (446 folded cells) vs the bottleneck's 0.103 / 60 % off-image, and trains
+    5.7x faster. ``feature_stage=None`` restores the notebook's bottleneck.
+    """
     import timm
     import torch
     import torch.nn.functional as F
@@ -179,21 +199,26 @@ def transmorph(
     train, test = _dataset(image_size, n_train, n_test_pairs, data_seed=42 + seed)
 
     class SwinRegNet(nn.Module):
-        def __init__(self, img_size, steps):
+        def __init__(self, img_size, steps, stage):
             super().__init__()
             self.steps = steps
-            self.encoder = timm.create_model(
-                'swin_tiny_patch4_window7_224',
-                pretrained=False,
-                in_chans=2,
-                num_classes=0,
-                global_pool='',
-                img_size=img_size,
-            )
-            channels = self.encoder.num_features  # timm >= 0.9 swin: NHWC (B, h, w, C) features
+            common = dict(pretrained=False, in_chans=2, img_size=img_size)
+            if stage is None:  # the notebook's 2x2 bottleneck (collapses, see the docstring)
+                self.encoder = timm.create_model(
+                    'swin_tiny_patch4_window7_224', num_classes=0, global_pool='', **common
+                )
+                channels = self.encoder.num_features
+            else:
+                self.encoder = timm.create_model(
+                    'swin_tiny_patch4_window7_224',
+                    features_only=True,
+                    out_indices=(stage,),
+                    **common,
+                )
+                channels = self.encoder.feature_info.channels()[-1]
             with torch.no_grad():
-                enc = self.encoder(torch.zeros(1, 2, img_size, img_size))
-            if enc.ndim != 4 or enc.shape[-1] != channels:
+                enc = self._features(torch.zeros(1, 2, img_size, img_size))
+            if enc.ndim != 4 or enc.shape[1] != channels:
                 raise RuntimeError(f'unexpected swin feature layout {tuple(enc.shape)}')
             self.decoder = nn.Sequential(
                 nn.Conv2d(channels, 64, 3, padding=1),
@@ -205,6 +230,11 @@ def transmorph(
             )
             nn.init.normal_(self.decoder[-1].weight, std=1e-5)
             nn.init.zeros_(self.decoder[-1].bias)
+
+        def _features(self, x):
+            enc = self.encoder(x)
+            enc = enc[-1] if isinstance(enc, (list, tuple)) else enc  # features_only -> list
+            return enc.permute(0, 3, 1, 2)  # timm >= 0.9 swin is NHWC; the decoder wants NCHW
 
         def _warp(self, src, flow):
             # Pull-back sampling of src at pixel (i, j) + flow. With align_corners=True
@@ -225,15 +255,14 @@ def transmorph(
             )
 
         def forward(self, source, target):
-            enc = self.encoder(torch.cat([source, target], 1)).permute(0, 3, 1, 2)  # NHWC -> NCHW
-            disp = self.decoder(enc)
+            disp = self.decoder(self._features(torch.cat([source, target], 1)))
             if self.steps > 0:
                 disp = disp / 2**self.steps
                 for _ in range(self.steps):
                     disp = disp + self._warp(disp, disp)
             return disp, self._warp(source, disp)
 
-    model = SwinRegNet(image_size, integration_steps).to(device)
+    model = SwinRegNet(image_size, integration_steps, feature_stage).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     tr = torch.from_numpy(train).float().unsqueeze(1).to(device)
     gen = torch.Generator().manual_seed(seed)
@@ -263,8 +292,10 @@ def transmorph(
         src, tgt = te[2 * pair][None], te[2 * pair + 1][None]
         disp, warped = model(src, tgt)  # (1, 2, H, W) = [dy, dx]
     disp = disp.cpu().numpy()[0].astype(np.float64)
+    kind = 'direct' if integration_steps == 0 else 'diffeo'
+    feats = 'bottleneck' if feature_stage is None else f'stage-{feature_stage} features'
     return _finish(
-        f'TransMorph-style SwinRegNet ({"direct" if integration_steps == 0 else "diffeo"})',
+        f'TransMorph-style SwinRegNet ({kind}, {feats})',
         test[2 * pair].astype(np.float64),
         disp,
         warped.cpu().numpy()[0, 0].astype(np.float64),
@@ -273,6 +304,7 @@ def transmorph(
         seed=seed,
         image_size=image_size,
         pair=pair,
+        feature_stage=feature_stage,
         integration_steps=integration_steps,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,

@@ -36,7 +36,11 @@ Each learned row records `warp_rmse` — pull-back-warping the source by the
 returned field must reproduce the network's own warped output — next to the
 same number with the channels swapped, so the `[dy, dx]` / `moving(x + u(x))`
 convention is checked rather than assumed (it caught a ±0.5 px identity stretch
-in the TransMorph notebook's sampler, fixed in the harness copy).
+in the TransMorph notebook's sampler, fixed in both). `off_image_frac` is the
+collapse detector: the notebook's 2×2 Swin bottleneck learns to shift the whole
+source off-image (border padding returns black, MSE = mean(target²)), which
+reads as a fold-free constant translation — the harness reads the encoder's
+stage-0 (16×16) features instead (`feature_stage=0`; `None` = the notebook).
 
 `sweep` columns (`morphology.py`): size, displacement magnitude, then the
 same field under three metrics — central-difference Jdet per pixel, the

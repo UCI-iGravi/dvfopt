@@ -26,7 +26,17 @@ follows [Semantic Versioning](https://semver.org/).
   measured rather than assumed. It caught a ±0.5 px identity stretch in the
   TransMorph notebook's sampler (`linspace(-1, 1, n)` grid with
   `align_corners=False`): 2.4e-2 RMSE against its own warp, 1e-7 once the harness
-  copy samples pixel centers exactly (`align_corners=True`, `2d/(n-1)`).
+  copy samples pixel centers exactly (`align_corners=True`, `2d/(n-1)`; the
+  notebook cell got the same fix).
+- One deliberate deviation from the TransMorph notebook (`feature_stage=0`): its
+  decoder reads the Swin encoder's 2×2 bottleneck, which can only emit near-global
+  fields and, trained the notebook's way, settles on a constant −58 px translation
+  that shifts the whole source off-image — border padding returns black, the MSE
+  equals mean(target²) ≈ 0.08, and the "field" is a fold-free translation. The
+  harness reads the stage-0 (16×16) feature map instead: at 1000 steps loss 0.074
+  and 3 % off-image with a genuinely local field, vs 0.103 / 60 % for the
+  bottleneck, 5.7× faster. `meta['off_image_frac']` is the collapse detector
+  (`feature_stage=None` restores the notebook's design).
 
 ### Fixed — `load_dvf_sitk` honours image geometry (direction matrix + spacing)
 
