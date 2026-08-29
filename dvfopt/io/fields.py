@@ -9,7 +9,10 @@ Channel/axis convention mirrors :mod:`dvfopt.jacobian.sitk_jdet` (the
 package's single source of truth): the canonical numpy layout is
 ``(3, D, H, W)`` with channels ``[dz, dy, dx]``; sitk vector images store
 ``(D, H, W, 3)`` arrays with components ``[dx, dy, dz]``. Conversion is a
-``(1, 2, 3, 0)`` transpose plus a ``[2, 1, 0]`` component reorder.
+``(1, 2, 3, 0)`` transpose plus a ``[2, 1, 0]`` component reorder — after
+mapping the stored PHYSICAL vectors into index space through the image's
+direction matrix and spacing (:func:`dvf_from_sitk_image`), which is the
+identity for files this module writes and is NOT for real registration warps.
 
 SimpleITK is optional at runtime: :func:`sitk_available` gates the GUI's
 file-dialog filters; the load/save functions import lazily.
@@ -37,32 +40,56 @@ def is_sitk_path(path) -> bool:
     return any(lower.endswith(ext) for ext in SITK_EXTENSIONS)
 
 
-def load_dvf_sitk(path) -> np.ndarray:
-    """Load a displacement field into the canonical ``(3, D, H, W)``
-    ``[dz, dy, dx]`` float64 layout.
+def dvf_from_sitk_image(img) -> np.ndarray:
+    """Convert a SimpleITK 2-/3-component vector image to the canonical
+    ``(3, D, H, W)`` ``[dz, dy, dx]`` float64 layout, in INDEX space.
 
-    Accepts 3-component 3D vector images and 2-component 2D vector images
-    (mapped to a single-slice volume with ``dz = 0``). Raises ``ValueError``
-    for anything else (e.g. scalar images).
+    ITK stores displacement vectors in physical space (mm, LPS) on an image
+    with per-axis ``spacing`` and a ``direction`` matrix ``D`` (index axes ->
+    physical axes), so the index-space displacement is ``D^-1 . v / spacing``.
+    An image with identity direction and unit spacing — what
+    :func:`save_dvf_sitk` writes — therefore loads exactly as its raw array.
+    Real registration warps are not that: the cohort ANTs SyN warps carry a
+    signed-permutation direction, and ignoring it reads 4667 spurious 3D
+    folds on a warp that is diffeomorphic by construction (0 with it).
+
+    Accepts 3-component 3D and 2-component 2D vector images (the latter map
+    to a single-slice volume with ``dz = 0``); raises ``ValueError`` for
+    anything else (e.g. scalar images).
     """
     import SimpleITK as sitk
 
-    img = sitk.ReadImage(str(path))
-    arr = sitk.GetArrayFromImage(img)
+    arr = sitk.GetArrayFromImage(img)  # (..., ncomp); array axes = index axes reversed
     ncomp = img.GetNumberOfComponentsPerPixel()
-    if ncomp == 3 and arr.ndim == 4:
-        arr = arr[..., [2, 1, 0]]  # components [dx,dy,dz] -> [dz,dy,dx]
-        return np.ascontiguousarray(np.transpose(arr, (3, 0, 1, 2))).astype(np.float64)
-    if ncomp == 2 and arr.ndim == 3:
-        H, W = arr.shape[:2]
-        vol = np.zeros((3, 1, H, W), dtype=np.float64)
-        vol[1, 0] = arr[..., 1]  # dy
-        vol[2, 0] = arr[..., 0]  # dx
-        return vol
-    raise ValueError(
-        f'not a 2/3-component displacement field: array shape {arr.shape}, '
-        f'{ncomp} component(s) per pixel'
-    )
+    dim = img.GetDimension()
+    if ncomp not in (2, 3) or ncomp != dim or arr.ndim != dim + 1:
+        raise ValueError(
+            f'not a 2/3-component displacement field: array shape {arr.shape}, '
+            f'{ncomp} component(s) per pixel'
+        )
+    D = np.asarray(img.GetDirection(), dtype=np.float64).reshape(dim, dim)
+    spacing = np.asarray(img.GetSpacing(), dtype=np.float64)
+    idx = arr.astype(np.float64)
+    if not (np.array_equal(D, np.eye(dim)) and np.all(spacing == 1.0)):
+        idx = np.einsum('ab,...b->...a', np.linalg.inv(D), idx) / spacing
+    # components are per ITK index axis (x, y[, z]); canonical channels are the reverse
+    if dim == 3:
+        return np.ascontiguousarray(np.moveaxis(idx[..., ::-1], -1, 0))
+    H, W = arr.shape[:2]
+    vol = np.zeros((3, 1, H, W), dtype=np.float64)
+    vol[1, 0] = idx[..., 1]  # dy
+    vol[2, 0] = idx[..., 0]  # dx
+    return vol
+
+
+def load_dvf_sitk(path) -> np.ndarray:
+    """Load a displacement field into the canonical ``(3, D, H, W)``
+    ``[dz, dy, dx]`` float64 layout (index space — see
+    :func:`dvf_from_sitk_image` for the geometry handling and what it accepts).
+    """
+    import SimpleITK as sitk
+
+    return dvf_from_sitk_image(sitk.ReadImage(str(path)))
 
 
 def save_dvf_sitk(path, vol) -> None:

@@ -19,7 +19,7 @@ pip install -e ".[benchmarks]"
 pip install -r requirements-dev.txt
 ```
 
-Tests live in `tests/` and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
+Tests live in `tests/` (plus the `dvf_origins/` harness's own `test_origins.py`) and are run with `pytest`. CI runs the full pytest suite on Ubuntu (Python 3.11/3.12) via `.github/workflows/ci.yml`, and `.github/workflows/test.yml` additionally gates on `ruff check` + `ruff format --check`. Additional validation is done through Jupyter notebooks.
 
 ```bash
 # Run all tests

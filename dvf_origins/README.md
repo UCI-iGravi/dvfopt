@@ -17,7 +17,7 @@ python -m dvf_origins list                     # the case registry (dvf_origins/
 python -m dvf_origins generate                 # -> data/origins/<case>.npy + <case>.json (gitignored)
 python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps are absent are skipped, with the reason
 python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv
-pytest dvf_origins                             # self-check (~20 s; CI runs it too, data-gated tests skip there)
+pytest dvf_origins                             # self-check (~3 s; ~20 s with the gitignored data present; CI runs it too)
 ```
 
 `sweep` columns (`morphology.py`): size, displacement magnitude, then the
@@ -33,10 +33,11 @@ Add a case: one row in `CASES`. Add a mechanism variant: a function returning
 Conventions worth knowing before trusting a row: skimage optical flow and
 SimpleITK displacement fields are already pull-back (fixed → moving), so they
 are used unchanged; the ANTs warp is converted from physical (mm, LPS) to
-index-space voxels through the NIfTI **direction matrix** (`D⁻¹·phys/spacing` —
-the cohort files carry a signed permutation, so dividing by spacing alone mixes
-components: 4667 spurious 3D folds vs 0) and re-laid-out onto the Laplacian
-field's `(i, j, k)` grid, so `z` means the same plane in both real rows; a
-large in-plane fold count on it means a convention mismatch, not folds. The
+index-space voxels by the library's `dvfopt.io.fields.dvf_from_sitk_image`
+(`D⁻¹·phys/spacing` through the NIfTI **direction matrix** — the cohort files
+carry a signed permutation, and ignoring the geometry reads 4667 spurious 3D
+folds vs 0) and re-laid-out onto the Laplacian field's `(i, j, k)` grid, so `z`
+means the same plane in both real rows; a large in-plane fold count on it means
+a convention mismatch, not folds. The
 mechanism-3 proxy reproduces the morphology of an unregularized network
 output, not the mechanism — label it as such in any table.

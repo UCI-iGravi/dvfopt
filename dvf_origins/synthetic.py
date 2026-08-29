@@ -7,7 +7,7 @@ field convention. Sizes are in pixels, so parameters scale with ``shape``.
 import numpy as np
 from scipy import ndimage
 
-from dvf_origins import pack2d
+from dvf_origins._common import pack2d
 
 
 def smooth_field(shape, sigma, max_disp, rng):
@@ -59,7 +59,7 @@ def interp_sparse(
     n_collapse=0,
     collapse_size=8,
     jitter=0.0,
-    rtol=1e-4,
+    rtol=1e-4,  # tighter than the library's 1e-2: CG residue shows up as folds in the control row
     maxiter=2000,
 ):
     """Laplacian interpolation of correspondences sampled from a smooth
@@ -99,7 +99,7 @@ def interp_sparse(
         ang = rng.uniform(0, 2 * np.pi, n_out)
         m[idx] += outlier_mag * np.stack([np.sin(ang), np.cos(ang)], 1)
     for _ in range(n_collapse):
-        s = rng.integers(0, n_contour - collapse_size)
+        s = rng.integers(0, n_contour - collapse_size + 1)  # any window of adjacent contour pts
         m[s : s + collapse_size] = m[s : s + collapse_size].mean(0)
     if jitter:
         m += rng.normal(0, jitter, m.shape)

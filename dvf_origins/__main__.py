@@ -11,8 +11,6 @@ import numpy as np
 from dvf_origins import CASES, MECHANISMS, ROOT, build
 from dvf_origins.morphology import COLUMNS, morphology
 
-_UNAVAILABLE = (FileNotFoundError, ImportError)  # data / optional dependency absent: a clean skip
-
 
 def cmd_list(_a):
     for name, (mech, fn, kw) in CASES.items():
@@ -25,21 +23,28 @@ def cmd_list(_a):
 def cmd_generate(a):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    unknown = [c for c in a.case or [] if c not in CASES]
+    unknown += [f'm{m}' for m in a.mechanism or [] if m not in MECHANISMS]
+    if unknown:
+        print(f'unknown case / mechanism: {", ".join(unknown)} (see `python -m dvf_origins list`)')
+        raise SystemExit(2)
     names = [
         n
         for n, (mech, _, _) in CASES.items()
-        if (not a.mechanism or mech in a.mechanism) and (not a.case or n in a.case)
+        if (a.mechanism is None or mech in a.mechanism) and (a.case is None or n in a.case)
     ]
     built, skipped, failed = [], [], []
     for n in names:
         t0 = time.perf_counter()
         try:
             phi, meta = build(n)
+        except (FileNotFoundError, ModuleNotFoundError) as e:  # data / optional dep absent
+            skipped.append(n)
+            print(f'skip  {n}: {e}')
+            continue
         except Exception as e:  # keep going: the contract is "build what you can, say why not"
-            (skipped if isinstance(e, _UNAVAILABLE) else failed).append(n)
-            print(
-                f'{"skip" if isinstance(e, _UNAVAILABLE) else "FAIL"}  {n}: {type(e).__name__}: {e}'
-            )
+            failed.append(n)
+            print(f'FAIL  {n}: {type(e).__name__}: {e}')
             continue
         meta['build_s'] = round(time.perf_counter() - t0, 2)
         np.save(out / f'{n}.npy', phi)
@@ -65,7 +70,7 @@ def cmd_sweep(a):
         meta = json.loads(mp.read_text()) if mp.is_file() else {}
         row = {
             'case': name,
-            'mechanism': meta.get('mechanism', CASES[name][0]),
+            'mechanism': CASES[name][0],  # the registry, not the JSON, is the authority
             'source': meta.get('source', ''),
             'tool': meta.get('tool', ''),
             'dz_max_dropped': meta.get('dz_max_dropped', ''),
@@ -95,8 +100,8 @@ def main(argv=None):
     sub.add_parser('list', help='print the case registry').set_defaults(fn=cmd_list)
     g = sub.add_parser('generate', help='build cases -> <out>/<case>.npy + .json')
     g.add_argument('--out', default=str(ROOT / 'data' / 'origins'))
-    g.add_argument('--mechanism', type=int, nargs='*', help='only these mechanisms (1-4)')
-    g.add_argument('--case', nargs='*', help='only these case names')
+    g.add_argument('--mechanism', type=int, nargs='+', help='only these mechanisms (1-4)')
+    g.add_argument('--case', nargs='+', help='only these case names')
     g.set_defaults(fn=cmd_generate)
     s = sub.add_parser('sweep', help='fold-morphology table over generated fields')
     s.add_argument('--in', dest='inp', default=str(ROOT / 'data' / 'origins'))

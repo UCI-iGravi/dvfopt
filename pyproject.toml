@@ -72,15 +72,16 @@ fast = [
 include = ["dvfopt*", "dvfopt_gui*"]
 
 # ---------------------------------------------------------------------------
-# Pytest. Scope collection to tests/ so a bare `pytest` does NOT pull in the
-# notebooks/experiments/_run_*_test.py scratch scripts (they load gitignored
-# data at import time and error at collection). Matches CI's `pytest tests/`.
+# Pytest. Scope collection to tests/ (+ the dvf_origins/ harness self-check) so
+# a bare `pytest` does NOT pull in the notebooks/experiments/_run_*_test.py
+# scratch scripts (they load gitignored data at import time and error at
+# collection). Matches CI's `pytest tests/ dvf_origins`.
 # pytest-randomly (dev extra) shuffles test order each run and prints the seed
 # — reproduce a failure with `pytest -p randomly --randomly-seed=<seed>`.
 # Parallelize with `pytest -n auto` (pytest-xdist).
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "dvf_origins"]
 addopts = "-ra"
 xfail_strict = true
 

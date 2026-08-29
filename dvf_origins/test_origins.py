@@ -13,7 +13,10 @@ SMALL = [
     (synthetic.learned_proxy, dict(warp_sigma=8)),
     (synthetic.diffeo_discretized, dict(svf_sigma=4, svf_max=24, n_steps=6, decimate=2)),
 ]
-_HAVE_COHORT = (real.COHORT / 'B0039' / 'laplacian_exterior' / 'ants_warp_0.nii.gz').is_file()
+_HAVE_COHORT = all(
+    (real.COHORT / 'B0039' / 'laplacian_exterior' / f).is_file()
+    for f in ('ants_warp_0.nii.gz', 'laplacian_deformation_field.npz')
+)
 _HAVE_BRAIN = registered.FIXED.is_file() and registered.MOVING.is_file()
 
 
@@ -63,7 +66,6 @@ def test_morphology_bilinear_only_cell():
 
 
 def test_registry_and_build_synthetic():
-    assert len(set(CASES)) == len(CASES)
     assert {mech for mech, _, _ in CASES.values()} <= set(MECHANISMS)
     phi, meta = build('m3_learned_proxy_mild')
     _check_field(phi)

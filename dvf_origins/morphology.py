@@ -36,6 +36,7 @@ COLUMNS = [
     'jdet_below_px',
     'jdet_min',
     'simplex_neg_tris',
+    'simplex_below_tris',
     'simplex_neg_cells',
     'simplex_below_cells',
     'simplex_min',
@@ -53,8 +54,8 @@ COLUMNS = [
 def morphology(phi, threshold=0.01):
     """Return the :data:`COLUMNS` dict for a ``(3, 1, H, W)`` field."""
     phi = np.asarray(phi, dtype=np.float64)
-    if phi.ndim != 4 or phi.shape[0] != 3 or phi.shape[1] != 1:
-        raise ValueError(f'expected (3, 1, H, W), got {phi.shape}')
+    if phi.ndim != 4 or phi.shape[0] != 3 or phi.shape[1] != 1 or min(phi.shape[-2:]) < 2:
+        raise ValueError(f'expected (3, 1, H, W) with H, W >= 2, got {phi.shape}')
     H, W = phi.shape[-2:]
     dy, dx = phi[1, 0], phi[2, 0]
     n_cells = (H - 1) * (W - 1)
@@ -80,6 +81,7 @@ def morphology(phi, threshold=0.01):
         jdet_below_px=js.n_below,
         jdet_min=js.min_val,
         simplex_neg_tris=ts.n_neg,
+        simplex_below_tris=ts.n_below,  # cohort_benchmark's "simplex folds" (< threshold)
         simplex_neg_cells=ss.n_neg,
         simplex_below_cells=ss.n_below,
         simplex_min=ss.min_val,

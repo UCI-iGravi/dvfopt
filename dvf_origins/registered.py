@@ -15,7 +15,7 @@ from functools import cache
 
 import numpy as np
 
-from dvf_origins import ROOT, pack2d
+from dvf_origins._common import ROOT, pack2d
 
 FIXED = ROOT / 'data' / 'mouse_brain' / 'average_template_25.nii.gz'
 MOVING = ROOT / 'data' / 'mouse_brain' / 'B0039_brain_25.nii.gz'
@@ -71,10 +71,12 @@ def _pair_meta(tool, z_frac, downsample, **kw):
     )
 
 
-def _sitk_field_to_phi(sitk, field):
-    """SimpleITK 2-component displacement image -> ``(3,1,H,W)`` ``[0, dy, dx]``."""
-    arr = sitk.GetArrayFromImage(field)  # (H, W, 2) = [dx, dy]
-    return pack2d(arr[..., 1], arr[..., 0])
+def _sitk_field_to_phi(_sitk, field):
+    """SimpleITK 2-component displacement image -> ``(3,1,H,W)`` ``[0, dy, dx]``
+    (the library's converter; identity geometry here, so index == physical)."""
+    from dvfopt.io.fields import dvf_from_sitk_image
+
+    return dvf_from_sitk_image(field)
 
 
 def demons(sigma=1.0, iterations=200, z_frac=0.5, downsample=2):
