@@ -229,6 +229,20 @@ un-rotated tissue and becomes the trap, which is why the rows win fidelity there
 the un-rotation at an L2 cost against the input. This is a documented behaviour
 change of the default formulation, not a defect.
 
+**From-raw robustness of the final formulation** (edge rows δ=0.01 + in-solve L2,
+bilinear rows, threshold 0.01, engine defaults, serial; every row 0 simplex / 0
+bilinear folds, damage 0, and the terminal re-seed stage never fired):
+
+| slice | folds before | rounds / windows | patience | wall | L2 move | re-seed-path engine |
+|---|---|---|---|---|---|---|
+| B0032 lap_ext z1 | 4556 | 2 / 125 | 0 | 2052 s | 1575 | 70 folds left after 8902 s |
+| B0039 lap_ext z1 | 3957 | 2 / 57 | 2 | 2344 s | 2038 | 15,062 s (certification run, pool) |
+| B0304 lap_ext z128 | 8956 | 2 / 248 | 3 | 3789 s | 1092 | 3643 s with the full rows (+0.7 %) |
+| B0304 lap_all z181 | 29,699 | 3 / 308 | 43 | 5863 s | 1466 | 6319 s with the full rows, L2 +28 % |
+
+Patience fallbacks (the bail-free exact-LS continuation) are now the only rung
+that fires on these slices; the backend and grow rungs and the re-seed are idle.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
