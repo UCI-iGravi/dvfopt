@@ -193,6 +193,30 @@ The engine integration restricts the QP's variables to the fold neighbourhoods
 slices, and books the moved pixels as `touched` exactly like the coarse warm
 start (no-damage unchanged).
 
+### 4.3b Which rows, which objective — the fidelity ledger
+
+Measured L2 move vs the raw input (0 folds in every cell of the table):
+
+| formulation | raw z16 (plain 268) | full-res z=2 (plain 2732) | z11 (plain plateau 929, 49 folds) |
+|---|---|---|---|
+| re-seed path (default engine) | 268 | 2732 | 1017 |
+| rows (all) + `none` | — | 2760 | 1566 |
+| rows (all) + in-solve L2 | — | pending | 1306 |
+| **edge rows only** + `none` | 317 | **2327** | 980 (re-seed fired once) |
+| two-phase monotone QP + polish | — | 2270 | 1306–1350 |
+| minimal engine (rows all) + L2 | — | 2502 | 1153 |
+| whole-slice cone QP (δ .25, κ .8) | — | — | 1274 |
+
+Reading: the **anti-diagonal convexity rows** are the fidelity cost of the rows
+(z11 1566 → 980, z=2 2760 → 2327 when dropped); the monotone edge rows alone
+reach a *better* basin than the plain engine on the trapped slices (z=2 −15 %)
+and cost +18 % on an ordinary slice (raw z16) with `none`; the in-solve L2
+objective pulls every rows variant back toward the input (z11 1566 → 1306 for
+the full rows). The crop pack cannot gauge the rows' fidelity: `z0_sliver` was cut
+from an engine *output* and contains 147 fold-free rotated cells (the
+rotated-branch artefact); the rows un-rotate them, which reads as a large L2
+against that artefactual start.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
