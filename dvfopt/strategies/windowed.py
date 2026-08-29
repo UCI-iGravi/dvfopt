@@ -201,6 +201,7 @@ class WindowedWrapperStrategy(Strategy):
     exact_ls_fallback_steps: int = 3
     patience_retry: bool = True
     orientation_delta: Optional[float] = None
+    orientation_scope: str = 'all'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
@@ -268,6 +269,7 @@ class WindowedWrapperStrategy(Strategy):
             exact_ls_fallback_steps=self.exact_ls_fallback_steps,
             patience_retry=self.patience_retry,
             orientation_delta=self.orientation_delta,
+            orientation_scope=self.orientation_scope,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             reanchor=self.reanchor,

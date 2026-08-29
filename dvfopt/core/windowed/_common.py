@@ -92,6 +92,7 @@ class _InnerOpts:
     ladder: bool = (
         True  # False -> one attempt per window: no retries, no grow (the mop's big windows)
     )
+    orientation_scope: str = 'all'  # 'all' | 'folds': rows only on currently folded cells (+1 ring)
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,7 @@ def build_subproblem(
     margin_delta=1e-3,
     free_extra=None,
     orientation_delta=None,
+    orientation_scope='all',
 ):
     """Build the window sub-problem for a free box ``(fy0, fy1, fx0, fx1)`` (global).
 
@@ -225,7 +227,14 @@ def build_subproblem(
 
     n_rows = enforced_idx.size
     if orientation_delta is not None:
-        a_or, b_or = _orientation_rows(c, free_mask, float(orientation_delta))
+        cell_mask = None
+        if orientation_scope == 'folds':
+            # only the cells currently folded in the patch, plus a 1-cell ring: where the
+            # rotated-branch trap forms -- never on healthy (possibly >90-degree rotated)
+            # tissue, which global rows would un-rotate at a large fidelity cost
+            cell_fold = _cell_fold_mask_2d(np.asarray(c.values(flat0)), ph, pw, target)
+            cell_mask = ndimage.binary_dilation(cell_fold, iterations=1)
+        a_or, b_or = _orientation_rows(c, free_mask, float(orientation_delta), cell_mask)
         base_cons, base_jac = cons, cons_jac
 
         def cons(f, _a=a_or, _b=b_or):
@@ -252,7 +261,19 @@ def build_subproblem(
     )
 
 
-def _orientation_rows(c, free_mask, delta):
+def _cell_fold_mask_2d(values, ph, pw, target):
+    """``(ph-1, pw-1)`` bool: cells with any constraint row below ``target``, for the 2D
+    simplex families whose rows come ``k`` per cell in cell-major order. Unknown
+    layouts return all-True (no restriction)."""
+    v = np.asarray(values)
+    n_cells = (ph - 1) * (pw - 1)
+    if n_cells <= 0 or v.size % n_cells != 0:
+        return np.ones((max(ph - 1, 0), max(pw - 1, 0)), bool)
+    k = v.size // n_cells
+    return (v.reshape(n_cells, k).min(axis=1) < target).reshape(ph - 1, pw - 1)
+
+
+def _orientation_rows(c, free_mask, delta, cell_mask=None):
     """Sparse ``(A, b)`` with ``A @ x + b >= 0`` the linear orientation rows of a patch.
 
     For every horizontal edge ``1 + dx[i,j+1] - dx[i,j] >= delta``, every vertical edge
@@ -270,6 +291,18 @@ def _orientation_rows(c, free_mask, delta):
     n = ph * pw
     rows, cols, vals, rhs = [], [], [], []
     r = 0
+    if cell_mask is not None:  # restrict to the edges / cells of the masked cells
+        cm = np.asarray(cell_mask, bool)
+        h_ok = np.zeros((ph, pw - 1), bool)  # edge (i,j)-(i,j+1) borders cells (i-1,j), (i,j)
+        h_ok[:-1, :] |= cm
+        h_ok[1:, :] |= cm
+        v_ok = np.zeros((ph - 1, pw), bool)  # edge (i,j)-(i+1,j) borders cells (i,j-1), (i,j)
+        v_ok[:, :-1] |= cm
+        v_ok[:, 1:] |= cm
+    else:
+        cm = np.ones((ph - 1, pw - 1), bool)
+        h_ok = np.ones((ph, pw - 1), bool)
+        v_ok = np.ones((ph - 1, pw), bool)
 
     def add(ia, ib):  # row: x[ia] - x[ib] + (1 - delta) >= 0
         nonlocal r
@@ -282,15 +315,15 @@ def _orientation_rows(c, free_mask, delta):
     fm = free_mask
     for i in range(ph):
         for j in range(pw - 1):
-            if fm[i, j] or fm[i, j + 1]:
+            if h_ok[i, j] and (fm[i, j] or fm[i, j + 1]):
                 add(n + i * pw + j + 1, n + i * pw + j)
     for i in range(ph - 1):
         for j in range(pw):
-            if fm[i, j] or fm[i + 1, j]:
+            if v_ok[i, j] and (fm[i, j] or fm[i + 1, j]):
                 add((i + 1) * pw + j, i * pw + j)
     for i in range(ph - 1):
         for j in range(pw - 1):
-            if fm[i, j] or fm[i, j + 1] or fm[i + 1, j] or fm[i + 1, j + 1]:
+            if cm[i, j] and (fm[i, j] or fm[i, j + 1] or fm[i + 1, j] or fm[i + 1, j + 1]):
                 add(n + i * pw + j + 1, n + (i + 1) * pw + j)
                 add((i + 1) * pw + j, i * pw + j + 1)
     a = sparse.csr_matrix((vals, (rows, cols)), shape=(r, 2 * n))
@@ -572,6 +605,7 @@ def windowed_correct(
     exact_ls_fallback_steps=3,
     patience_retry=True,
     orientation_delta=None,
+    orientation_scope='all',
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -864,6 +898,7 @@ def windowed_correct(
         exact_ls_fallback_steps,
         patience_retry,
         orientation_delta,
+        orientation_scope=orientation_scope,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1595,6 +1630,7 @@ def _solve_window(
         objective,
         margin_delta,
         orientation_delta=opts.orientation_delta,
+        orientation_scope=opts.orientation_scope,
     )
     t = time.perf_counter()
 
