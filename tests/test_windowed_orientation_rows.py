@@ -108,3 +108,17 @@ def test_strategy_forwards_orientation_delta(monkeypatch):
     )
     assert seen["orientation_delta"] == 0.02
     assert ISQPWindowedStrategy().orientation_delta is None
+
+
+def test_edges_kind_drops_the_anti_diagonal_rows():
+    phi = np.zeros((2, 12, 12))
+    c = SimplexConstraint2D(shape=(12, 12))
+    base = build_subproblem(c, phi, (3, 9, 3, 9), 0.01, None, 1e-3).n_enforced
+    full = build_subproblem(
+        c, phi, (3, 9, 3, 9), 0.01, None, 1e-3, orientation_delta=0.01
+    ).n_enforced
+    edges = build_subproblem(
+        c, phi, (3, 9, 3, 9), 0.01, None, 1e-3, orientation_delta=0.01, orientation_rows="edges"
+    ).n_enforced
+    assert base < edges < full  # edge rows only: fewer rows, still some
+    assert (full - edges) % 2 == 0 and (full - edges) > 0  # two anti-diagonal rows per cell dropped
