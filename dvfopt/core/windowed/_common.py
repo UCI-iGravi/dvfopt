@@ -89,6 +89,9 @@ class _InnerOpts:
     exact_ls_fallback_steps: int = 3
     patience_retry: bool = True
     orientation_delta: object = None  # float -> linear orientation rows in every window (2D)
+    ladder: bool = (
+        True  # False -> one attempt per window: no retries, no grow (the mop's big windows)
+    )
 
 
 @dataclass(frozen=True)
@@ -577,7 +580,7 @@ def windowed_correct(
     reanchor_tile=48,
     reseed_rounds=3,
     reseed_radius=2,
-    reseed_before_mop=True,
+    reseed_before_mop=False,
     untangle_delta=0.1,
     time_budget_s=None,
     verbose=1,
@@ -785,11 +788,17 @@ def windowed_correct(
     after 8902 s / 374 windows (L2 1988 vs 1973). 2D simplex-family only; raises
     on other packs.
 
-    ``reseed_before_mop`` (default True) runs the re-seed stage BEFORE the terminal
-    mop instead of after it. Measured on the full-resolution B0039 exterior z=1
-    trace (15 657 s): the mop's whole-cluster windows ran the entire ladder on the
-    rotated-branch residual for 12 367 s (79%) at ~3.7 s per SQP iteration, and the
-    re-seed then cleared it in 7 s. ``False`` restores the after-mop order.
+    ``reseed_before_mop`` (default False) runs the re-seed stage BEFORE the terminal
+    mop instead of after it. Measured and NOT the default: on sliver-type residual
+    (the ``z0_sliver`` crop, 18 cells within ~1e-4 of the threshold) the harmonic
+    fill is far too blunt -- L2 move 137.8 vs 21.5 for the mop -- so the mop stays
+    first. What made the mop expensive on the full-resolution B0039 exterior z=1
+    trace (12 367 of 15 657 s, 79%) was its whole-cluster windows above
+    ``max_window_area`` running the entire escalation ladder (10 calls per box at
+    ~3.7 s per SQP iteration) on the rotated-branch residual the re-seed then
+    cleared in 7 s; those windows now get a single attempt (no retries, no grow;
+    ``_InnerOpts.ladder=False``) and the ladder is kept for the small mop windows
+    the sliver residual needs.
 
     ``reseed_rounds`` (default 3, 0 = off) / ``reseed_radius`` (default 2) add a
     **terminal harmonic re-seed stage** for the residual the round loop AND the mop
@@ -928,7 +937,7 @@ def windowed_correct(
                 mop_margin=mop_margin,
                 time_budget_s=time_budget_s,
                 verbose=verbose,
-                **asdict(opts),
+                **_engine_kwargs(opts),
             ),
         )
         phi += delta
@@ -1038,7 +1047,7 @@ def windowed_correct(
                 max_window_area=max_window_area,
                 mop_margin=mop_margin,
                 verbose=verbose,
-                **asdict(opts),
+                **_engine_kwargs(opts),
             ),
             expired=_expired,
         )
@@ -1200,6 +1209,14 @@ def _mop_pass(
                     opts=opts,
                 )
             else:
+                # A mop window above max_window_area gets ONE attempt: no retries, no
+                # grow. Measured on the full-resolution B0039 exterior z=1 trace, these
+                # whole-cluster windows (up to 9 660 free pixels, 3.7 s per SQP
+                # iteration) ran the entire ladder -- 10 calls per box -- on the
+                # rotated-branch residual for 12 367 of 15 657 s (79%), and the re-seed
+                # stage then cleared it in 7 s. Small mop windows keep the full ladder
+                # (the sliver-type residual needs it and is cheap).
+                big = (fy1 - fy0) * (fx1 - fx0) > max_window_area
                 _solve_window(
                     phi,
                     constraint,
@@ -1211,7 +1228,7 @@ def _mop_pass(
                     rep,
                     margin_delta=margin_delta,
                     inner=inner,
-                    opts=opts,
+                    opts=replace(opts, ladder=False) if big else opts,
                 )
         if int(pixel_fold_mask(constraint, phi, threshold).sum()) >= n:
             break  # no progress -> genuine local floor
@@ -1328,6 +1345,13 @@ def _reanchor_pass(
         prev = cur
 
 
+def _engine_kwargs(opts):
+    """``_InnerOpts`` as ``windowed_correct`` kwargs for a recursive solve (the coarse
+    warm start, the re-seed polish): every knob except ``ladder``, which is per-window
+    (the mop's big windows) and not a ``windowed_correct`` parameter."""
+    return {k: v for k, v in asdict(opts).items() if k != "ladder"}
+
+
 def _harmonic_fill(phi, mask):
     """Replace ``phi[:, mask]`` by the discrete-harmonic (4-neighbour Laplacian)
     interpolation of ``phi`` on the mask's boundary, in place. One sparse solve per
@@ -1417,7 +1441,7 @@ def _reseed_stage(
             untangle_delta=None,
             reanchor="none",
             time_budget_s=None,
-            **sub_kw,
+            **{k: v for k, v in sub_kw.items() if k != "ladder"},
         )
         phi[...] = out
         for w in rep_in.windows:  # the polish's enforced footprints
@@ -1586,7 +1610,7 @@ def _solve_window(
             exact_ls_fallback_steps=opts.exact_ls_fallback_steps,
         )
         no_tr = False
-        if not ok and opts.no_tr_fallback and inner in _ISQP_LABELS:
+        if not ok and opts.no_tr_fallback and opts.ladder and inner in _ISQP_LABELS:
             # The trust-region ratio test freezes on sliver-scale violations
             # (~1e-4, inside OSQP's own noise) that the legacy backtracking line
             # search still clears -- so retry the SAME window once with the TR off
@@ -1636,7 +1660,13 @@ def _solve_window(
     #   rung). Measured on raw B0039 z16, retrying tiles cost 505 s vs 264 s at an
     #   identical (zero) fold count and a worse move (L2 362 vs 325).
     backend_fell_back = False
-    if not ok and allow_grow and opts.qp_backend != "osqp" and inner in _ISQP_LABELS:
+    if (
+        not ok
+        and allow_grow
+        and opts.ladder
+        and opts.qp_backend != "osqp"
+        and inner in _ISQP_LABELS
+    ):
         backend_fell_back = bool(sub.cons(x).min() < -margin_delta)
     if backend_fell_back:
         x2, nit2, ok2, no_tr2 = _attempt("osqp")
@@ -1660,6 +1690,7 @@ def _solve_window(
     if (
         not ok
         and allow_grow
+        and opts.ladder
         and opts.patience_retry
         and opts.step_rule == 'exact_ls'
         and opts.exact_ls_fallback_steps
@@ -1713,7 +1744,7 @@ def _solve_window(
     rep.patience_fallbacks += int(patience_fell_back)
 
     # grow-on-failure: if still infeasible and the window can expand, widen and retry
-    if allow_grow and not ok and _grow < 2:
+    if allow_grow and opts.ladder and not ok and _grow < 2:
         fy0, fy1, fx0, fx1 = box
         gy0, gy1 = max(0, fy0 - 4), min(H, fy1 + 4)
         gx0, gx1 = max(0, fx0 - 4), min(W, fx1 + 4)

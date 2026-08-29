@@ -6,7 +6,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed — windowed engine: the harmonic re-seed runs BEFORE the terminal mop (`reseed_before_mop=True`)
+### Changed — windowed engine: the mop's big windows get a single attempt (no retries, no grow)
 
 - **Why.** Trace of the full-resolution B0039 exterior z=1 (15 657 s of inner-solver
   time): 665 of 694 inner calls fail; the 373 calls on windows with more than
@@ -16,10 +16,14 @@ follows [Semantic Versioning](https://semver.org/).
   escalation ladder (10 calls per box) on the 50-cell rotated-branch residual that
   no rung can solve and that the re-seed then clears in 7 s. The eight volume-edge
   slices of that volume are 42 % of its 42.4 serial hours for this reason.
-- **Change.** The re-seed stage (+ polish) now runs as soon as the round loop
-  plateaus, and the mop only sees what the re-seed and polish leave (usually
-  nothing). `reseed_before_mop=False` restores the previous order. Measured
-  numbers on the edge slices and the crop pack are on the PR.
+- **Change.** A mop window above `max_window_area` now gets ONE attempt (no no-TR
+  retry, no backend retry, no patience rung, no grow — `_InnerOpts.ladder=False`);
+  the re-seed stage after the mop handles what it leaves. Small mop windows keep
+  the full ladder: the sliver-type residual (`z0_sliver`) needs it, is cheap, and
+  stays byte-identical.
+- **Measured and rejected:** running the re-seed BEFORE the mop (`reseed_before_mop`,
+  kept as an opt-in knob, default off). It removes the same cost, but the harmonic
+  fill is far too blunt for sliver residual: `z0_sliver` L2 137.8 vs 21.5.
 
 ### Added — `dvf_origins.learned`: mechanism 3 with real networks
 

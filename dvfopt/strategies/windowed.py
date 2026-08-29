@@ -209,7 +209,7 @@ class WindowedWrapperStrategy(Strategy):
     reanchor_tile: int = 48
     reseed_rounds: int = 3
     reseed_radius: int = 2
-    reseed_before_mop: bool = True
+    reseed_before_mop: bool = False
     untangle_delta: Optional[float] = 0.1
 
     accepts_constraints = tuple(LOCALITY)
