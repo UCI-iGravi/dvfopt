@@ -9,8 +9,9 @@ follows [Semantic Versioning](https://semver.org/).
 ### Added — `dvf_origins/`: sample DVFs per fold-origin mechanism (standalone harness)
 
 - New top-level folder, deliberately NOT part of the `dvfopt` package (imports it
-  only for the Laplacian solve and the fold metrics; own self-check via
-  `pytest dvf_origins`, not collected by the main suite). `python -m dvf_origins
+  only for the Laplacian solve and the fold metrics; not installed, run from the
+  repo root). Its self-check `pytest dvf_origins` is appended to the CI / nox test
+  and ruff commands so it cannot rot (data-gated tests skip on CI). `python -m dvf_origins
   {list, generate, sweep}` builds one field per (mechanism, tool, severity) into
   `data/origins/` and writes the fold-morphology table (`output/origins/<ts>/
   results.csv`): central-difference Jdet, simplex and bilinear certificates,
@@ -21,8 +22,12 @@ follows [Semantic Versioning](https://semver.org/).
   the `data/mouse_brain` slice pair; (3) a labeled learned-field PROXY (smooth
   warp + grid-scale noise) plus loaders for saved VoxelMorph / TransMorph
   outputs; (4) SVF scaling-and-squaring with decimation / coarse steps /
-  sub-pixel-only folds plus the real ANTs slice (mm → voxel per axis; measures 0
-  folds, as a SyN warp should). Measured signatures match the mechanism: the
+  sub-pixel-only folds plus the real ANTs slice — converted from physical (mm,
+  LPS) to index space through the NIfTI direction matrix (`D⁻¹·phys/spacing`; the
+  cohort files carry a signed permutation, and dividing by spacing alone — what
+  `load_dvf_sitk` does — yields 4667 spurious 3D folds on a diffeomorphic warp vs
+  0) and re-laid-out onto the Laplacian field's `(i, j, k)` grid. Measured
+  signatures match the mechanism: the
   proxy gives ~1100 scattered clusters of median 4 cells; the sub-pixel SVF case
   has central-difference Jdet ≥ 0.035 everywhere yet 421 simplex-folded cells,
   297 of them bilinear-only.
