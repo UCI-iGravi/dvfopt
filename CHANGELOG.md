@@ -29,6 +29,18 @@ follows [Semantic Versioning](https://semver.org/).
   image. On brain slices whose crop edges are not black the old nearest-padding
   comparison read a 5e-3 "mismatch" for VoxelMorph that was padding semantics, not
   channel order; it is 2e-7 vs 4.5e-2 swapped now. A non-finite field raises.
+- **Measured (seed 0, CPU, B0039 z=264 on the 96×128 grid, 12 065 simplex cells):**
+  VoxelMorph direct **218 folded cells (1.8 %) in 21 clusters** (median 5, max 43),
+  min −0.24, loss 0.020, 2 % off-image, 547 s; TransMorph-style direct **236 cells
+  (2.0 %) in 26 clusters** (median 6, max 37), min −0.27, loss 0.025, 619 s. So on
+  real paired slices the direct regressors fold in MANY SMALL clusters — the
+  scattered signature the proxy assumes, unlike the synthetic-toy rows' few giant
+  clusters — at a fold fraction 2–3× the native-resolution Laplacian row of the same
+  plane (1112 of 145 145 cells, 0.77 %). Both diffeo variants train on real data
+  (the synthetic collapse was the ill-posed unrelated-pairs task, not the
+  architecture): VoxelMorph diffeo 1 cell + 13 bilinear-only (min −0.0016, loss
+  0.019); TransMorph-style diffeo 6 cells + 10 bilinear-only in 2 clusters, one deep
+  sliver (min −2.5), 653 s. `warp_rmse` 2e-7 vs ≥ 0.1 swapped on every row.
 
 ### Added — `dvf_origins.learned`: mechanism 3 with real networks
 
