@@ -210,6 +210,7 @@ class WindowedWrapperStrategy(Strategy):
     reseed_rounds: int = 3
     reseed_radius: int = 2
     reseed_before_mop: bool = True
+    untangle_delta: Optional[float] = 0.1
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -276,6 +277,7 @@ class WindowedWrapperStrategy(Strategy):
             reseed_rounds=self.reseed_rounds,
             reseed_radius=self.reseed_radius,
             reseed_before_mop=self.reseed_before_mop,
+            untangle_delta=self.untangle_delta,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,

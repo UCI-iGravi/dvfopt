@@ -396,6 +396,12 @@ class SliceReport:
     reseed_px: int = 0  # pixels re-seeded (all rounds)
     reseed_folds_before: int = -1  # folds when the stage started / when it ended
     reseed_folds_after: int = -1
+    # monotone-untangle stage (``untangle_delta`` not None): one convex QP over the fold
+    # neighbourhoods before the round loop. ``untangle_s < 0`` means it did not run.
+    untangle_s: float = -1.0
+    untangle_px: int = 0  # free pixels of the QP
+    untangle_rows: int = 0  # linear rows of the QP
+    untangle_folds_after: int = -1
     rounds: int = 0
     time_s: float = 0.0
     windows: list = field(default_factory=list)
@@ -435,6 +441,61 @@ def _prolongate(delta_c, shape, factor):
     return out
 
 
+def _monotone_untangle(phi, constraint, threshold, delta, margin, ring, rep):
+    """One convex QP: the least-squares move of the fold-neighbourhood pixels that
+    satisfies the linear orientation rows; applied to ``phi`` in place.
+
+    Returns the window boxes whose pixels were free (for ``touched``), or ``None`` if
+    the stage did not run (no ``osqp``, non-``DY_FIRST`` constraint, nothing to do).
+    """
+    try:
+        import osqp
+    except ImportError:
+        return None
+    from dvfopt.constraints import PhiPack
+
+    if getattr(constraint, 'pack', None) != PhiPack.DY_FIRST or phi.ndim != 3:
+        return None
+    H, W = phi.shape[1:]
+    boxes = find_windows(pixel_fold_mask(constraint, phi, threshold), margin, ring)
+    free = np.zeros((H, W), bool)
+    for fy0, fy1, fx0, fx1 in boxes:
+        free[fy0:fy1, fx0:fx1] = True
+    if not free.any():
+        return None
+    a_all, b = _orientation_rows(constraint, free, delta)  # rows over the FULL flat vector
+    x0 = np.asarray(constraint.flatten(phi), dtype=np.float64)
+    free_idx = np.nonzero(
+        np.asarray(constraint.flatten(np.stack([free, free]).astype(float))) > 0.5
+    )[0]
+    a_free = a_all[:, free_idx].tocsc()
+    resid = a_all @ x0 + b  # row values at the current field; rows need a_free d + resid >= 0
+    n = free_idx.size
+    prob = osqp.OSQP()
+    prob.setup(
+        sparse.identity(n, format='csc'),
+        np.zeros(n),
+        a_free,
+        -resid,
+        np.full(a_free.shape[0], np.inf),
+        eps_abs=1e-6,
+        eps_rel=1e-6,
+        max_iter=50000,
+        polish=True,
+        verbose=False,
+    )
+    res = prob.solve()
+    if res.x is None or not np.all(np.isfinite(res.x)):
+        log_warning(f'windowed_correct: monotone untangle QP failed ({res.info.status}); skipped')
+        return None
+    x1 = x0.copy()
+    x1[free_idx] += res.x
+    phi[...] = np.asarray(constraint.unflatten(x1))
+    rep.untangle_px = int(n // 2)
+    rep.untangle_rows = int(a_free.shape[0])
+    return boxes
+
+
 def _coarse_warm_start(phi, constraint, objective, threshold, factor, margin, ring, inner, sub_kw):
     """Warm-start delta from a solve of the SAME problem on a coarser grid.
 
@@ -466,6 +527,7 @@ def _coarse_warm_start(phi, constraint, objective, threshold, factor, margin, ri
         objective=objective,
         threshold=threshold,
         coarse_to_fine=False,
+        untangle_delta=None,
         **sub_kw,
     )
     delta = _prolongate(out_c - coarse, phi.shape[1:], factor)
@@ -516,6 +578,7 @@ def windowed_correct(
     reseed_rounds=3,
     reseed_radius=2,
     reseed_before_mop=True,
+    untangle_delta=0.1,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -646,6 +709,27 @@ def windowed_correct(
     it to +0.011 in 1 s. Real windows and mop windows only (never a giant tile),
     and never on a window that is merely short of the margin-shifted target.
     ``report.patience_fallbacks`` / ``WindowRec.patience_fallback`` count it.
+
+    ``untangle_delta`` (default ``0.1``; ``None`` = off) prepends the **monotone
+    untangle**: ONE convex QP over the fold neighbourhoods (the pixels of the
+    windows :func:`find_windows` would open, everything else fixed) that moves the
+    field as little as possible (``min 1/2 ||delta||^2``) subject to the LINEAR
+    orientation rows of :func:`_orientation_rows` (every deformed grid edge keeps a
+    projection of at least ``untangle_delta`` on its own direction, plus the
+    anti-diagonal convexity rows). Linear rows make it convex: one OSQP solve, no
+    windows, no rungs, and it cannot fail (the identity map is feasible). It removes
+    the ROTATED orientation branch -- the trap behind every residual the ladder
+    plateaued on -- before the SQP ever runs; what it leaves are *dart* cells (the
+    rows do not bound the fourth corner of a cell), which are ordinary proper-basin
+    problems the round loop clears in a few windows. Measured on the full-resolution
+    B0039 exterior z=2 (3909 folds) as a whole-slice QP: 304 s + a 45 s / 7-window
+    polish -> 0 folds, damage 0, at L2 move 2270 vs 2732 for the plain engine, which
+    took 10 168 s (29x). Restricting the QP to the fold neighbourhoods makes it small
+    on ordinary slices. The moved pixels join ``touched`` exactly as the coarse warm
+    start's do, so the no-damage invariant is unchanged. 2D ``DY_FIRST`` families
+    only (skipped otherwise); needs ``osqp`` (skipped otherwise).
+    ``report.untangle_s`` / ``untangle_px`` / ``untangle_rows`` /
+    ``untangle_folds_after`` record it.
 
     ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
     same problem is solved on a ``coarse_factor`` x coarsened field and the
@@ -805,6 +889,21 @@ def windowed_correct(
             "min_T": float(mf.min()),
             "wall_s": time.perf_counter() - t0,
         }
+
+    # Monotone untangle: one convex QP over the fold neighbourhoods (see the docstring).
+    if untangle_delta is not None and rep.folds_before > 0:
+        t_unt = time.perf_counter()
+        boxes_unt = _monotone_untangle(
+            phi, constraint, threshold, float(untangle_delta), margin, ring, rep
+        )
+        if boxes_unt is not None:
+            for fy0, fy1, fx0, fx1 in boxes_unt:  # the untangle is a move over these
+                touched[max(0, fy0 - ring) : fy1 + ring, max(0, fx0 - ring) : fx1 + ring] = True
+            rep.untangle_s = time.perf_counter() - t_unt
+            rep.untangle_folds_after = int(pixel_fold_mask(constraint, phi, threshold).sum())
+            if record_history:
+                rep.history.append(_stage_entry("untangle", len(rep.windows)))
+            _fire("untangle", phi)
 
     # Coarse-grid warm start: solve small, prolongate the correction, then run the
     # normal fine loop from the warmed field. Skipped when there is nothing to do
@@ -1315,6 +1414,7 @@ def _reseed_stage(
             threshold=threshold,
             coarse_to_fine=False,
             reseed_rounds=0,
+            untangle_delta=None,
             reanchor="none",
             time_budget_s=None,
             **sub_kw,
