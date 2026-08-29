@@ -151,7 +151,12 @@ convexity claim is wrong. Phase 1 therefore leaves 1–2k such cells (z=2:
 3935 → 1076 bilinear folds, min −2.2), which are ordinary proper-basin problems
 the SQP clears in seconds. A bounded-shear ("cone") variant of the rows —
 projection ≥ δ *and* perpendicular component ≤ κ × projection — is a sufficient
-linear condition (area ≥ δ²(1−κ²)/(1+κ²)); measured separately.
+linear condition (area ≥ δ²(1−κ²)/(1+κ²)). Measured on z11 at δ = 0.2, κ = 0.5:
+the single whole-slice QP (873,192 rows, OSQP 3075 iterations, 2124 s on a
+loaded box) returns **0 simplex / 0 bilinear folds directly** (min area 0.015),
+phase 2 has nothing to do — guaranteed feasibility from one convex solve — at
+L2 1643, the highest fidelity cost of the approaches (re-seed 1017 < two-phase
+monotone 1306–1350 < rows-always 1500–1566 < cone 1643).
 
 The engine integration restricts the QP's variables to the fold neighbourhoods
 (`find_windows` boxes; everything else fixed), which keeps it tiny on ordinary
