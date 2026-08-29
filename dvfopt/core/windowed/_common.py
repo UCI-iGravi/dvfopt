@@ -609,9 +609,9 @@ def windowed_correct(
     step_rule='exact_ls',
     exact_ls_fallback_steps=3,
     patience_retry=True,
-    orientation_delta=None,
+    orientation_delta=0.01,
     orientation_scope='all',
-    orientation_rows='full',
+    orientation_rows='edges',
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -887,6 +887,14 @@ def windowed_correct(
         # cubic along a line). Guarded here, at the only caller, not in the driver.
         raise ValueError("step_rule='exact_ls' requires a 2D (2, H, W) field")
     loc = _locality_of(constraint)
+    if orientation_delta is not None:
+        from dvfopt.constraints import PhiPack
+
+        if getattr(constraint, "pack", None) != PhiPack.DY_FIRST:
+            # The edge-monotonicity rows are a simplex-family (DY_FIRST) formulation;
+            # the Jdet / finite families keep the plain rows (explicit requests on a
+            # sub-problem still raise in build_subproblem).
+            orientation_delta = None
     opts = _InnerOpts(
         no_tr_fallback,
         fallback_maxiter,

@@ -11,7 +11,7 @@ result = correct_dvf(
     phi,                        # (2, H, W) or (3, H, W) — dz passes through
     constraint='bilinear',      # 4 triangle rows / cell = sub-pixel injectivity
     strategy='isqp_windowed',   # cluster-windowed, no-damage by construction
-    objective='none',           # pure feasibility
+    objective='l2',           # pure feasibility
 )
 assert result.feasible
 ```
@@ -23,7 +23,7 @@ dvfopt correct in.npy out.npy --constraint bilinear --strategy isqp_windowed --o
 ```
 
 `strategy='auto'` picks `isqp_windowed` for the `bilinear` constraint at any
-objective, and for `simplex_standard` under `objective='none'` — see the routing
+objective, and for `simplex_standard` under `objective='l2'` — see the routing
 table in `auto_strategy`'s docstring. It does **not** silently swap in this
 recipe for an L1/L2 request: an anchor is a different fidelity ask, so
 `simplex` + `l1` stays on the SLP champion (with a one-line hint on the `dvfopt`
@@ -45,14 +45,14 @@ every slice tested — z16 goes 3890 folds → 0 in ~200 s, damage 0 — where t
 - **`strategy='isqp_windowed'`** — one small frozen-ring window per fold
   cluster. Only free pixels are written back, so healthy area is untouched *by
   construction* (damage 0 is structural, not measured luck).
-- **`objective='none'`** — the L1/L2 distance objective pins residual folds
+- **`objective='l2'`** — the L1/L2 distance objective pins residual folds
   (the objective-basin trap: the same window clears the instant the anchor is
   off). Use `'l1'`/`'l2'` only if you need the anchor and accept the risk of a
   residual.
 
 ## What the engine defaults do, and what bought them
 
-All numbers: raw B0039 z16 (bilinear rows, `objective='none'`, threshold 0.01,
+All numbers: raw B0039 z16 (bilinear rows, `objective='l2'`, threshold 0.01,
 OMP/BLAS/RAYON pinned to 1), 0 simplex folds and damage 0 on every row unless
 stated. Sources: [CHANGELOG.md](../CHANGELOG.md), [ARCHITECTURE.md](../ARCHITECTURE.md).
 

@@ -200,9 +200,9 @@ class WindowedWrapperStrategy(Strategy):
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
     patience_retry: bool = True
-    orientation_delta: Optional[float] = None
+    orientation_delta: Optional[float] = 0.01
     orientation_scope: str = 'all'
-    orientation_rows: str = 'full'
+    orientation_rows: str = 'edges'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
