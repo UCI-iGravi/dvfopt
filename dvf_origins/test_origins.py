@@ -117,6 +117,39 @@ def test_learned_generators_convention(fn):
         fn(n_test_pairs=1, pair=1, epochs=0)  # validated before any training
 
 
+def test_cohort_data_is_gated(tmp_path, monkeypatch):
+    monkeypatch.setattr(learned, 'REGTOOLS_COHORT', tmp_path / 'nowhere')
+    with pytest.raises(FileNotFoundError):
+        learned.cohort_data(cache=False)
+    with pytest.raises(TypeError):
+        learned._resolve_data('cohort', 64, 8, 1, 0, 0)  # strings are not accepted
+
+
+def test_prep_plane_shape_range_and_guards():
+    a = np.arange(320 * 456, dtype=np.float64).reshape(320, 456)
+    p = learned._prep_plane(a, 3, (96, 128))
+    assert p.shape == (96, 128) and p.dtype == np.float32 and p.min() >= 0 and p.max() <= 1
+    with pytest.raises(ValueError):
+        learned._prep_plane(a, 4, (96, 128))  # 80x114 after /4 is smaller than the crop
+    with pytest.raises(ValueError):
+        learned._prep_plane(a, 3, (96, 120))  # not a multiple of 32
+
+
+def test_batches_pairs_brain_major_rows_with_the_template_planes():
+    torch = pytest.importorskip('torch')
+    n_tgt, n_brains = 5, 3
+    tgt = np.arange(n_tgt, dtype=np.float32)[:, None, None] * np.ones((1, 4, 4), np.float32)
+    src = np.concatenate([tgt + 100 * b for b in range(n_brains)])
+    data_d = dict(train=(src, tgt), test=(src[0], tgt[0]), paired=True, info={})
+    sample, _ = learned._batches(data_d, 'cpu', torch)
+    gen = torch.Generator().manual_seed(0)
+    for _ in range(20):
+        s, t = sample(gen)
+        assert float(s.mean()) % 100 == float(t.mean())  # source row i <-> template plane i % 5
+    with pytest.raises(ValueError):
+        learned._batches(dict(train=(src[:7], tgt), test=data_d['test'], paired=True), 'cpu', torch)
+
+
 @pytest.mark.skipif(not _HAVE_COHORT, reason='brain cohort absent (gitignored data)')
 def test_ants_slice_matches_laplacian_grid_and_is_fold_free():
     ants, meta = real.ants_slice('B0039', 264)
