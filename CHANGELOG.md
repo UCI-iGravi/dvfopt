@@ -6,6 +6,28 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `dvf_origins.learned`: mechanism 3 with real networks
+
+- `learned.voxelmorph` / `learned.transmorph` train the `benchmarks/registration/`
+  notebooks' networks (VoxelMorph `VxmPairwise`; the TransMorph-style Swin-Tiny +
+  ConvNet `SwinRegNet`) on their synthetic ellipse images — same 200 × 50 steps,
+  MSE + 0.05·smoothness — seeded, and return the inference field on a held-out
+  pair. `integration_steps=0` is a direct displacement regressor (the paper's
+  mechanism 3), `7` a learned diffeomorphism. Four `CASES` rows
+  (`m3_{voxelmorph,transmorph}_{direct,diffeo}`); the phantom "drop a saved
+  notebook output here" rows are gone (one generic `m3_external_saved` remains).
+- They need torch, which the main venv deliberately does not carry: a separate
+  CPU venv (`uv venv .venv-torch` + `--torch-backend=cpu`, recipe in
+  `dvf_origins/README.md` and `learned.py`) builds them in ~8 min (VoxelMorph)
+  / ~29 min (TransMorph) per row; without torch `generate` skips them.
+- Each row records `warp_rmse` — pull-back-warping the source by the returned
+  field must reproduce the network's own warped output — next to the same number
+  with the channels swapped, so the `[dy, dx]` / `moving(x + u(x))` convention is
+  measured rather than assumed. It caught a ±0.5 px identity stretch in the
+  TransMorph notebook's sampler (`linspace(-1, 1, n)` grid with
+  `align_corners=False`): 2.4e-2 RMSE against its own warp, 1e-7 once the harness
+  copy samples pixel centers exactly (`align_corners=True`, `2d/(n-1)`).
+
 ### Fixed — `load_dvf_sitk` honours image geometry (direction matrix + spacing)
 
 - `dvfopt.io.fields.load_dvf_sitk` (behind `load_dvf`, the CLI's and the GUI's

@@ -9,7 +9,7 @@ pull-back, voxel units), plus the fold-morphology table over them.
 |---|---|---|
 | 1 interpolation of sparse correspondences | `synthetic.interp_sparse` — Laplacian of corrupted correspondences (outliers, many-to-one collapses, jitter) | cohort Laplacian slice (`real.laplacian_slice`) |
 | 2 dense weakly-regularized optimization | `synthetic.dense_weak_reg` — skimage TV-L1 / ILK on a textured pair | SimpleITK demons / B-spline FFD, skimage TV-L1 on the `data/mouse_brain` pair (`registered.py`) |
-| 3 learned displacement field | `synthetic.learned_proxy` — **proxy** (smooth warp + grid-scale noise) | saved VoxelMorph / TransMorph outputs (`real.saved_field`; make them with the `benchmarks/registration/` notebooks, needs torch) |
+| 3 learned displacement field | `synthetic.learned_proxy` — **proxy** (smooth warp + grid-scale noise) | `learned.voxelmorph` / `learned.transmorph` — the `benchmarks/registration/` notebooks' networks trained here on synthetic images (direct and diffeo variants; needs the torch venv below), or any saved field via `real.saved_field` |
 | 4 discretized diffeomorphic warp | `synthetic.diffeo_discretized` — SVF scaling-and-squaring, then decimation | cohort ANTs SyN warp slice (`real.ants_slice`) |
 
 ```bash
@@ -19,6 +19,24 @@ python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps a
 python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv
 pytest dvf_origins                             # self-check (~3 s; ~20 s with the gitignored data present; CI runs it too)
 ```
+
+The learned rows (mechanism 3) train small networks and need torch, which the
+main venv deliberately does not carry. A separate CPU venv is enough (the
+models are 64×64 toys):
+
+```bash
+uv venv .venv-torch --python 3.12
+uv pip install --python .venv-torch/Scripts/python.exe --torch-backend=cpu \
+    -e . torch timm "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
+.venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # the other mechanisms: main venv
+python -m dvf_origins sweep                                          # any venv; reads data/origins/
+```
+
+Each learned row records `warp_rmse` — pull-back-warping the source by the
+returned field must reproduce the network's own warped output — next to the
+same number with the channels swapped, so the `[dy, dx]` / `moving(x + u(x))`
+convention is checked rather than assumed (it caught a ±0.5 px identity stretch
+in the TransMorph notebook's sampler, fixed in the harness copy).
 
 `sweep` columns (`morphology.py`): size, displacement magnitude, then the
 same field under three metrics — central-difference Jdet per pixel, the

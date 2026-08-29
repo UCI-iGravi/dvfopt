@@ -1,9 +1,11 @@
 """Self-check: ``pytest dvf_origins`` (also appended to the CI test command)."""
 
+import importlib.util
+
 import numpy as np
 import pytest
 
-from dvf_origins import CASES, MECHANISMS, build, real, registered, synthetic
+from dvf_origins import CASES, MECHANISMS, build, learned, real, registered, synthetic
 from dvf_origins.morphology import COLUMNS, morphology
 
 SHAPE = (96, 96)
@@ -18,6 +20,7 @@ _HAVE_COHORT = all(
     for f in ('ants_warp_0.nii.gz', 'laplacian_deformation_field.npz')
 )
 _HAVE_BRAIN = registered.FIXED.is_file() and registered.MOVING.is_file()
+_HAVE_TORCH = importlib.util.find_spec('torch') is not None
 
 
 def _check_field(phi):
@@ -75,6 +78,9 @@ def test_registry_and_build_synthetic():
 def test_slice2d_validation_and_missing_data():
     with pytest.raises(FileNotFoundError):
         real.saved_field('data/origins/external/does_not_exist.npy')
+    if not _HAVE_TORCH:  # what `generate` classifies as a clean skip in the main venv
+        with pytest.raises(ModuleNotFoundError):
+            learned.transmorph(epochs=0)
     with pytest.raises(ValueError):
         real._slice2d(np.zeros((2, 8, 8)), 0)  # a raw (2, H, W) flow is not a field
     with pytest.raises(ValueError):
@@ -91,6 +97,20 @@ def test_registered_pair_and_demons():
     phi, meta = registered.demons(sigma=0.5, iterations=20, downsample=8)
     _check_field(phi)
     assert phi.shape[-2:] == f.shape and meta['source'] == 'registered'
+
+
+@pytest.mark.parametrize('fn', [learned.voxelmorph, learned.transmorph], ids=['vxm', 'swin'])
+def test_learned_generators_convention(fn):
+    pytest.importorskip('torch', reason='learned generators need the torch venv (learned.py)')
+    if fn is learned.voxelmorph:
+        pytest.importorskip('voxelmorph')
+    else:
+        pytest.importorskip('timm')
+    phi, meta = fn(seed=1, image_size=32, n_train=8, n_test_pairs=1, epochs=1, steps_per_epoch=3)
+    _check_field(phi)
+    assert phi.shape == (3, 1, 32, 32) and meta['source'] == 'learned'
+    # the returned field pull-back-warps the source onto the network's own warped output
+    assert meta['warp_rmse'] < 1e-3 < meta['warp_rmse_swapped'] or meta['warp_rmse'] < 1e-5
 
 
 @pytest.mark.skipif(not _HAVE_COHORT, reason='brain cohort absent (gitignored data)')
