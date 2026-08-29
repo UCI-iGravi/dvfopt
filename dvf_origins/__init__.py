@@ -58,6 +58,28 @@ CASES = {
     'm3_voxelmorph_diffeo': (3, learned.voxelmorph, dict(seed=0, integration_steps=7)),
     'm3_transmorph_direct': (3, learned.transmorph, dict(seed=0, integration_steps=0)),
     'm3_transmorph_diffeo': (3, learned.transmorph, dict(seed=0, integration_steps=7)),
+    # the same networks trained on REAL data: cohort brains affinely aligned onto the
+    # template (RegTools outputs, external), test pair = B0039 at z=264 like the m1/m4 rows
+    'm3_voxelmorph_direct_cohort': (
+        3,
+        learned.voxelmorph,
+        dict(seed=0, integration_steps=0, data='cohort'),
+    ),
+    'm3_voxelmorph_diffeo_cohort': (
+        3,
+        learned.voxelmorph,
+        dict(seed=0, integration_steps=7, data='cohort'),
+    ),
+    'm3_transmorph_direct_cohort': (
+        3,
+        learned.transmorph,
+        dict(seed=0, integration_steps=0, data='cohort'),
+    ),
+    'm3_transmorph_diffeo_cohort': (
+        3,
+        learned.transmorph,
+        dict(seed=0, integration_steps=7, data='cohort'),
+    ),
     # or drop any saved learned field here (`real.saved_field`, any dvfopt-readable format)
     'm3_external_saved': (3, real.saved_field, dict(path='data/origins/external/learned.npy')),
     # -- 4: diffeomorphic in the continuum, folds only from discretization ---

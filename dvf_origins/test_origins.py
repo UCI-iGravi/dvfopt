@@ -117,6 +117,18 @@ def test_learned_generators_convention(fn):
         fn(n_test_pairs=1, pair=1, epochs=0)  # validated before any training
 
 
+def test_cohort_data_is_gated(tmp_path, monkeypatch):
+    monkeypatch.setattr(learned, 'REGTOOLS_COHORT', tmp_path / 'nowhere')
+    with pytest.raises(FileNotFoundError):
+        learned.cohort_data(cache=False)
+
+
+def test_prep_plane_shape_and_range():
+    a = np.arange(400 * 560, dtype=np.float64).reshape(400, 560)
+    p = learned._prep_plane(a, 3, (96, 128))
+    assert p.shape == (96, 128) and p.dtype == np.float32 and p.min() >= 0 and p.max() <= 1
+
+
 @pytest.mark.skipif(not _HAVE_COHORT, reason='brain cohort absent (gitignored data)')
 def test_ants_slice_matches_laplacian_grid_and_is_fold_free():
     ants, meta = real.ants_slice('B0039', 264)
