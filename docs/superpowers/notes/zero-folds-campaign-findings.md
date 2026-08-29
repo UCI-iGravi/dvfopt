@@ -104,7 +104,7 @@ From raw, the same six slices (incl. ds2 z1) reached 0 with 1 re-seed round of
 already cleared (z16_twist, raw z16); it also removed the single bilinear row the
 `z0_cluster` crop always ended short of.
 
-Ordering (branch `reseed-before-mop`): re-seed *before* the terminal mop — see §6.
+Ordering: the re-seed stays *after* the mop — see §6 for why the reverse order was rejected.
 
 ### 4.2 Linear orientation rows (PR #94, `orientation_delta`, opt-in) — *prevention*
 
