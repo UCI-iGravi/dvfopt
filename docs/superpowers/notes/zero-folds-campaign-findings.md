@@ -175,8 +175,14 @@ calls fail; the 373 calls on windows with > 3000 free pixels take 15,173 s
 mop alone takes **12,367 s (79 %)** running the whole escalation ladder (10
 calls per box) on the 50-cell rotated-branch residual that the re-seed then
 clears in 7 s. Exit reasons: `a-collapse` 343 calls / 7,528 s, `tr-collapse`
-69 / 5,370 s. Fix: run the re-seed as soon as the round loop plateaus, mop only
-for leftovers (`reseed_before_mop=True`, branch `reseed-before-mop`).
+69 / 5,370 s. Two fixes were measured. Running the re-seed *before* the mop removes the cost
+but is too blunt for sliver-type residual (`z0_sliver`, 18 cells within ~1e-4 of
+the threshold: L2 137.8 vs 21.5 for the mop) — rejected, kept as an opt-in knob.
+The fix adopted gives the mop's windows above `max_window_area` a **single
+attempt** (no retries, no grow; `_InnerOpts.ladder`) and leaves the ladder on
+the small mop windows the sliver residual needs, so those stay byte-identical;
+the re-seed after the mop handles what the big windows leave. Combined with the
+monotone untangle (§4.3) this is the engine under validation on the edge slices.
 
 ## 7. Cohort facts useful for the paper
 
