@@ -581,7 +581,7 @@ def windowed_correct(
     reseed_rounds=3,
     reseed_radius=2,
     reseed_before_mop=False,
-    untangle_delta=0.1,
+    untangle_delta=None,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -713,7 +713,7 @@ def windowed_correct(
     and never on a window that is merely short of the margin-shifted target.
     ``report.patience_fallbacks`` / ``WindowRec.patience_fallback`` count it.
 
-    ``untangle_delta`` (default ``0.1``; ``None`` = off) prepends the **monotone
+    ``untangle_delta`` (default ``None`` = off; e.g. ``0.1``) prepends the **monotone
     untangle**: ONE convex QP over the fold neighbourhoods (the pixels of the
     windows :func:`find_windows` would open, everything else fixed) that moves the
     field as little as possible (``min 1/2 ||delta||^2``) subject to the LINEAR
@@ -731,6 +731,12 @@ def windowed_correct(
     on ordinary slices. The moved pixels join ``touched`` exactly as the coarse warm
     start's do, so the no-damage invariant is unchanged. 2D ``DY_FIRST`` families
     only (skipped otherwise); needs ``osqp`` (skipped otherwise).
+    NOT a default: as a blanket pre-pass it fails the fidelity gate on ordinary
+    fields, because it enforces ``untangle_delta`` edge spacing (10x the threshold's
+    own scale at 0.1) over every fold neighbourhood -- raw B0039 z16, already solved
+    by the plain engine in 807 s at L2 268, comes out at L2 596 in 833 s; the
+    ``z0_sliver`` crop at L2 422 vs 21.5. Use it on trapped fields (the cohort's
+    edge slices), where it is 10-30x faster AND closer to the input.
     ``report.untangle_s`` / ``untangle_px`` / ``untangle_rows`` /
     ``untangle_folds_after`` record it.
 

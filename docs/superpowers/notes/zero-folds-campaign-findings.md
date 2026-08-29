@@ -158,6 +158,16 @@ phase 2 has nothing to do — guaranteed feasibility from one convex solve — a
 L2 1643, the highest fidelity cost of the approaches (re-seed 1017 < two-phase
 monotone 1306–1350 < rows-always 1500–1566 < cone 1643).
 
+**Not a blanket pre-pass.** Run on every field at δ = 0.1 it fails the fidelity
+gate where the plain engine is already cheap: raw B0039 z16 (solved by the plain
+engine in 807 s at L2 268) comes out at L2 596 in 833 s; the `z0_sliver` crop at
+L2 422 vs 21.5; `z0_cluster` +58 %. The δ spacing it enforces is ten times the
+threshold's own scale, and ordinary folds need far smaller moves. The count of
+rotated cells in the *input* does not identify the trapped slices either (raw
+z16 has 150, the trapped edge slices 22–50), so the stage is an opt-in for
+trapped fields (`untangle_delta`), not a default; a δ at the threshold scale
+(0.01–0.03) is being measured.
+
 The engine integration restricts the QP's variables to the fold neighbourhoods
 (`find_windows` boxes; everything else fixed), which keeps it tiny on ordinary
 slices, and books the moved pixels as `touched` exactly like the coarse warm
