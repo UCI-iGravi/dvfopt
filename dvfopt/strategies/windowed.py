@@ -202,6 +202,7 @@ class WindowedWrapperStrategy(Strategy):
     patience_retry: bool = True
     orientation_delta: Optional[float] = None
     orientation_scope: str = 'all'
+    orientation_rows: str = 'full'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
@@ -270,6 +271,7 @@ class WindowedWrapperStrategy(Strategy):
             patience_retry=self.patience_retry,
             orientation_delta=self.orientation_delta,
             orientation_scope=self.orientation_scope,
+            orientation_rows=self.orientation_rows,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             reanchor=self.reanchor,

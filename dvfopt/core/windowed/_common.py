@@ -93,6 +93,7 @@ class _InnerOpts:
         True  # False -> one attempt per window: no retries, no grow (the mop's big windows)
     )
     orientation_scope: str = 'all'  # 'all' | 'folds': rows only on currently folded cells (+1 ring)
+    orientation_rows: str = 'full'  # 'full' (edge + anti-diagonal rows) | 'edges' (edge rows only)
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,7 @@ def build_subproblem(
     free_extra=None,
     orientation_delta=None,
     orientation_scope='all',
+    orientation_rows='full',
 ):
     """Build the window sub-problem for a free box ``(fy0, fy1, fx0, fx1)`` (global).
 
@@ -234,7 +236,9 @@ def build_subproblem(
             # tissue, which global rows would un-rotate at a large fidelity cost
             cell_fold = _cell_fold_mask_2d(np.asarray(c.values(flat0)), ph, pw, target)
             cell_mask = ndimage.binary_dilation(cell_fold, iterations=1)
-        a_or, b_or = _orientation_rows(c, free_mask, float(orientation_delta), cell_mask)
+        a_or, b_or = _orientation_rows(
+            c, free_mask, float(orientation_delta), cell_mask, kind=orientation_rows
+        )
         base_cons, base_jac = cons, cons_jac
 
         def cons(f, _a=a_or, _b=b_or):
@@ -273,7 +277,7 @@ def _cell_fold_mask_2d(values, ph, pw, target):
     return (v.reshape(n_cells, k).min(axis=1) < target).reshape(ph - 1, pw - 1)
 
 
-def _orientation_rows(c, free_mask, delta, cell_mask=None):
+def _orientation_rows(c, free_mask, delta, cell_mask=None, kind='full'):
     """Sparse ``(A, b)`` with ``A @ x + b >= 0`` the linear orientation rows of a patch.
 
     For every horizontal edge ``1 + dx[i,j+1] - dx[i,j] >= delta``, every vertical edge
@@ -321,11 +325,12 @@ def _orientation_rows(c, free_mask, delta, cell_mask=None):
         for j in range(pw):
             if v_ok[i, j] and (fm[i, j] or fm[i + 1, j]):
                 add((i + 1) * pw + j, i * pw + j)
-    for i in range(ph - 1):
-        for j in range(pw - 1):
-            if cm[i, j] and (fm[i, j] or fm[i, j + 1] or fm[i + 1, j] or fm[i + 1, j + 1]):
-                add(n + i * pw + j + 1, n + (i + 1) * pw + j)
-                add((i + 1) * pw + j, i * pw + j + 1)
+    if kind == 'full':  # anti-diagonal convexity rows; 'edges' keeps only the h/v edge rows
+        for i in range(ph - 1):
+            for j in range(pw - 1):
+                if cm[i, j] and (fm[i, j] or fm[i, j + 1] or fm[i + 1, j] or fm[i + 1, j + 1]):
+                    add(n + i * pw + j + 1, n + (i + 1) * pw + j)
+                    add((i + 1) * pw + j, i * pw + j + 1)
     a = sparse.csr_matrix((vals, (rows, cols)), shape=(r, 2 * n))
     return a, np.asarray(rhs)
 
@@ -606,6 +611,7 @@ def windowed_correct(
     patience_retry=True,
     orientation_delta=None,
     orientation_scope='all',
+    orientation_rows='full',
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -899,6 +905,7 @@ def windowed_correct(
         patience_retry,
         orientation_delta,
         orientation_scope=orientation_scope,
+        orientation_rows=orientation_rows,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1631,6 +1638,7 @@ def _solve_window(
         margin_delta,
         orientation_delta=opts.orientation_delta,
         orientation_scope=opts.orientation_scope,
+        orientation_rows=opts.orientation_rows,
     )
     t = time.perf_counter()
 
