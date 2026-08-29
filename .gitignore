@@ -201,3 +201,6 @@ cython_debug/
 # Large 3D cache/output files from research/strict_feasibility_3d/
 research/strict_feasibility_3d/runners/output/*.npy
 research/strict_feasibility_3d/runners/output/*.prof
+
+# dvf_origins harness outputs (regenerated)
+/data/origins

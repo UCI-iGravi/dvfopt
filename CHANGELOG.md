@@ -6,6 +6,45 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — `load_dvf_sitk` honours image geometry (direction matrix + spacing)
+
+- `dvfopt.io.fields.load_dvf_sitk` (behind `load_dvf`, the CLI's and the GUI's
+  NIfTI / MetaImage / NRRD loader) read the stored PHYSICAL displacement vectors as
+  if they were index-space voxels — no spacing division, no direction matrix. That
+  is exact for files this module writes (identity direction, unit spacing) and wrong
+  for real registration warps: the cohort ANTs SyN warps carry a signed-permutation
+  direction `D = [[0,0,-1],[1,0,0],[0,-1,0]]` at 0.025 mm spacing, and loading them
+  the old way reads **4667 voxels with 3D Jdet ≤ 0** on a warp that is diffeomorphic
+  by construction. New `dvf_from_sitk_image(img)` does the conversion
+  (`D⁻¹·v/spacing`, identity fast-path so existing files load byte-identically);
+  `load_dvf_sitk` is now `ReadImage` + that. Measured on the same warp: **0** folds.
+  Hand-derived 2D and 3D tests pin the mapping.
+
+### Added — `dvf_origins/`: sample DVFs per fold-origin mechanism (standalone harness)
+
+- New top-level folder, deliberately NOT part of the `dvfopt` package (imports it
+  only for the Laplacian solve and the fold metrics; not installed, run from the
+  repo root). Its self-check `pytest dvf_origins` is in pytest's `testpaths` and the
+  CI / nox test and ruff commands so it cannot rot (data-gated tests skip on CI).
+  `python -m dvf_origins
+  {list, generate, sweep}` builds one field per (mechanism, tool, severity) into
+  `data/origins/` and writes the fold-morphology table (`output/origins/<ts>/
+  results.csv`): central-difference Jdet, simplex and bilinear certificates,
+  bilinear-only cells, fold fraction, cluster count / median / max area.
+- Mechanisms: (1) Laplacian of corrupted correspondences — outliers, adjacent
+  many-to-one collapses, jitter — plus a real cohort slice; (2) skimage TV-L1 /
+  ILK on a textured pair plus real SimpleITK demons / B-spline FFD / TV-L1 runs on
+  the `data/mouse_brain` slice pair; (3) a labeled learned-field PROXY (smooth
+  warp + grid-scale noise) plus loaders for saved VoxelMorph / TransMorph
+  outputs; (4) SVF scaling-and-squaring with decimation / coarse steps /
+  sub-pixel-only folds plus the real ANTs slice — converted to index space by the
+  library's `dvf_from_sitk_image` (see *Fixed* above) and re-laid-out onto the
+  Laplacian field's `(i, j, k)` grid so `z` names the same plane in both real rows.
+  Measured signatures match the mechanism: the
+  proxy gives ~1100 scattered clusters of median 4 cells; the sub-pixel SVF case
+  has central-difference Jdet ≥ 0.035 everywhere yet 421 simplex-folded cells,
+  297 of them bilinear-only.
+
 ### Added — windowed engine: linear orientation rows (`orientation_delta`, off by default)
 
 - **`orientation_delta=None`** on `windowed_correct` and the windowed strategies. A
