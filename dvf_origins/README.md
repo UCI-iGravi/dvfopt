@@ -14,11 +14,34 @@ pull-back, voxel units), plus the fold-morphology table over them.
 
 ```bash
 python -m dvf_origins list                     # the case registry (dvf_origins/__init__.py: CASES)
-python -m dvf_origins generate                 # -> data/origins/<case>.npy + <case>.json (gitignored)
+python -m dvf_origins generate                 # -> data/origins/<mechanism>/<case>.npy + .json, manifest.json (gitignored)
 python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps are absent are skipped, with the reason
-python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv
+python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv + results_latest.csv
 pytest dvf_origins                             # self-check (~3 s in the main venv, ~15 s in the torch venv; ~20 s more with the gitignored data; CI runs it too)
 ```
+
+On disk (everything gitignored and regenerable; the learned rows cost minutes
+of CPU, the cohort ones also need the external RegTools volumes):
+
+```
+data/origins/
+  manifest.json                  case -> file, mechanism, tool, source, shape, build time
+  m1_interpolation/              m1_laplacian_synthetic_{clean,outliers,collapse,mixed}, m1_laplacian_cohort_B0039_z264
+  m2_dense_optimization/         m2_tvl1_synthetic_{weak,strong}, m2_ilk_synthetic_r3, m2_{demons,ffd,tvl1}_brainpair_*
+  m3_learned/                    m3_proxy_synthetic{,_mild}, m3_{voxelmorph,transmorph}_{ellipses,cohort}_{direct,diffeo}
+  m4_diffeomorphic/              m4_svf_synthetic_{decimated,subpixel,coarse_steps}, m4_ants_cohort_B0039_z264
+  cache/                         real-slice cache for the cohort learned rows (hash-keyed)
+output/origins/
+  <timestamp>/results.csv        one sweep;  results_latest.csv = the most recent one (stable path)
+```
+
+Each field is `<case>.npy` in `dvfopt`'s `(3, 1, H, W)` layout with a `<case>.json`
+sidecar (tool, parameters, seed, timings, the convention/collapse checks for the
+learned rows, grid info for the cohort rows), so a file is self-describing
+without the registry. Names are `m<k>_<tool>_<data>_<variant>` — mechanism, tool,
+the data it was made from (`synthetic` generated images/pins, `ellipses` the
+notebooks' toy images, `brainpair` the in-repo B0039/template slice pair,
+`cohort` the 7-brain RegTools cohort), variant.
 
 The learned rows (mechanism 3) train small networks and need torch, which the
 main venv deliberately does not carry. A separate CPU venv is enough (the

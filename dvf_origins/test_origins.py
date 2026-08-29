@@ -70,9 +70,40 @@ def test_morphology_bilinear_only_cell():
 
 def test_registry_and_build_synthetic():
     assert {mech for mech, _, _ in CASES.values()} <= set(MECHANISMS)
-    phi, meta = build('m3_learned_proxy_mild')
+    for name, (mech, _, _) in CASES.items():  # m<k>_<tool>_<data>_<variant>, k = mechanism
+        assert name.startswith(f'm{mech}_') and name.count('_') >= 2, name
+    phi, meta = build('m3_proxy_synthetic_mild')
     _check_field(phi)
-    assert meta['case'] == 'm3_learned_proxy_mild' and meta['mechanism'] == 3 and meta['proxy']
+    assert meta['case'] == 'm3_proxy_synthetic_mild' and meta['mechanism'] == 3 and meta['proxy']
+
+
+def test_generate_layout_manifest_and_sweep(tmp_path):
+    import csv
+    import json
+
+    from dvf_origins.__main__ import main
+
+    main(
+        [
+            'generate',
+            '--case',
+            'm3_proxy_synthetic_mild',
+            'm4_svf_synthetic_decimated',
+            '--out',
+            str(tmp_path),
+        ]
+    )
+    assert (tmp_path / 'm3_learned' / 'm3_proxy_synthetic_mild.npy').is_file()
+    assert (tmp_path / 'm3_learned' / 'm3_proxy_synthetic_mild.json').is_file()
+    assert (tmp_path / 'm4_diffeomorphic' / 'm4_svf_synthetic_decimated.npy').is_file()
+    man = json.loads((tmp_path / 'manifest.json').read_text())
+    assert man['m3_proxy_synthetic_mild']['file'] == 'm3_learned/m3_proxy_synthetic_mild.npy'
+    assert man['m4_svf_synthetic_decimated']['mechanism'] == 4
+    main(['sweep', '--in', str(tmp_path), '--out', str(tmp_path / 'out')])
+    with open(tmp_path / 'out' / 'results_latest.csv') as fh:
+        rows = list(csv.DictReader(fh))
+    assert {r['case'] for r in rows} == {'m3_proxy_synthetic_mild', 'm4_svf_synthetic_decimated'}
+    assert rows[0]['mechanism'] in {'3', '4'} and 'simplex_neg_cells' in rows[0]
 
 
 def test_slice2d_validation_and_missing_data():
