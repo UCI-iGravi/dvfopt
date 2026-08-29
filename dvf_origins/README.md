@@ -27,7 +27,7 @@ models are 64×64 toys; VoxelMorph rows build in ~3-4 min, TransMorph in ~15-30)
 ```bash
 uv venv .venv-torch --python 3.12
 uv pip install --python .venv-torch --torch-backend=cpu \
-    -e . torch timm "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
+    -e . torch "timm>=1.0" "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
 .venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # POSIX: .venv-torch/bin/python
 python -m dvf_origins sweep                                          # any venv; reads data/origins/
 ```
@@ -39,9 +39,12 @@ B0039-vs-template slice correlation 0.18 identity → 0.87 affine → 0.94 SyN, 
 the network learns the nonlinear residual SyN solved), takes coronal planes
 `z = 60, 72, …, 468` of the six training brains paired with the template's, and
 holds out B0039 at z=264. Planes are block-mean downsampled ×3 and centre-cropped
-to 96×128 (the VoxelMorph UNet needs multiples of 32); the slice cache lands in
-`data/origins/cache/`. Point `DVF_ORIGINS_REGTOOLS` at the cohort output root if
-it is not at the default sibling-repo path.
+to 96×128 (the VoxelMorph UNet needs multiples of 32; ~85 % of the field of view
+survives), so these rows live on a different grid than the native 320×456 m1/m4
+rows of the same plane — compare fold *fractions*, not counts. The slice cache
+lands in `data/origins/cache/` keyed by a hash of every input. The brain roster
+is whatever `DVF_ORIGINS_REGTOOLS` (default: the sibling RegTools checkout)
+holds with both files; the JSON meta records which brains trained.
 
 Each learned row records `warp_rmse` — pull-back-warping the source by the
 returned field must reproduce the network's own warped output — next to the

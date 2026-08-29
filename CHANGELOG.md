@@ -6,7 +6,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added — `dvf_origins.learned`: the learned rows on REAL data (`data='cohort'`)
+### Added — `dvf_origins.learned`: the learned rows on REAL data (`data=cohort_data`)
 
 - `learned.cohort_data` builds a real training set from the RegTools cohort
   outputs (external, `DVF_ORIGINS_REGTOOLS`): each brain's axis-aligned volume is
@@ -17,14 +17,18 @@ follows [Semantic Versioning](https://semver.org/).
   `z = 60..468 step 12` of the six training brains are paired with the template's
   plane, and B0039 at z=264 — the plane the real m1 / m4 rows use — is held out as
   the test pair. Planes are block-mean downsampled ×3 and centre-cropped to 96×128
-  (the VoxelMorph UNet has five levels → multiples of 32); 210 training pairs,
-  cached under `data/origins/cache/`. Both generators take `data=None`
-  (the notebooks' synthetic images, unrelated random pairs) or `'cohort'` (paired
-  real slices); four new `CASES` rows `m3_{voxelmorph,transmorph}_{direct,diffeo}_cohort`.
-- The convention check now measures its RMSE over in-image samples only: VoxelMorph
-  pads off-image samples with zeros and the Swin sampler with the border value, which
-  on brain slices whose crop edges are not black read as a 5e-3 "mismatch" that was
-  padding semantics, not channel order (2e-7 vs 4.5e-2 swapped once masked).
+  (the VoxelMorph UNet has five levels → multiples of 32; ~85 % of the field of view,
+  so these rows sit on a different grid than the native 320×456 m1/m4 rows of the
+  same plane — compare fold fractions); 210 training pairs, cached under
+  `data/origins/cache/` keyed by a hash of every input and verified on load. Both
+  generators take `data=None` (the notebooks' synthetic images, unrelated random
+  pairs) or a callable such as `learned.cohort_data` (paired real slices); four new
+  `CASES` rows `m3_{voxelmorph,transmorph}_{direct,diffeo}_cohort`.
+- The convention check now warps with the NETWORK's own off-image padding
+  (VoxelMorph zeros, the Swin sampler border), so the RMSE is exact over the whole
+  image. On brain slices whose crop edges are not black the old nearest-padding
+  comparison read a 5e-3 "mismatch" for VoxelMorph that was padding semantics, not
+  channel order; it is 2e-7 vs 4.5e-2 swapped now. A non-finite field raises.
 
 ### Added — `dvf_origins.learned`: mechanism 3 with real networks
 

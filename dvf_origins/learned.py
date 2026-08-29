@@ -1,22 +1,31 @@
 """Mechanism 3 for real: small learned registration networks, trained here.
 
 The setups are the ``benchmarks/registration/{voxelmorph,transmorph}-registration``
-notebooks' — synthetic ellipse images, 200 epochs x 50 steps, MSE + λ·smoothness
-— but seeded, and returning the inference field on a held-out pair instead of
-correcting it in place. ``integration_steps=0`` is a DIRECT displacement
-regressor (the unregularized-network signature the paper's mechanism 3 is
-about); ``7`` puts a scaling-and-squaring layer on top (a learned
-diffeomorphism — folds, if any, are then mechanism 4's).
+notebooks' — 200 epochs x 50 steps, MSE + λ·smoothness — but seeded, and
+returning the inference field on a held-out pair instead of correcting it in
+place. ``integration_steps=0`` is a DIRECT displacement regressor (the
+unregularized-network signature the paper's mechanism 3 is about); ``7`` puts
+a scaling-and-squaring layer on top (a learned diffeomorphism — folds, if any,
+are then mechanism 4's).
+
+``data=None`` trains on the notebooks' synthetic ellipse images (unrelated
+random pairs); ``data=cohort_data`` (any callable returning the same dict
+shape) trains on REAL brains — the cohort affinely aligned onto the template,
+coronal planes paired with the template's — with ``image_size`` / ``n_train``
+/ ``n_test_pairs`` / ``pair`` then unused (they describe the synthetic set).
 
 Needs torch (+ voxelmorph / timm), which the main venv does not carry — the
 separate-venv recipe is in ``dvf_origins/README.md``. Without them the builders
 raise ``ModuleNotFoundError`` and ``generate`` skips the rows. Every builder
 records ``warp_rmse`` — the RMSE between the network's own warped source and a
-pull-back resampling of the source by the RETURNED field — next to
-``warp_rmse_swapped`` (same with the channels swapped), so the field convention
-(``[dy, dx]``, ``moving(x + u(x))``) is checked on what is shipped, not assumed.
+pull-back resampling of the source by the RETURNED field, using the network's
+own off-image padding — next to ``warp_rmse_swapped`` (same with the channels
+swapped), so the field convention (``[dy, dx]``, ``moving(x + u(x))``) is
+checked on what is shipped, not assumed; ``off_image_frac`` is the collapse
+detector (see :func:`transmorph`).
 """
 
+import hashlib
 import json
 import os
 import time
@@ -25,18 +34,21 @@ from pathlib import Path
 import numpy as np
 
 from dvf_origins._common import ROOT, pack2d
+from dvf_origins.registered import FIXED as TEMPLATE
+from dvf_origins.registered import _fit, _norm
 from dvf_origins.synthetic import _warp_image
 
 # RegTools pipeline outputs (external, not in this repo): per brain the axis-aligned
-# volume, the ANTs affine (fwd_transforms/ants_affine_1.mat) and the SyN result.
+# volume and the ANTs affine that puts it on the template grid. Default = the
+# sibling RegTools checkout the cohort copy came from; override with the env var.
 REGTOOLS_COHORT = Path(
     os.environ.get(
         'DVF_ORIGINS_REGTOOLS',
-        'C:/Users/Andy/Documents/GitHub/UCI-XuLab/UCI-XuLab-RegTools/output/brain25_cohort',
+        ROOT.parent.parent / 'UCI-XuLab' / 'UCI-XuLab-RegTools' / 'output' / 'brain25_cohort',
     )
 )
-TEMPLATE = ROOT / 'data' / 'mouse_brain' / 'average_template_25.nii.gz'
-COHORT_BRAINS = ('B0032', 'B0039', 'B0049', 'B0053', 'B0200', 'B0213', 'B0304')
+_ALIGNED = Path('01_axis_alignment') / 'axisAlignedData.nii.gz'
+_AFFINE = Path('02_nonlinear') / 'parameters' / 'fwd_transforms' / 'ants_affine_1.mat'
 CACHE = ROOT / 'data' / 'origins' / 'cache'
 
 
@@ -76,21 +88,34 @@ def _synthetic_data(image_size, n_train, n_test_pairs, pair, data_seed):
 
 
 def _prep_plane(a, downsample, crop):
-    """Block-mean downsample, percentile-normalise to [0, 1], centre-crop to ``crop``."""
+    """Block-mean downsample, [1, 99]-percentile normalise, centre-crop to ``crop``."""
     from skimage.transform import downscale_local_mean
 
     a = downscale_local_mean(a.astype(np.float64), (downsample, downsample))
-    lo, hi = np.percentile(a, [1, 99])
-    a = np.clip((a - lo) / max(hi - lo, 1e-9), 0, 1)
-    H, W = a.shape
-    h, w = crop
-    y0, x0 = (H - h) // 2, (W - w) // 2
-    return a[y0 : y0 + h, x0 : x0 + w].astype(np.float32)
+    if any(n < c for n, c in zip(a.shape, crop)):
+        raise ValueError(f'plane {a.shape} after /{downsample} is smaller than crop {tuple(crop)}')
+    if any(c % 32 for c in crop):
+        raise ValueError(f'crop {tuple(crop)} must be multiples of 32 (five-level UNet)')
+    return _fit(_norm(a), tuple(crop)).astype(np.float32)
 
 
 def _cohort_planes(vol_arr, zs, downsample, crop):
     """Coronal planes ``i = z`` of a SimpleITK ``(k, j, i)`` array as ``(H, W) = (j, k)``."""
     return np.stack([_prep_plane(vol_arr[:, :, z].T, downsample, crop) for z in zs])
+
+
+def cohort_brains():
+    """Brains under ``REGTOOLS_COHORT`` that have the aligned volume and the affine."""
+    if not REGTOOLS_COHORT.is_dir():
+        raise FileNotFoundError(
+            f'RegTools cohort outputs not found at {REGTOOLS_COHORT} (set DVF_ORIGINS_REGTOOLS); '
+            f'expects <brain>/{_ALIGNED.as_posix()} and <brain>/{_AFFINE.as_posix()}'
+        )
+    return sorted(
+        p.name
+        for p in REGTOOLS_COHORT.iterdir()
+        if (p / _ALIGNED).is_file() and (p / _AFFINE).is_file()
+    )
 
 
 def cohort_data(
@@ -103,44 +128,63 @@ def cohort_data(
 ):
     """REAL training data: cohort brains affinely aligned onto the template grid
     (the ANTs fwd affine of the RegTools pipeline — exactly the input SyN then
-    deformed nonlinearly), coronal planes ``i = z``, paired with the template's
-    plane at the same ``z``. Every brain except ``test_brain`` trains; the test
-    pair is ``test_brain`` at ``test_z`` (default: the plane the real m1 / m4
-    rows use). Planes are block-mean downsampled by ``downsample`` and centre-
-    cropped to ``crop`` (multiples of 32: the VoxelMorph UNet has five levels;
-    3 / 96x128 keeps ~85 % of the 320x456 field of view). Cached under
-    ``data/origins/cache/`` (gitignored). Raises ``FileNotFoundError`` when the
-    RegTools outputs (external) or the template are absent.
+    deformed nonlinearly; verified on B0039 z=264: slice correlation with the
+    template 0.18 identity -> 0.87 affine -> 0.94 SyN), coronal planes ``i = z``,
+    paired with the template's plane at the same ``z``. Every brain except
+    ``test_brain`` trains; the test pair is ``test_brain`` at ``test_z`` (default:
+    the plane the real m1 / m4 rows use — but on THIS grid: block-mean downsampled
+    by ``downsample`` and centre-cropped to ``crop``, multiples of 32 for the
+    five-level UNet; 3 / 96x128 keeps ~85 % of the 320x456 field of view, so
+    compare fold fractions, not counts, against the native-resolution rows).
+    Cached under ``data/origins/cache/`` (gitignored), keyed by a hash of every
+    input and verified on load. Raises ``FileNotFoundError`` when the RegTools
+    outputs (external) or the template are absent.
     """
-    tag = f'{test_brain}_z{test_z}_ds{downsample}_{crop[0]}x{crop[1]}_n{len(zs)}'
-    cache_file = CACHE / f'cohort_slices_{tag}.npz'
-    if cache and cache_file.is_file():
-        z = np.load(cache_file)
-        info = json.loads(str(z['info']))
-        return dict(
-            train=(z['train_src'], z['train_tgt']),
-            test=(z['test_src'], z['test_tgt']),
-            paired=True,
-            info=info,
-        )
-    import SimpleITK as sitk
-
+    zs = [int(z) for z in zs]
+    brains = cohort_brains()
+    if test_brain not in brains:
+        raise FileNotFoundError(f'{test_brain} not among the cohort brains on disk: {brains}')
     if not TEMPLATE.is_file():
         raise FileNotFoundError(f'template not found (data is gitignored): {TEMPLATE}')
-    if not (REGTOOLS_COHORT / test_brain).is_dir():
-        raise FileNotFoundError(
-            f'RegTools cohort outputs not found: {REGTOOLS_COHORT} (set DVF_ORIGINS_REGTOOLS)'
+    train_brains = [b for b in brains if b != test_brain]
+    info = dict(
+        data='cohort',
+        root=str(REGTOOLS_COHORT),
+        train_brains=train_brains,
+        test_brain=test_brain,
+        test_z=int(test_z),
+        zs=zs,
+        downsample=int(downsample),
+        crop=[int(c) for c in crop],
+    )
+    key = hashlib.sha1(json.dumps(info, sort_keys=True).encode()).hexdigest()[:10]
+    cache_file = CACHE / f'cohort_slices_{test_brain}_z{test_z}_{key}.npz'
+
+    def bundle(train_src, tgt, test_src, test_tgt):
+        return dict(
+            train=(train_src, tgt),  # brain-major: row i pairs with tgt[i % len(tgt)]
+            test=(test_src, test_tgt),
+            paired=True,
+            info=dict(info, n_train=len(train_src)),
         )
+
+    if cache and cache_file.is_file():
+        with np.load(cache_file) as z:
+            if json.loads(str(z['info'])) == info:
+                return bundle(z['train_src'], z['train_tgt'], z['test_src'], z['test_tgt'])
+    import SimpleITK as sitk
+
     tpl = sitk.ReadImage(str(TEMPLATE))
     tpl_arr = sitk.GetArrayFromImage(tpl)
-    train_brains = [b for b in COHORT_BRAINS if b != test_brain]
+    n_i = tpl.GetSize()[0]
+    for z in [*zs, test_z]:
+        if not 0 <= z < n_i:
+            raise ValueError(f'z={z} out of range for the template depth {n_i}')
 
     def aligned(brain):
         d = REGTOOLS_COHORT / brain
-        mov = sitk.ReadImage(str(d / '01_axis_alignment' / 'axisAlignedData.nii.gz'))
-        aff = sitk.ReadTransform(
-            str(d / '02_nonlinear' / 'parameters' / 'fwd_transforms' / 'ants_affine_1.mat')
-        )
+        mov = sitk.ReadImage(str(d / _ALIGNED))
+        aff = sitk.ReadTransform(str(d / _AFFINE))
         return sitk.GetArrayFromImage(
             sitk.Resample(mov, tpl, aff, sitk.sitkLinear, 0.0, sitk.sitkFloat32)
         )
@@ -149,51 +193,50 @@ def cohort_data(
     train_src = np.concatenate(
         [_cohort_planes(aligned(b), zs, downsample, crop) for b in train_brains]
     )
-    train_tgt = np.concatenate([tgt] * len(train_brains))
     test_src = _cohort_planes(aligned(test_brain), [test_z], downsample, crop)[0]
-    test_tgt = _cohort_planes(tpl_arr, [test_z], downsample, crop)[0]
-    info = dict(
-        data='cohort',
-        train_brains=train_brains,
-        test_brain=test_brain,
-        test_z=test_z,
-        n_train=len(train_src),
-        zs=list(zs),
-        downsample=downsample,
-        crop=list(crop),
-    )
+    if test_z in zs:
+        test_tgt = tgt[zs.index(test_z)]
+    else:
+        test_tgt = _cohort_planes(tpl_arr, [test_z], downsample, crop)[0]
     if cache:
         CACHE.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             cache_file,
             train_src=train_src,
-            train_tgt=train_tgt,
+            train_tgt=tgt,
             test_src=test_src,
             test_tgt=test_tgt,
             info=json.dumps(info),
         )
-    return dict(train=(train_src, train_tgt), test=(test_src, test_tgt), paired=True, info=info)
+    return bundle(train_src, tgt, test_src, test_tgt)
 
 
 def _resolve_data(data, image_size, n_train, n_test_pairs, pair, seed):
     if data is None:
         return _synthetic_data(image_size, n_train, n_test_pairs, pair, data_seed=42 + seed)
-    if data == 'cohort':
-        return cohort_data()
-    return data
+    if callable(data):
+        return data()
+    raise TypeError('data must be None (the synthetic set) or a callable returning the data dict')
 
 
 def _batches(data_d, device, torch):
     """Training tensors and a pair sampler honouring ``paired``, plus the test pair."""
+    A_np, B_np = data_d['train']
+    paired = bool(data_d['paired'])
+    if paired and len(A_np) % len(B_np):
+        raise ValueError(f'paired data: {len(A_np)} sources vs {len(B_np)} targets')
+    if not paired and len(A_np) != len(B_np):
+        raise ValueError('unpaired data needs the same number of sources and targets')
     A, B = (
         torch.from_numpy(np.ascontiguousarray(x)).float().unsqueeze(1).to(device)
-        for x in data_d['train']
+        for x in (A_np, B_np)
     )
 
     def sample(gen):
-        idx = torch.randint(0, len(A), (2,), generator=gen)
-        i, j = idx[0], (idx[0] if data_d['paired'] else idx[1])
-        return A[i][None], B[j][None]
+        i, j = torch.randint(0, len(A), (2,), generator=gen).tolist()
+        if paired:
+            j = i % len(B)
+        return A[i : i + 1], B[j : j + 1]
 
     test = tuple(
         torch.from_numpy(np.ascontiguousarray(x)).float()[None, None].to(device)
@@ -202,20 +245,24 @@ def _batches(data_d, device, torch):
     return sample, test
 
 
-def _finish(tool, source, disp, warped, losses, t0, **params):
+def _finish(tool, source, disp, warped, losses, t0, pad, **params):
     phi = pack2d(disp[0], disp[1])
     field = phi[1:, 0]  # the RETURNED channels, so a swap in the packing would show here
+    if not np.isfinite(field).all():
+        raise FloatingPointError(f'{tool}: non-finite displacement (diverged)')
+    # the network's own off-image padding, so the comparison is exact over the whole image
+    # (grid_sample 'zeros' blends out-of-bounds taps with 0 = scipy 'grid-constant', NOT
+    # 'constant', which replaces the whole out-of-bounds sample; 'border' = 'nearest')
+    mode = {'zeros': 'grid-constant', 'border': 'nearest'}[pad]
+
+    def _rmse(f):
+        return float(np.sqrt(((_warp_image(source, f, mode=mode) - warped) ** 2).mean()))
+
+    rmse, rmse_swapped = _rmse(field), _rmse(field[::-1])
     H, W = source.shape
     Y, X = np.mgrid[0:H, 0:W]
     sy, sx = Y + field[0], X + field[1]
-    inside = (sy >= 0) & (sy <= H - 1) & (sx >= 0) & (sx <= W - 1)
-    off_image = float(1.0 - inside.mean())
-
-    def _rmse(f):  # over in-image samples only: the networks pad off-image samples
-        d = _warp_image(source, f) - warped  # differently (zeros vs border), which is
-        return float(np.sqrt((d[inside] ** 2).mean())) if inside.any() else float('nan')
-
-    rmse, rmse_swapped = _rmse(field), _rmse(field[::-1])  # not a convention question
+    off_image = float(((sy < 0) | (sy > H - 1) | (sx < 0) | (sx > W - 1)).mean())
     meta = dict(
         source='learned',
         tool=tool,
@@ -223,8 +270,8 @@ def _finish(tool, source, disp, warped, losses, t0, **params):
         train_s=round(time.perf_counter() - t0, 1),
         warp_rmse=rmse,
         warp_rmse_swapped=rmse_swapped,
-        # collapse detector: a network that shifts everything off-image samples only the
-        # (black) border, gets a low MSE for free, and both RMSEs above read 0 — see transmorph
+        # collapse detector: a network that shifts everything off-image samples only its
+        # padding, gets a low MSE for free, and both RMSEs above read 0 — see transmorph
         off_image_frac=off_image,
         **params,
     )
@@ -248,10 +295,8 @@ def voxelmorph(
 ):
     """VoxelMorph (``vxm.nn.models.VxmPairwise``, pytorch backend) as in the
     notebook; ``integration_steps=0`` direct, ``7`` diffeomorphic. ``data``:
-    ``None`` = the notebook's synthetic images, ``'cohort'`` = :func:`cohort_data`
-    (real brains), or a dict of that shape."""
-    import os
-
+    ``None`` = the notebook's synthetic images, or a callable such as
+    :func:`cohort_data` (real brains)."""
     os.environ.setdefault('NEURITE_BACKEND', 'pytorch')
     os.environ.setdefault('VXM_BACKEND', 'pytorch')
     import neurite as ne
@@ -301,6 +346,7 @@ def voxelmorph(
         warped.cpu().numpy()[0, 0].astype(np.float64),
         losses,
         t0,
+        pad='zeros',  # vxm.nn.functional.spatial_transform pads with zeros
         seed=seed,
         **data_d['info'],
         integration_steps=integration_steps,
@@ -328,7 +374,8 @@ def transmorph(
 ):
     """The notebook's ``SwinRegNet`` — a Swin-Tiny encoder (timm, 2-channel
     input, no pretraining) + small ConvNet decoder regressing a displacement;
-    ``integration_steps=0`` direct, ``7`` scaling-and-squaring.
+    ``integration_steps=0`` direct, ``7`` scaling-and-squaring. ``data`` as in
+    :func:`voxelmorph`.
 
     One deliberate deviation from the notebook: the decoder reads the encoder's
     ``feature_stage`` feature map (stage 0 = 16x16 tokens at 64 px) instead of
@@ -392,7 +439,7 @@ def transmorph(
         def _warp(self, src, flow):
             # Pull-back sampling of src at pixel (i, j) + flow. With align_corners=True
             # pixel i sits exactly at -1 + 2i/(n-1), so d px == 2d/(n-1) normalized.
-            # (The notebook pairs a linspace(-1, 1, n) grid with align_corners=False,
+            # (The notebook paired a linspace(-1, 1, n) grid with align_corners=False,
             # whose pixel centers are elsewhere — a +-0.5 px identity stretch that the
             # convention self-check in meta exposed: warp_rmse 2.4e-2 vs 3e-7 here.)
             B, _, H, W = src.shape
@@ -452,6 +499,7 @@ def transmorph(
         warped.cpu().numpy()[0, 0].astype(np.float64),
         losses,
         t0,
+        pad='border',  # grid_sample padding_mode='border' in _warp
         seed=seed,
         **data_d['info'],
         feature_stage=feature_stage,
