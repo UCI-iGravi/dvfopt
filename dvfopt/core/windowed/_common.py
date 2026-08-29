@@ -515,6 +515,7 @@ def windowed_correct(
     reanchor_tile=48,
     reseed_rounds=3,
     reseed_radius=2,
+    reseed_before_mop=True,
     time_budget_s=None,
     verbose=1,
     record_history=False,
@@ -699,6 +700,12 @@ def windowed_correct(
     z1 4556 -> 0 in 1066 s / 1 round / 31 windows where the plain engine left 70
     after 8902 s / 374 windows (L2 1988 vs 1973). 2D simplex-family only; raises
     on other packs.
+
+    ``reseed_before_mop`` (default True) runs the re-seed stage BEFORE the terminal
+    mop instead of after it. Measured on the full-resolution B0039 exterior z=1
+    trace (15 657 s): the mop's whole-cluster windows ran the entire ladder on the
+    rotated-branch residual for 12 367 s (79%) at ~3.7 s per SQP iteration, and the
+    re-seed then cleared it in 7 s. ``False`` restores the after-mop order.
 
     ``reseed_rounds`` (default 3, 0 = off) / ``reseed_radius`` (default 2) add a
     **terminal harmonic re-seed stage** for the residual the round loop AND the mop
@@ -910,35 +917,8 @@ def windowed_correct(
     if budget_hit:
         log_warning("windowed_correct: time budget exhausted; stopping with best-so-far field")
 
-    # terminal mop: clear the boundary-stuck residual the round loop plateaued on
-    if mop_margin > 0 and not budget_hit:
-        before_mop = int(pixel_fold_mask(constraint, phi, threshold).sum())
-        if before_mop > 0:
-            mop_w0 = len(rep.windows)
-            _mop_pass(
-                phi,
-                constraint,
-                threshold,
-                objective,
-                maxiter,
-                ring,
-                rep,
-                margin_delta,
-                touched,
-                mop_margin,
-                max_window_area,
-                inner=inner,
-                opts=opts,
-            )
-            rep.mop_cleared = before_mop - int(pixel_fold_mask(constraint, phi, threshold).sum())
-            if record_history:
-                rep.history.append(_stage_entry("mop", mop_w0))
-            _fire("mop", phi)
-
-    # Terminal harmonic re-seed: the residual both the round loop and the mop
-    # plateau on sits on the rotated orientation branch (see the docstring); reset
-    # the branch and polish. Bounded rounds, deadline-aware, off on a clean field.
-    if reseed_rounds > 0 and not budget_hit:
+    def _run_reseed():
+        """The harmonic re-seed stage + polish (see ``reseed_rounds``); no-op on a clean field."""
         _reseed_stage(
             phi,
             constraint,
@@ -967,6 +947,44 @@ def windowed_correct(
             rep.history.append(_stage_entry("reseed", len(rep.windows)))
         if rep.reseed_rounds_run:
             _fire("reseed", phi)
+
+    # Harmonic re-seed BEFORE the mop (default): the residual the round loop plateaus
+    # on is the rotated-branch trap (see ``reseed_rounds``), which no ladder rung can
+    # solve -- and the mop's whole-cluster windows (up to 4 x max_window_area free
+    # pixels) run the entire ladder on it at ~3.7 s per SQP iteration. Measured on
+    # the full-resolution B0039 exterior z=1 trace: 12 367 of 15 657 s (79%) went
+    # into that mop, after which the re-seed cleared the residual in 7 s. So re-seed
+    # first; the mop then only sees what the re-seed + polish left (usually nothing).
+    if reseed_rounds > 0 and reseed_before_mop and not budget_hit:
+        _run_reseed()
+
+    # terminal mop: clear the boundary-stuck residual the round loop plateaued on
+    if mop_margin > 0 and not budget_hit:
+        before_mop = int(pixel_fold_mask(constraint, phi, threshold).sum())
+        if before_mop > 0:
+            mop_w0 = len(rep.windows)
+            _mop_pass(
+                phi,
+                constraint,
+                threshold,
+                objective,
+                maxiter,
+                ring,
+                rep,
+                margin_delta,
+                touched,
+                mop_margin,
+                max_window_area,
+                inner=inner,
+                opts=opts,
+            )
+            rep.mop_cleared = before_mop - int(pixel_fold_mask(constraint, phi, threshold).sum())
+            if record_history:
+                rep.history.append(_stage_entry("mop", mop_w0))
+            _fire("mop", phi)
+
+    if reseed_rounds > 0 and not reseed_before_mop and not budget_hit:
+        _run_reseed()  # legacy order: after the mop
 
     # Post-feasibility re-anchor: recover fidelity now that no fold is left to trap
     # the inner in an objective basin. Only on a fold-free field, and reverted whole

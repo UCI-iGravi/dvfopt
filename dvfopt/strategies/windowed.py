@@ -209,6 +209,7 @@ class WindowedWrapperStrategy(Strategy):
     reanchor_tile: int = 48
     reseed_rounds: int = 3
     reseed_radius: int = 2
+    reseed_before_mop: bool = True
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -274,6 +275,7 @@ class WindowedWrapperStrategy(Strategy):
             reanchor_tile=self.reanchor_tile,
             reseed_rounds=self.reseed_rounds,
             reseed_radius=self.reseed_radius,
+            reseed_before_mop=self.reseed_before_mop,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
