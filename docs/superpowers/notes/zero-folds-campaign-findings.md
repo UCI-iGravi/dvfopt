@@ -218,6 +218,16 @@ the full rows). The crop pack cannot gauge the rows' fidelity: `z0_sliver` was c
 from an engine *output* and contains 147 fold-free rotated cells (the
 rotated-branch artefact); the rows un-rotate them, which reads as a large L2
 against that artefactual start.
+Measured against the *raw* z0 input over that box: the crop's start field is at
+L2 1130, the plain engine's output 1128, the edge-rows + L2 output 1478, with
+rotated cells 147 → 155 → 0. The raw region is reflected — a registration error —
+and a fold-free completion that keeps the reflection (a 180°-rotated patch,
+orientation-preserving by double inversion) is closer in L2 to that erroneous
+input than the un-rotated one. On real full slices a rotated patch must join
+un-rotated tissue and becomes the trap, which is why the rows win fidelity there
+(z=2 −28 %, z11 −23 %, raw z16 −1.5 %); on a globally reflected region they force
+the un-rotation at an L2 cost against the input. This is a documented behaviour
+change of the default formulation, not a defect.
 
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
