@@ -155,8 +155,10 @@ linear condition (area ≥ δ²(1−κ²)/(1+κ²)). Measured on z11 at δ = 0.2
 the single whole-slice QP (873,192 rows, OSQP 3075 iterations, 2124 s on a
 loaded box) returns **0 simplex / 0 bilinear folds directly** (min area 0.015),
 phase 2 has nothing to do — guaranteed feasibility from one convex solve — at
-L2 1643, the highest fidelity cost of the approaches (re-seed 1017 < two-phase
-monotone 1306–1350 < rows-always 1500–1566 < cone 1643).
+L2 1643. A wider cone (δ = 0.25, κ = 0.8; 4725 iterations, 3172 s) also returns 0
+folds directly at **L2 1274** — on par with the two-phase monotone path
+(1306–1350), better than rows-always (1500–1566), 25 % above the re-seed path
+(1017): guaranteed feasibility from a single convex solve.
 
 **Not a blanket pre-pass.** Run on every field at δ = 0.1 it fails the fidelity
 gate where the plain engine is already cheap: raw B0039 z16 (solved by the plain
