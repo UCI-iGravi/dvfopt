@@ -6,6 +6,27 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `dvf_origins/`: sample DVFs per fold-origin mechanism (standalone harness)
+
+- New top-level folder, deliberately NOT part of the `dvfopt` package (imports it
+  only for the Laplacian solve and the fold metrics; own self-check via
+  `pytest dvf_origins`, not collected by the main suite). `python -m dvf_origins
+  {list, generate, sweep}` builds one field per (mechanism, tool, severity) into
+  `data/origins/` and writes the fold-morphology table (`output/origins/<ts>/
+  results.csv`): central-difference Jdet, simplex and bilinear certificates,
+  bilinear-only cells, fold fraction, cluster count / median / max area.
+- Mechanisms: (1) Laplacian of corrupted correspondences — outliers, adjacent
+  many-to-one collapses, jitter — plus a real cohort slice; (2) skimage TV-L1 /
+  ILK on a textured pair plus real SimpleITK demons / B-spline FFD / TV-L1 runs on
+  the `data/mouse_brain` slice pair; (3) a labeled learned-field PROXY (smooth
+  warp + grid-scale noise) plus loaders for saved VoxelMorph / TransMorph
+  outputs; (4) SVF scaling-and-squaring with decimation / coarse steps /
+  sub-pixel-only folds plus the real ANTs slice (mm → voxel per axis; measures 0
+  folds, as a SyN warp should). Measured signatures match the mechanism: the
+  proxy gives ~1100 scattered clusters of median 4 cells; the sub-pixel SVF case
+  has central-difference Jdet ≥ 0.035 everywhere yet 421 simplex-folded cells,
+  297 of them bilinear-only.
+
 ### Added — windowed engine: linear orientation rows (`orientation_delta`, off by default)
 
 - **`orientation_delta=None`** on `windowed_correct` and the windowed strategies. A
