@@ -214,8 +214,8 @@ def learned_proxy(
     unregularized network output (many shallow scattered folds).
 
     This is a PROXY — it reproduces the morphology, not the mechanism. Real
-    learned fields come from the VoxelMorph / TransMorph notebooks
-    (``benchmarks/registration/``, needs torch) via ``real.saved_field``.
+    learned fields are trained by ``dvf_origins.learned`` (VoxelMorph /
+    TransMorph-style networks; needs the torch venv, see the README).
     """
     rng = np.random.default_rng(seed)
     gt = smooth_field(shape, warp_sigma, warp_max, rng)

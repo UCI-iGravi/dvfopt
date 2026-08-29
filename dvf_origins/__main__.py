@@ -74,6 +74,7 @@ def cmd_sweep(a):
             'source': meta.get('source', ''),
             'tool': meta.get('tool', ''),
             'dz_max_dropped': meta.get('dz_max_dropped', ''),
+            'off_image_frac': meta.get('off_image_frac', ''),  # learned rows: 1.0 = collapsed
             **morphology(np.load(f), a.threshold),
         }
         rows.append(row)
@@ -86,7 +87,7 @@ def cmd_sweep(a):
         )
     out = Path(a.out) / time.strftime('%Y%m%d_%H%M%S')
     out.mkdir(parents=True, exist_ok=True)
-    cols = ['case', 'mechanism', 'source', 'tool', 'dz_max_dropped', *COLUMNS]
+    cols = ['case', 'mechanism', 'source', 'tool', 'dz_max_dropped', 'off_image_frac', *COLUMNS]
     with open(out / 'results.csv', 'w', newline='') as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()

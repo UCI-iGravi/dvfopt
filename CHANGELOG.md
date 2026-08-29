@@ -6,6 +6,48 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `dvf_origins.learned`: mechanism 3 with real networks
+
+- `learned.voxelmorph` / `learned.transmorph` train the `benchmarks/registration/`
+  notebooks' networks (VoxelMorph `VxmPairwise`; the TransMorph-style Swin-Tiny +
+  ConvNet `SwinRegNet`) on their synthetic ellipse images — same 200 × 50 steps,
+  MSE + 0.05·smoothness — seeded, and return the inference field on a held-out
+  pair. `integration_steps=0` is a direct displacement regressor (the paper's
+  mechanism 3), `7` a learned diffeomorphism. Four `CASES` rows
+  (`m3_{voxelmorph,transmorph}_{direct,diffeo}`); the phantom "drop a saved
+  notebook output here" rows are gone (one generic `m3_external_saved` remains).
+- They need torch, which the main venv deliberately does not carry: a separate
+  CPU venv (`uv venv .venv-torch` + `--torch-backend=cpu`, recipe in
+  `dvf_origins/README.md` and `learned.py`) builds them in ~8 min (VoxelMorph)
+  / ~29 min (TransMorph) per row; without torch `generate` skips them.
+- Each row records `warp_rmse` — pull-back-warping the source by the returned
+  field must reproduce the network's own warped output — next to the same number
+  with the channels swapped, so the `[dy, dx]` / `moving(x + u(x))` convention is
+  measured rather than assumed. It caught a ±0.5 px identity stretch in the
+  TransMorph notebook's sampler (`linspace(-1, 1, n)` grid with
+  `align_corners=False`): 2.4e-2 RMSE against its own warp, 1e-7 once the harness
+  copy samples pixel centers exactly (`align_corners=True`, `2d/(n-1)`; the
+  notebook cell got the same fix).
+- One deliberate deviation from the TransMorph notebook (`feature_stage=0`): its
+  decoder reads the Swin encoder's 2×2 bottleneck, which can only emit near-global
+  fields and, trained the notebook's way, settles on a constant −58 px translation
+  that shifts the whole source off-image — border padding returns black, the MSE
+  equals mean(target²) ≈ 0.08, and the "field" is a fold-free translation. The
+  harness reads the stage-0 (16×16) feature map instead: at 1000 steps loss 0.074
+  and 3 % off-image with a genuinely local field, vs 0.103 / 60 % for the
+  bottleneck, 5.7× faster. `meta['off_image_frac']` is the collapse detector
+  (`feature_stage=None` restores the notebook's design) and rides into the sweep CSV.
+- **Measured (seed 0, CPU, 64², simplex cells of 3969):** VoxelMorph direct **850
+  folded cells in 5 clusters** (median 75, max 591), min −7.5, loss 0.040, 147 s;
+  VoxelMorph diffeo (7 squarings) **415 cells / 22 clusters, 179 bilinear-only**, min
+  −1.6, 181 s — a learned diffeomorphism still folding at the discrete level, i.e.
+  mechanism 4's signature from a mechanism-3 tool; TransMorph-style direct **680
+  cells / 5 clusters**, min −11.9, loss 0.052, 3 % off-image, 275 s. TransMorph-style
+  diffeo does not train on this setup: seeds 0 and 1 collapse off-image
+  (`off_image_frac` 1.0, loss = mean(target²) 0.079), seed 2 stays at the identity
+  (loss 0.114, zero displacement) — the row is kept, flagged by the CSV column, and is
+  not a usable field. All three real rows rebuild byte-identically on this machine.
+
 ### Fixed — `load_dvf_sitk` honours image geometry (direction matrix + spacing)
 
 - `dvfopt.io.fields.load_dvf_sitk` (behind `load_dvf`, the CLI's and the GUI's
@@ -35,8 +77,8 @@ follows [Semantic Versioning](https://semver.org/).
   many-to-one collapses, jitter — plus a real cohort slice; (2) skimage TV-L1 /
   ILK on a textured pair plus real SimpleITK demons / B-spline FFD / TV-L1 runs on
   the `data/mouse_brain` slice pair; (3) a labeled learned-field PROXY (smooth
-  warp + grid-scale noise) plus loaders for saved VoxelMorph / TransMorph
-  outputs; (4) SVF scaling-and-squaring with decimation / coarse steps /
+  warp + grid-scale noise) plus a generic saved-field loader (the real learned
+  rows arrived in the `dvf_origins.learned` entry above); (4) SVF scaling-and-squaring with decimation / coarse steps /
   sub-pixel-only folds plus the real ANTs slice — converted to index space by the
   library's `dvf_from_sitk_image` (see *Fixed* above) and re-laid-out onto the
   Laplacian field's `(i, j, k)` grid so `z` names the same plane in both real rows.

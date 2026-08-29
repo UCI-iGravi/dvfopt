@@ -15,7 +15,7 @@ array, channels ``[dz, dy, dx]``, ``dz == 0``, pull-back convention, voxel
 units — i.e. exactly what ``dvfopt`` consumes.
 """
 
-from dvf_origins import real, registered, synthetic
+from dvf_origins import learned, real, registered, synthetic
 from dvf_origins._common import ROOT, pack2d
 
 __all__ = ['CASES', 'MECHANISMS', 'ROOT', 'build', 'pack2d']
@@ -53,9 +53,13 @@ CASES = {
     # -- 3: learned displacement fields --------------------------------------
     'm3_learned_proxy': (3, synthetic.learned_proxy, dict(seed=0, noise_amp=1.0)),
     'm3_learned_proxy_mild': (3, synthetic.learned_proxy, dict(seed=0, noise_amp=0.5)),
-    # drop VoxelMorph / TransMorph notebook outputs here (needs torch to make)
-    'm3_voxelmorph_saved': (3, real.saved_field, dict(path='data/origins/external/voxelmorph.npy')),
-    'm3_transmorph_saved': (3, real.saved_field, dict(path='data/origins/external/transmorph.npy')),
+    # trained here (needs the torch venv — see learned.py); direct = no diffeo layer
+    'm3_voxelmorph_direct': (3, learned.voxelmorph, dict(seed=0, integration_steps=0)),
+    'm3_voxelmorph_diffeo': (3, learned.voxelmorph, dict(seed=0, integration_steps=7)),
+    'm3_transmorph_direct': (3, learned.transmorph, dict(seed=0, integration_steps=0)),
+    'm3_transmorph_diffeo': (3, learned.transmorph, dict(seed=0, integration_steps=7)),
+    # or drop any saved learned field here (`real.saved_field`, any dvfopt-readable format)
+    'm3_external_saved': (3, real.saved_field, dict(path='data/origins/external/learned.npy')),
     # -- 4: diffeomorphic in the continuum, folds only from discretization ---
     'm4_svf_decimated': (4, synthetic.diffeo_discretized, dict(seed=0, n_steps=6, decimate=2)),
     'm4_svf_subpixel': (
