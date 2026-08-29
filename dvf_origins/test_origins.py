@@ -109,8 +109,12 @@ def test_learned_generators_convention(fn):
     phi, meta = fn(seed=1, image_size=32, n_train=8, n_test_pairs=1, epochs=1, steps_per_epoch=3)
     _check_field(phi)
     assert phi.shape == (3, 1, 32, 32) and meta['source'] == 'learned'
-    # the returned field pull-back-warps the source onto the network's own warped output
-    assert meta['warp_rmse'] < 1e-3 < meta['warp_rmse_swapped'] or meta['warp_rmse'] < 1e-5
+    # the RETURNED field pull-back-warps the source onto the network's own warped output;
+    # the swapped-channel warp must be clearly worse (the field is small but not zero here)
+    assert meta['warp_rmse'] < 1e-4
+    assert meta['warp_rmse_swapped'] > 10 * meta['warp_rmse']
+    with pytest.raises(ValueError):
+        fn(n_test_pairs=1, pair=1, epochs=0)  # validated before any training
 
 
 @pytest.mark.skipif(not _HAVE_COHORT, reason='brain cohort absent (gitignored data)')

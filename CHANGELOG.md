@@ -57,8 +57,8 @@ follows [Semantic Versioning](https://semver.org/).
   many-to-one collapses, jitter — plus a real cohort slice; (2) skimage TV-L1 /
   ILK on a textured pair plus real SimpleITK demons / B-spline FFD / TV-L1 runs on
   the `data/mouse_brain` slice pair; (3) a labeled learned-field PROXY (smooth
-  warp + grid-scale noise) plus loaders for saved VoxelMorph / TransMorph
-  outputs; (4) SVF scaling-and-squaring with decimation / coarse steps /
+  warp + grid-scale noise) plus a generic saved-field loader (the real learned
+  rows arrived in the `dvf_origins.learned` entry above); (4) SVF scaling-and-squaring with decimation / coarse steps /
   sub-pixel-only folds plus the real ANTs slice — converted to index space by the
   library's `dvf_from_sitk_image` (see *Fixed* above) and re-laid-out onto the
   Laplacian field's `(i, j, k)` grid so `z` names the same plane in both real rows.

@@ -17,18 +17,18 @@ python -m dvf_origins list                     # the case registry (dvf_origins/
 python -m dvf_origins generate                 # -> data/origins/<case>.npy + <case>.json (gitignored)
 python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps are absent are skipped, with the reason
 python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv
-pytest dvf_origins                             # self-check (~3 s; ~20 s with the gitignored data present; CI runs it too)
+pytest dvf_origins                             # self-check (~3 s in the main venv, ~15 s in the torch venv; ~20 s more with the gitignored data; CI runs it too)
 ```
 
 The learned rows (mechanism 3) train small networks and need torch, which the
 main venv deliberately does not carry. A separate CPU venv is enough (the
-models are 64×64 toys):
+models are 64×64 toys; VoxelMorph rows build in ~3-4 min, TransMorph in ~15-30):
 
 ```bash
 uv venv .venv-torch --python 3.12
-uv pip install --python .venv-torch/Scripts/python.exe --torch-backend=cpu \
+uv pip install --python .venv-torch --torch-backend=cpu \
     -e . torch timm "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
-.venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # the other mechanisms: main venv
+.venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # POSIX: .venv-torch/bin/python
 python -m dvf_origins sweep                                          # any venv; reads data/origins/
 ```
 

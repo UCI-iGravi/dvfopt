@@ -8,26 +8,21 @@ regressor (the unregularized-network signature the paper's mechanism 3 is
 about); ``7`` puts a scaling-and-squaring layer on top (a learned
 diffeomorphism — folds, if any, are then mechanism 4's).
 
-Needs torch (+ voxelmorph / timm), which the main venv does not carry::
-
-    uv venv .venv-torch --python 3.12
-    uv pip install --python .venv-torch/Scripts/python.exe --torch-backend=cpu \\
-        -e . torch timm "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
-    .venv-torch/Scripts/python -m dvf_origins generate --mechanism 3
-
-Without them the builders raise ``ModuleNotFoundError`` and ``generate`` skips
-the rows. Every builder records ``warp_rmse`` — the RMSE between the network's
-own warped source and a pull-back resampling of the source by the returned
-field — next to ``warp_rmse_swapped`` (same with the channels swapped), so the
-field convention (``[dy, dx]``, ``moving(x + u(x))``) is checked, not assumed.
+Needs torch (+ voxelmorph / timm), which the main venv does not carry — the
+separate-venv recipe is in ``dvf_origins/README.md``. Without them the builders
+raise ``ModuleNotFoundError`` and ``generate`` skips the rows. Every builder
+records ``warp_rmse`` — the RMSE between the network's own warped source and a
+pull-back resampling of the source by the RETURNED field — next to
+``warp_rmse_swapped`` (same with the channels swapped), so the field convention
+(``[dy, dx]``, ``moving(x + u(x))``) is checked on what is shipped, not assumed.
 """
 
 import time
 
 import numpy as np
-from scipy import ndimage
 
 from dvf_origins._common import pack2d
+from dvf_origins.synthetic import _warp_image
 
 
 def make_random_image(size, rng):
@@ -52,31 +47,26 @@ def _dataset(image_size, n_train, n_test_pairs, data_seed):
     return images[:n_train], images[n_train:]
 
 
-def _pullback(img, dy, dx):
-    H, W = img.shape
-    Y, X = np.mgrid[0:H, 0:W].astype(np.float64)
-    return ndimage.map_coordinates(img, [Y + dy, X + dx], order=1, mode='nearest')
-
-
-def _convention_check(source, disp, warped):
-    """RMSE of my pull-back warp vs the network's, for ``[dy, dx]`` and swapped."""
-    ok = np.sqrt(((_pullback(source, disp[0], disp[1]) - warped) ** 2).mean())
-    swapped = np.sqrt(((_pullback(source, disp[1], disp[0]) - warped) ** 2).mean())
-    return float(ok), float(swapped)
+def _check_pair(pair, n_test_pairs):
+    if not 0 <= pair < n_test_pairs:
+        raise ValueError(f'pair={pair} out of range for n_test_pairs={n_test_pairs}')
 
 
 def _finish(tool, source, disp, warped, losses, t0, **params):
-    rmse, rmse_swapped = _convention_check(source, disp, warped)
+    phi = pack2d(disp[0], disp[1])
+    field = phi[1:, 0]  # the RETURNED channels, so a swap in the packing would show here
+    rmse = float(np.sqrt(((_warp_image(source, field) - warped) ** 2).mean()))
+    rmse_swapped = float(np.sqrt(((_warp_image(source, field[::-1]) - warped) ** 2).mean()))
     meta = dict(
         source='learned',
         tool=tool,
-        final_loss=float(losses[-1]),
+        final_loss=float(losses[-1]) if losses else float('nan'),
         train_s=round(time.perf_counter() - t0, 1),
         warp_rmse=rmse,
         warp_rmse_swapped=rmse_swapped,
         **params,
     )
-    return pack2d(disp[0], disp[1]), meta
+    return phi, meta
 
 
 def voxelmorph(
@@ -103,6 +93,7 @@ def voxelmorph(
     import torch
     import voxelmorph as vxm
 
+    _check_pair(pair, n_test_pairs)
     t0 = time.perf_counter()
     torch.manual_seed(seed)
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -181,6 +172,7 @@ def transmorph(
     import torch.nn.functional as F
     from torch import nn
 
+    _check_pair(pair, n_test_pairs)
     t0 = time.perf_counter()
     torch.manual_seed(seed)
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -198,20 +190,11 @@ def transmorph(
                 global_pool='',
                 img_size=img_size,
             )
+            channels = self.encoder.num_features  # timm >= 0.9 swin: NHWC (B, h, w, C) features
             with torch.no_grad():
                 enc = self.encoder(torch.zeros(1, 2, img_size, img_size))
-            if enc.ndim == 3:  # (B, N, C) tokens
-                self.enc_spatial = (int(enc.shape[1] ** 0.5),) * 2
-                channels = enc.shape[2]
-            elif enc.ndim == 4 and enc.shape[-1] != enc.shape[1]:  # (B, h, w, C) channels-last
-                self.enc_spatial = None
-                channels = enc.shape[-1]
-            else:  # (B, C, h, w)
-                self.enc_spatial = None
-                channels = enc.shape[1]
-            self.enc_channels_last = (
-                enc.ndim == 4 and enc.shape[-1] == channels and enc.shape[1] != channels
-            )
+            if enc.ndim != 4 or enc.shape[-1] != channels:
+                raise RuntimeError(f'unexpected swin feature layout {tuple(enc.shape)}')
             self.decoder = nn.Sequential(
                 nn.Conv2d(channels, 64, 3, padding=1),
                 nn.ReLU(inplace=True),
@@ -242,12 +225,7 @@ def transmorph(
             )
 
         def forward(self, source, target):
-            enc = self.encoder(torch.cat([source, target], 1))
-            if enc.ndim == 3:
-                B, _, C = enc.shape
-                enc = enc.permute(0, 2, 1).reshape(B, C, *self.enc_spatial)
-            elif self.enc_channels_last:
-                enc = enc.permute(0, 3, 1, 2)
+            enc = self.encoder(torch.cat([source, target], 1)).permute(0, 3, 1, 2)  # NHWC -> NCHW
             disp = self.decoder(enc)
             if self.steps > 0:
                 disp = disp / 2**self.steps
