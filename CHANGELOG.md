@@ -6,6 +6,21 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — windowed engine: the harmonic re-seed runs BEFORE the terminal mop (`reseed_before_mop=True`)
+
+- **Why.** Trace of the full-resolution B0039 exterior z=1 (15 657 s of inner-solver
+  time): 665 of 694 inner calls fail; the 373 calls on windows with more than
+  3000 free pixels take 15 173 s (97 %) at ~3.7 s per SQP iteration (0.04 s on
+  ordinary windows), and the terminal mop alone takes **12 367 s (79 %)** — its
+  whole-cluster windows (up to 4 × `max_window_area` free pixels) run the entire
+  escalation ladder (10 calls per box) on the 50-cell rotated-branch residual that
+  no rung can solve and that the re-seed then clears in 7 s. The eight volume-edge
+  slices of that volume are 42 % of its 42.4 serial hours for this reason.
+- **Change.** The re-seed stage (+ polish) now runs as soon as the round loop
+  plateaus, and the mop only sees what the re-seed and polish leave (usually
+  nothing). `reseed_before_mop=False` restores the previous order. Measured
+  numbers on the edge slices and the crop pack are on the PR.
+
 ### Added — `dvf_origins.learned`: mechanism 3 with real networks
 
 - `learned.voxelmorph` / `learned.transmorph` train the `benchmarks/registration/`
