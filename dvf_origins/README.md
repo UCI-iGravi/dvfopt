@@ -9,7 +9,7 @@ pull-back, voxel units), plus the fold-morphology table over them.
 |---|---|---|
 | 1 interpolation of sparse correspondences | `synthetic.interp_sparse` — Laplacian of corrupted correspondences (outliers, many-to-one collapses, jitter) | cohort Laplacian slice (`real.laplacian_slice`) |
 | 2 dense weakly-regularized optimization | `synthetic.dense_weak_reg` — skimage TV-L1 / ILK on a textured pair | SimpleITK demons / B-spline FFD, skimage TV-L1 on the `data/mouse_brain` pair (`registered.py`) |
-| 3 learned displacement field | `synthetic.learned_proxy` — **proxy** (smooth warp + grid-scale noise) | `learned.voxelmorph` / `learned.transmorph` — the `benchmarks/registration/` notebooks' networks trained here on synthetic images (direct and diffeo variants; needs the torch venv below), or any saved field via `real.saved_field` |
+| 3 learned displacement field | `synthetic.learned_proxy` — **proxy** (smooth warp + grid-scale noise) | `learned.voxelmorph` / `learned.transmorph` — the `benchmarks/registration/` notebooks' networks trained here (direct and diffeo variants; needs the torch venv below) on the notebooks' synthetic images **or on real data** (`data='cohort'`: six cohort brains affinely aligned onto the template, coronal slices paired with the template's, test pair = B0039 z=264 like the m1/m4 rows; needs the RegTools outputs, `DVF_ORIGINS_REGTOOLS`), or any saved field via `real.saved_field` |
 | 4 discretized diffeomorphic warp | `synthetic.diffeo_discretized` — SVF scaling-and-squaring, then decimation | cohort ANTs SyN warp slice (`real.ants_slice`) |
 
 ```bash
@@ -27,10 +27,24 @@ models are 64×64 toys; VoxelMorph rows build in ~3-4 min, TransMorph in ~15-30)
 ```bash
 uv venv .venv-torch --python 3.12
 uv pip install --python .venv-torch --torch-backend=cpu \
-    -e . torch timm "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
+    -e . torch "timm>=1.0" "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
 .venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # POSIX: .venv-torch/bin/python
 python -m dvf_origins sweep                                          # any venv; reads data/origins/
 ```
+
+The `*_cohort` rows train on real brains: `learned.cohort_data` resamples each
+RegTools brain (`01_axis_alignment/axisAlignedData.nii.gz`) onto the template
+grid through its ANTs affine (`fwd_transforms/ants_affine_1.mat` — verified:
+B0039-vs-template slice correlation 0.18 identity → 0.87 affine → 0.94 SyN, so
+the network learns the nonlinear residual SyN solved), takes coronal planes
+`z = 60, 72, …, 468` of the six training brains paired with the template's, and
+holds out B0039 at z=264. Planes are block-mean downsampled ×3 and centre-cropped
+to 96×128 (the VoxelMorph UNet needs multiples of 32; ~85 % of the field of view
+survives), so these rows live on a different grid than the native 320×456 m1/m4
+rows of the same plane — compare fold *fractions*, not counts. The slice cache
+lands in `data/origins/cache/` keyed by a hash of every input. The brain roster
+is whatever `DVF_ORIGINS_REGTOOLS` (default: the sibling RegTools checkout)
+holds with both files; the JSON meta records which brains trained.
 
 Each learned row records `warp_rmse` — pull-back-warping the source by the
 returned field must reproduce the network's own warped output — next to the

@@ -25,6 +25,42 @@ follows [Semantic Versioning](https://semver.org/).
   kept as an opt-in knob, default off). It removes the same cost, but the harmonic
   fill is far too blunt for sliver residual: `z0_sliver` L2 137.8 vs 21.5.
 
+### Added — `dvf_origins.learned`: the learned rows on REAL data (`data=cohort_data`)
+
+- `learned.cohort_data` builds a real training set from the RegTools cohort
+  outputs (external, `DVF_ORIGINS_REGTOOLS`): each brain's axis-aligned volume is
+  resampled onto the template grid through its ANTs affine
+  (`fwd_transforms/ants_affine_1.mat` — verified on B0039 z=264: slice correlation
+  with the template 0.18 identity → 0.87 affine → 0.94 SyN result, so what the
+  network has to learn is the nonlinear residual SyN solved), coronal planes
+  `z = 60..468 step 12` of the six training brains are paired with the template's
+  plane, and B0039 at z=264 — the plane the real m1 / m4 rows use — is held out as
+  the test pair. Planes are block-mean downsampled ×3 and centre-cropped to 96×128
+  (the VoxelMorph UNet has five levels → multiples of 32; ~85 % of the field of view,
+  so these rows sit on a different grid than the native 320×456 m1/m4 rows of the
+  same plane — compare fold fractions); 210 training pairs, cached under
+  `data/origins/cache/` keyed by a hash of every input and verified on load. Both
+  generators take `data=None` (the notebooks' synthetic images, unrelated random
+  pairs) or a callable such as `learned.cohort_data` (paired real slices); four new
+  `CASES` rows `m3_{voxelmorph,transmorph}_{direct,diffeo}_cohort`.
+- The convention check now warps with the NETWORK's own off-image padding
+  (VoxelMorph zeros, the Swin sampler border), so the RMSE is exact over the whole
+  image. On brain slices whose crop edges are not black the old nearest-padding
+  comparison read a 5e-3 "mismatch" for VoxelMorph that was padding semantics, not
+  channel order; it is 2e-7 vs 4.5e-2 swapped now. A non-finite field raises.
+- **Measured (seed 0, CPU, B0039 z=264 on the 96×128 grid, 12 065 simplex cells):**
+  VoxelMorph direct **218 folded cells (1.8 %) in 21 clusters** (median 5, max 43),
+  min −0.24, loss 0.020, 2 % off-image, 547 s; TransMorph-style direct **236 cells
+  (2.0 %) in 26 clusters** (median 6, max 37), min −0.27, loss 0.025, 619 s. So on
+  real paired slices the direct regressors fold in MANY SMALL clusters — the
+  scattered signature the proxy assumes, unlike the synthetic-toy rows' few giant
+  clusters — at a fold fraction 2–3× the native-resolution Laplacian row of the same
+  plane (1112 of 145 145 cells, 0.77 %). Both diffeo variants train on real data
+  (the synthetic collapse was the ill-posed unrelated-pairs task, not the
+  architecture): VoxelMorph diffeo 1 cell + 13 bilinear-only (min −0.0016, loss
+  0.019); TransMorph-style diffeo 6 cells + 10 bilinear-only in 2 clusters, one deep
+  sliver (min −2.5), 653 s. `warp_rmse` 2e-7 vs ≥ 0.1 swapped on every row.
+
 ### Added — `dvf_origins.learned`: mechanism 3 with real networks
 
 - `learned.voxelmorph` / `learned.transmorph` train the `benchmarks/registration/`

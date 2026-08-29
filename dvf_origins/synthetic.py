@@ -24,11 +24,13 @@ def _sample_at(field, y, x):
     return np.stack([ndimage.map_coordinates(c, [y, x], order=1, mode='nearest') for c in field])
 
 
-def _warp_image(img, field):
-    """``out(x) = img(x + field(x))`` — pull-back resampling."""
+def _warp_image(img, field, mode='nearest'):
+    """``out(x) = img(x + field(x))`` — pull-back resampling. ``mode`` is the
+    off-image padding: ``'nearest'`` = grid_sample's ``border``,
+    ``'grid-constant'`` (cval 0, blends out-of-bounds taps) = its ``zeros``."""
     H, W = img.shape
     Y, X = np.mgrid[0:H, 0:W].astype(np.float64)
-    return ndimage.map_coordinates(img, [Y + field[0], X + field[1]], order=1, mode='nearest')
+    return ndimage.map_coordinates(img, [Y + field[0], X + field[1]], order=1, mode=mode)
 
 
 def _texture(shape, rng, blob_n=12):
