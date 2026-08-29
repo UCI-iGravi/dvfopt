@@ -201,6 +201,7 @@ class WindowedWrapperStrategy(Strategy):
     exact_ls_fallback_steps: int = 3
     patience_retry: bool = True
     orientation_delta: Optional[float] = None
+    orientation_scope: str = 'all'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
     reanchor: str = 'none'
@@ -209,6 +210,8 @@ class WindowedWrapperStrategy(Strategy):
     reanchor_tile: int = 48
     reseed_rounds: int = 3
     reseed_radius: int = 2
+    reseed_before_mop: bool = False
+    untangle_delta: Optional[float] = None
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -266,6 +269,7 @@ class WindowedWrapperStrategy(Strategy):
             exact_ls_fallback_steps=self.exact_ls_fallback_steps,
             patience_retry=self.patience_retry,
             orientation_delta=self.orientation_delta,
+            orientation_scope=self.orientation_scope,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
             reanchor=self.reanchor,
@@ -274,6 +278,8 @@ class WindowedWrapperStrategy(Strategy):
             reanchor_tile=self.reanchor_tile,
             reseed_rounds=self.reseed_rounds,
             reseed_radius=self.reseed_radius,
+            reseed_before_mop=self.reseed_before_mop,
+            untangle_delta=self.untangle_delta,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
