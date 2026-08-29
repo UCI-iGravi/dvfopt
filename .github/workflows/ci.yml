@@ -58,4 +58,4 @@ jobs:
           # every parallel-region barrier. Production-sized volumes are
           # unaffected (this env only applies to the CI test run).
           NUMBA_NUM_THREADS: '1'
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ dvf_origins -q

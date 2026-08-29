@@ -42,10 +42,10 @@ jobs:
         run: uv pip install --system -e ".[dev,gui]"
 
       - name: Lint
-        run: python -m ruff check dvfopt dvfopt_gui tests benchmarks
+        run: python -m ruff check dvfopt dvfopt_gui tests benchmarks dvf_origins
 
       - name: Format check
-        run: python -m ruff format --check dvfopt dvfopt_gui tests benchmarks
+        run: python -m ruff format --check dvfopt dvfopt_gui tests benchmarks dvf_origins
 
       - name: Type check (scoped; see [tool.mypy] in pyproject.toml)
         run: python -m mypy
@@ -54,7 +54,7 @@ jobs:
         # Serial on CI: the few-core runners' per-worker import overhead
         # outweighs xdist parallelism here (it helps on many-core dev boxes —
         # `pytest -n auto`). pytest-randomly still shuffles order each run.
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ dvf_origins -q
 
       - name: CLI smoke (installed entry point)
         run: |
@@ -81,7 +81,7 @@ jobs:
       - name: Sync locked env (dev + gui extras)
         run: uv sync --locked --extra dev --extra gui
       - name: Tests with coverage
-        run: uv run pytest tests/ -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
+        run: uv run pytest tests/ dvf_origins -q -p no:randomly --cov=dvfopt --cov-report=term-missing --cov-report=xml
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:

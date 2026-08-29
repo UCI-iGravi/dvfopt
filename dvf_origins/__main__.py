@@ -8,14 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
-from dvf_origins import CASES, MECHANISMS, build
+from dvf_origins import CASES, MECHANISMS, ROOT, build
 from dvf_origins.morphology import COLUMNS, morphology
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def _json_default(o):
-    return o.item() if hasattr(o, 'item') else str(o)
+_UNAVAILABLE = (FileNotFoundError, ImportError)  # data / optional dependency absent: a clean skip
 
 
 def cmd_list(_a):
@@ -34,50 +30,58 @@ def cmd_generate(a):
         for n, (mech, _, _) in CASES.items()
         if (not a.mechanism or mech in a.mechanism) and (not a.case or n in a.case)
     ]
-    built, skipped = [], []
+    built, skipped, failed = [], [], []
     for n in names:
         t0 = time.perf_counter()
         try:
             phi, meta = build(n)
-        except (FileNotFoundError, ImportError) as e:
-            print(f'skip  {n}: {e}')
-            skipped.append(n)
+        except Exception as e:  # keep going: the contract is "build what you can, say why not"
+            (skipped if isinstance(e, _UNAVAILABLE) else failed).append(n)
+            print(
+                f'{"skip" if isinstance(e, _UNAVAILABLE) else "FAIL"}  {n}: {type(e).__name__}: {e}'
+            )
             continue
         meta['build_s'] = round(time.perf_counter() - t0, 2)
         np.save(out / f'{n}.npy', phi)
-        (out / f'{n}.json').write_text(json.dumps(meta, indent=1, default=_json_default))
+        (out / f'{n}.json').write_text(json.dumps(meta, indent=1, default=str))
         print(f'built {n}: {tuple(phi.shape[-2:])} in {meta["build_s"]:.1f}s')
         built.append(n)
-    print(f'\n{len(built)} built, {len(skipped)} skipped -> {out}')
+    print(f'\n{len(built)} built, {len(skipped)} skipped, {len(failed)} failed -> {out}')
+    if failed:
+        raise SystemExit(1)
 
 
 def cmd_sweep(a):
     src = Path(a.inp)
-    files = sorted(src.glob('*.npy'))
+    files = {n: src / f'{n}.npy' for n in CASES if (src / f'{n}.npy').is_file()}
+    stale = sorted(f.stem for f in src.glob('*.npy') if f.stem not in CASES)
+    if stale:
+        print(f'ignoring {len(stale)} field(s) with no CASES row: {", ".join(stale)}')
     if not files:
-        raise SystemExit(f'no .npy fields under {src} — run `python -m dvf_origins generate` first')
+        raise SystemExit(f'no case fields under {src} — run `python -m dvf_origins generate` first')
     rows = []
-    for f in files:
+    for name, f in files.items():
         mp = f.with_suffix('.json')
         meta = json.loads(mp.read_text()) if mp.is_file() else {}
         row = {
-            'case': f.stem,
-            'mechanism': meta.get('mechanism', ''),
+            'case': name,
+            'mechanism': meta.get('mechanism', CASES[name][0]),
             'source': meta.get('source', ''),
             'tool': meta.get('tool', ''),
+            'dz_max_dropped': meta.get('dz_max_dropped', ''),
             **morphology(np.load(f), a.threshold),
         }
         rows.append(row)
         print(
             f'{row["case"]:28s} m{row["mechanism"]} {row["H"]}x{row["W"]:<4d} '
-            f'jdet<0 {row["jdet_neg_px"]:6d}  simplex cells {row["simplex_neg_cells"]:6d}  '
+            f'jdet<=0 {row["jdet_neg_px"]:6d}  simplex cells {row["simplex_neg_cells"]:6d}  '
             f'bilinear-only {row["bilinear_only_cells"]:5d}  clusters {row["n_clusters"]:5d} '
             f'(med {row["cluster_area_med"]:.0f} / max {row["cluster_area_max"]})  '
             f'min {row["simplex_min"]:.3g}'
         )
     out = Path(a.out) / time.strftime('%Y%m%d_%H%M%S')
     out.mkdir(parents=True, exist_ok=True)
-    cols = ['case', 'mechanism', 'source', 'tool', *COLUMNS]
+    cols = ['case', 'mechanism', 'source', 'tool', 'dz_max_dropped', *COLUMNS]
     with open(out / 'results.csv', 'w', newline='') as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()

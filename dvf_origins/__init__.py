@@ -2,8 +2,8 @@
 
 Generates the paper's §4 cases — one field per (mechanism, tool, severity) —
 so the same fold-morphology table can be computed over all of them. NOT part
-of the ``dvfopt`` package: it imports ``dvfopt`` only as a library (Laplacian
-solve, fold metrics). Run from the repo root::
+of the ``dvfopt`` package (not installed; run from the repo root): it imports
+``dvfopt`` only as a library (Laplacian solve, fold metrics)::
 
     python -m dvf_origins list
     python -m dvf_origins generate            # -> data/origins/<case>.npy + .json
@@ -15,7 +15,22 @@ array, channels ``[dz, dy, dx]``, ``dz == 0``, pull-back convention, voxel
 units — i.e. exactly what ``dvfopt`` consumes.
 """
 
-from dvf_origins import real, registered, synthetic
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]  # repo root (the harness is not installed)
+
+
+def pack2d(dy, dx):
+    """``(dy, dx)`` 2D arrays -> the ``(3, 1, H, W)`` float64 ``[0, dy, dx]`` field."""
+    dy = np.asarray(dy, dtype=np.float64)
+    dx = np.asarray(dx, dtype=np.float64)
+    return np.stack([np.zeros_like(dy), dy, dx])[:, None]
+
+
+# The submodules import ROOT / pack2d from this package, so they stay below them.
+from dvf_origins import real, registered, synthetic  # noqa: E402
 
 MECHANISMS = {
     1: 'interpolation of sparse correspondences',

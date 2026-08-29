@@ -7,13 +7,7 @@ field convention. Sizes are in pixels, so parameters scale with ``shape``.
 import numpy as np
 from scipy import ndimage
 
-
-def _rng(seed):
-    return np.random.default_rng(seed)
-
-
-def _pack(dy, dx):
-    return np.stack([np.zeros_like(dy), dy, dx])[:, None].astype(np.float64)
+from dvf_origins import pack2d
 
 
 def smooth_field(shape, sigma, max_disp, rng):
@@ -78,11 +72,14 @@ def interp_sparse(
     * ``jitter`` px of gaussian noise on every moving point (incoherence).
 
     With all three at zero the field is the interpolant of a smooth warp and
-    should be (nearly) fold-free — the control row.
+    should be (nearly) fold-free — the control row. Points that round to the
+    same fixed voxel are de-duplicated (first wins) so the solver never
+    silently drops a prescribed displacement; ``meta['n_pts']`` is the number
+    actually prescribed.
     """
     from dvfopt.laplacian import solveLaplacianFromCorrespondences
 
-    rng = _rng(seed)
+    rng = np.random.default_rng(seed)
     H, W = shape
     gt = smooth_field(shape, warp_sigma, warp_max, rng)
 
@@ -91,13 +88,10 @@ def interp_sparse(
     cx = np.clip(np.round(W / 2 + 0.40 * W * np.cos(t)), 1, W - 2)
     iy = rng.integers(1, H - 1, n_interior)
     ix = rng.integers(1, W - 1, n_interior)
-    fy, fx = (
-        np.concatenate([cy, iy]).astype(np.float64),
-        np.concatenate([cx, ix]).astype(np.float64),
-    )
-    N = len(fy)
+    fixed = np.stack([np.concatenate([cy, iy]), np.concatenate([cx, ix])], 1).astype(np.float64)
+    N = len(fixed)
 
-    m = np.stack([fy, fx], 1) + _sample_at(gt, fy, fx).T  # moving = fixed + gt
+    m = fixed + _sample_at(gt, fixed[:, 0], fixed[:, 1]).T  # moving = fixed + gt
 
     n_out = round(outlier_frac * N)
     if n_out:
@@ -110,17 +104,26 @@ def interp_sparse(
     if jitter:
         m += rng.normal(0, jitter, m.shape)
 
-    zeros = np.zeros((N, 1))
-    fixed = np.hstack([zeros, fy[:, None], fx[:, None]])
-    moving = np.hstack([zeros, m])
+    _, keep = np.unique(fixed, axis=0, return_index=True)  # first occurrence per fixed voxel
+    keep.sort()
+    fixed, m = fixed[keep], m[keep]
+
+    zeros = np.zeros((len(fixed), 1))
     phi = solveLaplacianFromCorrespondences(
-        (1, H, W), moving, fixed, axes=(1, 2), rtol=rtol, maxiter=maxiter, log_fn=lambda *_: None
+        (1, H, W),
+        np.hstack([zeros, m]),
+        np.hstack([zeros, fixed]),
+        axes=(1, 2),
+        rtol=rtol,
+        maxiter=maxiter,
+        log_fn=lambda *_: None,
     )
     meta = dict(
         source='synthetic',
         tool='Laplacian (dvfopt.laplacian)',
         seed=seed,
-        n_pts=N,
+        n_pts=len(fixed),
+        n_duplicate_pins_dropped=N - len(fixed),
         outlier_frac=outlier_frac,
         outlier_mag=outlier_mag,
         n_collapse=n_collapse,
@@ -128,7 +131,7 @@ def interp_sparse(
         jitter=jitter,
         gt_max_disp=warp_max,
     )
-    return np.asarray(phi, dtype=np.float64), meta
+    return phi, meta
 
 
 # --------------------------------------------------------------------------
@@ -161,7 +164,7 @@ def dense_weak_reg(
     """
     from skimage.registration import optical_flow_ilk, optical_flow_tvl1
 
-    rng = _rng(seed)
+    rng = np.random.default_rng(seed)
     gt = smooth_field(shape, warp_sigma, warp_max, rng)
     moving = _texture(shape, rng)
     reference = _warp_image(moving, gt)  # reference(x) = moving(x + gt(x)) -> true flow is gt
@@ -183,7 +186,6 @@ def dense_weak_reg(
         reg = dict(radius=radius)
     else:
         raise ValueError(f'method must be tvl1 or ilk, got {method!r}')
-    flow = np.asarray(flow, dtype=np.float64)
     err = float(np.sqrt(((flow - gt) ** 2).sum(0).mean()))
     meta = dict(
         source='synthetic',
@@ -193,7 +195,7 @@ def dense_weak_reg(
         flow_rmse_vs_gt=err,
         **reg,
     )
-    return _pack(flow[0], flow[1]), meta
+    return pack2d(flow[0], flow[1]), meta
 
 
 # --------------------------------------------------------------------------
@@ -215,11 +217,9 @@ def learned_proxy(
     learned fields come from the VoxelMorph / TransMorph notebooks
     (``benchmarks/registration/``, needs torch) via ``real.saved_field``.
     """
-    rng = _rng(seed)
+    rng = np.random.default_rng(seed)
     gt = smooth_field(shape, warp_sigma, warp_max, rng)
-    noise = np.stack(
-        [ndimage.gaussian_filter(rng.standard_normal(shape), noise_sigma) for _ in range(2)]
-    )
+    noise = smooth_field(shape, noise_sigma, 1.0, rng)
     noise *= noise_amp / noise.std()
     f = gt + noise
     meta = dict(
@@ -231,7 +231,7 @@ def learned_proxy(
         noise_sigma=noise_sigma,
         noise_amp=noise_amp,
     )
-    return _pack(f[0], f[1]), meta
+    return pack2d(f[0], f[1]), meta
 
 
 # --------------------------------------------------------------------------
@@ -261,7 +261,7 @@ def diffeo_discretized(
     """
     from dvfopt.jacobian.numpy_jdet import jacobian_det2D
 
-    rng = _rng(seed)
+    rng = np.random.default_rng(seed)
     H, W = shape
     v = smooth_field(shape, svf_sigma, svf_max, rng)
     Y, X = np.mgrid[0:H, 0:W].astype(np.float64)
@@ -283,4 +283,4 @@ def diffeo_discretized(
         fine_jdet_neg=fine_neg,
         fine_jdet_min=float(fine_jdet.min()),
     )
-    return _pack(np.ascontiguousarray(u[0]), np.ascontiguousarray(u[1])), meta
+    return pack2d(u[0], u[1]), meta

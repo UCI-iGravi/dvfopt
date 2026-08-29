@@ -1,12 +1,12 @@
 """Task runner — ``nox -s <session>``.
 
 One source of truth for how tests/lint/typecheck run, so contributors and CI
-invoke them identically. In particular ``tests`` is scoped to ``tests/`` and
+invoke them identically. In particular ``tests`` is scoped to ``tests/`` + ``dvf_origins/`` and
 never over-collects the ``notebooks/experiments/_run_*_test.py`` scratch
 scripts (which load gitignored data at import and error at collection).
 
     nox                    # default: lint + format_check + tests
-    nox -s tests           # pytest tests/  (append `-- -n auto` for parallel)
+    nox -s tests           # pytest tests/ dvf_origins  (append `-- -n auto` for parallel)
     nox -s cov             # pytest with coverage
     nox -s lint            # ruff check
     nox -s format_check    # ruff format --check
@@ -20,20 +20,27 @@ import nox
 
 nox.options.sessions = ["lint", "format_check", "tests"]
 
-_LINT_PATHS = ("dvfopt", "dvfopt_gui", "tests", "benchmarks")
+_LINT_PATHS = ("dvfopt", "dvfopt_gui", "tests", "benchmarks", "dvf_origins")
 _RUFF = "ruff==0.16.3"  # keep in lockstep with pyproject [dev] + .pre-commit-config.yaml
 
 
 @nox.session
 def tests(session):
     session.install("-e", ".[dev,fast]")
-    session.run("pytest", "tests/", "-q", *session.posargs)
+    session.run("pytest", "tests/", "dvf_origins", "-q", *session.posargs)
 
 
 @nox.session
 def cov(session):
     session.install("-e", ".[dev,fast]")
-    session.run("pytest", "tests/", "--cov=dvfopt", "--cov-report=term-missing", *session.posargs)
+    session.run(
+        "pytest",
+        "tests/",
+        "dvf_origins",
+        "--cov=dvfopt",
+        "--cov-report=term-missing",
+        *session.posargs,
+    )
 
 
 @nox.session

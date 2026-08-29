@@ -5,17 +5,18 @@ Pair: ``data/mouse_brain/average_template_25.nii.gz`` (fixed) vs
 fractional depth, moving center-cropped/padded to the fixed grid. The pair is
 NOT pre-aligned, so the registrations work hard — that is the point.
 
-Needs the (gitignored) data and SimpleITK; everything raises
-``FileNotFoundError`` / ``ImportError`` cleanly otherwise. Fields come back in
-voxel units, pull-back convention (SimpleITK's displacement-field transform
-maps fixed points to moving points, the same as ``dvfopt``'s).
+Needs the (gitignored) data; raises ``FileNotFoundError`` cleanly otherwise.
+Fields come back in voxel units, pull-back convention (SimpleITK's
+displacement-field transform maps fixed points to moving points, the same as
+``dvfopt``'s).
 """
 
-from pathlib import Path
+from functools import cache
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+from dvf_origins import ROOT, pack2d
+
 FIXED = ROOT / 'data' / 'mouse_brain' / 'average_template_25.nii.gz'
 MOVING = ROOT / 'data' / 'mouse_brain' / 'B0039_brain_25.nii.gz'
 
@@ -37,6 +38,7 @@ def _norm(a):
     return np.clip((a - lo) / max(hi - lo, 1e-12), 0, 1)
 
 
+@cache  # every registered case starts from the same pair
 def load_pair(z_frac=0.5, downsample=2):
     """``(fixed, moving)`` 2D float64 slices in [0, 1] on the same grid."""
     import SimpleITK as sitk
@@ -44,10 +46,10 @@ def load_pair(z_frac=0.5, downsample=2):
     for p in (FIXED, MOVING):
         if not p.is_file():
             raise FileNotFoundError(f'mouse-brain image not found (data is gitignored): {p}')
-    fx = sitk.GetArrayFromImage(sitk.ReadImage(str(FIXED))).astype(np.float64)
-    mv = sitk.GetArrayFromImage(sitk.ReadImage(str(MOVING))).astype(np.float64)
-    f = fx[int(z_frac * fx.shape[0])]
-    m = _fit(mv[int(z_frac * mv.shape[0])], f.shape)
+    fx = sitk.GetArrayFromImage(sitk.ReadImage(str(FIXED)))
+    mv = sitk.GetArrayFromImage(sitk.ReadImage(str(MOVING)))
+    f = fx[int(z_frac * fx.shape[0])].astype(np.float64)
+    m = _fit(mv[int(z_frac * mv.shape[0])].astype(np.float64), f.shape)
     f, m = _norm(f), _norm(m)
     if downsample > 1:
         from skimage.transform import downscale_local_mean
@@ -69,33 +71,31 @@ def _pair_meta(tool, z_frac, downsample, **kw):
     )
 
 
-def _sitk_field_to_phi(field):
+def _sitk_field_to_phi(sitk, field):
     """SimpleITK 2-component displacement image -> ``(3,1,H,W)`` ``[0, dy, dx]``."""
-    arr = np.asarray(
-        __import__('SimpleITK').GetArrayFromImage(field), dtype=np.float64
-    )  # (H,W,2)=[dx,dy]
-    return np.stack([np.zeros_like(arr[..., 1]), arr[..., 1], arr[..., 0]])[:, None]
+    arr = sitk.GetArrayFromImage(field)  # (H, W, 2) = [dx, dy]
+    return pack2d(arr[..., 1], arr[..., 0])
 
 
-def demons(sigma=1.0, iterations=200, variant='fast_symmetric', z_frac=0.5, downsample=2):
-    """SimpleITK demons; ``sigma`` = update-field gaussian smoothing in px
-    (the regularization dial — small = weak)."""
+def demons(sigma=1.0, iterations=200, z_frac=0.5, downsample=2):
+    """SimpleITK fast-symmetric-forces demons. ``sigma`` = gaussian smoothing
+    (px) of the DISPLACEMENT field after each update (``SetStandardDeviations``
+    — elastic-like regularization; small = weak)."""
     import SimpleITK as sitk
 
     f, m = load_pair(z_frac, downsample)
     fi, mi = sitk.GetImageFromArray(f), sitk.GetImageFromArray(m)
     mi = sitk.HistogramMatching(mi, fi, 64, 7, True)
-    filt = {
-        'fast_symmetric': sitk.FastSymmetricForcesDemonsRegistrationFilter,
-        'diffeomorphic': sitk.DiffeomorphicDemonsRegistrationFilter,
-        'classic': sitk.DemonsRegistrationFilter,
-    }[variant]()
+    filt = sitk.FastSymmetricForcesDemonsRegistrationFilter()
     filt.SetNumberOfIterations(iterations)
     filt.SetStandardDeviations(sigma)
-    field = filt.Execute(fi, mi)
-    phi = _sitk_field_to_phi(field)
+    phi = _sitk_field_to_phi(sitk, filt.Execute(fi, mi))
     meta = _pair_meta(
-        f'SimpleITK {variant} demons', z_frac, downsample, sigma=sigma, iterations=iterations
+        'SimpleITK fast-symmetric-forces demons',
+        z_frac,
+        downsample,
+        sigma=sigma,
+        iterations=iterations,
     )
     return phi, meta
 
@@ -127,7 +127,7 @@ def bspline_ffd(mesh=16, iterations=100, z_frac=0.5, downsample=2):
         fi.GetSpacing(),
         fi.GetDirection(),
     )
-    phi = _sitk_field_to_phi(field)
+    phi = _sitk_field_to_phi(sitk, field)
     meta = _pair_meta(
         'SimpleITK B-spline FFD (no bending penalty)',
         z_frac,
@@ -153,9 +153,7 @@ def tvl1(attachment=40.0, tightness=0.3, num_warp=5, num_iter=10, z_frac=0.5, do
         num_iter=num_iter,
         dtype=np.float64,
     )
-    flow = np.asarray(flow, dtype=np.float64)
-    phi = np.stack([np.zeros_like(flow[0]), flow[0], flow[1]])[:, None]
     meta = _pair_meta(
         'skimage optical_flow_tvl1', z_frac, downsample, attachment=attachment, tightness=tightness
     )
-    return phi, meta
+    return pack2d(flow[0], flow[1]), meta
