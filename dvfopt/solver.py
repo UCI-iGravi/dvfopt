@@ -481,7 +481,7 @@ def _log_bilinear_recipe_hint() -> None:
     log_info(
         "auto: simplex + l1 -> 'slp' (the L1-optimal route, kept). The measured "
         "robust 0-fold recipe is constraint='bilinear', strategy='isqp_windowed', "
-        "objective='none' - different fidelity semantics (no L1 anchor), so it is "
+        "objective='l2' (the in-solve distance objective) - different fidelity semantics, so it is "
         'not selected for you.'
     )
 

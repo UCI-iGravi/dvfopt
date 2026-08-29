@@ -107,7 +107,8 @@ def test_strategy_forwards_orientation_delta(monkeypatch):
         threshold=0.01,
     )
     assert seen["orientation_delta"] == 0.02
-    assert ISQPWindowedStrategy().orientation_delta is None
+    assert ISQPWindowedStrategy().orientation_delta == 0.01  # the default formulation
+    assert ISQPWindowedStrategy().orientation_rows == 'edges'
 
 
 def test_edges_kind_drops_the_anti_diagonal_rows():
@@ -122,3 +123,22 @@ def test_edges_kind_drops_the_anti_diagonal_rows():
     ).n_enforced
     assert base < edges < full  # edge rows only: fewer rows, still some
     assert (full - edges) % 2 == 0 and (full - edges) > 0  # two anti-diagonal rows per cell dropped
+
+
+@needs_osqp
+def test_engine_default_rows_skip_non_dy_first_families():
+    """The default edge rows apply to the simplex family only; a Jdet field solves with
+    the plain rows instead of raising."""
+    from dvfopt.core.windowed import windowed_correct
+    from dvfopt.testdata import make_random_dvf
+
+    phi = np.asarray(make_random_dvf("03a_10x10_random_seed_42"))[1:, 0].copy()
+    out, rep = windowed_correct(
+        phi,
+        "isqp",
+        constraint=JdetConstraint2D(shape=phi.shape[1:]),
+        objective=NoneObjective(),
+        threshold=0.01,
+        verbose=0,
+    )
+    assert rep.folds_after == 0 and rep.damage == 0

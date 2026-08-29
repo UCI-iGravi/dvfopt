@@ -6,6 +6,25 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the windowed engine's formulation: edge-monotonicity rows + in-solve L2 (behaviour change)
+
+- **Defaults:** `orientation_delta=0.01`, `orientation_rows='edges'` on `windowed_correct`
+  and the windowed strategies — every window now carries the LINEAR edge-monotonicity
+  rows (each deformed grid edge keeps a projection ≥ 0.01 on its own direction)
+  next to the bilinear area rows. `build_subproblem`'s own defaults stay off. The
+  robust recipe's objective becomes **`'l2'`** (the in-solve distance to the input).
+- **Why — one self-contained formulation.** The residual every fallback plateaued on
+  is the rotated orientation branch of the bilinear rows; the edge rows exclude that
+  branch, so the feasible set is single-basin and the in-solve L2 objective no
+  longer traps folds. Measured (same-process A/B on raw B0039 z16): plain 621 s /
+  L2 268.0 vs edge rows + L2 659 s / L2 264.1 — same cost, slightly closer to the
+  input; on the trapped slices: full-resolution z=2 **2039 s / L2 1979** vs
+  10,168 s / 2732 (plain), z11 **2595 s / L2 783** vs the re-seed path's 14,372 s /
+  1017. The anti-diagonal convexity rows (`orientation_rows='full'`) were the rows'
+  fidelity cost (z11 1566 → 980 when dropped) and stay opt-in.
+- The re-seed stage, the mop rule and the ladder are unchanged and act as nets; on
+  the measured slices the re-seed did not fire.
+
 ### Changed — windowed engine: the mop's big windows get a single attempt (no retries, no grow)
 
 - **Why.** Trace of the full-resolution B0039 exterior z=1 (15 657 s of inner-solver
