@@ -123,6 +123,24 @@ re-seed off (loaded box):
 | B0304 lap_all z181 (29699) | 5 left | **0**, 1 round / 178 windows, 6319 s | +28 % |
 | full-res B0039 z=2 (3909) | 0 in 10168 s / 149 windows | **0**, 2 rounds / 53 windows, 1577 s | +1 % |
 
+Full-resolution edge slices z 0–7 (3.3–4k folds each) with the rows on every
+window (`none` objective, re-seed off — it never fired):
+
+| z | plain engine: wall / windows / SQP iters / L2 | rows: wall / windows / SQP iters / L2 |
+|---|---|---|
+| 0 | 1938 s / 78 / 1993 / 2686 | 2231 s / 81 / 1331 / 2766 |
+| 1 | 15062 s / 187 / 6999 / 2878 | **2145 s** / 68 / 973 / 2847 |
+| 2 | 10168 s / 149 / 4610 / 2732 | **1569 s** / 53 / 1024 / 2760 |
+| 3 | 12212 s / 193 / 6854 / 2652 | **2159 s** / 78 / 1372 / 2707 |
+| 4 | 13981 s / 181 / 7246 / 2382 | **4247 s** / 78 / 1236 / 2560 |
+| 5 | 3947 s / 97 / 3392 / 2315 | 5111 s\* / 64 / 1269 / 2327 |
+| 6 | 2896 s / 142 / 5312 / 2014 | 4945 s\* / 81 / 1320 / 2128 |
+| 7 | 4037 s / 187 / 7759 / 1711 | 5415 s\* / 82 / 1554 / 1893 |
+
+\* solved while ~20 other solver jobs shared the box; the iteration counts are the
+load-independent signal. Edge total 17.8 → 7.7 serial hours (2.3×); the trapped
+slices 3.3–7×; fidelity +1–10 % L2 with the `none` objective.
+
 The rows exclude legitimately fold-free cells rotated by > 90°, which is the
 fidelity cost on the hardest slices; hence opt-in. A *rung* variant (rows only on
 windows the ladder fails) was measured and rejected (z128: 12,526 s, never solved
