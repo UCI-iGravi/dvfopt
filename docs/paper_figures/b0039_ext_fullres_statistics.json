@@ -1,0 +1,112 @@
+{
+  "summary": {
+    "volume": "B0039 laplacian_exterior, FULL resolution (3, 528, 320, 456), dz=0",
+    "shape": [
+      3,
+      528,
+      320,
+      456
+    ],
+    "recipe": "windowed_correct(inner='isqp', constraint=bilinear, objective=none, threshold=0.01, engine defaults)",
+    "engine_commit": "90f3007 (reseed-stage branch; engine defaults identical to main b021a3b after PRs #92 + #94 \u00e2\u20ac\u201d #94's orientation_delta is off by default)",
+    "n_workers": 4,
+    "slices": 528,
+    "slices_zero_folds": 528,
+    "slices_feasible": 528,
+    "folds_before_total": 599313,
+    "folds_after_total": 0,
+    "damage_total": 0,
+    "wall_total_pool_s": 38175.42816734314,
+    "wall_slice_median_s": 132.19353939997382,
+    "wall_slice_max_s": 15061.668827800022,
+    "sqp_iters_median": 268.5,
+    "l2_move_median": 46.873181917834074,
+    "pct_moved_median": 26.263706140350877
+  },
+  "slices": 528,
+  "slices_zero_simplex_folds": 528,
+  "slices_zero_bilinear_folds": 528,
+  "slices_zero_finite_folds": 528,
+  "slices_damage_zero": 528,
+  "folds_before": {
+    "total": 599313,
+    "min": 456.0,
+    "p25": 831.75,
+    "median": 1025.0,
+    "p75": 1341.25,
+    "p90": 1595.8000000000002,
+    "max": 3957.0,
+    "mean": 1135.0625
+  },
+  "folds_after": {
+    "total": 0,
+    "min": 0.0,
+    "p25": 0.0,
+    "median": 0.0,
+    "p75": 0.0,
+    "p90": 0.0,
+    "max": 0.0,
+    "mean": 0.0
+  },
+  "residual_slices": [],
+  "wall_s": {
+    "min": 21.429750600014813,
+    "p25": 101.49774837498262,
+    "median": 132.19353939997382,
+    "p75": 177.0434452999907,
+    "p90": 243.4865445399948,
+    "max": 15061.668827800022,
+    "mean": 288.8068350731054
+  },
+  "wall_pool_total_s": 38175.42816734314,
+  "wall_serial_sum_s": 152490.00891859963,
+  "sqp_iters": {
+    "min": 70.0,
+    "p25": 202.75,
+    "median": 268.5,
+    "p75": 338.25,
+    "p90": 433.3,
+    "max": 8715.0,
+    "mean": 398.71590909090907
+  },
+  "l2_move": {
+    "min": 23.16003513924277,
+    "p25": 39.16076934600135,
+    "median": 46.873181917834074,
+    "p75": 64.83100074273594,
+    "p90": 76.71664914584117,
+    "max": 2877.5827602286863,
+    "mean": 98.17251256739449
+  },
+  "pct_pixels_moved": {
+    "min": 4.487390350877193,
+    "p25": 20.058765076754387,
+    "median": 26.263706140350877,
+    "p75": 31.064624451754387,
+    "p90": 34.87013432017544,
+    "max": 45.803179824561404,
+    "mean": 25.41911066877658
+  },
+  "rounds": {
+    "min": 1.0,
+    "p25": 1.0,
+    "median": 1.0,
+    "p75": 1.0,
+    "p90": 1.0,
+    "max": 8.0,
+    "mean": 1.1079545454545454
+  },
+  "windows": {
+    "min": 8.0,
+    "p25": 29.0,
+    "median": 39.0,
+    "p75": 53.0,
+    "p90": 73.0,
+    "max": 218.0,
+    "mean": 45.06060606060606
+  },
+  "patience_fallbacks_total": 990,
+  "backend_fallbacks_total": 1013,
+  "fullres_folds_total": 599313,
+  "ds2_folds_total": 64085
+}
