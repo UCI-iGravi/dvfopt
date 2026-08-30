@@ -1666,6 +1666,7 @@ def _solve_window(
             tr_max=opts.tr_max,
             step_rule=opts.step_rule,
             exact_ls_fallback_steps=opts.exact_ls_fallback_steps,
+            feas_tol=0.5 * margin_delta,
         )
         no_tr = False
         if not ok and opts.no_tr_fallback and opts.ladder and inner in _ISQP_LABELS:
@@ -1690,6 +1691,7 @@ def _solve_window(
                 tr_max=opts.tr_max,
                 step_rule=opts.step_rule,
                 exact_ls_fallback_steps=opts.exact_ls_fallback_steps,
+                feas_tol=0.5 * margin_delta,
             )
             nit += nit2
             if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better
@@ -1768,6 +1770,7 @@ def _solve_window(
             tr_max=opts.tr_max,
             step_rule=opts.step_rule,
             exact_ls_fallback_steps=0,
+            feas_tol=0.5 * margin_delta,
         )
         nit += nit2
         if ok2 or sub.cons(x2).min() > sub.cons(x).min():  # keep the better; never worse

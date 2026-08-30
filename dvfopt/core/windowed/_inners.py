@@ -51,6 +51,7 @@ def solve_window_inner(
     tr_max=16.0,
     step_rule="tr",
     exact_ls_fallback_steps=0,
+    feas_tol=None,
 ):
     """Solve a built window sub-problem with the chosen inner solver, returning
     ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
@@ -87,7 +88,52 @@ def solve_window_inner(
     the traced SLSQP leg both fill it with per-iteration records + an explicit
     exit reason (house style: ``trace['iters']`` / ``trace['exit']``). Default
     ``None`` keeps behavior byte-identical to the untraced path.
+
+    ``feas_tol`` (optional float) re-derives ``feasible`` as ``sub.cons(x).min()
+    >= -feas_tol`` for every inner. The engine passes half its ``margin_delta``:
+    the rows are shifted by the margin precisely so that a solve landing a hair
+    short of the active bound is still fold-free, but the isqp inner's own test
+    is ``-1e-6`` -- three orders stricter than that slack -- and a distance
+    objective parks the solution ON the active rows at ADMM precision (1e-5 ..
+    1e-4 short), so fold-free windows reported not-ok ran the whole escalation
+    ladder (traced z=440 under L2: 48 of 187 window calls, 59 % of the SQP
+    iterations, every one of them converged to max violation <= 1e-4).
     """
+    x, nit, ok = _solve_window_inner(
+        sub,
+        inner,
+        maxiter,
+        trace=trace,
+        trust_region=trust_region,
+        osqp_max_iter=osqp_max_iter,
+        qp_backend=qp_backend,
+        ip_cold=ip_cold,
+        ip_after_admm_iters=ip_after_admm_iters,
+        tr_delta=tr_delta,
+        tr_max=tr_max,
+        step_rule=step_rule,
+        exact_ls_fallback_steps=exact_ls_fallback_steps,
+    )
+    if feas_tol is not None and not ok and sub.n_enforced:
+        ok = bool(float(np.asarray(sub.cons(x)).min()) >= -float(feas_tol))
+    return x, nit, ok
+
+
+def _solve_window_inner(
+    sub,
+    inner,
+    maxiter,
+    trace=None,
+    trust_region=True,
+    osqp_max_iter=None,
+    qp_backend="osqp",
+    ip_cold=True,
+    ip_after_admm_iters=800,
+    tr_delta=2.0,
+    tr_max=16.0,
+    step_rule="tr",
+    exact_ls_fallback_steps=0,
+):
     if inner in _ISQP_LABELS:
         return isqp_solve(
             sub.flat0,
