@@ -219,3 +219,21 @@ def test_patience_rung_continues_a_bailed_window(monkeypatch):
     seen.clear()
     _out, rep = windowed_correct(phi, "isqp", exact_ls_fallback_steps=0, **kw)
     assert rep.patience_fallbacks == 0  # nothing to continue when the bail is already off
+
+
+def test_solve_window_inner_feas_tol_accepts_a_margin_short_solve(monkeypatch):
+    """A window whose rows end a hair below the margin-SHIFTED target is fold-free;
+    with ``feas_tol`` the wrapper reports it solved instead of feeding it to the
+    escalation ladder. ``feas_tol=None`` keeps the inner's own verdict."""
+    from types import SimpleNamespace
+
+    from dvfopt.core.windowed import _inners
+
+    x = np.zeros(4)
+    sub = SimpleNamespace(n_enforced=3, cons=lambda _x: np.array([0.2, -1e-4, 0.05]))
+    monkeypatch.setattr(_inners, "_solve_window_inner", lambda *a, **k: (x, 7, False))
+    assert _inners.solve_window_inner(sub, "isqp", 10, feas_tol=5e-4)[2] is True
+    assert _inners.solve_window_inner(sub, "isqp", 10, feas_tol=5e-5)[2] is False
+    assert _inners.solve_window_inner(sub, "isqp", 10)[2] is False
+    sub_none = SimpleNamespace(n_enforced=0, cons=lambda _x: np.zeros(0))
+    assert _inners.solve_window_inner(sub_none, "isqp", 10, feas_tol=5e-4)[2] is False

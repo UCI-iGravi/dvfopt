@@ -6,6 +6,51 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — windowed engine: a window landing within half the margin of the shifted target is solved (`feas_tol`); `ftol` stop
+
+- **Why.** The in-solve L2 default (#99) cost ~3x on ORDINARY slices (151-slice
+  interim of the full-resolution certification: <2000-fold slices median 171 s ->
+  559 s at the SAME SQP iteration count overall; the hard slices went 78 623 s ->
+  9 119 s). A traced 4-way A/B on z=440 (1828 folds, all four concurrent) put the
+  whole cost on the objective, not the rows: rows + `none` 356 SQP iterations
+  (old engine 433 — the edge rows *condition* the QP, median ADMM iterations
+  637 -> 187), L2 + rows 915, and 59 % of those (544) inside 48 window calls
+  that ended `a-collapse` FAILED and were then fed the escalation ladder
+  (no-trust-region retries 32 vs 5, window calls 187 vs 110). The per-iteration
+  trace of those windows shows them CONVERGING — max violation 3.3 -> 1e-5,
+  merit / 700 — with 25–30 rows hovering 1e-5..1e-4 below the margin-SHIFTED
+  target: a distance objective parks the solution ON the active rows at ADMM
+  precision, where a zero objective steps off the boundary to exactly 0. The
+  margin (`margin_delta=1e-3`) exists precisely so that "a solve landing a hair
+  short of the active bound is still fold-free", but the isqp inner's own test
+  was `cons >= -1e-6`, three orders stricter than that slack.
+- **Change.** `solve_window_inner(feas_tol=)` re-derives `feasible` as
+  `sub.cons(x).min() >= -feas_tol` for every inner, and `isqp_solve(feas_tol=)`
+  uses the same slack for its own flag; `_solve_window` passes
+  `0.5 * margin_delta` (rows at `threshold + margin/2` are fold-free by
+  construction; the engine's final fold check against the real threshold is
+  untouched). `ftol` (engine / `ISQPWindowedStrategy` knob, `isqp_solve`
+  parameter; **default 1e-2**, 0 = off) is a relative objective-decrease stop for
+  such feasible-within-slack iterates — the remaining L2 cost was in-window
+  polishing along the active rows at a median relative merit decrease of 3e-4
+  per iteration. Calibrated on z=440 under L2: feas_tol alone 790 SQP iterations,
+  ftol 1e-3 647, **1e-2 591**, all at the identical L2 move 67.8, 0 folds,
+  damage 0 (the default engine: 915).
+- **Measured** (bilinear rows, edge rows, threshold 0.01, 0 simplex / 0 bilinear
+  folds and damage 0 everywhere): z=440 under L2 **915 -> 790 SQP iterations,
+  window calls 187 -> 147, window success 67 % -> 91 % (old engine 92 %),
+  no-TR retries 32 -> 7, L2 move 67.8 unchanged**; volume z=16 (2131 folds)
+  442 -> 385 iterations, 61 -> 35 calls, L2 190.0 -> 189.5; full-res z=2 (the
+  hardest slice) unchanged (1239 vs 1224, L2 1980.5 vs 1978.8 — its collapses
+  are genuine); crop pack under L2 byte-identical (z16_twist one call fewer);
+  under `none` byte-identical except `z0_sliver` 890 -> 621 iterations at L2
+  1109 -> 1151 (fewer retries, less polish on the reflected crop).
+- **Measured and rejected** on the same slice (do not retry): the penalty
+  parameter (`rho` 1e4: 873 iterations, ADMM median 1237; 1e5: 898, ADMM at the
+  2000 cap, L2 worse), a 1.0 px initial trust region (845), the a\*-collapse bail
+  off (1323) or at 6 (1177), and a "collapse needs a standing violation"
+  predicate (905 — inert everywhere).
+
 ### Fixed — `correct_dvf` / `dvfopt correct` rejected the canonical `(3, 1, H, W)` layout
 
 - `correct_dvf` with a string 2D constraint inferred its shape as `phi.shape[1:]`,
