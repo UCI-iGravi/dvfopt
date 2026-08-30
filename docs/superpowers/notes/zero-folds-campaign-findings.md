@@ -379,6 +379,32 @@ at the start of the campaign), z=240 (988 folds) in 103 s, volume z16 (2131
 folds) in 70 s; the 4-worker pool gives ~2.4× volume throughput on a
 memory-bandwidth-bound box.
 
+### 4.3e Best-of-both attempted: the per-window anchored polish (what is and is not recoverable)
+
+`polish='l2'` re-solves each window, immediately after it solves, against the
+distance to its pre-solve patch from the warm feasible point (verify-and-revert,
+so it can never cost feasibility or fidelity). Three-way measurement (wall s /
+L2 move; identical engine, serial, idle box; all 0 folds, damage 0):
+
+| case | in-solve L2 (default) | `none` | `none` + polish | gap recovered |
+|---|---|---|---|---|
+| z=240 (988 folds) | 99 / **29.9** | **48** / 36.0 | 72 / 33.5 | 41 % |
+| z=440 (1828) | 255 / **67.8** | **97** / 87.4 | 113 / 85.9 | 8 % |
+| z16 (2131) | 65 / **189.6** | **27** / 227.7 | 36 / 222.0 | 15 % |
+| z=2 (3909, hardest) | **328** / **1977.8** | 411 / 2341.1 | 425 / 2025.9 | 87 % |
+| z16_twist crop | 14 / 70.7 | 4 / 123.1 | 18 / **70.7** | **100 %** |
+| z0_cluster crop | 19 / **690.5** | 2 / 787.5 | 7 / 787.5 (reverted) | 0 % |
+
+The split is the finding: the anchor's fidelity has a **within-window share**
+(recoverable post hoc — 100 % on the twist crop, 87 % on z=2's big windows,
+41 % on z=240) and a **trajectory share** — the anchor steering windows into
+different basins and negotiating with their frozen rings during the solve —
+which no post-hoc polish can reproduce (z0_cluster reverts after 30 iterations;
+z=440/z16, dominated by many small coupled windows, recover 8–15 %). So no
+single formulation dominates: the in-solve L2 default keeps the best fidelity
+everywhere and wins outright on trap-heavy slices; `objective='none'` is the
+2–2.5× fast lane; `polish='l2'` is the opt-in middle point.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /

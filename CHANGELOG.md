@@ -6,6 +6,28 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: `polish='l2'|'l1'` — per-window anchored polish (opt-in)
+
+- After a window solves, the SAME box is re-solved on the current field against
+  the distance to its pre-solve patch, from the warm feasible point
+  (`polish_maxiter=30` inner iterations, the `ftol` stop), with the reanchor
+  stage's verify-and-revert — so it can never cost feasibility or fidelity.
+  Meant for `objective='none'`: the cheap pure-feasibility solve plus a short
+  anchored polish, as a middle point between `none` and the in-solve L2 default.
+- **Measured** (current engine, serial, idle box; wall s / L2 move; every entry
+  0 folds, damage 0). L2 → `none` → `none`+polish:
+  z=240 99/29.9 → 48/36.0 → **72/33.5** (41 % of the fidelity gap recovered);
+  z=440 255/67.8 → 97/87.4 → 113/85.9 (8 %); z16 65/189.6 → 27/227.7 →
+  36/222.0 (15 %); z=2 328/1977.8 → 411/2341.1 → **425/2025.9** (87 %, one
+  round fewer than plain `none`); crops: z16_twist reaches L2's exact move
+  (70.7 vs plain `none`'s 123.1), z0_cluster/z0_sliver unchanged (reverted).
+- **Why it cannot fully close the gap** (and the in-solve L2 default stays):
+  the polish recovers the WITHIN-window share of the anchor's fidelity; the
+  rest is trajectory shaping during the solve — the anchor steering windows
+  into different basins and negotiating with their frozen rings — which no
+  post-hoc per-window polish can reproduce (z0_cluster: the polish runs 30
+  iterations and reverts; L2's smaller move lives in a different basin).
+
 ### Changed — windowed engine: `qp_max_iter=1000` (was 2000)
 
 - Under the in-solve L2 default the window QPs are harder than under the zero
