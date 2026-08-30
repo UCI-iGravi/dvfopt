@@ -39,6 +39,33 @@ The eight volume-edge slices (z 0–7, 3.3–4k folds) took 1–4.2 h each and a
 Engine used for those runs: `main` after PR #92 (re-seed stage) — commit
 `39f661f`; PR #94 (orientation rows, off by default) does not change defaults.
 
+### 2b. Certification of the final formulation (edge rows + in-solve L2)
+
+Second full-resolution sweep of the B0039 Laplacian-exterior volume
+(`benchmarks/output/b0039_ext_full_v2/`, engine = PR #99's default, 4-worker
+pool): **528/528 slices at 0 simplex / 0 bilinear / 0 finite folds, damage 0**
+(599,313 → 0), never a re-seed. Against the first certification (v1, the re-seed
+path), per slice:
+
+| | v1 (re-seed path) | v2 (edge rows + L2) |
+|---|---|---|
+| slices at 0 folds / damage 0 | 528 / 528 | 528 / 528 |
+| L2 move, sum over slices | 51,835 | **39,047 (−25 %, smaller on 527/528)** |
+| SQP iterations, total | 210,522 | 312,448 |
+| wall, hard slices (≥ 2000 folds, n = 17) | 78,623 s (median 2725 s) | **9,119 s (539 s)** |
+| wall, ordinary slices (500–2000 folds, n = 506) | 73,639 s (median 130 s) | 247,640 s (437 s) |
+| pool wall | 10.6 h | 17.9 h |
+
+The fidelity gain is uniform (median L2 ratio 0.75 in every fold tier) and the
+hard slices are 8× faster, but ordinary slices cost 3.4× — the v2 walls were
+also inflated by the diagnosis runs sharing the machine. That cost is the
+subject of §4.3c: it was the L2 objective parking on the active rows at ADMM
+precision and the inner's -1e-6 feasibility test failing fold-free windows into
+the ladder; PR #103 (margin-consistent window feasibility + `ftol`) removes
+35–36 % of the ordinary-slice iterations at identical fidelity. A 22-slice speed
+sample on the merged engine (`benchmarks/output/b0039_ext_full_v3_sample/`)
+re-measures the walls uncontended.
+
 ## 3. The mechanism behind every residual: the rotated orientation branch
 
 Before the fix, five cohort slices plateaued with 5–79 residual cells that no
