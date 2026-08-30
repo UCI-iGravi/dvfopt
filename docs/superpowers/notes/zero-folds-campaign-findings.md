@@ -62,9 +62,29 @@ also inflated by the diagnosis runs sharing the machine. That cost is the
 subject of §4.3c: it was the L2 objective parking on the active rows at ADMM
 precision and the inner's -1e-6 feasibility test failing fold-free windows into
 the ladder; PR #103 (margin-consistent window feasibility + `ftol`) removes
-35–36 % of the ordinary-slice iterations at identical fidelity. A 22-slice speed
-sample on the merged engine (`benchmarks/output/b0039_ext_full_v3_sample/`)
-re-measures the walls uncontended.
+35–36 % of the ordinary-slice iterations at identical fidelity.
+
+**Speed of the merged engine** (main after #103), 22-slice sample (every 24th
+z), 4-worker pool running alone, same slices from the v1 and v2 certifications
+(`benchmarks/output/b0039_ext_full_v3_sample/`, `docs/paper_figures/v1_v2_v3_speed_sample.json`):
+
+| 22 slices | v1 (re-seed path) | v2 (rows + L2, pre-#103) | **v3 (main)** |
+|---|---|---|---|
+| 0 folds / damage 0 | 22 / 22 | 22 / 22 | 22 / 22 |
+| SQP iterations | 7,775 | 13,061 | **7,782** |
+| L2 move (sum) | 3,697 | 2,700 | **2,697 (−27 %, smaller on 22/22)** |
+| wall (sum of slices) | 4,997 s | 11,957 s | **6,932 s** (0.58× v2 on 22/22; 1.39× v1) |
+| hard slice z=0 (3951 folds) | 1,938 s | 814 s | **711 s** |
+| ordinary slices (n = 21), median | 128 s | 483 s | **281 s** |
+| seconds per SQP iteration, ordinary | 0.53 | 0.95 | 0.94 |
+
+So the iteration inflation is gone (v3 has v1's iteration count), the fidelity
+gain is kept, the hard slices are 2.7× faster than the re-seed path, and the one
+cost that remains is intrinsic to the objective: an L2 window's QPs are ~1.8×
+dearer per iteration (ADMM median ~1060 vs ~640; most solves escalate to
+Clarabel), which makes ordinary slices ~2× the re-seed path. `objective='none'`
+with the edge rows remains the fastest formulation (z=440: 356 iterations vs
+old 433) at the old fidelity.
 
 ## 3. The mechanism behind every residual: the rotated orientation branch
 
