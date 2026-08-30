@@ -8,16 +8,19 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed — `correct_dvf` / `dvfopt correct` rejected the canonical `(3, 1, H, W)` layout
 
-- `correct_dvf` inferred a string constraint's shape as `phi.shape[1:]`, which is
-  `(1, H, W)` for the canonical `[dz, dy, dx]` single-slice layout every loader
-  produces, so every 2D constraint raised `SolverConfigError: deformation spatial
-  shape (H, W) does not match ... (configured for (1, H, W))` — and the CLI, which
-  funnels into the same call, exited 2 on any `.npy`/NIfTI field. The suite only
-  ever passed `(2, H, W)` (`planted_fold`), so nothing caught it. Shape inference now
-  keys on the constraint family's dimensionality (trailing 3 dims for 3D, trailing 2
-  for 2D — the rule `constraint_fold_stats` already used), and the `strategy='auto'`
-  fold statistics coerce the input first. Regression tests cover the API (simplex /
-  bilinear / jdet), bare-vs-canonical equivalence, and the CLI.
+- `correct_dvf` with a string 2D constraint inferred its shape as `phi.shape[1:]`,
+  which is `(1, H, W)` for the canonical `[dz, dy, dx]` single-slice layout every
+  loader produces, so the constraint rejected its own input with
+  `SolverConfigError: deformation spatial shape (H, W) does not match ... (configured
+  for (1, H, W))`; `dvfopt correct` with the default `--pipeline solver` funnels into
+  the same call and exited 2 on such files (`--pipeline slices` passes `shape=`
+  explicitly and was fine, as were `(2, H, W)` files and 3D labels on volumes). No
+  test called `correct_dvf` with a string 2D label on a 4-D input. The rule now lives
+  once, as `dvfopt.constraints.infer_shape(name, phi)` — the trailing 3 dims for a 3D
+  family, the trailing 2 for a 2D one, array-likes accepted — used by both
+  `correct_dvf` and `constraint_fold_stats` (which had its own inline copy). 3D
+  labels on a `(3, 1, H, W)` file still need `D >= 3` and exit 2 as before.
+  `Solver.from_spec` alone still requires `shape=` for string labels.
 
 ### Changed — `dvf_origins`: one directory per mechanism, `m<k>_<tool>_<data>_<variant>` names, manifest
 

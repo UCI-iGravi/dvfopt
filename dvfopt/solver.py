@@ -44,11 +44,11 @@ import numpy as np
 from dvfopt._defaults import DEFAULT_PARAMS
 from dvfopt._logging import log_info
 from dvfopt.constraints import (
-    _CONSTRAINT_REGISTRY,
     Constraint,
     SimplexConstraint2D,
     SimplexConstraint2DBilinear,
     SimplexConstraint2DFullCoverage,
+    infer_shape,
     make_constraint,
 )
 from dvfopt.objectives import Objective, make_objective
@@ -402,20 +402,6 @@ class Solver:
 # Convenience top-level function for one-shot use ---------------------------
 
 
-def _infer_shape(constraint, phi_in):
-    """Spatial shape for a string-labelled constraint from the input's layout: the
-    trailing 3 dims for a 3D family, the trailing 2 for a 2D one — so the canonical
-    ``(3, 1, H, W)`` and the bare ``(2, H, W)`` / ``(3, D, H, W)`` layouts all work
-    (``phi.shape[1:]`` read ``(1, H, W)`` off the canonical layout and every 2D
-    constraint rejected it). Mirrors :func:`dvfopt.metrics.constraint_fold_stats`.
-    """
-    if not isinstance(constraint, str):
-        return getattr(constraint, 'shape', None)
-    cls = _CONSTRAINT_REGISTRY.get(constraint)  # unknown label: make_constraint raises
-    dim = getattr(cls, 'dim', 2) if cls is not None else 2
-    return tuple(phi_in.shape[-3:]) if dim == 3 else tuple(phi_in.shape[-2:])
-
-
 def correct_dvf(
     phi_in: np.ndarray,
     *,
@@ -447,12 +433,12 @@ def correct_dvf(
         default, so results are comparable without passing
         ``objective=`` explicitly.
     """
-    if shape is None:
-        shape = _infer_shape(constraint, phi_in)
+    if shape is None and isinstance(constraint, str):
+        shape = infer_shape(constraint, phi_in)  # from the layout; from_spec alone needs shape=
     if strategy == 'auto':
         # Need the constraint built first to read init stats; do it lazily.
         c = make_constraint(constraint, shape) if isinstance(constraint, str) else constraint
-        T = c.values(c.flatten(c.coerce(phi_in)))
+        T = c.values(c.flatten(phi_in))
         init_n_neg = int((T <= 0).sum())
         init_min = float(T.min())
         strategy = auto_strategy(
