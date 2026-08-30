@@ -87,7 +87,9 @@ class _InnerOpts:
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
-    ftol: float = 0.0  # isqp inner: relative objective-decrease stop for feasible windows (0 = off)
+    ftol: float = (
+        1e-2  # isqp inner: relative objective-decrease stop for feasible windows (0 = off)
+    )
     patience_retry: bool = True
     orientation_delta: object = None  # float -> linear orientation rows in every window (2D)
     ladder: bool = (
@@ -609,7 +611,7 @@ def windowed_correct(
     tr_max=16.0,
     step_rule='exact_ls',
     exact_ls_fallback_steps=3,
-    ftol=0.0,
+    ftol=1e-2,
     patience_retry=True,
     orientation_delta=0.01,
     orientation_scope='all',

@@ -30,10 +30,12 @@ follows [Semantic Versioning](https://semver.org/).
   `0.5 * margin_delta` (rows at `threshold + margin/2` are fold-free by
   construction; the engine's final fold check against the real threshold is
   untouched). `ftol` (engine / `ISQPWindowedStrategy` knob, `isqp_solve`
-  parameter; default 0 = off) is a relative objective-decrease stop for such
-  feasible-within-slack iterates — the remaining L2 cost is in-window polishing
-  along the active rows at a median relative merit decrease of 3e-4 per
-  iteration.
+  parameter; **default 1e-2**, 0 = off) is a relative objective-decrease stop for
+  such feasible-within-slack iterates — the remaining L2 cost was in-window
+  polishing along the active rows at a median relative merit decrease of 3e-4
+  per iteration. Calibrated on z=440 under L2: feas_tol alone 790 SQP iterations,
+  ftol 1e-3 647, **1e-2 591**, all at the identical L2 move 67.8, 0 folds,
+  damage 0 (the default engine: 915).
 - **Measured** (bilinear rows, edge rows, threshold 0.01, 0 simplex / 0 bilinear
   folds and damage 0 everywhere): z=440 under L2 **915 -> 790 SQP iterations,
   window calls 187 -> 147, window success 67 % -> 91 % (old engine 92 %),
