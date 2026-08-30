@@ -75,7 +75,7 @@ def test_fallback_clears_window_without_growing(monkeypatch):
     assert any(w.fallback for w in rep.windows)
     assert all(w.grows == 0 for w in rep.windows)  # cleared without a single grow
     # first attempt: trust region ON at the normal cap; retry: OFF, short budget
-    assert calls[0] == dict(trust_region=True, maxiter=400, osqp_max_iter=2000)
+    assert calls[0] == dict(trust_region=True, maxiter=400, osqp_max_iter=1000)
     assert calls[1] == dict(trust_region=False, maxiter=200, osqp_max_iter=500)
 
 
@@ -248,6 +248,6 @@ def test_strategy_forwards_knobs(monkeypatch):
 
     defaults = ISQPWindowedStrategy()
     assert (defaults.no_tr_fallback, defaults.fallback_maxiter) == (True, 200)
-    assert (defaults.qp_max_iter, defaults.qp_max_iter_fallback) == (2000, 500)
+    assert (defaults.qp_max_iter, defaults.qp_max_iter_fallback) == (1000, 500)
     assert (defaults.giant_tile, defaults.giant_max_sweeps) == (64, 8)
     assert defaults.giant_tile_fit is True

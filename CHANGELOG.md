@@ -6,6 +6,22 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — windowed engine: `qp_max_iter=1000` (was 2000)
+
+- Under the in-solve L2 default the window QPs are harder than under the zero
+  objective (ADMM median ~1060 iterations; most solves reach the hybrid backend's
+  800-iteration Clarabel handoff). Capping ADMM at 1000 lets the SQP absorb the
+  capped solves: same-slice, equal-contention A/Bs give z=240 **−13 %** wall
+  (223 vs 257 s) and volume z16 **−37 %** (333 vs 529 s) at the identical SQP
+  iteration count, L2 move and 0 folds / damage 0; the hardest slice (full-res
+  z=2) is neutral (1235 vs 1214 iterations, L2 1977.8 vs 1978.8) and the crop
+  pack holds (L2: z16_twist 58 → 29, z0_cluster 120 → 96, z0_sliver 617 → 637;
+  `none`: identical or better, z0_sliver 620 → 286 at a smaller move).
+- **Measured and rejected:** 500 (ordinary slices −25 %, but the hard slice
+  2013 iterations and the L2 sliver crop +28 %), 750 (no better than 1000),
+  4000, the Clarabel handoff threshold 400 / 1500, no cold IP solve, and
+  OSQP-only (539 vs 481 s — the hybrid earns its keep).
+
 ### Fixed — windowed engine: a window landing within half the margin of the shifted target is solved (`feas_tol`); `ftol` stop
 
 - **Why.** The in-solve L2 default (#99) cost ~3x on ORDINARY slices (151-slice

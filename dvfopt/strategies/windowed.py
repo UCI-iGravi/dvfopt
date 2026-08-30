@@ -187,7 +187,7 @@ class WindowedWrapperStrategy(Strategy):
     time_budget_s: Optional[float] = None
     no_tr_fallback: bool = True
     fallback_maxiter: int = 200
-    qp_max_iter: int = 2000
+    qp_max_iter: int = 1000
     qp_max_iter_fallback: int = 500
     giant_tile: int = 64
     giant_max_sweeps: int = 8
