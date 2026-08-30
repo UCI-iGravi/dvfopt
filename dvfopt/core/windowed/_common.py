@@ -75,7 +75,7 @@ class _InnerOpts:
 
     no_tr_fallback: bool = True
     fallback_maxiter: int = 200
-    qp_max_iter: int | None = 2000  # None -> OSQP's own default (8000)
+    qp_max_iter: int | None = 1000  # None -> OSQP's own default (8000)
     qp_max_iter_fallback: int | None = 500
     giant_tile: int = 64
     giant_max_sweeps: int = 8
@@ -599,7 +599,7 @@ def windowed_correct(
     mop_margin=25,
     no_tr_fallback=True,
     fallback_maxiter=200,
-    qp_max_iter=2000,
+    qp_max_iter=1000,
     qp_max_iter_fallback=500,
     giant_tile=64,
     giant_max_sweeps=8,
