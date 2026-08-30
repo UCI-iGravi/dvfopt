@@ -243,6 +243,49 @@ bilinear folds, damage 0, and the terminal re-seed stage never fired):
 Patience fallbacks (the bail-free exact-LS continuation) are now the only rung
 that fires on these slices; the backend and grow rungs and the re-seed are idle.
 
+### 4.3c Where the in-solve L2 objective spends its time (and the one real fix)
+
+The 151-slice interim of the full-resolution certification under the final
+formulation showed a split: the hard slices (>= 2000 folds, n = 17) went 78,623 s
+-> 9,119 s, but the ordinary ones (n = 134) went 25,436 s -> 77,408 s (median 171
+-> 559 s) at the SAME total SQP iteration count. A contention-matched four-way A/B
+on z=440 (1828 folds) separated the two ingredients:
+
+| formulation (z=440) | SQP it | window calls | ok | L2 move | ADMM it / QP (median) |
+|---|---|---|---|---|---|
+| old engine (`none`, no rows) | 433 | 110 | 101 | 85.8 | 637 |
+| edge rows + `none` | **356** | 108 | 101 | 87.4 | **187** |
+| L2, no rows | 1457 | 214 | 136 | 62.1 | 500 |
+| edge rows + L2 (the default) | 915 | 187 | 126 | 67.8 | 550 |
+
+The rows are free — they *condition* the QP (ADMM iterations 637 -> 187). The
+objective is the cost, and not where one would guess: successful windows cost the
+same as before (328 iterations over 126 calls vs 361 / 101); 59 % of all
+iterations (544) sat in 48 window calls that ended `a-collapse` FAILED and were
+then fed the escalation ladder (no-trust-region retries 32 vs 5). Their
+per-iteration traces show them *converging* — max violation 3.3 -> 1e-5, merit
+/ 700 — with 25–30 rows hovering 1e-5..1e-4 below the margin-shifted target: a
+distance objective parks the solution ON the active rows at ADMM precision,
+where a zero objective steps off the boundary to exactly 0. The engine's margin
+(1e-3) exists precisely so that a solve landing a hair short of the active bound
+is still fold-free, but the inner's own feasibility test was `-1e-6`.
+
+Fix: the window counts as solved when its rows end within half the margin of
+the shifted target (`solve_window_inner(feas_tol=0.5 * margin_delta)`, and the
+same slack in the isqp inner's flag). z=440: 915 -> 790 SQP iterations, calls
+187 -> 147, window success 67 % -> 91 % (old engine 92 %), L2 unchanged;
+volume z=16 442 -> 385 / calls 61 -> 35; full-res z=2 unchanged (its collapses
+are genuine); crop pack byte-identical under L2. The remaining L2 cost is
+in-window polishing along the active rows (median relative merit decrease 3e-4
+per iteration) — the `ftol` stop (relative objective decrease, for
+feasible-within-slack iterates) addresses that.
+
+Measured dead ends for the same cost, all on z=440 under L2 + rows (do not
+retry): penalty parameter `rho` 1e4 (873 it, ADMM median 1237) and 1e5 (898,
+ADMM at the 2000 cap, L2 73.7); initial trust region 1.0 px (845); the
+a*-collapse bail off (1323) or at 6 (1177); a "collapse needs a standing
+violation" predicate (905, inert on every other case).
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
