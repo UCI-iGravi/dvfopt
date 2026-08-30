@@ -92,6 +92,10 @@ class _InnerOpts:
     )
     patience_retry: bool = True
     orientation_delta: object = None  # float -> linear orientation rows in every window (2D)
+    polish: object = (
+        None  # 'l2' | 'l1': per-window anchored polish after a successful solve (None = off)
+    )
+    polish_maxiter: int = 30
     ladder: bool = (
         True  # False -> one attempt per window: no retries, no grow (the mop's big windows)
     )
@@ -414,6 +418,8 @@ class SliceReport:
     # windows whose interior-point trajectory failed and were retried on plain
     # warm-started ADMM (qp_backend='hybrid' only; see _solve_window).
     backend_fallbacks: int = 0
+    polish_windows: int = 0
+    polish_accepted: int = 0
     patience_fallbacks: int = 0  # windows that took the patience rung
     # coarse-to-fine warm start (see _coarse_warm_start). -1 == the stage did not
     # run (disabled, no folds, or the field too small for a meaningful coarse
@@ -616,6 +622,8 @@ def windowed_correct(
     orientation_delta=0.01,
     orientation_scope='all',
     orientation_rows='edges',
+    polish=None,
+    polish_maxiter=30,
     coarse_to_fine=True,
     coarse_factor=4,
     reanchor='none',
@@ -850,6 +858,13 @@ def windowed_correct(
     ``_InnerOpts.ladder=False``) and the ladder is kept for the small mop windows
     the sliver residual needs.
 
+    ``polish='l2'|'l1'`` (default None = off) adds a per-window anchored polish:
+    after a window solves, the SAME box is re-solved against the distance to its
+    pre-solve patch from the warm feasible point (``polish_maxiter`` inner
+    iterations, the ``ftol`` stop), verify-and-revert as in the reanchor stage.
+    Meant for ``objective='none'``: the cheap feasibility solve plus a short
+    anchored polish, instead of anchored-QP prices for the whole fight.
+
     ``reseed_rounds`` (default 3, 0 = off) / ``reseed_radius`` (default 2) add a
     **terminal harmonic re-seed stage** for the residual the round loop AND the mop
     plateau on. Such residual clusters are, measured on every non-clean slice of
@@ -919,6 +934,8 @@ def windowed_correct(
         orientation_delta,
         orientation_scope=orientation_scope,
         orientation_rows=orientation_rows,
+        polish=polish,
+        polish_maxiter=polish_maxiter,
     )
     objective = L2Objective() if objective is None else objective
     phi = np.array(phi_in, dtype=np.float64, copy=True)
@@ -1790,6 +1807,56 @@ def _solve_window(
     fm = sub.free_mask
     dst = phi[:, py0:py1, px0:px1]
     dst[:, fm] = patch_out[:, fm]
+
+    if ok and opts.polish and allow_grow:
+        # Per-window anchored polish (the reanchor stage's verify-and-revert, run
+        # immediately while the window is warm): re-solve the SAME box on the
+        # current field against the distance to the window's PRE-SOLVE patch
+        # (phase 1's ``sub.flat0``), so a cheap pure-feasibility solve recovers
+        # the in-solve anchor's fidelity at a few anchored iterations instead of
+        # paying anchored-QP prices for the whole feasibility fight. Rows are the
+        # engine's own (orientation rows included); a polish that ends any row
+        # below ``-margin_delta + _REANCHOR_TOL`` or does not reduce the distance
+        # is reverted, so it can never cost feasibility or fidelity.
+        from dvfopt.objectives import L1Objective, L2Objective
+
+        rep.polish_windows += 1
+        psub = build_subproblem(
+            constraint,
+            phi,
+            box,
+            threshold,
+            None,
+            margin_delta,
+            orientation_delta=opts.orientation_delta,
+            orientation_scope=opts.orientation_scope,
+            orientation_rows=opts.orientation_rows,
+        )
+        if psub.free_idx.size and psub.n_enforced:
+            obj_ref = L1Objective() if opts.polish == 'l1' else L2Objective()
+            pobj, pgrad, phess = _objective_fns(sub.flat0, obj_ref)
+            psub = replace(psub, obj=pobj, obj_grad=pgrad, hess_diag=phess)
+            px_, pnit, _pok = solve_window_inner(
+                psub,
+                inner,
+                opts.polish_maxiter,
+                osqp_max_iter=opts.qp_max_iter,
+                qp_backend=opts.qp_backend,
+                ip_cold=opts.ip_cold,
+                ip_after_admm_iters=opts.ip_after_admm_iters,
+                tr_delta=opts.tr_delta,
+                tr_max=opts.tr_max,
+                step_rule=opts.step_rule,
+                ftol=opts.ftol,
+            )
+            nit += pnit
+            if psub.cons(px_).min() >= -margin_delta + _REANCHOR_TOL and pobj(px_) < pobj(
+                psub.flat0
+            ):
+                ppatch = np.asarray(psub.constraint.unflatten(px_))
+                pdst = phi[:, py0:py1, px0:px1]
+                pdst[:, psub.free_mask] = ppatch[:, psub.free_mask]
+                rep.polish_accepted += 1
 
     jpatch = min_field(constraint, phi[:, py0:py1, px0:px1])
     rec = WindowRec(
