@@ -86,6 +86,16 @@ Clarabel), which makes ordinary slices ~2× the re-seed path. `objective='none'`
 with the edge rows remains the fastest formulation (z=440: 356 iterations vs
 old 433) at the old fidelity.
 
+That per-iteration cost has one lever (PR #106): the ADMM cap. With
+`qp_max_iter` 2000 → 1000 the SQP absorbs the capped solves — equal-contention
+A/Bs: z=240 −13 % wall (223 vs 257 s), volume z16 −37 % (333 vs 529 s), z=440
+−9 %, the hardest slice z=2 −6 % — at the identical SQP-iteration count, L2 move
+and 0 folds / damage 0 everywhere; the crop pack holds. 500 is faster still on
+ordinary slices but inflates the hard slice to 2013 iterations (+66 %) and the
+L2 sliver crop +28 %, so 1000 is the default. Measured dead ends on the same
+slice: Clarabel handoff at 400 / 1500, no cold IP solve, caps 750 / 4000,
+OSQP-only (the hybrid earns its keep: 539 vs 481 s).
+
 ## 3. The mechanism behind every residual: the rotated orientation branch
 
 Before the fix, five cohort slices plateaued with 5–79 residual cells that no
