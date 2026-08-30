@@ -6,6 +6,19 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — `correct_dvf` / `dvfopt correct` rejected the canonical `(3, 1, H, W)` layout
+
+- `correct_dvf` inferred a string constraint's shape as `phi.shape[1:]`, which is
+  `(1, H, W)` for the canonical `[dz, dy, dx]` single-slice layout every loader
+  produces, so every 2D constraint raised `SolverConfigError: deformation spatial
+  shape (H, W) does not match ... (configured for (1, H, W))` — and the CLI, which
+  funnels into the same call, exited 2 on any `.npy`/NIfTI field. The suite only
+  ever passed `(2, H, W)` (`planted_fold`), so nothing caught it. Shape inference now
+  keys on the constraint family's dimensionality (trailing 3 dims for 3D, trailing 2
+  for 2D — the rule `constraint_fold_stats` already used), and the `strategy='auto'`
+  fold statistics coerce the input first. Regression tests cover the API (simplex /
+  bilinear / jdet), bare-vs-canonical equivalence, and the CLI.
+
 ### Changed — `dvf_origins`: one directory per mechanism, `m<k>_<tool>_<data>_<variant>` names, manifest
 
 - `generate` writes `data/origins/<mechanism dir>/<case>.npy + .json` (`m1_interpolation`,
