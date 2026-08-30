@@ -1,11 +1,14 @@
 """Self-check: ``pytest dvf_origins`` (also appended to the CI test command)."""
 
+import csv
 import importlib.util
+import json
 
 import numpy as np
 import pytest
 
-from dvf_origins import CASES, MECHANISMS, build, learned, real, registered, synthetic
+from dvf_origins import CASES, DATA_TOKENS, MECHANISMS, build, learned, real, registered, synthetic
+from dvf_origins.__main__ import main
 from dvf_origins.morphology import COLUMNS, morphology
 
 SHAPE = (96, 96)
@@ -68,42 +71,74 @@ def test_morphology_bilinear_only_cell():
     assert m['bilinear_neg_cells'] == 1 and m['bilinear_only_cells'] == 1
 
 
-def test_registry_and_build_synthetic():
+def test_registry_names_and_build_synthetic():
     assert {mech for mech, _, _ in CASES.values()} <= set(MECHANISMS)
     for name, (mech, _, _) in CASES.items():  # m<k>_<tool>_<data>_<variant>, k = mechanism
-        assert name.startswith(f'm{mech}_') and name.count('_') >= 2, name
+        parts = name.split('_')
+        assert parts[0] == f'm{mech}' and len(parts) >= 4, name
+        assert parts[2] in DATA_TOKENS, f'{name}: unknown <data> token {parts[2]!r}'
     phi, meta = build('m3_proxy_synthetic_mild')
     _check_field(phi)
     assert meta['case'] == 'm3_proxy_synthetic_mild' and meta['mechanism'] == 3 and meta['proxy']
 
 
 def test_generate_layout_manifest_and_sweep(tmp_path):
-    import csv
-    import json
-
-    from dvf_origins.__main__ import main
-
-    main(
-        [
-            'generate',
-            '--case',
-            'm3_proxy_synthetic_mild',
-            'm4_svf_synthetic_decimated',
-            '--out',
-            str(tmp_path),
-        ]
-    )
-    assert (tmp_path / 'm3_learned' / 'm3_proxy_synthetic_mild.npy').is_file()
-    assert (tmp_path / 'm3_learned' / 'm3_proxy_synthetic_mild.json').is_file()
-    assert (tmp_path / 'm4_diffeomorphic' / 'm4_svf_synthetic_decimated.npy').is_file()
+    a, b = 'm3_proxy_synthetic_mild', 'm4_svf_synthetic_decimated'
+    main(['generate', '--case', a, '--out', str(tmp_path)])
+    main(['generate', '--case', b, '--out', str(tmp_path)])  # a second run must keep a's entry
+    assert (tmp_path / 'm3_learned' / f'{a}.npy').is_file()
+    assert (tmp_path / 'm3_learned' / f'{a}.json').is_file()
+    assert (tmp_path / 'm4_diffeomorphic' / f'{b}.npy').is_file()
     man = json.loads((tmp_path / 'manifest.json').read_text())
-    assert man['m3_proxy_synthetic_mild']['file'] == 'm3_learned/m3_proxy_synthetic_mild.npy'
-    assert man['m4_svf_synthetic_decimated']['mechanism'] == 4
-    main(['sweep', '--in', str(tmp_path), '--out', str(tmp_path / 'out')])
+    assert set(man) == {a, b}
+    assert man[a]['file'] == f'm3_learned/{a}.npy' and man[b]['mechanism'] == 4
+    assert man[a]['shape'] == [3, 1, 192, 192]
+    # a stray field at a non-registered path is reported, never swept; the documented
+    # external drop location is not a stray
+    (tmp_path / 'm1_interpolation').mkdir()
+    np.save(tmp_path / 'm1_interpolation' / f'{a}.npy', np.zeros((3, 1, 4, 4)))
+    (tmp_path / 'external').mkdir()
+    np.save(tmp_path / 'external' / 'learned.npy', np.zeros((3, 1, 4, 4)))
+    main(['sweep', '--in', str(tmp_path), '--out', str(tmp_path / 'out'), '--latest'])
+    (ts_dir,) = [p for p in (tmp_path / 'out').iterdir() if p.is_dir()]
+    assert (ts_dir / 'results.csv').read_bytes() == (
+        tmp_path / 'out' / 'results_latest.csv'
+    ).read_bytes()
     with open(tmp_path / 'out' / 'results_latest.csv') as fh:
         rows = list(csv.DictReader(fh))
-    assert {r['case'] for r in rows} == {'m3_proxy_synthetic_mild', 'm4_svf_synthetic_decimated'}
-    assert rows[0]['mechanism'] in {'3', '4'} and 'simplex_neg_cells' in rows[0]
+    assert {r['case'] for r in rows} == {a, b}
+    assert all(int(r['mechanism']) == CASES[r['case']][0] for r in rows)
+    assert 'simplex_neg_cells' in rows[0]
+    # the manifest is a function of the tree: delete a field, sweep, and it is gone
+    (tmp_path / 'm4_diffeomorphic' / f'{b}.npy').unlink()
+    main(['sweep', '--in', str(tmp_path), '--out', str(tmp_path / 'out2'), '--no-latest'])
+    assert set(json.loads((tmp_path / 'manifest.json').read_text())) == {a}
+    assert not (tmp_path / 'out2' / 'results_latest.csv').exists()
+
+
+def test_migrate_old_names_into_place(tmp_path):
+    from dvf_origins import RENAMED
+    from dvf_origins.__main__ import migrate
+
+    assert set(RENAMED.values()) <= set(CASES)
+    # a pre-layout flat file and an old name inside a mechanism dir both move
+    np.save(tmp_path / 'm3_learned_proxy_mild.npy', np.zeros((3, 1, 4, 4)))
+    (tmp_path / 'm3_learned_proxy_mild.json').write_text(json.dumps({'case': 'old', 'tool': 't'}))
+    (tmp_path / 'm2_dense_optimization').mkdir()
+    np.save(tmp_path / 'm2_dense_optimization' / 'm2_tvl1_brainpair.npy', np.zeros((3, 1, 4, 4)))
+    assert len(migrate(tmp_path)) == 2
+    new = tmp_path / 'm3_learned' / 'm3_proxy_synthetic_mild'
+    assert (
+        new.with_suffix('.npy').is_file() and not (tmp_path / 'm3_learned_proxy_mild.npy').exists()
+    )
+    meta = json.loads(new.with_suffix('.json').read_text())
+    assert (
+        meta['case'] == 'm3_proxy_synthetic_mild'
+        and meta['renamed_from'] == 'm3_learned_proxy_mild'
+    )
+    assert meta['tool'] == 't'
+    assert (tmp_path / 'm2_dense_optimization' / 'm2_tvl1_brainpair_a60.npy').is_file()
+    assert migrate(tmp_path) == []  # idempotent
 
 
 def test_slice2d_validation_and_missing_data():

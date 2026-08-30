@@ -1,7 +1,7 @@
 # dvf_origins — sample DVFs by fold-origin mechanism
 
 Standalone harness (not part of the `dvfopt` package) that generates the
-paper's §4 cases: one displacement field per (mechanism, tool, severity), all
+paper's §4 cases: one displacement field per (mechanism, tool, data, variant), all
 in `dvfopt`'s convention (`(3, 1, H, W)`, `[dz, dy, dx]`, `dz == 0`,
 pull-back, voxel units), plus the fold-morphology table over them.
 
@@ -27,21 +27,30 @@ of CPU, the cohort ones also need the external RegTools volumes):
 data/origins/
   manifest.json                  case -> file, mechanism, tool, source, shape, build time
   m1_interpolation/              m1_laplacian_synthetic_{clean,outliers,collapse,mixed}, m1_laplacian_cohort_B0039_z264
-  m2_dense_optimization/         m2_tvl1_synthetic_{weak,strong}, m2_ilk_synthetic_r3, m2_{demons,ffd,tvl1}_brainpair_*
-  m3_learned/                    m3_proxy_synthetic{,_mild}, m3_{voxelmorph,transmorph}_{ellipses,cohort}_{direct,diffeo}
+  m2_dense_optimization/         m2_tvl1_synthetic_{weak,strong}, m2_ilk_synthetic_r3, m2_{demons,ffd}_brainpair_*, m2_tvl1_brainpair_a60
+  m3_learned/                    m3_proxy_synthetic_{strong,mild}, m3_{voxelmorph,transmorph}_{ellipses,cohort}_{direct,diffeo}
   m4_diffeomorphic/              m4_svf_synthetic_{decimated,subpixel,coarse_steps}, m4_ants_cohort_B0039_z264
+  external/learned.npy           optional hand-dropped field for the m3_external_saved_field row
   cache/                         real-slice cache for the cohort learned rows (hash-keyed)
 output/origins/
-  <timestamp>/results.csv        one sweep;  results_latest.csv = the most recent one (stable path)
+  <timestamp>/results.csv        one sweep
+  results_latest.csv             copy of the most recent FULL sweep of data/origins (stable path
+                                 for the paper build; a sweep of another root needs --latest)
 ```
 
 Each field is `<case>.npy` in `dvfopt`'s `(3, 1, H, W)` layout with a `<case>.json`
 sidecar (tool, parameters, seed, timings, the convention/collapse checks for the
 learned rows, grid info for the cohort rows), so a file is self-describing
-without the registry. Names are `m<k>_<tool>_<data>_<variant>` — mechanism, tool,
-the data it was made from (`synthetic` generated images/pins, `ellipses` the
-notebooks' toy images, `brainpair` the in-repo B0039/template slice pair,
-`cohort` the 7-brain RegTools cohort), variant.
+without the registry. `manifest.json` is rebuilt from the tree by every
+`generate` and `sweep` (never merged), so it cannot drift from what is on disk.
+
+Names are `m<k>_<tool>_<data>_<variant>` — mechanism, the tool that made the
+field, the data it was made from, the variant — and the self-check enforces
+the shape. `<data>` is one of `synthetic` (generated images or pins),
+`ellipses` (the notebooks' toy images), `brainpair` (the in-repo B0039/template
+slice pair), `cohort` (the 7-brain RegTools cohort), `saved` (dropped in by
+hand). A field at a path no `CASES` row maps to is reported by `sweep` and never
+tabulated.
 
 The learned rows (mechanism 3) train small networks and need torch, which the
 main venv deliberately does not carry. A separate CPU venv is enough (the

@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from dvf_origins._common import ROOT, pack2d
+from dvf_origins._common import ORIGINS, ROOT, pack2d
 from dvf_origins.registered import FIXED as TEMPLATE
 from dvf_origins.registered import _fit, _norm
 from dvf_origins.synthetic import _warp_image
@@ -49,7 +49,7 @@ REGTOOLS_COHORT = Path(
 )
 _ALIGNED = Path('01_axis_alignment') / 'axisAlignedData.nii.gz'
 _AFFINE = Path('02_nonlinear') / 'parameters' / 'fwd_transforms' / 'ants_affine_1.mat'
-CACHE = ROOT / 'data' / 'origins' / 'cache'
+CACHE = ORIGINS / 'cache'
 
 
 def make_random_image(size, rng):

@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]  # repo root (the harness is not installed)
+ORIGINS = ROOT / 'data' / 'origins'  # the generated tree: <mechanism>/<case>.npy, manifest, cache
 
 
 def pack2d(dy, dx):
