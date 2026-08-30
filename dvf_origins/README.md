@@ -1,7 +1,7 @@
 # dvf_origins — sample DVFs by fold-origin mechanism
 
 Standalone harness (not part of the `dvfopt` package) that generates the
-paper's §4 cases: one displacement field per (mechanism, tool, severity), all
+paper's §4 cases: one displacement field per (mechanism, tool, data, variant), all
 in `dvfopt`'s convention (`(3, 1, H, W)`, `[dz, dy, dx]`, `dz == 0`,
 pull-back, voxel units), plus the fold-morphology table over them.
 
@@ -14,11 +14,43 @@ pull-back, voxel units), plus the fold-morphology table over them.
 
 ```bash
 python -m dvf_origins list                     # the case registry (dvf_origins/__init__.py: CASES)
-python -m dvf_origins generate                 # -> data/origins/<case>.npy + <case>.json (gitignored)
+python -m dvf_origins generate                 # -> data/origins/<mechanism>/<case>.npy + .json, manifest.json (gitignored)
 python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps are absent are skipped, with the reason
-python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv
+python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv + results_latest.csv
 pytest dvf_origins                             # self-check (~3 s in the main venv, ~15 s in the torch venv; ~20 s more with the gitignored data; CI runs it too)
 ```
+
+On disk (everything gitignored and regenerable; the learned rows cost minutes
+of CPU, the cohort ones also need the external RegTools volumes):
+
+```
+data/origins/
+  manifest.json                  case -> file, mechanism, tool, source, shape, build time
+  m1_interpolation/              m1_laplacian_synthetic_{clean,outliers,collapse,mixed}, m1_laplacian_cohort_B0039_z264
+  m2_dense_optimization/         m2_tvl1_synthetic_{weak,strong}, m2_ilk_synthetic_r3, m2_{demons,ffd}_brainpair_*, m2_tvl1_brainpair_a60
+  m3_learned/                    m3_proxy_synthetic_{strong,mild}, m3_{voxelmorph,transmorph}_{ellipses,cohort}_{direct,diffeo}
+  m4_diffeomorphic/              m4_svf_synthetic_{decimated,subpixel,coarse_steps}, m4_ants_cohort_B0039_z264
+  external/learned.npy           optional hand-dropped field for the m3_external_saved_field row
+  cache/                         real-slice cache for the cohort learned rows (hash-keyed)
+output/origins/
+  <timestamp>/results.csv        one sweep
+  results_latest.csv             copy of the most recent FULL sweep of data/origins (stable path
+                                 for the paper build; a sweep of another root needs --latest)
+```
+
+Each field is `<case>.npy` in `dvfopt`'s `(3, 1, H, W)` layout with a `<case>.json`
+sidecar (tool, parameters, seed, timings, the convention/collapse checks for the
+learned rows, grid info for the cohort rows), so a file is self-describing
+without the registry. `manifest.json` is rebuilt from the tree by every
+`generate` and `sweep` (never merged), so it cannot drift from what is on disk.
+
+Names are `m<k>_<tool>_<data>_<variant>` — mechanism, the tool that made the
+field, the data it was made from, the variant — and the self-check enforces
+the shape. `<data>` is one of `synthetic` (generated images or pins),
+`ellipses` (the notebooks' toy images), `brainpair` (the in-repo B0039/template
+slice pair), `cohort` (the 7-brain RegTools cohort), `saved` (dropped in by
+hand). A field at a path no `CASES` row maps to is reported by `sweep` and never
+tabulated.
 
 The learned rows (mechanism 3) train small networks and need torch, which the
 main venv deliberately does not carry. A separate CPU venv is enough (the

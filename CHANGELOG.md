@@ -6,6 +6,25 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — `dvf_origins`: one directory per mechanism, `m<k>_<tool>_<data>_<variant>` names, manifest
+
+- `generate` writes `data/origins/<mechanism dir>/<case>.npy + .json` (`m1_interpolation`,
+  `m2_dense_optimization`, `m3_learned`, `m4_diffeomorphic` — mechanism and directory are
+  one table) and `generate` / `sweep` rebuild `data/origins/manifest.json` from the tree
+  (case → file, mechanism, tool, source, shape, build time; atomic write, never merged,
+  so concurrent torch-venv / main-venv runs and interrupts cannot leave it inconsistent).
+  `sweep` reads the tree, reports any field at a path no case maps to, and — for a full
+  sweep of the default root, or `--latest` — writes the stable
+  `output/origins/results_latest.csv` for the paper build to point at (a scratch sweep
+  cannot silently replace it; a locked file is reported, not a traceback).
+- Every case is renamed to `m<k>_<tool>_<data>_<variant>` so a file says what made it
+  and from what even when copied out of its directory (`<data>` vocabulary and layout in
+  `dvf_origins/README.md`); the self-check enforces the shape. E.g. `m2_demons_brain` →
+  `m2_demons_brainpair_weak`, `m3_voxelmorph_direct_cohort` → `m3_voxelmorph_cohort_direct`,
+  `m4_ants_B0039_z264` → `m4_ants_cohort_B0039_z264`. Existing fields were moved in
+  place (no retraining; the JSON sidecars carry `renamed_from`). The registry's
+  `case` / `mechanism` now win over anything a builder puts in its meta.
+
 ### Changed — the windowed engine's formulation: edge-monotonicity rows + in-solve L2 (behaviour change)
 
 - **Defaults:** `orientation_delta=0.01`, `orientation_rows='edges'` on `windowed_correct`
