@@ -261,6 +261,16 @@ def _exact_line_min(c0, g, q, w, fco, a_hi=1.0):
     return float(aa[b]), float(vv[b]), float(k0[0])
 
 
+def _ftol_stop(ftol, feas_tol, viol, merit_before, merit_after):
+    """The ``ftol`` exit: feasible within ``feas_tol`` and an accepted step that
+    moved the merit by no more than ``ftol`` relative (see :func:`isqp_solve`)."""
+    return bool(
+        ftol
+        and viol.max(initial=0.0) <= feas_tol
+        and (merit_before - merit_after) <= ftol * max(abs(merit_before), 1.0)
+    )
+
+
 def isqp_solve(
     flat0,
     cons,
@@ -286,6 +296,8 @@ def isqp_solve(
     tr_max=16.0,
     step_rule='tr',
     exact_ls_fallback_steps=0,
+    ftol=0.0,
+    feas_tol=1e-6,
 ):
     """Optimized I-SLSQP: elastic-QP SQP where the QP is solved by OSQP over a
     SPARSE system with a warm-started iterate. Each iteration solves a QP for a
@@ -370,6 +382,17 @@ def isqp_solve(
     the ``tr-collapse`` termination signal — an exact minimiser always finds SOME
     decrease, so without it a hopeless window grinds instead of handing off to
     the caller's escalation ladder.
+
+    ``feas_tol`` is the violation the returned ``feasible`` flag tolerates (the
+    windowed engine passes half its margin: its rows are shifted by the margin so
+    that a solve landing a hair short of the active bound is still fold-free, and a
+    distance objective parks the solution ON the active rows at ADMM precision).
+    ``ftol`` (0 = off) is a relative objective-decrease stop for such
+    feasible-within-``feas_tol`` iterates: once an accepted step moves the merit by
+    less than ``ftol * max(|merit|, 1)`` the window exits ``'ftol'``. A zero
+    objective never needs it (its feasible step is 0, caught by ``tol``); a distance
+    objective otherwise polishes along the active rows at a median relative merit
+    decrease of 3e-4 per iteration (traced z=440) for fidelity nobody can measure.
 
     ``exact_ls_fallback_steps`` (0 = off) closes the rest of that hole. The
     futility test only fires when the achieved decrease is small RELATIVE to the
@@ -603,6 +626,11 @@ def isqp_solve(
                     _emit(rec)
                     exit_reason = "step-tol"
                     break
+                if _ftol_stop(ftol, feas_tol, viol, ph0, m_true):
+                    rec['stepped'] = True
+                    _emit(rec)
+                    exit_reason = "ftol"
+                    break
                 if trust_region:
                     # An exact minimiser always finds SOME decrease, so it never fires
                     # the ratio test's fast bail-out — and a window that cannot be
@@ -655,13 +683,15 @@ def isqp_solve(
                         tr_delta = min(tr_delta * 2.0, tr_max)
                     elif ratio < 0.25:
                         tr_delta = max(tr_delta * 0.5, tr_min)
+                    if _ftol_stop(ftol, feas_tol, viol, ph0, ph0 - act):
+                        exit_reason = "ftol"
                 else:
                     tr_delta *= 0.25  # reject: shrink and RE-SOLVE a new direction
                     if tr_delta < tr_min:
                         exit_reason = "tr-collapse"
             rec["stepped"] = bool(stepped)
             _emit(rec)
-            if exit_reason in ("model-flat", "tr-collapse"):
+            if exit_reason in ("model-flat", "tr-collapse", "ftol"):
                 break
         else:
             x, stepped = _backtrack(mfun, x, d, ph0)
@@ -672,7 +702,7 @@ def isqp_solve(
                 break
     # 1e-6 matches OSQP's practical subproblem accuracy; callers enforce folds via a
     # margin_delta (>=1e-3) shifted target, so this is 3+ orders inside that slack.
-    feasible = bool((np.asarray(cons(x)) >= -1e-6).all())
+    feasible = bool((np.asarray(cons(x)) >= -float(feas_tol)).all())
     if trace is not None:
         trace["exit"] = exit_reason
         trace["feasible"] = feasible

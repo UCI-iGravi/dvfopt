@@ -338,3 +338,37 @@ def test_collapse_bail_knob_reaches_the_driver(monkeypatch):
         threshold=THR,
     )
     assert seen and all(k["exact_ls_fallback_steps"] == 7 for k in seen)
+
+
+def test_ftol_stop_predicate():
+    """``ftol`` fires only when feasible within ``feas_tol`` AND the accepted step
+    moved the merit by no more than ``ftol`` relative; off at 0."""
+    v_ok, v_bad = np.array([0.0, 2e-4]), np.array([0.0, 2e-3])
+    assert isqp_mod._ftol_stop(1e-3, 5e-4, v_ok, 1000.0, 999.5)  # 5e-4 relative
+    assert not isqp_mod._ftol_stop(1e-3, 5e-4, v_ok, 1000.0, 990.0)  # 1e-2 relative
+    assert not isqp_mod._ftol_stop(1e-3, 5e-4, v_bad, 1000.0, 999.5)  # not feasible
+    assert not isqp_mod._ftol_stop(0.0, 5e-4, v_ok, 1000.0, 999.5)  # off
+    assert isqp_mod._ftol_stop(1e-3, 5e-4, v_ok, 0.0, 0.0)  # |merit| floors at 1
+
+
+@needs_osqp
+def test_ftol_and_feas_tol_are_forwarded_to_the_inner(monkeypatch):
+    seen = []
+    orig = isqp_mod.isqp_solve
+
+    def spy(*a, **k):
+        seen.append(k)
+        return orig(*a, **k)
+
+    from dvfopt import ISQPWindowedStrategy
+
+    monkeypatch.setattr("dvfopt.core.windowed._inners.isqp_solve", spy)
+    phi = _localized_fold()
+    ISQPWindowedStrategy(ftol=2e-3).solve(
+        phi,
+        constraint=SimplexConstraint2D(shape=phi.shape[1:]),
+        objective=NoneObjective(),
+        threshold=THR,
+    )
+    assert seen and all(k["ftol"] == 2e-3 for k in seen)
+    assert all(k["feas_tol"] == 0.5 * 1e-3 for k in seen)
