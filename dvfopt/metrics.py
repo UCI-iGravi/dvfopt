@@ -69,17 +69,13 @@ def constraint_fold_stats(
     (coerce -> flatten -> values), so the numbers agree with
     ``SolveResult.init_n_neg``/``init_min_T``.
     """
-    from dvfopt.constraints import make_constraint
+    from dvfopt.constraints import infer_shape, make_constraint
 
     phi = np.asarray(phi, dtype=np.float64)
     if constraint == 'auto':
         constraint = 'simplex_3d' if _is_volume(phi) else 'simplex'
-    from dvfopt.constraints import _CONSTRAINT_REGISTRY
-
-    cls = _CONSTRAINT_REGISTRY.get(constraint)
-    shape = phi.shape[-3:] if getattr(cls, 'dim', 2) == 3 else phi.shape[-2:]
-    c = make_constraint(constraint, shape)
-    vals = c.values(c.flatten(c.coerce(phi)))
+    c = make_constraint(constraint, infer_shape(constraint, phi))
+    vals = c.values(c.flatten(phi))
     return constraint, fold_stats(vals, threshold, err_tol)
 
 

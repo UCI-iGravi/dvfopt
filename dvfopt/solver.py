@@ -48,6 +48,7 @@ from dvfopt.constraints import (
     SimplexConstraint2D,
     SimplexConstraint2DBilinear,
     SimplexConstraint2DFullCoverage,
+    infer_shape,
     make_constraint,
 )
 from dvfopt.objectives import Objective, make_objective
@@ -432,8 +433,8 @@ def correct_dvf(
         default, so results are comparable without passing
         ``objective=`` explicitly.
     """
-    if shape is None:
-        shape = phi_in.shape[1:]  # infer from input
+    if shape is None and isinstance(constraint, str):
+        shape = infer_shape(constraint, phi_in)  # from the layout; from_spec alone needs shape=
     if strategy == 'auto':
         # Need the constraint built first to read init stats; do it lazily.
         c = make_constraint(constraint, shape) if isinstance(constraint, str) else constraint

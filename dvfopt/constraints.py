@@ -713,13 +713,27 @@ def make_constraint(name: str, shape: tuple[int, ...]) -> Constraint:
     >>> c = make_constraint('simplex', (10, 10))
     >>> c.values(c.flatten(phi))
     """
+    return _constraint_class(name)(shape)
+
+
+def _constraint_class(name: str) -> type:
     try:
-        cls = _CONSTRAINT_REGISTRY[name]
+        return _CONSTRAINT_REGISTRY[name]
     except KeyError as exc:
         raise ValueError(
             f'unknown constraint: {name!r}; valid: {sorted(_CONSTRAINT_REGISTRY)}'
         ) from exc
-    return cls(shape)
+
+
+def infer_shape(name: str, phi) -> tuple[int, ...]:
+    """Spatial shape for the constraint family ``name`` read off a field's layout:
+    the trailing 3 dims for a 3D family, the trailing 2 for a 2D one — so the
+    canonical ``(3, 1, H, W)``, the bare ``(2, H, W)`` and a ``(3, D, H, W)``
+    volume all work (``phi`` may be any array-like). The one rule behind
+    :func:`dvfopt.correct_dvf` and :func:`dvfopt.metrics.constraint_fold_stats`.
+    """
+    k = 3 if _constraint_class(name).dim == 3 else 2
+    return tuple(int(n) for n in np.shape(phi)[-k:])
 
 
 __all__ = [
@@ -736,6 +750,7 @@ __all__ = [
     'TriConstraint2D',
     'TriConstraint2DBilinear',
     'TriConstraint2DFullCoverage',
+    'infer_shape',
     'make_constraint',
     'register_constraint',
 ]
