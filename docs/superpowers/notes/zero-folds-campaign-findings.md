@@ -343,6 +343,42 @@ ADMM at the 2000 cap, L2 73.7); initial trust region 1.0 px (845); the
 a*-collapse bail off (1323) or at 6 (1177); a "collapse needs a standing
 violation" predicate (905, inert on every other case).
 
+### 4.3d The remaining cost is ADMM convergence — and what that leaves
+
+With the ladder waste (#103) and the cap (#106) gone, an ordinary slice is ~300
+SQP iterations at ~0.7–0.9 s each in the 4-worker pool, 70 % of it inside the
+QP solves. Everything cheaper was tried on z=240 (five concurrent, walls
+relative; all 0 folds, damage 0, identical L2 unless stated):
+
+| lever | result |
+|---|---|
+| OSQP polish off | 220 vs 222 s — nothing |
+| OSQP eps 1e-3 → 1e-2 | 200 s (−10 %) but +8 % SQP iterations — a wash; not plumbed |
+| orientation rows only near folds | 269 s, 677 iterations — worse (the rows condition the QP) |
+| **lagged Jacobian** (reuse the KKT factorisation 3 / 5 / 10 iterations, update only q/l/u) | 344 / 368 / 383 s, 457–517 iterations — worse; the *reused* solves still ran ADMM to the cap at ~1.0 s/QP |
+
+The last row is the diagnosis: the per-QP cost is ADMM **convergence** on these
+QPs (a 2·I objective Hessian over ~9k free variables against ~20k bilinear
+and edge rows), not the factorisation — so factorisation reuse, tolerances and
+polishing cannot buy it back, and the interior-point handoff already earns its
+keep (OSQP-only 539 vs 481 s).
+
+Window-level parallelism inside a slice was then built and **measured out**: a
+round's windows with pairwise-disjoint footprints solved concurrently on the
+shared spawn pool reproduced the serial result byte for byte, but bought only
+−5 % (z=240: 98 vs 103 s), −6 % (z16: 66 vs 70 s), −5 % (z=2: 325 vs 343 s) —
+real slices are dominated by the giant-region Schwarz tiler, whose sweeps are
+sequential by construction, so the change was dropped rather than shipped. The
+one unexplored lever is a Jacobi-style (additive) Schwarz sweep — all tiles of
+a sweep solved concurrently from the same iterate — which trades convergence
+rate for parallelism and has an unknown sweep-count cost.
+
+Where that leaves the engine on an idle box (serial, merged defaults after
+#106): the hardest full-resolution slice z=2 (3909 folds) in **343 s** (10,168 s
+at the start of the campaign), z=240 (988 folds) in 103 s, volume z16 (2131
+folds) in 70 s; the 4-worker pool gives ~2.4× volume throughput on a
+memory-bandwidth-bound box.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
