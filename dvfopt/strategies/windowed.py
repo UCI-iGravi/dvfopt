@@ -199,6 +199,7 @@ class WindowedWrapperStrategy(Strategy):
     tr_max: float = 16.0
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
+    ftol: float = 0.0
     patience_retry: bool = True
     orientation_delta: Optional[float] = 0.01
     orientation_scope: str = 'all'
@@ -268,6 +269,7 @@ class WindowedWrapperStrategy(Strategy):
             tr_max=self.tr_max,
             step_rule=self.step_rule,
             exact_ls_fallback_steps=self.exact_ls_fallback_steps,
+            ftol=self.ftol,
             patience_retry=self.patience_retry,
             orientation_delta=self.orientation_delta,
             orientation_scope=self.orientation_scope,

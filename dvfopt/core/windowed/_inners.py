@@ -52,6 +52,7 @@ def solve_window_inner(
     step_rule="tr",
     exact_ls_fallback_steps=0,
     feas_tol=None,
+    ftol=0.0,
 ):
     """Solve a built window sub-problem with the chosen inner solver, returning
     ``(x_full, n_iter, feasible)`` — ``x_full`` is the full patch flat vector.
@@ -113,6 +114,8 @@ def solve_window_inner(
         tr_max=tr_max,
         step_rule=step_rule,
         exact_ls_fallback_steps=exact_ls_fallback_steps,
+        feas_tol=feas_tol,
+        ftol=ftol,
     )
     if feas_tol is not None and not ok and sub.n_enforced:
         ok = bool(float(np.asarray(sub.cons(x)).min()) >= -float(feas_tol))
@@ -133,6 +136,8 @@ def _solve_window_inner(
     tr_max=16.0,
     step_rule="tr",
     exact_ls_fallback_steps=0,
+    feas_tol=None,
+    ftol=0.0,
 ):
     if inner in _ISQP_LABELS:
         return isqp_solve(
@@ -154,6 +159,8 @@ def _solve_window_inner(
             tr_max=tr_max,
             step_rule=step_rule,
             exact_ls_fallback_steps=exact_ls_fallback_steps,
+            ftol=ftol,
+            **({} if feas_tol is None else {"feas_tol": feas_tol}),
         )
     if inner not in _SLSQP_LABELS + _SLSQP_TC_LABELS:
         raise ValueError(f"unknown inner {inner!r}; valid labels: {list(INNER_LABELS)}")
