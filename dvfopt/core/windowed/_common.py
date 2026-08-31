@@ -92,6 +92,9 @@ class _InnerOpts:
     )
     patience_retry: bool = True
     orientation_delta: object = None  # float -> linear orientation rows in every window (2D)
+    giant_workers: int = (
+        0  # >1: RAS (Jacobi) giant-tile sweeps on the shared spawn pool (0 = serial)
+    )
     polish: object = (
         None  # 'l2' | 'l1': per-window anchored polish after a successful solve (None = off)
     )
@@ -610,6 +613,7 @@ def windowed_correct(
     giant_tile=64,
     giant_max_sweeps=8,
     giant_tile_fit=True,
+    giant_workers=0,
     qp_backend='hybrid',
     ip_cold=True,
     ip_after_admm_iters=800,
@@ -858,6 +862,13 @@ def windowed_correct(
     ``_InnerOpts.ladder=False``) and the ladder is kept for the small mop windows
     the sliver residual needs.
 
+    ``giant_workers`` (default 0 = serial) solves each giant-tile sweep as
+    restricted additive Schwarz on the shared spawn pool: all tiles of a sweep
+    from the same snapshot concurrently, each pasting back only its disjoint
+    step-grid core. Trades within-sweep propagation (possibly more sweeps) for
+    parallel tiles; the serial multiplicative sweep is the default and
+    byte-identical at 0.
+
     ``polish='l2'|'l1'`` (default None = off) adds a per-window anchored polish:
     after a window solves, the SAME box is re-solved against the distance to its
     pre-solve patch from the warm feasible point (``polish_maxiter`` inner
@@ -934,6 +945,7 @@ def windowed_correct(
         orientation_delta,
         orientation_scope=orientation_scope,
         orientation_rows=orientation_rows,
+        giant_workers=giant_workers,
         polish=polish,
         polish_maxiter=polish_maxiter,
     )
@@ -1607,7 +1619,48 @@ def _solve_giant_schwarz(
         for tx in range(ix0, ix1, step)
     ]
     prev = None
+    ras = int(getattr(opts, 'giant_workers', 0) or 0)
+    cores = _ras_cores(tiles, step, (it0, it1, ix0, ix1)) if ras > 1 else None
     for _sweep in range(max_sweeps):
+        if ras > 1:
+            # Restricted additive Schwarz: every tile solves from the SAME
+            # snapshot concurrently; each pastes back only its disjoint
+            # step-grid core, so writes cannot conflict. Trades the
+            # multiplicative sweep's within-sweep propagation for
+            # parallelism; the sweep loop's progress check is unchanged.
+            from dvfopt.core._pool import pool_map
+
+            if expired is not None and expired():
+                return prev if prev is not None else -1
+            snap = phi.copy()
+            args = [
+                (
+                    snap,
+                    constraint,
+                    tb,
+                    core,
+                    threshold,
+                    objective,
+                    maxiter,
+                    ring,
+                    margin_delta,
+                    inner,
+                    opts,
+                )
+                for tb, core in zip(tiles, cores)
+                if tb[1] > tb[0] and tb[3] > tb[2] and core[1] > core[0] and core[3] > core[2]
+            ]
+            for core, vals, sub_rep in pool_map(_ras_tile_task, args, ras):
+                cy0, cy1, cx0, cx1 = core
+                phi[:, cy0:cy1, cx0:cx1] = vals
+                rep.windows.extend(sub_rep.windows)
+                rep.backend_fallbacks += sub_rep.backend_fallbacks
+                rep.patience_fallbacks += sub_rep.patience_fallbacks
+            nf = int((min_field(constraint, phi)[fy0:fy1, fx0:fx1] < threshold).sum())
+            if nf == 0 or (prev is not None and nf >= prev):
+                return nf
+            prev = nf
+            continue
         for tb in tiles:
             if expired is not None and expired():
                 # ``time_budget_s`` is checked between tiles as between windows —
@@ -1634,6 +1687,45 @@ def _solve_giant_schwarz(
             return nf  # cleared, or no further progress (geometric floor)
         prev = nf
     return prev if prev is not None else 0
+
+
+def _ras_cores(tiles, step, inset):
+    """Disjoint step-grid cores of the tiles: tile (ty0, ty1, tx0, tx1) laid at
+    step intervals owns ``[ty0, min(ty0 + step, it1)) x [tx0, min(tx0 + step, ix1))``
+    — a partition of the inset region (tiles overlap, cores do not)."""
+    it0, it1, ix0, ix1 = inset
+    return [
+        (ty0, min(ty0 + step, it1), tx0, min(tx0 + step, ix1)) for (ty0, _ty1, tx0, _tx1) in tiles
+    ]
+
+
+def _ras_tile_task(args):
+    """Pool worker: solve ONE giant tile on a private copy of the snapshot and
+    return the tile's core pixels (picklable; see ``giant_workers``)."""
+    from dvfopt.core._pool import pin_worker_threads
+
+    pin_worker_threads()
+    snap, constraint, tb, core, threshold, objective, maxiter, ring, margin_delta, inner, opts = (
+        args
+    )
+    phi = np.array(snap, dtype=np.float64, copy=True)
+    rep = SliceReport()
+    _solve_window(
+        phi,
+        constraint,
+        tb,
+        threshold,
+        objective,
+        maxiter,
+        ring,
+        rep,
+        margin_delta=margin_delta,
+        allow_grow=False,
+        inner=inner,
+        opts=opts,
+    )
+    cy0, cy1, cx0, cx1 = core
+    return core, phi[:, cy0:cy1, cx0:cx1].copy(), rep
 
 
 def _solve_window(
