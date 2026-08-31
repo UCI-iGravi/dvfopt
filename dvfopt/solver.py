@@ -402,6 +402,18 @@ class Solver:
 # Convenience top-level function for one-shot use ---------------------------
 
 
+def resolve_auto_objective(init_n_neg: int, init_min: float) -> tuple[str, bool]:
+    """The ``objective='auto'`` dispatch: ``('l2', False)`` on trap-heavy fields
+    (``n_neg >= 3000`` or ``min <= -50``, calibrated on the measured
+    l2-wins-both boundary), else ``('none', True)`` — the second element asks
+    for the windowed engine's per-window ``polish='l2'``. Single source of
+    truth for :func:`correct_dvf` and the GUI.
+    """
+    if init_n_neg >= 3000 or init_min <= -50.0:
+        return 'l2', False
+    return 'none', True
+
+
 def correct_dvf(
     phi_in: np.ndarray,
     *,
@@ -453,16 +465,9 @@ def correct_dvf(
         init_n_neg = int((T <= 0).sum())
         init_min = float(T.min())
     if objective == 'auto':
-        # Fidelity where it wins BOTH axes (the in-solve anchor on trap-heavy
-        # fields; boundary calibrated on the measured cases: full-res z=2 at
-        # 3909 folds / min -63 is the l2-wins-both regime, z16 at 2131 / z=440
-        # at 1828 / min -22 are the none-wins-wall regime), speed + the
-        # per-window polish everywhere else — see findings 4.3e.
-        if init_n_neg >= 3000 or init_min <= -50.0:
-            objective = 'l2'
-        else:
-            objective = 'none'
-            _wants_polish = True
+        # Fidelity where it wins BOTH axes, speed + polish elsewhere — the
+        # boundary lives in :func:`resolve_auto_objective` (shared with the GUI).
+        objective, _wants_polish = resolve_auto_objective(init_n_neg, init_min)
     if strategy == 'auto':
         strategy = auto_strategy(
             c,

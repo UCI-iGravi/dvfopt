@@ -289,10 +289,12 @@ DEFAULT_METHOD_BY_CONSTRAINT = {
 OBJECTIVE_L1 = 'l1'
 OBJECTIVE_L2 = 'l2'
 OBJECTIVE_NONE = 'none'
+OBJECTIVE_AUTO = 'auto'
 _OBJECTIVE_SPECS = [
     (OBJECTIVE_L1, 'L1  (smooth |∇phi|, eps=1e-4)'),
     (OBJECTIVE_L2, 'L2  (½ ‖∇phi‖²)'),
     (OBJECTIVE_NONE, 'None  (no smoothness penalty)'),
+    (OBJECTIVE_AUTO, 'Auto  (L2 on trap-heavy fields, None + polish elsewhere)'),
 ]
 DEFAULT_OBJECTIVE = OBJECTIVE_L1
 
