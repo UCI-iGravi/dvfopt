@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]  # repo root (the harness is not installed)
-ORIGINS = ROOT / 'data' / 'origins'  # the generated tree: <mechanism>/<case>.npy, manifest, cache
+DVFS = ROOT / 'data' / 'dvfs'  # the centralized DVF suite (see data/dvfs/README.md)
+ORIGINS = DVFS / 'origins'  # the harness's generated tree: <mechanism>/<case>.npy, manifest, cache
 
 
 def pack2d(dy, dx):

@@ -1,7 +1,7 @@
 """Real-data slice cases.
 
 2D: loaded via dvfopt.testdata.load_slice (correspondences -> Laplacian field).
-3D: loaded directly from pre-saved .npy files in data/test_cases_3d/.
+3D: loaded directly from pre-saved .npy files in data/dvfs/testcases_3d/.
 
 Data files are gitignored (*.npy is in .gitignore), so these cases will
 raise FileNotFoundError if the user hasn't checked out the data dir.
@@ -16,7 +16,7 @@ from benchmarks.two_triangle.registry import register_case
 from dvfopt.testdata import load_slice
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_3D = REPO_ROOT / "data" / "test_cases_3d"
+DATA_3D = REPO_ROOT / "data" / "dvfs" / "testcases_3d"
 
 
 def _real_2d_factory(slice_idx: int, scale: float, label: str):

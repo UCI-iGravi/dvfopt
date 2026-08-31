@@ -92,7 +92,7 @@ python benchmarks/make_hard_crops.py --build-only
 Validation runs `windowed_correct` **once** per gauge on engine defaults: the
 discriminator (standard 2tri rows, objective none) leaves bilinear folds behind,
 and the recipe (bilinear rows) clears the case to zero on both gauges. Crops land
-in `benchmarks/output/testcases/` (gitignored; the script regenerates them).
+in `data/dvfs/crops/` (gitignored; the script regenerates them).
 
 ## Measured dead ends
 

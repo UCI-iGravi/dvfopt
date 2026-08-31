@@ -112,7 +112,7 @@ import pytest  # noqa: E402
 
 def test_cohort_dir_points_at_repo_data():
     d = benchmark_utils.cohort_dir()
-    assert d.name == "brain25_cohort_corrected"
+    assert d.name in ("cohort", "brain25_cohort_corrected")  # suite home, pre-suite fallback
     assert d.parent.name == "dvfs"
 
 

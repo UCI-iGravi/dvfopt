@@ -143,7 +143,7 @@ def test_migrate_old_names_into_place(tmp_path):
 
 def test_slice2d_validation_and_missing_data():
     with pytest.raises(FileNotFoundError):
-        real.saved_field('data/origins/external/does_not_exist.npy')
+        real.saved_field('data/dvfs/origins/external/does_not_exist.npy')
     if not _HAVE_TORCH:  # what `generate` classifies as a clean skip in the main venv
         with pytest.raises(ModuleNotFoundError):
             learned.transmorph(epochs=0)
@@ -224,3 +224,18 @@ def test_ants_slice_matches_laplacian_grid_and_is_fold_free():
     assert ants.shape == lap.shape, 'ANTs slice must land on the Laplacian grid'
     assert morphology(ants)['simplex_neg_cells'] == 0, 'a SyN warp must be fold-free in-plane'
     assert meta['dz_max_dropped'] > 0
+
+
+def test_index_inventories_the_suite(tmp_path):
+    (tmp_path / 'origins' / 'm3_learned').mkdir(parents=True)
+    np.save(tmp_path / 'origins' / 'm3_learned' / 'a.npy', np.zeros(3))
+    (tmp_path / 'origins' / 'manifest.json').write_text(
+        json.dumps({'a': {'file': 'm3_learned/a.npy'}})
+    )
+    (tmp_path / 'cohort' / 'B0001' / 'laplacian_exterior').mkdir(parents=True)
+    np.save(tmp_path / 'cohort' / 'B0001' / 'laplacian_exterior' / 'f.npy', np.zeros(3))
+    main(['index', '--root', str(tmp_path)])
+    suite = json.loads((tmp_path / 'manifest.json').read_text())
+    assert suite['sections']['origins']['files'] == 1 and 'cases' in suite['sections']['origins']
+    assert suite['sections']['cohort']['brains'] == ['B0001']
+    assert 'crops' not in suite['sections']  # absent sections are skipped, not invented

@@ -27,8 +27,15 @@ COHORT_VARIANTS = ("laplacian_all", "laplacian_exterior")
 
 
 def cohort_dir():
-    """Path to the in-repo corrected brain cohort (may not exist; data is gitignored)."""
-    return Path(__file__).resolve().parents[1] / "data" / "dvfs" / "brain25_cohort_corrected"
+    """Path to the in-repo corrected brain cohort (may not exist; data is gitignored).
+
+    Canonical home: ``data/dvfs/cohort`` (the centralized DVF suite, see
+    data/dvfs/README.md); falls back to the pre-suite name for checkouts that
+    still carry the old layout.
+    """
+    root = Path(__file__).resolve().parents[1] / "data" / "dvfs"
+    new = root / "cohort"
+    return new if new.is_dir() else root / "brain25_cohort_corrected"
 
 
 def list_cohort():

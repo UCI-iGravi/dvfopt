@@ -16,7 +16,7 @@ DISCRIMINATOR (standard 2tri rows, objective none) leaves bilinear folds behind 
 either because it cannot clear them (z16_twist, z0_cluster) or because its rows
 never saw them (z0_sliver) — and the RECIPE (bilinear rows) clears the case to
 simplex 0 folds, fast (the bilinear residual is printed alongside). Crops are
-written to benchmarks/output/testcases/ (gitignored; this script regenerates
+written to data/dvfs/crops/ (gitignored; this script regenerates
 them).
 """
 
@@ -35,7 +35,7 @@ from dvfopt.core.windowed import min_field, windowed_correct  # noqa: E402
 from dvfopt.jacobian.triangle_sign import _triangle_areas_2d  # noqa: E402
 from dvfopt.objectives import NoneObjective  # noqa: E402
 
-OUT = "benchmarks/output/testcases"
+OUT = "data/dvfs/crops"
 THR = 0.01
 
 

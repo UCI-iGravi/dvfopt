@@ -1,5 +1,6 @@
 """CLI: ``python -m dvf_origins {list, generate, sweep}`` (run from the repo root).
 
+``index`` inventories the whole ``data/dvfs`` suite into ``data/dvfs/manifest.json``;
 ``generate`` -> ``<out>/<mechanism dir>/<case>.npy + .json`` and rebuilds
 ``<out>/manifest.json`` from the tree; ``sweep`` -> ``<out>/<timestamp>/results.csv``
 and, for a sweep of the default input root (or ``--latest``), ``<out>/results_latest.csv``.
@@ -17,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from dvf_origins import CASES, MECHANISMS, ORIGINS, RENAMED, ROOT, build, case_dir
+from dvf_origins._common import DVFS
 from dvf_origins.morphology import COLUMNS, morphology
 from dvfopt.io.fields import load_dvf, save_dvf
 
@@ -82,6 +84,46 @@ def write_manifest(root):
         )
     _write_atomic(root / 'manifest.json', json.dumps(manifest, indent=1, sort_keys=True))
     return manifest
+
+
+_SUITE_SECTIONS = (  # data/dvfs/<section>; see data/dvfs/README.md
+    'origins',
+    'cohort',
+    'crops',
+    'testcases',
+    'testcases_3d',
+    'canonical_2tri_2d',
+    'b0039',
+    'b0036',
+    'archive',
+    'results',
+)
+_FIELD_PATTERNS = ('*.npy', '*.npz', '*.nii.gz', '*.mha', '*.nrrd')
+
+
+def cmd_index(a):
+    """Inventory the whole DVF suite -> <root>/manifest.json (files, bytes per section)."""
+    root = Path(a.root)
+    suite = {'generated': time.strftime('%Y-%m-%dT%H:%M:%S'), 'root': str(root), 'sections': {}}
+    for name in _SUITE_SECTIONS:
+        d = root / name
+        if not d.is_dir():
+            continue
+        files = sorted(
+            {f for pat in _FIELD_PATTERNS for f in d.rglob(pat) if 'cache' not in f.parts}
+        )
+        sec = {'files': len(files), 'bytes': int(sum(f.stat().st_size for f in files))}
+        if name == 'origins' and (d / 'manifest.json').is_file():
+            sec['cases'] = json.loads((d / 'manifest.json').read_text())
+        elif name == 'cohort':
+            sec['brains'] = sorted(p.name for p in d.iterdir() if p.is_dir())
+        else:
+            sec['listing'] = [f.relative_to(d).as_posix() for f in files[:200]]
+        suite['sections'][name] = sec
+    _write_atomic(root / 'manifest.json', json.dumps(suite, indent=1))
+    for n, s in suite['sections'].items():
+        print(f'{n:18s} {s["files"]:5d} field file(s) {s["bytes"] / 1e6:10.1f} MB')
+    print(f'-> {root / "manifest.json"}')
 
 
 def cmd_list(_a):
@@ -210,6 +252,9 @@ def main(argv=None):
         help='also write <out>/results_latest.csv (default: only when --in is the default root)',
     )
     s.set_defaults(fn=cmd_sweep)
+    ix = sub.add_parser('index', help='inventory the DVF suite -> data/dvfs/manifest.json')
+    ix.add_argument('--root', default=str(DVFS))
+    ix.set_defaults(fn=cmd_index)
     a = p.parse_args(argv)
     a.fn(a)
 

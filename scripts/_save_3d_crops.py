@@ -8,7 +8,7 @@ from dvfopt import jacobian_det3D
 
 d = np.load('data/corrected_correspondences_count_touching/registered_output/deformation3d.npy')
 
-out_dir = 'data/test_cases_3d'
+out_dir = 'data/dvfs/testcases_3d'
 os.makedirs(out_dir, exist_ok=True)
 
 crops = {
