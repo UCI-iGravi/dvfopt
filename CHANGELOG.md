@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed — windowed engine: the measured-dead, default-off knobs
+
+- `untangle_delta` (+ the `_monotone_untangle` QP pass and the `SliceReport`
+  `untangle_*` counters), `reseed_before_mop`, and `orientation_scope` are gone.
+  All three were default-off options whose measurements said "don't": the blanket
+  untangle fails the fidelity gate on ordinary fields (raw z16 L2 596 vs 268;
+  `z0_sliver` 422 vs 21.5), re-seed-before-mop is too blunt for sliver residual
+  (L2 137.8 vs 21.5), and rows-scoped-to-folds is slower AND worse (z=240: 677
+  iterations vs 328 — the rows on all cells are what conditions the QP). The
+  findings report keeps the measurements; the engine no longer carries the code.
+
 ### Added — isqp: `qp_backend='qpalm'` (opt-in) and the QP-inner investigation
 
 - 316 real window QPs were captured from a z=240 solve (OSQP encoding, shared

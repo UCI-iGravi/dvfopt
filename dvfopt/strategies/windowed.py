@@ -205,7 +205,6 @@ class WindowedWrapperStrategy(Strategy):
     polish_maxiter: int = 30
     patience_retry: bool = True
     orientation_delta: Optional[float] = 0.01
-    orientation_scope: str = 'all'
     orientation_rows: str = 'edges'
     coarse_to_fine: bool = True
     coarse_factor: int = 4
@@ -215,8 +214,6 @@ class WindowedWrapperStrategy(Strategy):
     reanchor_tile: int = 48
     reseed_rounds: int = 3
     reseed_radius: int = 2
-    reseed_before_mop: bool = False
-    untangle_delta: Optional[float] = None
 
     accepts_constraints = tuple(LOCALITY)
     accepts_objectives = (L1Objective, L2Objective, NoneObjective)
@@ -278,7 +275,6 @@ class WindowedWrapperStrategy(Strategy):
             polish_maxiter=self.polish_maxiter,
             patience_retry=self.patience_retry,
             orientation_delta=self.orientation_delta,
-            orientation_scope=self.orientation_scope,
             orientation_rows=self.orientation_rows,
             coarse_to_fine=self.coarse_to_fine,
             coarse_factor=self.coarse_factor,
@@ -288,8 +284,6 @@ class WindowedWrapperStrategy(Strategy):
             reanchor_tile=self.reanchor_tile,
             reseed_rounds=self.reseed_rounds,
             reseed_radius=self.reseed_radius,
-            reseed_before_mop=self.reseed_before_mop,
-            untangle_delta=self.untangle_delta,
             time_budget_s=self.time_budget_s,
             verbose=verbose,
             record_history=record_history,
