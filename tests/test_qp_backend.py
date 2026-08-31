@@ -317,3 +317,43 @@ def test_giant_tiles_skip_the_backend_rung(monkeypatch):
     )
     assert rep.backend_fallbacks == 0
     assert {c["qp_backend"] for c in calls} == {"hybrid"}
+
+
+# --------------------------------------------------------------------------
+# qp_backend='qpalm'
+# --------------------------------------------------------------------------
+needs_qpalm = pytest.mark.skipif(not isqp_mod.HAS_QPALM, reason="qpalm not installed")
+
+
+def test_make_qp_qpalm_dispatch(monkeypatch):
+    if isqp_mod.HAS_QPALM:
+        assert type(_make_qp("qpalm", True, 800)).__name__ == "_QPALMQP"
+    monkeypatch.setattr(isqp_mod, "HAS_QPALM", False)
+    obj = _make_qp("qpalm", True, 800)  # degrades to plain OSQP, logged once
+    assert obj.__class__.__module__.startswith("osqp")
+
+
+def test_unknown_backend_lists_qpalm():
+    with pytest.raises(ValueError, match="qpalm"):
+        _make_qp("nope", True, 800)
+
+
+@needs_qpalm
+def test_qpalm_backend_solves_a_window():
+    from dvfopt.constraints import SimplexConstraint2DBilinear
+    from dvfopt.testdata import make_random_dvf
+
+    patch = np.asarray(make_random_dvf("03a_10x10_random_seed_42"))[1:, 0]
+    phi = np.zeros((2, 64, 64))
+    phi[:, 24 : 24 + patch.shape[1], 26 : 26 + patch.shape[2]] = patch
+    c = SimplexConstraint2DBilinear(shape=(64, 64))
+    _out, rep = windowed_correct(
+        phi,
+        "isqp",
+        constraint=c,
+        objective=L2Objective(),
+        threshold=0.01,
+        verbose=0,
+        qp_backend="qpalm",
+    )
+    assert rep.folds_after == 0 and rep.damage == 0
