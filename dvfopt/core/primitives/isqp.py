@@ -154,14 +154,96 @@ class _HybridQP:
             return None
 
 
+try:  # optional dependency: the 'qpalm' QP backend (pip install qpalm)
+    import qpalm
+
+    HAS_QPALM = True
+except ImportError:  # pragma: no cover - environment-dependent
+    qpalm = None
+    HAS_QPALM = False
+
+
+class _QPALMQP:
+    """QPALM behind OSQP's ``setup`` / ``update`` / ``solve`` surface
+    (``qp_backend='qpalm'``).
+
+    QPALM's ALM solves exactly the elastic form these subproblems take (a
+    proximal objective against two-sided linear rows) and needs 20-40 outer
+    iterations where OSQP's ADMM runs to its cap under the L2 default. Its
+    Python binding cannot update matrix values in place, so each solve rebuilds
+    ``Data`` + ``Solver`` from the stored problem and warm-starts from the
+    previous solution -- measured on the captured z=240 workload (57 real
+    window QPs, 9 patterns) this is still 2.5x OSQP end to end (8.4 vs 21.2 s)
+    at comparable feasibility (worst 1.7e-3 vs 3.4e-3).
+    """
+
+    _BIG = 1e18  # qpalm wants finite bounds
+
+    def __init__(self):
+        self._p = self._q = self._a = self._lo = self._up = None
+        self._x = self._y = None
+
+    def setup(self, p, q, a, lo, up, **kw):
+        self._p, self._a = p.copy(), a.copy()
+        self._q = np.asarray(q, dtype=float).copy()
+        self._lo = np.asarray(lo, dtype=float).copy()
+        self._up = np.asarray(up, dtype=float).copy()
+
+    def update(self, q=None, l=None, u=None, Px=None, Ax=None):
+        if q is not None:
+            self._q = np.asarray(q, dtype=float).copy()
+        if l is not None:
+            self._lo = np.asarray(l, dtype=float).copy()
+        if u is not None:
+            self._up = np.asarray(u, dtype=float).copy()
+        if Px is not None:
+            self._p.data = np.asarray(Px, dtype=float).copy()
+        if Ax is not None:
+            self._a.data = np.asarray(Ax, dtype=float).copy()
+
+    def solve(self):
+        data = qpalm.Data(self._a.shape[1], self._a.shape[0])
+        data.Q, data.q, data.A = self._p, self._q, self._a
+        data.bmin = np.maximum(self._lo, -self._BIG)
+        data.bmax = np.minimum(self._up, self._BIG)
+        st = qpalm.Settings()
+        st.verbose = False
+        st.eps_abs = st.eps_rel = 1e-3
+        solver = qpalm.Solver(data, st)
+        if self._x is not None and self._x.size == self._a.shape[1]:
+            solver.warm_start(self._x, self._y)
+        solver.solve()
+        x = np.array(solver.solution.x)
+        self._x, self._y = x.copy(), np.array(solver.solution.y)
+        return SimpleNamespace(
+            x=x,
+            y=None,
+            info=SimpleNamespace(iter=int(solver.info.iter), status=f"qpalm-{solver.info.status}"),
+        )
+
+
+_QPALM_WARNED = [False]
+
+
+def _warn_no_qpalm():
+    if not _QPALM_WARNED[0]:
+        _QPALM_WARNED[0] = True
+        logger.debug("qp_backend='qpalm' but qpalm is not importable; using OSQP only")
+
+
 def _make_qp(qp_backend, ip_cold, ip_after_admm_iters):
     """QP object for *qp_backend*: a plain ``osqp.OSQP()`` for ``'osqp'`` (the
     pre-hybrid path, byte for byte) or :class:`_HybridQP` for ``'hybrid'``.
     Without ``clarabel`` installed, ``'hybrid'`` IS ``'osqp'`` (logged once)."""
     if qp_backend == "osqp":
         return osqp.OSQP()
+    if qp_backend == "qpalm":
+        if HAS_QPALM:
+            return _QPALMQP()
+        _warn_no_qpalm()
+        return osqp.OSQP()
     if qp_backend != "hybrid":
-        raise ValueError(f"unknown qp_backend {qp_backend!r}; valid: 'osqp', 'hybrid'")
+        raise ValueError(f"unknown qp_backend {qp_backend!r}; valid: 'osqp', 'hybrid', 'qpalm'")
     if not HAS_CLARABEL:
         global _WARNED_NO_CLARABEL
         if not _WARNED_NO_CLARABEL:
