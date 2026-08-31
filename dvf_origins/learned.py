@@ -136,7 +136,7 @@ def cohort_data(
     by ``downsample`` and centre-cropped to ``crop``, multiples of 32 for the
     five-level UNet; 3 / 96x128 keeps ~85 % of the 320x456 field of view, so
     compare fold fractions, not counts, against the native-resolution rows).
-    Cached under ``data/origins/cache/`` (gitignored), keyed by a hash of every
+    Cached under ``data/dvfs/origins/cache/`` (gitignored), keyed by a hash of every
     input and verified on load. Raises ``FileNotFoundError`` when the RegTools
     outputs (external) or the template are absent.
     """

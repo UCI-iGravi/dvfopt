@@ -14,7 +14,7 @@ pull-back, voxel units), plus the fold-morphology table over them.
 
 ```bash
 python -m dvf_origins list                     # the case registry (dvf_origins/__init__.py: CASES)
-python -m dvf_origins generate                 # -> data/origins/<mechanism>/<case>.npy + .json, manifest.json (gitignored)
+python -m dvf_origins generate                 # -> data/dvfs/origins/<mechanism>/<case>.npy + .json, manifest.json (gitignored)
 python -m dvf_origins generate --mechanism 1 4 # subset; cases whose data/deps are absent are skipped, with the reason
 python -m dvf_origins sweep                    # -> output/origins/<timestamp>/results.csv + results_latest.csv
 pytest dvf_origins                             # self-check (~3 s in the main venv, ~15 s in the torch venv; ~20 s more with the gitignored data; CI runs it too)
@@ -24,7 +24,7 @@ On disk (everything gitignored and regenerable; the learned rows cost minutes
 of CPU, the cohort ones also need the external RegTools volumes):
 
 ```
-data/origins/
+data/dvfs/origins/
   manifest.json                  case -> file, mechanism, tool, source, shape, build time
   m1_interpolation/              m1_laplacian_synthetic_{clean,outliers,collapse,mixed}, m1_laplacian_cohort_B0039_z264
   m2_dense_optimization/         m2_tvl1_synthetic_{weak,strong}, m2_ilk_synthetic_r3, m2_{demons,ffd}_brainpair_*, m2_tvl1_brainpair_a60
@@ -61,7 +61,7 @@ uv venv .venv-torch --python 3.12
 uv pip install --python .venv-torch --torch-backend=cpu \
     -e . torch "timm>=1.0" "voxelmorph @ git+https://github.com/voxelmorph/voxelmorph.git"
 .venv-torch/Scripts/python -m dvf_origins generate --mechanism 3   # POSIX: .venv-torch/bin/python
-python -m dvf_origins sweep                                          # any venv; reads data/origins/
+python -m dvf_origins sweep                                          # any venv; reads data/dvfs/origins/
 ```
 
 The `*_cohort` rows train on real brains: `learned.cohort_data` resamples each
@@ -74,7 +74,7 @@ holds out B0039 at z=264. Planes are block-mean downsampled ×3 and centre-cropp
 to 96×128 (the VoxelMorph UNet needs multiples of 32; ~85 % of the field of view
 survives), so these rows live on a different grid than the native 320×456 m1/m4
 rows of the same plane — compare fold *fractions*, not counts. The slice cache
-lands in `data/origins/cache/` keyed by a hash of every input. The brain roster
+lands in `data/dvfs/origins/cache/` keyed by a hash of every input. The brain roster
 is whatever `DVF_ORIGINS_REGTOOLS` (default: the sibling RegTools checkout)
 holds with both files; the JSON meta records which brains trained.
 

@@ -6,6 +6,23 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — `data/dvfs/` is the centralized DVF suite
+
+- Every deformation field the repo consumes or produces now lives under one
+  root: `origins/` (the `dvf_origins` per-mechanism benchmark fields, moved from
+  `data/origins`), `cohort/` (the 7-brain RegTools cohort, renamed from
+  `brain25_cohort_corrected`), `crops/` (the hard B0039 crops, moved from
+  `benchmarks/output/testcases`), `testcases/` + `testcases_3d/` (fixture fields,
+  moved from `data/test_cases{,_3d}`), the pre-existing `canonical_2tri_2d/`,
+  `b0039/`, `b0036/`, `archive/`, and a designated `results/` for corrected-field
+  artifacts. `data/dvfs/README.md` (tracked) is the map; `python -m dvf_origins
+  index` inventories the suite into `data/dvfs/manifest.json`.
+- **No old path breaks**: every pre-suite location is a directory junction onto
+  its new home, so unmerged branches, notebooks and external tooling keep
+  working; the Python entry points (`benchmark_utils.cohort_dir`,
+  `dvf_origins`, the crop/testcase scripts) now name the suite paths, with a
+  fallback to the pre-suite cohort name for checkouts on the old layout.
+
 ## [0.6.0] — 2026-08-31
 
 The zero-folds release. The windowed elastic-QP engine's default formulation is

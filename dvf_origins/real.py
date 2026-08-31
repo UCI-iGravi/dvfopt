@@ -1,7 +1,7 @@
 """Loaders for real fields already on disk (all gitignored data).
 
 * cohort Laplacian slice (mechanism 1, real) and ANTs SyN warp slice
-  (mechanism 4, real) from ``data/dvfs/brain25_cohort_corrected/``;
+  (mechanism 4, real) from ``data/dvfs/cohort/``;
 * any saved field (e.g. a VoxelMorph / TransMorph notebook output) for
   mechanism 3.
 """
@@ -10,9 +10,10 @@ from pathlib import Path
 
 import numpy as np
 
-from dvf_origins._common import ROOT, pack2d
+from dvf_origins._common import DVFS, ROOT, pack2d
 
-COHORT = ROOT / 'data' / 'dvfs' / 'brain25_cohort_corrected'
+# canonical suite home, with a fallback for checkouts still on the pre-suite layout
+COHORT = DVFS / 'cohort' if (DVFS / 'cohort').is_dir() else DVFS / 'brain25_cohort_corrected'
 
 
 def _slice2d(vol, z):

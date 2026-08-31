@@ -203,5 +203,10 @@ cython_debug/
 research/strict_feasibility_3d/runners/output/*.npy
 research/strict_feasibility_3d/runners/output/*.prof
 
-# dvf_origins harness outputs (regenerated)
+# The centralized DVF suite (data/dvfs/README.md is the tracked map; payloads are
+# regenerable or copied data). The pre-suite paths below stay listed because
+# directory junctions keep them alive for old checkouts/notebooks.
+/data/dvfs/*
+!/data/dvfs/README.md
 /data/origins
+/data/test_cases_3d

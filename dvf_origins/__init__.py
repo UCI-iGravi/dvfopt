@@ -112,7 +112,7 @@ CASES = {
     'm3_external_saved_field': (
         3,
         real.saved_field,
-        dict(path='data/origins/external/learned.npy'),
+        dict(path='data/dvfs/origins/external/learned.npy'),
     ),
     # -- 4: diffeomorphic in the continuum, folds only from discretization ---
     'm4_svf_synthetic_decimated': (

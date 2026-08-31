@@ -1,4 +1,4 @@
-"""Triangle-target benchmark on the synthetic test cases in data/test_cases.
+"""Triangle-target benchmark on the synthetic test cases in data/dvfs/testcases.
 
 Compares ``iterative_2d_tri_barrier`` under two coverage schemes:
 
@@ -72,7 +72,7 @@ def _silent(fn, *args, **kwargs):
 
 
 def run_one(name, full_coverage):
-    path = os.path.join(_REPO_ROOT, 'data', 'test_cases', name)
+    path = os.path.join(_REPO_ROOT, 'data', 'dvfs', 'testcases', name)
     arr = np.load(path)
     phi_init = np.stack([arr[1, 0], arr[2, 0]])
     init = _stats(phi_init)
