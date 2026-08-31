@@ -312,7 +312,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="simplex | simplex_standard | bilinear | finite | jdet | jdet_3d | "
         'simplex_3d (default: simplex)',
     )
-    pc.add_argument('--objective', default='l1', help='l1 | l2 | none (default: l1)')
+    pc.add_argument(
+        '--objective',
+        default='l1',
+        help='l1 | l2 | none | auto (default: l1; auto = l2 on trap-heavy fields, none + polish elsewhere)',
+    )
     pc.add_argument(
         '--strategy',
         default='auto',

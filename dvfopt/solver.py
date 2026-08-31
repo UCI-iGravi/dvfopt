@@ -422,6 +422,16 @@ def correct_dvf(
                           strategy=strategy, shape=shape,
                           threshold=threshold).fit(phi_in)
 
+    With ``objective='auto'``, the objective is picked from the initial fold
+    stats: ``'l2'`` on trap-heavy fields (``n_neg >= 3000`` or ``min <= -50``,
+    calibrated on the measured boundary), where the in-solve anchor wins BOTH wall
+    and fidelity (measured full-res z=2: 328 s / L2 move 1977.8 vs ``'none'``'s
+    411 s / 2341.1); ``'none'`` plus the per-window ``polish='l2'`` everywhere
+    else, where pure feasibility is 2-2.5x faster and the polish recovers the
+    within-window share of the anchor's fidelity (findings 4.3e). The polish
+    is injected only when the strategy is (or resolves to) the windowed isqp
+    engine and ``polish`` was not set explicitly.
+
     With ``strategy='auto'``, picks a strategy based on the constraint
     family, objective, and initial fold density (see
     :func:`auto_strategy` for the routing table; simplex (2D) + L1 always
@@ -435,18 +445,41 @@ def correct_dvf(
     """
     if shape is None and isinstance(constraint, str):
         shape = infer_shape(constraint, phi_in)  # from the layout; from_spec alone needs shape=
-    if strategy == 'auto':
+    _wants_polish = False
+    if objective == 'auto' or strategy == 'auto':
         # Need the constraint built first to read init stats; do it lazily.
         c = make_constraint(constraint, shape) if isinstance(constraint, str) else constraint
         T = c.values(c.flatten(phi_in))
         init_n_neg = int((T <= 0).sum())
         init_min = float(T.min())
+    if objective == 'auto':
+        # Fidelity where it wins BOTH axes (the in-solve anchor on trap-heavy
+        # fields; boundary calibrated on the measured cases: full-res z=2 at
+        # 3909 folds / min -63 is the l2-wins-both regime, z16 at 2131 / z=440
+        # at 1828 / min -22 are the none-wins-wall regime), speed + the
+        # per-window polish everywhere else — see findings 4.3e.
+        if init_n_neg >= 3000 or init_min <= -50.0:
+            objective = 'l2'
+        else:
+            objective = 'none'
+            _wants_polish = True
+    if strategy == 'auto':
         strategy = auto_strategy(
             c,
             init_n_neg,
             init_min,
             objective_label=(objective if isinstance(objective, str) else objective.label),
         )
+    if _wants_polish:
+        if strategy == 'isqp_windowed' and 'polish' not in strategy_kwargs:
+            strategy_kwargs = dict(strategy_kwargs, polish='l2')
+        elif (
+            type(strategy).__name__ == 'ISQPWindowedStrategy'
+            and getattr(strategy, 'polish', None) is None
+        ):
+            from dataclasses import replace as _dc_replace
+
+            strategy = _dc_replace(strategy, polish='l2')
     return Solver.from_spec(
         constraint=constraint,
         objective=objective,
