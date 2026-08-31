@@ -133,5 +133,4 @@ def test_strategy_forwards_the_reseed_knobs(monkeypatch):
         threshold=0.01,
     )
     assert seen["reseed_rounds"] == 5 and seen["reseed_radius"] == 4
-    assert seen["reseed_before_mop"] is False and ISQPWindowedStrategy().reseed_before_mop is False
     assert ISQPWindowedStrategy().reseed_rounds == 3 and ISQPWindowedStrategy().reseed_radius == 2
