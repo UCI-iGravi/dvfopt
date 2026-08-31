@@ -6,6 +6,31 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — isqp: `qp_backend='qpalm'` (opt-in) and the QP-inner investigation
+
+- 316 real window QPs were captured from a z=240 solve (OSQP encoding, shared
+  patterns + per-iteration values; harness in the campaign scratchpad, capture
+  in `benchmarks/output/isqp_campaign/qpcap_z240.*`) and replayed through
+  candidate solvers: **QPALM 8.4 s vs OSQP 21.2 s (2.5×, faster on every one of
+  9 patterns, 23–36 outer iterations where ADMM runs to its 1000 cap,
+  comparable feasibility)**; PIQP 19.3 s (machine-precision feasible but one
+  pattern at 0.87 s/solve); proxsuite has no Windows wheel.
+- `qp_backend='qpalm'` wires QPALM behind the OSQP `setup`/`update`/`solve`
+  surface (its binding cannot update matrices, so each solve rebuilds
+  Data + Solver and warm-starts from the previous solution — still 2.5× in the
+  replay). Degrades to plain OSQP when `qpalm` is not installed (logged once).
+- **Slice gate** (vs the hybrid default; every entry 0 folds, damage 0,
+  identical L2 move): z=240 **49 s vs 99 s (2.0×** — the L2 default at the
+  `none` objective's wall); z16 75 vs 65 s (+15 %); full-res z=2 **3159 vs
+  328 s (9.6× WORSE** — 7 rounds, 153 a*-collapses, the ladder's backend rung
+  firing 432 OSQP retries); sliver crop +55 % iterations. So the backend is
+  **opt-in for QP-bound ordinary fields only**; the default stays `'hybrid'`.
+- The refined finding (findings §4.3f): the L2 per-QP cost is an OSQP-ADMM
+  artifact, not intrinsic to the QPs — but the SQP's step dynamics co-evolved
+  with OSQP's solution style, and a different (even better-converged) QP
+  solution perturbs iterates enough to shatter trap-heavy trajectories. A
+  qpalm-on-mild-windows / osqp-escalation policy is the natural follow-up.
+
 ### Added — windowed engine: `giant_workers` — RAS (Jacobi) giant-tile sweeps (opt-in)
 
 - With `giant_workers > 1`, each giant-region Schwarz sweep runs as restricted

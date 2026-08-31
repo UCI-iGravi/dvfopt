@@ -424,6 +424,31 @@ good basin. The polish+reanchor combination is exactly the union of both gains
 at both costs. No mode dominates; the L2 default remains the balanced choice,
 and every mode is an existing knob.
 
+### 4.3f The QP inner itself: the cost is OSQP's, the coupling is ours
+
+316 real window QPs were captured from a z=240 solve and replayed through
+candidate solvers on identical matrices (57 solves with full data, 9 patterns):
+
+| solver | total | per-solve behaviour |
+|---|---|---|
+| OSQP (engine settings) | 21.2 s | ADMM at the 1000-iteration cap on most patterns; worst viol 3.4e-3 |
+| **QPALM** (ALM; rebuilt + warm-started each solve) | **8.4 s (2.5×)** | 23–36 outer iterations; faster on every pattern; worst viol 1.7e-3 |
+| PIQP (proximal IP) | 19.3 s | machine-precision feasible, but one pattern at 0.87 s/solve |
+
+So the ~1.8× per-iteration cost of the L2 default (§4.3c–d) is **not intrinsic
+to the QPs** — QPALM solves the same problems 2.5× faster. But wiring it in
+(`qp_backend='qpalm'`) and gating on slices splits sharply: z=240 **49 s vs
+99 s (2.0×, the L2 default at the `none` objective's wall)**, z16 +15 %, and
+full-res z=2 **9.6× worse** (3159 vs 328 s: 7 rounds, 153 a*-collapses, the
+backend rung firing 432 OSQP retries) — at identical fidelity and 0 folds /
+damage 0 throughout, because the ladder nets correctness. The refined
+statement: **the engine's step dynamics co-evolved with OSQP's solution
+style** — trap-heavy trajectories depend on the particular near-solutions ADMM
+returns, and a different, even better-converged QP answer perturbs the iterates
+enough to shatter them (the same mechanism that made Clarabel-always lose,
+§4.3c). `'qpalm'` ships opt-in for QP-bound ordinary fields; the follow-up with
+real upside is a qpalm-on-mild-windows / osqp-escalation policy.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
