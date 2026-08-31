@@ -6,6 +6,20 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-31
+
+The zero-folds release. The windowed elastic-QP engine's default formulation is
+now self-contained — bilinear certificate rows + linear edge-monotonicity rows
++ the in-solve L2 anchor — and certified fold-free at scale: the 528-slice
+full-resolution B0039 volume twice (599,313 → 0 simplex/bilinear/finite folds,
+damage 0), and the 7-brain cohort at **203/203 slices, 0 folds, damage 0, on
+stock defaults** (worst case 37,525 folds → 0 in 1857 s; the terminal re-seed
+never fired). Ordinary slices solve in seconds-to-~100 s; the campaign's
+speed fixes (window feasibility #103, ADMM cap #106), the objective menu
+(`auto`/`l2`/`none`/`polish`/`reanchor`), the RAS giant-tile sweeps, the
+opt-in QPALM backend, and the dead-knob pruning are all in. Findings, tables
+and dead ends: `docs/superpowers/notes/zero-folds-campaign-findings.md`.
+
 ### Removed — windowed engine: the measured-dead, default-off knobs
 
 - `untangle_delta` (+ the `_monotone_untangle` QP pass and the `SliceReport`
