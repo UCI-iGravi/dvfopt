@@ -652,6 +652,36 @@ class SolverWorker(QtCore.QThread):
         )
         return phi_out
 
+    _resolved_auto_objective = None
+
+    def _resolve_auto_and_polish(self, constraint, strategy):
+        """Resolve ``objective_id='auto'`` against the loaded field's fold stats
+        (:func:`dvfopt.solver.resolve_auto_objective`, the same dispatch as
+        ``correct_dvf``), and mirror its polish injection when the strategy is
+        the windowed isqp engine with ``polish`` unset."""
+        if self._params.get('objective_id') != 'auto':
+            return strategy
+        import numpy as np
+
+        from dvfopt.solver import resolve_auto_objective
+
+        t = np.asarray(constraint.values(constraint.flatten(self._phi_for_auto())))
+        label, wants_polish = resolve_auto_objective(int((t <= 0).sum()), float(t.min()))
+        self._resolved_auto_objective = label
+        if (
+            wants_polish
+            and type(strategy).__name__ == 'ISQPWindowedStrategy'
+            and getattr(strategy, 'polish', None) is None
+        ):
+            from dataclasses import replace
+
+            strategy = replace(strategy, polish='l2')
+        return strategy
+
+    def _phi_for_auto(self):
+        """The field the run is about to solve (set at worker construction)."""
+        return self.phi
+
     def _build_objective(self):
         """Build an Objective instance for ``self._params['objective_id']``.
 
@@ -661,6 +691,8 @@ class SolverWorker(QtCore.QThread):
         from dvfopt import L1Objective, L2Objective, NoneObjective
 
         oid = self._params.get('objective_id', 'l1')
+        if oid == 'auto':
+            oid = self._resolved_auto_objective or 'l2'
         if oid == 'l1':
             return L1Objective(eps=1e-4)
         if oid == 'l2':
@@ -714,6 +746,7 @@ class SolverWorker(QtCore.QThread):
             constraint = JdetConstraint2D(shape=(H, W))
         else:
             raise ValueError(f'unknown constraint_kind={constraint_kind!r}')
+        strategy = self._resolve_auto_and_polish(constraint, strategy)
         objective = self._build_objective()
         solver = Solver(
             constraint=constraint,
@@ -797,6 +830,7 @@ class SolverWorker(QtCore.QThread):
             constraint = JdetConstraint3D(shape=(D, H, W))
         else:
             raise ValueError(f'unknown 3D constraint_kind={constraint_kind!r}')
+        strategy = self._resolve_auto_and_polish(constraint, strategy)
         objective = self._build_objective()
         solver = Solver(
             constraint=constraint,
