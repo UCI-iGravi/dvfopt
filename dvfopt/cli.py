@@ -112,6 +112,56 @@ def _map_slices(jobs, n_workers):
         return list(ex.map(_correct_slice, jobs))
 
 
+def _certificate(phi_in, phi_out, threshold, summary):
+    """Machine-readable certificate: per-gauge fold stats of the input and the
+    corrected output, content hashes, and the run's provenance. The gauges are
+    the canonical registry constraints for the field's dimensionality (2D:
+    simplex / bilinear / finite; 3D: simplex_3d), via
+    :func:`dvfopt.metrics.constraint_fold_stats`.
+    """
+    import hashlib
+    from dataclasses import asdict as _asdict
+
+    import numpy as np
+
+    from dvfopt import __version__ as _ver
+    from dvfopt.metrics import constraint_fold_stats
+
+    def _sha(a):
+        return hashlib.sha256(np.ascontiguousarray(a).tobytes()).hexdigest()
+
+    is_3d = phi_out.ndim == 4 and phi_out.shape[0] == 3 and phi_out.shape[1] > 1
+    gauges = ('simplex_3d',) if is_3d else ('simplex_standard', 'bilinear', 'finite')
+
+    def _stats(phi):
+        out = {}
+        for g in gauges:
+            try:
+                name, st = constraint_fold_stats(phi, g, threshold=threshold)
+                out[name] = _asdict(st)
+            except Exception as exc:
+                out[g] = {'error': repr(exc)}
+        return out
+
+    cert = {
+        'dvfopt': _ver,
+        'threshold': threshold,
+        'input_sha256': _sha(phi_in),
+        'output_sha256': _sha(phi_out),
+        'input_stats': _stats(phi_in),
+        'output_stats': _stats(phi_out),
+        'run': {
+            k: summary.get(k)
+            for k in ('pipeline', 'constraint', 'objective', 'strategy', 'feasible')
+            if k in summary
+        },
+    }
+    cert['certified'] = all(
+        isinstance(st, dict) and st.get('n_below') == 0 for st in cert['output_stats'].values()
+    )
+    return cert
+
+
 def _correct_slices(phi, args, params):
     """Per-slice 2D solver sweep over a (3, D, H, W) volume (pre-2.5D step).
 
@@ -224,6 +274,18 @@ def _cmd_correct(args) -> int:
     save_dvf(args.output, out)
     summary.update(input=str(args.input), output=str(args.output))
 
+    if getattr(args, 'certify', None):
+        cert = _certificate(
+            phi, out, args.threshold if args.threshold is not None else 0.01, summary
+        )
+        cert_path = Path(args.certify)
+        if not cert_path.is_absolute() and cert_path.name == str(cert_path):
+            cert_path = Path(args.output).parent / cert_path
+        cert_path.write_text(json.dumps(cert, indent=2, default=_json_default), encoding='utf-8')
+        print(f'certificate: {cert_path} (certified={cert["certified"]})')
+        if not cert['certified']:
+            feasible = False
+
     if report_dir is not None:
         report_dir.mkdir(parents=True, exist_ok=True)
         (report_dir / 'summary.json').write_text(
@@ -311,6 +373,16 @@ def build_parser() -> argparse.ArgumentParser:
         default='simplex',
         help="simplex | simplex_standard | bilinear | finite | jdet | jdet_3d | "
         'simplex_3d (default: simplex)',
+    )
+    pc.add_argument(
+        '--certify',
+        nargs='?',
+        const='certificate.json',
+        default=None,
+        metavar='PATH',
+        help='write a machine-readable certificate (per-gauge fold stats of input and output, '
+        'content hashes, provenance) to PATH (default certificate.json next to the output); '
+        'exit 1 unless every gauge certifies',
     )
     pc.add_argument(
         '--objective',

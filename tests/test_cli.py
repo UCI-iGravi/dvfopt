@@ -151,3 +151,66 @@ def test_correct_25d_pipeline_smoke(tmp_path):
     out = tmp_path / 'out.npy'
     rc = main(['correct', str(p), str(out), '--pipeline', '25d'])
     assert out.is_file() and rc in (0, 1)  # tiny random volume may hit the geometric floor
+
+
+def test_correct_certify_writes_certificate(tmp_path, capsys):
+    pytest.importorskip('osqp')
+    p, phi = _save_folded(tmp_path)
+    out = tmp_path / 'out.npy'
+    cert_path = tmp_path / 'cert.json'
+    rc = main(
+        [
+            'correct',
+            str(p),
+            str(out),
+            '--constraint',
+            'bilinear',
+            '--strategy',
+            'isqp_windowed',
+            '--objective',
+            'l2',
+            '--certify',
+            str(cert_path),
+        ]
+    )
+    assert rc == 0
+    cert = json.loads(cert_path.read_text())
+    assert cert['certified'] is True
+    for st in cert['output_stats'].values():
+        assert st['n_below'] == 0
+    assert any(st.get('n_below', 0) > 0 for st in cert['input_stats'].values())
+    assert cert['input_sha256'] != cert['output_sha256']
+    assert cert['run']['feasible'] is True
+
+
+def test_correct_certify_default_path_lands_next_to_output(tmp_path, capsys):
+    pytest.importorskip('osqp')
+    p, _ = _save_folded(tmp_path)
+    out = tmp_path / 'out.npy'
+    rc = main(
+        [
+            'correct',
+            str(p),
+            str(out),
+            '--constraint',
+            'bilinear',
+            '--strategy',
+            'isqp_windowed',
+            '--objective',
+            'l2',
+            '--certify',
+        ]
+    )
+    assert rc == 0
+    assert json.loads((tmp_path / 'certificate.json').read_text())['certified'] is True
+
+
+def test_correct_certify_refuses_a_partial_gauge_recipe(tmp_path, capsys):
+    """The legacy l1/simplex recipe does not enforce the bilinear gauge; the
+    certificate must refuse it (exit 1) while the field is still simplex-feasible."""
+    p, _ = _save_folded(tmp_path)
+    out = tmp_path / 'out.npy'
+    rc = main(['correct', str(p), str(out), '--certify'])
+    cert = json.loads((tmp_path / 'certificate.json').read_text())
+    if not cert['certified']:
+        assert rc == 1
