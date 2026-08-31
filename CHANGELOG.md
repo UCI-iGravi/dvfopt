@@ -6,6 +6,27 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — windowed engine: `giant_workers` — RAS (Jacobi) giant-tile sweeps (opt-in)
+
+- With `giant_workers > 1`, each giant-region Schwarz sweep runs as restricted
+  additive Schwarz on the shared spawn pool: every tile of the sweep is solved
+  concurrently from the same snapshot of the field, and each pastes back only
+  its disjoint step-grid core (the partition is tested). Trades the serial
+  multiplicative sweep's within-sweep propagation (more rounds) for parallel
+  tiles; `0` (the default) is the serial sweep, byte-identical (tested).
+- **Measured** (L2 default, serial references from the same engine, idle box;
+  0 folds / damage 0 everywhere): z=240 (5 giant regions) **73 s vs 99 s
+  (−26 %)** at move 30.1 vs 29.9; full-res z=2 (1 giant region) 335 s vs 328 s
+  (neutral) at move 1966.1 vs 1977.8. The knob is the single-slice latency
+  lever for giant-heavy slices; inside a per-slice pool worker it caps to 1
+  (the pool never nests), so volume throughput is unaffected.
+- Same investigation, measured and recorded (findings §4.3e): the terminal
+  `reanchor` stage is the max-fidelity mode on ordinary slices only — it beats
+  even the in-solve L2 anchor there (z=240 move 28.1 vs 29.9, z=440 54.5 vs
+  67.8, at 3–4× the wall) but recovers NOTHING on trap-heavy slices (z=2: all
+  tiles revert), where only the warm at-solve-time anchor works. No mode
+  dominates; all are existing knobs.
+
 ### Added — windowed engine: `polish='l2'|'l1'` — per-window anchored polish (opt-in)
 
 - After a window solves, the SAME box is re-solved on the current field against

@@ -405,6 +405,25 @@ single formulation dominates: the in-solve L2 default keeps the best fidelity
 everywhere and wins outright on trap-heavy slices; `objective='none'` is the
 2–2.5× fast lane; `polish='l2'` is the opt-in middle point.
 
+**The terminal `reanchor` stage, re-measured on the final engine** (it predates
+#103/#106; wall s / L2 move, all 0 folds / damage 0):
+
+| case | in-solve L2 | `none` | `none`+polish | `none`+reanchor | `none`+polish+reanchor |
+|---|---|---|---|---|---|
+| z=240 | 99 / 29.9 | 48 / 36.0 | 72 / 33.5 | 356 / **28.1** | 354 / 28.1 |
+| z=440 | 255 / 67.8 | 97 / 87.4 | 113 / 85.9 | 765 / **54.5** | 737 / 54.9 |
+| z16 | 65 / **189.6** | 27 / 227.7 | 36 / 222.0 | 326 / 218.5 | 440 / 213.1 |
+| z=2 | **328 / 1977.8** | 411 / 2341 | 425 / **2025.9** | 731 / 2340.6 (all tiles revert) | 700 / 2025.9 |
+
+Two complementary facts: the terminal reanchor's overlapping-tile sweeps dig
+past even the in-solve anchor on ordinary slices (its tiles escape the one-shot
+frozen-ring limit) — the max-fidelity mode at 3–4× the wall — yet recover
+nothing on the trap-heavy slice, where every tile reverts and only the warm
+at-solve-time anchor (in-solve L2, or the per-window polish at 87 %) reaches the
+good basin. The polish+reanchor combination is exactly the union of both gains
+at both costs. No mode dominates; the L2 default remains the balanced choice,
+and every mode is an existing knob.
+
 ### 4.4 What is "bloat" and what is not — the minimal engine
 
 With the orientation rows in every window and *every* fallback off (no no-TR /
