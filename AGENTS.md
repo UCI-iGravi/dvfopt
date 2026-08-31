@@ -129,9 +129,15 @@ interior with a frozen ring), then runs a frozen-rim 3D-interior mop
 the single-frozen-plane sweep structurally cannot fix.
 
 On the full 528-slice B0039 volume this took the 3D fold count from **1,058,831 →
-33** (99.997%). The residual ~33 are the **geometric floor** of the fixed-diagonal
-simplex (3D) decomposition (no feasible tet split exists), not a solver limitation — an
-exact-feasibility solver with escalating freedom cannot move them.
+33** (99.997%). Of the residual ~33, Part XXIII of
+`research/strict_feasibility_3d/REPORT.md` measured **19 as decomposition
+artifacts** (some other main-diagonal Kuhn fan certifies them) and **14 as the
+true geometric floor** (negative under all four main diagonals); per-cell
+adaptive splits are provably nonconforming (the GF(2) plane argument), so the
+honest frame is the per-cell best-diagonal *certificate*
+(`n_neg_best_diagonal`), which the 2.5D report now carries as
+`n_neg_best_diag_out`. Not a solver limitation — an exact-feasibility solver
+with escalating freedom cannot move the true-floor cells.
 
 | Function | Module | Purpose |
 |----------|--------|---------|

@@ -61,6 +61,9 @@ class Correct25DReport:
     wall_s: float
     origin: int
     stages: list = field(default_factory=list)  # per-stage dicts
+    #: residual folded cells under the best-of-4-main-diagonals certificate —
+    #: the honest floor (research/strict_feasibility_3d Part XXIII).
+    n_neg_best_diag_out: int = -1
 
 
 def _stats(phi, threshold):
@@ -78,7 +81,11 @@ def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0, stats=None):
         _, n_neg, n_below, min_T = _stats(cur, threshold)
     else:
         n_neg, n_below, min_T = stats
+    from dvfopt.jacobian.tetrahedron_sign import n_neg_best_diagonal
+
+    _best = int(n_neg_best_diagonal(cur, threshold))
     return Correct25DReport(
+        n_neg_best_diag_out=_best,
         feasible=(n_neg == 0 and n_below == 0),
         n_neg_in=n_neg_in,
         n_neg_out=n_neg,
@@ -108,6 +115,7 @@ def correct_dvf_25d(
     verbose: int = 0,
     progress_callback=None,
     callback_copies: bool = True,
+    orientation_delta=None,
 ):
     """Drive a folded, in-plane-only 3D DVF toward strict simplex (3D) feasibility.
 
@@ -234,6 +242,7 @@ def correct_dvf_25d(
     march_kw = dict(
         thr3=thr3,
         thr2=thr2,
+        orientation_delta=orientation_delta,
         mu=mu,
         pad=pad,
         dil=dil,
@@ -304,7 +313,13 @@ def correct_dvf_25d(
         ts = time.time()
         # copy=False: the pipeline owns `out`; thr2/mu match the sweep's.
         out, info = mop_interior_3d(
-            out, threshold=threshold, thr2=thr2, mu=mu, copy=False, verbose=verbose
+            out,
+            threshold=threshold,
+            thr2=thr2,
+            mu=mu,
+            copy=False,
+            verbose=verbose,
+            orientation_delta=orientation_delta,
         )
         n_neg_mop = info['n_neg_after']
         stages.append(

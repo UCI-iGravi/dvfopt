@@ -71,7 +71,7 @@ def _viol(box, D, H, W, thr3, thr2):
     return tot
 
 
-def _repair_box(box, thr3, thr2, mu, max_iters):
+def _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=None):
     """Elastic SLP over interior dy/dx of a (2,D,H,W) box; rim frozen.
 
     The elastic trust-region SLP loop lives in
@@ -117,7 +117,15 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         T3 = tet_volumes_flat(pf, D, H, W)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
         a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
-        return [(J3[a3], T3[a3], thr3)]
+        out = [(J3[a3], T3[a3], thr3)]
+        if orientation_delta is not None:
+            from dvfopt.core.marching._mono_rows import axial_mono_rows, mono_block
+
+            dxdy = np.concatenate([b[1].reshape(-1), b[0].reshape(-1)])  # [dx | dy]
+            mb = mono_block(axial_mono_rows(D, H, W), dxdy, free3, orientation_delta, ACTIVE_WINDOW)
+            if mb is not None:
+                out.append(mb)
+        return out
 
     def viol_fn(b):
         return _viol(b, D, H, W, thr3, thr2)
@@ -134,7 +142,7 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
     )
 
 
-def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
+def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, orientation_delta=None):
     """One repair pass over all current below-threshold clusters.
 
     ``mv`` is the caller's already-measured per-cube min simplex (3D) volume of
@@ -166,7 +174,9 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
         v_before = _viol(box, D, H, W, thr3, thr2)
         if v_before <= 1e-12:
             continue
-        box2, v_after = _repair_box(box, thr3, thr2, mu, max_iters)
+        box2, v_after = _repair_box(
+            box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta
+        )
         if v_after < v_before:
             dyx[:, z0 : z1 + 1, y0:y1, x0:x1] = box2
             fixed += 1
@@ -186,6 +196,7 @@ def mop_interior_3d(
     dz_tol=1e-12,
     copy=True,
     verbose=0,
+    orientation_delta=None,
 ):
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
@@ -269,7 +280,7 @@ def mop_interior_3d(
         before_below = int((mv < thr3 - 1e-9).sum())
         if before_below == 0:
             break
-        fixed = _pass(phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters)
+        fixed = _pass(phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, orientation_delta)
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)
         after_neg = int((mv <= 0).sum())
