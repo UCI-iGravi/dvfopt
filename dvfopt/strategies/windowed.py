@@ -200,6 +200,7 @@ class WindowedWrapperStrategy(Strategy):
     step_rule: str = 'exact_ls'
     exact_ls_fallback_steps: int = 3
     ftol: float = 1e-2
+    giant_workers: int = 0
     polish: Optional[str] = None
     polish_maxiter: int = 30
     patience_retry: bool = True
@@ -272,6 +273,7 @@ class WindowedWrapperStrategy(Strategy):
             step_rule=self.step_rule,
             exact_ls_fallback_steps=self.exact_ls_fallback_steps,
             ftol=self.ftol,
+            giant_workers=self.giant_workers,
             polish=self.polish,
             polish_maxiter=self.polish_maxiter,
             patience_retry=self.patience_retry,
