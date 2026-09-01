@@ -20,7 +20,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       # uv replaces pip here: 10-100x faster installs (matters on the heavy
       # torch/itk legs), with its own dependency cache via enable-cache.
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: Install package (core + numba)
