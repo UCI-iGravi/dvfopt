@@ -19,22 +19,19 @@ are the certificate) — the mirror of the mop's acceptance-only 2-tri term.
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 from scipy import sparse
 
-_CACHE: dict = {}
 
-
+@functools.lru_cache(maxsize=32)  # bounded: a sweep sees many distinct crop shapes
 def axial_mono_rows(D: int, H: int, W: int):
     """Sparse ``A`` with ``1 + A @ [dx_flat | dy_flat] >= delta`` the axial
     monotonicity rows of a ``(D, H, W)`` grid (``D = 1`` for a single plane).
-    Cached per shape; the caller slices columns to its free set and filters
-    rows to those touching a free column.
+    Cached per shape (bounded LRU); the caller slices columns to its free set
+    and filters rows to those touching a free column.
     """
-    key = (D, H, W)
-    hit = _CACHE.get(key)
-    if hit is not None:
-        return hit
     n = D * H * W
 
     def _idx(s, i, j):
@@ -58,7 +55,6 @@ def axial_mono_rows(D: int, H: int, W: int):
     a = sparse.csr_matrix(
         (np.asarray(vals), (np.asarray(rows), np.asarray(cols))), shape=(r, 2 * n)
     )
-    _CACHE[key] = a
     return a
 
 

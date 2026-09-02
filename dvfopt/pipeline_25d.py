@@ -98,6 +98,50 @@ def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0, stats=None):
     )
 
 
+def _checkpoint_open(checkpoint_dir, phi, meta):
+    """Open (or create) the resumable checkpoint under ``checkpoint_dir``:
+    ``field.npy`` — a memmap mirror of the output, written slice by slice as
+    the sweep repairs them — and ``state.json`` (``meta`` + ``n_done`` sweep
+    slices + ``stage``). An existing checkpoint must match ``meta`` (shape,
+    input hash, threshold, rows knob, origin) exactly; a mismatch raises
+    rather than silently resuming the wrong run.
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+
+    d = Path(checkpoint_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    meta = dict(
+        meta,
+        shape=list(phi.shape),
+        input_sha256=hashlib.sha256(np.ascontiguousarray(phi)).hexdigest(),
+    )
+    sp, fp = d / 'state.json', d / 'field.npy'
+    if sp.exists() and fp.exists():
+        state = json.loads(sp.read_text(encoding='utf-8'))
+        bad = {k: (state.get(k), v) for k, v in meta.items() if state.get(k) != v}
+        if bad:
+            raise ValueError(f'checkpoint {d} does not match this run (stored, this): {bad}')
+        return np.lib.format.open_memmap(fp, mode='r+'), state
+    state = dict(meta, n_done=0, stage='sweep')
+    _checkpoint_save(d, state)
+    return np.lib.format.open_memmap(fp, mode='w+', dtype=np.float64, shape=phi.shape), state
+
+
+def _checkpoint_save(checkpoint_dir, state, **update):
+    """Update ``state`` and rewrite ``state.json`` atomically (tmp + replace)."""
+    import json
+    import os
+    from pathlib import Path
+
+    state.update(update)
+    sp = Path(checkpoint_dir) / 'state.json'
+    tmp = sp.with_suffix('.json.tmp')
+    tmp.write_text(json.dumps(state), encoding='utf-8')
+    os.replace(tmp, sp)
+
+
 def correct_dvf_25d(
     phi,
     *,
@@ -116,6 +160,7 @@ def correct_dvf_25d(
     progress_callback=None,
     callback_copies: bool = True,
     orientation_delta=None,
+    checkpoint_dir=None,
 ):
     """Drive a folded, in-plane-only 3D DVF toward strict simplex (3D) feasibility.
 
@@ -154,6 +199,19 @@ def correct_dvf_25d(
         'phi'}``. Exceptions — notably ``KeyboardInterrupt`` — propagate,
         so a GUI can use it to stop between slices. ``None`` (default) is
         a no-op.
+    orientation_delta : float or None, default None
+        Opt-in axial edge-monotonicity rows (``dvfopt.core.marching._mono_rows``)
+        appended to every sweep and mop LP; ``None`` = off (byte-identical
+        to the pre-rows pipeline).
+    checkpoint_dir : str or path-like or None, default None
+        Make the run resumable: after every repaired sweep slice the output
+        is mirrored to ``<dir>/field.npy`` (a memmap, so only that slice is
+        written) and ``<dir>/state.json`` records the progress; the end of
+        the run (after the mop) marks the checkpoint ``done``. Calling again
+        with the same input, knobs and directory resumes from the last
+        finished slice — or, on a ``done`` checkpoint, just reloads the
+        result. A checkpoint from a different input / threshold / rows knob /
+        origin raises ``ValueError``. ``None`` = no checkpointing.
     callback_copies : bool, default True
         When True, each progress event carries an independent snapshot
         (``'phi'`` is a copy of the output buffer at emit time), so
@@ -255,8 +313,6 @@ def correct_dvf_25d(
     # ---- Bidirectional sweep outward from the origin ----
     ts = time.time()
 
-    _sweep_done = 0
-
     def _emit_progress(phase, index, total, n_neg):
         if progress_callback is not None:
             # callback_copies=True: snapshot so retained events don't alias
@@ -272,32 +328,47 @@ def correct_dvf_25d(
                 }
             )
 
-    # Up: repair slice z against frozen slice z-1 (cur is the upper layer).
-    for z in range(origin_idx + 1, D):
-        frozen_sl = out[1:3, z - 1]
-        cur_sl = out[1:3, z]
-        cur, n_before, n_after = march_slice(frozen_sl, cur_sl, True, **march_kw)
-        out[1:3, z] = cur
-        _sweep_done += 1
-        _emit_progress('sweep', _sweep_done, D, n_after)
-        if verbose:
-            log_info(f'[25d up z={z}] folds {n_before}->{n_after}')
-
-    # Down: repair slice z against frozen slice z+1 (cur is the lower layer).
-    # The down sweep starts AT the origin: the origin slice is repaired
-    # against its already-repaired upper neighbour, matching the validated
-    # research sweep. An origin at the top of the volume has no upper
-    # neighbour and cannot be repaired — it stays frozen then.
+    # Up: repair slice z against frozen slice z-1 (cur is the upper layer),
+    # then down: repair slice z against frozen slice z+1 (cur is the lower
+    # layer). The down sweep starts AT the origin: the origin slice is
+    # repaired against its already-repaired upper neighbour, matching the
+    # validated research sweep. An origin at the top of the volume has no
+    # upper neighbour and cannot be repaired — it stays frozen then.
     down_start = origin_idx if origin_idx + 1 < D else origin_idx - 1
-    for z in range(down_start, -1, -1):
-        frozen_sl = out[1:3, z + 1]
-        cur_sl = out[1:3, z]
-        cur, n_before, n_after = march_slice(frozen_sl, cur_sl, False, **march_kw)
+    order = [(z, True) for z in range(origin_idx + 1, D)]
+    order += [(z, False) for z in range(down_start, -1, -1)]
+
+    # ---- Resumable checkpoint (opt-in) ----
+    ck = state = None
+    n_done = 0
+    if checkpoint_dir is not None:
+        meta = dict(threshold=threshold, orientation_delta=orientation_delta, origin=origin_idx)
+        ck, state = _checkpoint_open(checkpoint_dir, phi, meta)
+        if state['stage'] == 'done':
+            out[1:3] = ck[1:3]
+            if verbose:
+                log_info(f'[25d resume] finished run reloaded from {checkpoint_dir}')
+            stages.append(dict(stage='resumed', n_neg=-1, min_T=float('nan'), wall_s=0.0))
+            return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0)
+        n_done = int(state['n_done'])
+        for z, _ in order[:n_done]:
+            out[1:3, z] = ck[1:3, z]
+        if verbose and n_done:
+            log_info(f'[25d resume] {n_done}/{len(order)} sweep slices from {checkpoint_dir}')
+
+    for k, (z, up) in enumerate(order):
+        if k < n_done:
+            continue
+        frozen_sl = out[1:3, z - 1 if up else z + 1]
+        cur, n_before, n_after = march_slice(frozen_sl, out[1:3, z], up, **march_kw)
         out[1:3, z] = cur
-        _sweep_done += 1
-        _emit_progress('sweep', _sweep_done, D, n_after)
+        if ck is not None:
+            ck[1:3, z] = cur
+            ck.flush()
+            _checkpoint_save(checkpoint_dir, state, n_done=k + 1)
+        _emit_progress('sweep', k + 1, D, n_after)
         if verbose:
-            log_info(f'[25d dn z={z}] folds {n_before}->{n_after}')
+            log_info(f'[25d {"up" if up else "dn"} z={z}] folds {n_before}->{n_after}')
 
     _, n_neg_sweep, n_below_sweep, min_sweep = _stats(out, threshold)
     stages.append(dict(stage='sweep', n_neg=n_neg_sweep, min_T=min_sweep, wall_s=time.time() - ts))
@@ -307,6 +378,7 @@ def correct_dvf_25d(
     # ---- Optional final mop ----
     # Gate on the below-threshold count (which strictly contains the
     # negatives): the mop now repairs sub-threshold cubes too, not just folds.
+    stats = (n_neg_sweep, n_below_sweep, min_sweep)
     if mop and 0 < n_below_sweep <= mop_max_folds:
         from dvfopt.core.marching._mop_interior_3d import mop_interior_3d
 
@@ -331,27 +403,15 @@ def correct_dvf_25d(
         # The mop already measured its final state; reuse it (the report's
         # n_below semantics — mv < threshold - 1e-5 — come from
         # `n_below_report_after`, measured exactly that way by the mop).
-        return out, _finalize(
-            out,
-            phi,
-            threshold,
-            n_neg_in,
-            origin_idx,
-            stages,
-            t0,
-            stats=(n_neg_mop, info['n_below_report_after'], info['min_T_after']),
-        )
+        stats = (n_neg_mop, info['n_below_report_after'], info['min_T_after'])
+        if ck is not None:
+            ck[1:3] = out[1:3]  # the mop moves voxels anywhere; mirror it whole
 
-    return out, _finalize(
-        out,
-        phi,
-        threshold,
-        n_neg_in,
-        origin_idx,
-        stages,
-        t0,
-        stats=(n_neg_sweep, n_below_sweep, min_sweep),
-    )
+    if ck is not None:
+        ck.flush()
+        _checkpoint_save(checkpoint_dir, state, stage='done')
+
+    return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0, stats=stats)
 
 
 __all__ = ['Correct25DReport', 'correct_dvf_25d']
