@@ -18,6 +18,7 @@ from dvfopt.testdata._builders import (
     canonical_2tri_2d,
     load_slice,
     make_deformation,
+    make_patch_folded_dvf,
     make_random_dvf,
     save_and_summarize,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "canonical_2tri_2d",
     "load_slice",
     "make_deformation",
+    "make_patch_folded_dvf",
     "make_random_dvf",
     "save_and_summarize",
 ]

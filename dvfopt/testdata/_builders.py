@@ -47,6 +47,33 @@ def make_random_dvf(case_key):
     return dvf
 
 
+def make_patch_folded_dvf(shape=(128, 128), *, n_patches=5, patch=8, amp=2.0, base_amp=0.3, seed=0):
+    """Smooth random 2D field (``base_amp`` px) with ``n_patches`` square patches
+    folded by a slope-``amp`` flip along a random direction (det = 1 - amp inside).
+    Returns ``(3, 1, H, W)`` float64 with ``dz == 0``; seeded. The GUI's
+    "New random folded field" source.
+    """
+    from scipy.ndimage import gaussian_filter
+
+    H, W = shape
+    patch = min(patch, H, W)
+    rng = np.random.default_rng(seed)
+    base = gaussian_filter(rng.standard_normal((2, H, W)), sigma=(0, 8, 8))
+    base *= base_amp / max(float(np.abs(base).max()), 1e-12)
+    yy, xx = np.mgrid[0:patch, 0:patch] - (patch - 1) / 2
+    for _ in range(n_patches):
+        y0 = int(rng.integers(0, H - patch + 1))
+        x0 = int(rng.integers(0, W - patch + 1))
+        th = rng.uniform(0, 2 * np.pi)
+        dy, dx = np.sin(th), np.cos(th)
+        proj = yy * dy + xx * dx
+        base[0, y0 : y0 + patch, x0 : x0 + patch] -= amp * proj * dy
+        base[1, y0 : y0 + patch, x0 : x0 + patch] -= amp * proj * dx
+    out = np.zeros((3, 1, H, W))
+    out[1:, 0] = base
+    return out
+
+
 def load_slice(
     slice_idx,
     scale_factor=1.0,

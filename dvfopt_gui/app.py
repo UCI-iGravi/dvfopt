@@ -824,6 +824,7 @@ class LiveSolverWindow(FileIOMixin, RenderMixin, RunActionsMixin, QtWidgets.QMai
 
         file_menu = menubar.addMenu('&File')
         self._load_action = file_menu.addAction('Load DVF…\tCtrl+O', self._on_load)
+        file_menu.addAction('New random folded field…', self._on_new_random)
         file_menu.addAction('Save…\tCtrl+S', self._on_save)
         file_menu.addAction('Export corrected DVF…', self._on_export)
         file_menu.addAction('Revert', self._on_revert)

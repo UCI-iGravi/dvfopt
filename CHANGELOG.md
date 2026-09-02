@@ -38,6 +38,14 @@ follows [Semantic Versioning](https://semver.org/).
   the CLI's `--checkpoint DIR` on every `--pipeline` (`solver` = a finished
   run reloads). `checkpoint_dir=None` is byte-identical to before.
 
+### Added — GUI: File → *New random folded field…*
+
+- `dvfopt.testdata.make_patch_folded_dvf(shape, n_patches=, patch=, amp=, base_amp=, seed=)`
+  builds a seeded synthetic 2D field — Gaussian-smoothed noise plus square
+  patches folded by a slope-`amp` flip along a random direction — and the GUI's
+  new File-menu action opens a spinbox form over it and loads the result through
+  the same path as a file (undo / metrics / fold strip behave identically).
+
 ## [0.6.0] — 2026-08-31
 
 The zero-folds release. The windowed elastic-QP engine's default formulation is

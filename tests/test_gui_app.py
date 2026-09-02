@@ -1349,3 +1349,31 @@ class TestMinorsSweepPolish:
         assert not win._overview_counts.any(), 'stale worker chunk must be rejected'
         w_new.chunkReady.emit(0, np.array([5, 5], dtype=np.int64))
         assert list(win._overview_counts[:2]) == [5, 5], 'current worker chunk must land'
+
+
+# ---------------------------------------------------------------------------
+# File -> New random folded field...
+# ---------------------------------------------------------------------------
+
+
+def test_new_random_folded_field_loads_like_a_file(qapp):
+    from dvfopt_gui.worker import _metric_counts
+
+    win = LiveSolverWindow()
+    win._load_random_folded(height=32, width=48, seed=1)
+    assert win._volume.shape == (3, 1, 32, 48)
+    assert win._worker is None
+    assert win._save_btn.isEnabled()
+    assert _metric_counts(win._volume[1:, 0], '2tri')[0] > 0
+
+
+def test_new_random_folded_field_menu_action(qapp, monkeypatch):
+    from dvfopt_gui.worker import _metric_counts
+
+    monkeypatch.setattr(QtWidgets.QDialog, 'exec', lambda self: QtWidgets.QDialog.Accepted)
+    win = LiveSolverWindow()
+    labels = [a.text() for m in win.menuBar().actions() for a in m.menu().actions()]
+    assert 'New random folded field…' in labels
+    win._on_new_random()
+    assert win._volume.shape == (3, 1, 128, 128)
+    assert _metric_counts(win._volume[1:, 0], '2tri')[0] > 0

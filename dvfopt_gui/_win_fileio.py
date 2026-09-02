@@ -81,6 +81,56 @@ class FileIOMixin:
         self.statusBar().clearMessage()
         QtWidgets.QMessageBox.critical(self, 'Load failed', msg)
 
+    def _on_new_random(self):
+        """One-form dialog over :func:`dvfopt.testdata.make_patch_folded_dvf`."""
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle('New random folded field')
+        form = QtWidgets.QFormLayout(dlg)
+        spins: dict[str, QtWidgets.QAbstractSpinBox] = {}
+        for name, label, lo, hi, val in (
+            ('height', 'Height (px):', 4, 4096, 128),
+            ('width', 'Width (px):', 4, 4096, 128),
+            ('n_patches', 'Patches:', 0, 1000, 5),
+            ('patch', 'Patch size (px):', 2, 256, 8),
+            ('amp', 'Fold amplitude (slope):', 0.0, 100.0, 2.0),
+            ('base_amp', 'Base amplitude (px):', 0.0, 100.0, 0.3),
+            ('seed', 'Seed:', 0, 2**31 - 1, 0),
+        ):
+            w = QtWidgets.QDoubleSpinBox() if isinstance(val, float) else QtWidgets.QSpinBox()
+            w.setRange(lo, hi)
+            w.setValue(val)
+            form.addRow(label, w)
+            spins[name] = w
+        bb = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        self._load_random_folded(**{k: w.value() for k, w in spins.items()})
+
+    def _load_random_folded(
+        self, *, height=128, width=128, n_patches=5, patch=8, amp=2.0, base_amp=0.3, seed=0
+    ) -> None:
+        """Build a synthetic folded field and load it exactly like a file."""
+        from dvfopt.testdata import make_patch_folded_dvf
+
+        self._load_array(
+            make_patch_folded_dvf(
+                (int(height), int(width)),
+                n_patches=int(n_patches),
+                patch=int(patch),
+                amp=float(amp),
+                base_amp=float(base_amp),
+                seed=int(seed),
+            )
+        )
+        self.statusBar().showMessage(
+            f'New random folded field {int(height)}×{int(width)} (seed {int(seed)})', 5_000
+        )
+
     def _on_save(self):
         """Open a save dialog and write the current DVF + run history
         to a compressed NPZ. Schema documented in
