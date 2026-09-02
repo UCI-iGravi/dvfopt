@@ -36,7 +36,7 @@ dev = [
     "pytest-xdist>=3",       # parallel test execution: `pytest -n auto`
     "pytest-cov>=5",         # coverage: `pytest --cov=dvfopt`
     "pytest-randomly>=3",    # shuffle test order to surface order-dependencies
-    "ruff==0.16.3",
+    "ruff==0.16.5",
     "mypy>=1.11",            # static type checks (see [tool.mypy]; scoped to clean modules)
     "nox>=2024",             # task runner (see noxfile.py)
     "pre-commit>=3",
