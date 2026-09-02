@@ -23,6 +23,21 @@ follows [Semantic Versioning](https://semver.org/).
   `dvf_origins`, the crop/testcase scripts) now name the suite paths, with a
   fallback to the pre-suite cohort name for checkouts on the old layout.
 
+### Added — resumable runs: `checkpoint_dir` / `dvfopt correct --checkpoint DIR`
+
+- `dvfopt/checkpoint.py` — `RunCheckpoint`: a memmap mirror of the output
+  (`<dir>/field.npy`) plus an atomically rewritten `state.json` (validated meta
+  — shape, input sha256, the run's knobs — the finished unit ids, per-unit
+  report rows, `stage`). A checkpoint from a different input or options
+  raises `ValueError` naming the differing keys; a finished one reloads.
+- Wired into `correct_dvf_25d` (per sweep slice; the 2.5D helper from the
+  previous commit is refactored onto it), `DVFoptConfig(checkpoint_dir=)` (per
+  z-slice, serial and `n_workers>1` — the pool now marks slices as they land),
+  `correct_dvf_3d` (per stage: bulk, every escape iteration with its loop
+  state, the multiscale re-seed; tighten is not a separate resume point) and
+  the CLI's `--checkpoint DIR` on every `--pipeline` (`solver` = a finished
+  run reloads). `checkpoint_dir=None` is byte-identical to before.
+
 ## [0.6.0] — 2026-08-31
 
 The zero-folds release. The windowed elastic-QP engine's default formulation is

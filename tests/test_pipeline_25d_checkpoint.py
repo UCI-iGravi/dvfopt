@@ -37,9 +37,11 @@ def test_interrupted_sweep_resumes_and_matches_cold_run(tmp_path):
 
     cb = _stop_after(2)
     with pytest.raises(_Stop):
-        correct_dvf_25d(vol, verbose=0, checkpoint_dir=ck, progress_callback=cb, callback_copies=False)
+        correct_dvf_25d(
+            vol, verbose=0, checkpoint_dir=ck, progress_callback=cb, callback_copies=False
+        )
     state = json.loads((ck / 'state.json').read_text())
-    assert state['n_done'] == 2 and state['stage'] == 'sweep'
+    assert len(state['done']) == 2 and state['stage'] == 'run'
 
     events = []
     out, rep = correct_dvf_25d(
@@ -53,7 +55,9 @@ def test_interrupted_sweep_resumes_and_matches_cold_run(tmp_path):
 
     # A finished checkpoint just reloads — no sweep events, same field.
     events.clear()
-    out2, rep2 = correct_dvf_25d(vol, verbose=0, checkpoint_dir=ck, progress_callback=lambda e: events.append(e))
+    out2, rep2 = correct_dvf_25d(
+        vol, verbose=0, checkpoint_dir=ck, progress_callback=lambda e: events.append(e)
+    )
     assert not events and np.array_equal(out2, ref)
     assert rep2.stages[-1]['stage'] == 'resumed' and rep2.n_neg_out == ref_rep.n_neg_out
 

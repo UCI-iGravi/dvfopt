@@ -197,7 +197,7 @@ class TestThreadPinning:
         from dvfopt.cli import _correct_slice
 
         phi2 = np.zeros((2, 6, 6))
-        _correct_slice((phi2, {'verbose': 0}))
+        _correct_slice((0, phi2, {'verbose': 0}))
         assert calls == [1]
 
         from dvfopt.unified import DVFoptConfig, _solve_slice_worker

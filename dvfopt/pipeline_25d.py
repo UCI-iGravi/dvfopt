@@ -98,50 +98,6 @@ def _finalize(cur, phi_in, threshold, n_neg_in, origin, stages, t0, stats=None):
     )
 
 
-def _checkpoint_open(checkpoint_dir, phi, meta):
-    """Open (or create) the resumable checkpoint under ``checkpoint_dir``:
-    ``field.npy`` — a memmap mirror of the output, written slice by slice as
-    the sweep repairs them — and ``state.json`` (``meta`` + ``n_done`` sweep
-    slices + ``stage``). An existing checkpoint must match ``meta`` (shape,
-    input hash, threshold, rows knob, origin) exactly; a mismatch raises
-    rather than silently resuming the wrong run.
-    """
-    import hashlib
-    import json
-    from pathlib import Path
-
-    d = Path(checkpoint_dir)
-    d.mkdir(parents=True, exist_ok=True)
-    meta = dict(
-        meta,
-        shape=list(phi.shape),
-        input_sha256=hashlib.sha256(np.ascontiguousarray(phi)).hexdigest(),
-    )
-    sp, fp = d / 'state.json', d / 'field.npy'
-    if sp.exists() and fp.exists():
-        state = json.loads(sp.read_text(encoding='utf-8'))
-        bad = {k: (state.get(k), v) for k, v in meta.items() if state.get(k) != v}
-        if bad:
-            raise ValueError(f'checkpoint {d} does not match this run (stored, this): {bad}')
-        return np.lib.format.open_memmap(fp, mode='r+'), state
-    state = dict(meta, n_done=0, stage='sweep')
-    _checkpoint_save(d, state)
-    return np.lib.format.open_memmap(fp, mode='w+', dtype=np.float64, shape=phi.shape), state
-
-
-def _checkpoint_save(checkpoint_dir, state, **update):
-    """Update ``state`` and rewrite ``state.json`` atomically (tmp + replace)."""
-    import json
-    import os
-    from pathlib import Path
-
-    state.update(update)
-    sp = Path(checkpoint_dir) / 'state.json'
-    tmp = sp.with_suffix('.json.tmp')
-    tmp.write_text(json.dumps(state), encoding='utf-8')
-    os.replace(tmp, sp)
-
-
 def correct_dvf_25d(
     phi,
     *,
@@ -339,20 +295,21 @@ def correct_dvf_25d(
     order += [(z, False) for z in range(down_start, -1, -1)]
 
     # ---- Resumable checkpoint (opt-in) ----
-    ck = state = None
+    ck = None
     n_done = 0
     if checkpoint_dir is not None:
+        from dvfopt.checkpoint import RunCheckpoint
+
         meta = dict(threshold=threshold, orientation_delta=orientation_delta, origin=origin_idx)
-        ck, state = _checkpoint_open(checkpoint_dir, phi, meta)
-        if state['stage'] == 'done':
-            out[1:3] = ck[1:3]
+        ck = RunCheckpoint(checkpoint_dir, phi, meta).open()
+        if ck.finished:
+            out[1:3] = ck.field[1:3]
             if verbose:
                 log_info(f'[25d resume] finished run reloaded from {checkpoint_dir}')
             stages.append(dict(stage='resumed', n_neg=-1, min_T=float('nan'), wall_s=0.0))
             return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0)
-        n_done = int(state['n_done'])
-        for z, _ in order[:n_done]:
-            out[1:3, z] = ck[1:3, z]
+        n_done = len(ck.done)  # sweep units are the repaired z indices, in sweep order
+        ck.restore_into(out)
         if verbose and n_done:
             log_info(f'[25d resume] {n_done}/{len(order)} sweep slices from {checkpoint_dir}')
 
@@ -363,9 +320,7 @@ def correct_dvf_25d(
         cur, n_before, n_after = march_slice(frozen_sl, out[1:3, z], up, **march_kw)
         out[1:3, z] = cur
         if ck is not None:
-            ck[1:3, z] = cur
-            ck.flush()
-            _checkpoint_save(checkpoint_dir, state, n_done=k + 1)
+            ck.mark(z, cur)
         _emit_progress('sweep', k + 1, D, n_after)
         if verbose:
             log_info(f'[25d {"up" if up else "dn"} z={z}] folds {n_before}->{n_after}')
@@ -404,12 +359,9 @@ def correct_dvf_25d(
         # n_below semantics — mv < threshold - 1e-5 — come from
         # `n_below_report_after`, measured exactly that way by the mop).
         stats = (n_neg_mop, info['n_below_report_after'], info['min_T_after'])
-        if ck is not None:
-            ck[1:3] = out[1:3]  # the mop moves voxels anywhere; mirror it whole
 
     if ck is not None:
-        ck.flush()
-        _checkpoint_save(checkpoint_dir, state, stage='done')
+        ck.finish(out)  # the mop moves voxels anywhere; mirror it whole
 
     return out, _finalize(out, phi, threshold, n_neg_in, origin_idx, stages, t0, stats=stats)
 
