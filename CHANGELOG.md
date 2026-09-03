@@ -6,6 +6,18 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — 2.5D mop: repair predicate = the report predicate
+
+- `mop_interior_3d` clustered its boxes on its own LP target (`min_vol <
+  thr3 - 1e-9`, thr3 = threshold + 1e-4) while the pipeline's `mop_max_folds`
+  gate and `feasible` count at the report predicate (`< threshold - 1e-5`).
+  On the 528-slice B0039 volume the sweep parks ~127k cubes AT thr3 within LP
+  tolerance, so one mop pass ran its serial box LPs over ~700 clusters (>24 h,
+  never finishing) instead of the ~260 clusters / ~2k cubes that are actually
+  below the report threshold. The mop now clusters on the report predicate;
+  thr3 remains the per-box LP target. `info['n_below_*']` count under that
+  predicate (`n_below_report_after` is kept as an alias).
+
 ### Changed — `data/dvfs/` is the centralized DVF suite
 
 - Every deformation field the repo consumes or produces now lives under one

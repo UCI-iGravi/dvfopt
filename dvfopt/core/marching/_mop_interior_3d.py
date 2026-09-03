@@ -142,17 +142,22 @@ def _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=None):
     )
 
 
-def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, orientation_delta=None):
+def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientation_delta=None):
     """One repair pass over all current below-threshold clusters.
 
     ``mv`` is the caller's already-measured per-cube min simplex (3D) volume of
-    ``full`` (no recompute here). Clusters on the sweep's predicate
-    ``mv < thr3 - 1e-9`` — sub-threshold cubes are repaired, not just
-    negatives. Returns n_fixed.
+    ``full`` (no recompute here). Clusters on the REPORT predicate
+    ``mv < rep_thr`` (= ``threshold - 1e-5``, the pipeline's ``n_below``) —
+    sub-threshold cubes are repaired, not just negatives; ``thr3`` is only the
+    per-box LP target. Clustering on the LP target itself (``thr3 - 1e-9``)
+    was measured to sweep up every cube the sweep parked AT its target within
+    LP tolerance — 127k cubes / 700 clusters on the 528-slice B0039 volume
+    against 2k / 260 under the report predicate — and turned one mop pass
+    into a >24 h serial job. Returns n_fixed.
     """
     if dil < 0:
         raise ValueError(f'dil must be >= 0, got {dil}')
-    bad = mv < thr3 - 1e-9
+    bad = mv < rep_thr
     merged = binary_dilation(bad, iterations=dil) if dil >= 1 else bad
     lab, _ = cc_label(merged)
     boxes = find_objects(lab)
@@ -201,8 +206,9 @@ def mop_interior_3d(
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
     Crops a small box around each residual below-threshold cluster (the
-    sweep's predicate ``min_vol < thr3 - 1e-9`` — sub-threshold cubes are
-    repaired, not just negatives), freezes the entire rim (all six faces,
+    pipeline-report predicate ``min_vol < threshold - 1e-5`` — sub-threshold
+    cubes are repaired, not just negatives; ``thr3`` is the per-box LP
+    target), freezes the entire rim (all six faces,
     giving a seam-safe paste), and frees the true 3D interior
     ``(1:D-1, 1:H-1, 1:W-1)`` so both slices of a folded pair move together. Each cropped box is repaired with an elastic sequential-LP
     (inter-layer simplex (3D) linearized rows + intra-slice simplex (2D) exact-violation
@@ -253,13 +259,14 @@ def mop_interior_3d(
     info : dict
         Keys: ``n_neg_before``/``n_neg_after`` (per-cube fold counts,
         ``mv <= 0``), ``n_below_before``/``n_below_after`` (per-cube
-        sub-threshold counts, ``mv < thr3 - 1e-9`` — the repair predicate),
-        ``n_below_report_after`` (per-cube ``mv < threshold - 1e-5`` — the
-        pipeline-report semantics), ``min_T_after``, ``n_fixed``,
+        sub-threshold counts under the repair predicate ``mv < threshold -
+        1e-5``), ``n_below_report_after`` (the same predicate — kept as an
+        alias of ``n_below_after`` for callers of the old key), ``min_T_after``, ``n_fixed``,
         ``passes`` (list of per-pass dicts), ``wall_s``.
     """
     if thr3 is None:
         thr3 = threshold + 1e-4
+    rep_thr = threshold - 1e-5  # the repair predicate (pipeline-report n_below)
 
     phi = np.asarray(phi)
     require_25d_input(phi, dz_tol)
@@ -271,20 +278,22 @@ def mop_interior_3d(
     # post-measurement is carried forward as the next pass's "before".
     mv = six_tet_min_volume_3d(phi_out)
     n_neg_before = int((mv <= 0).sum())
-    n_below_before = int((mv < thr3 - 1e-9).sum())
+    n_below_before = int((mv < rep_thr).sum())
 
     passes = []
     total_fixed = 0
     for i, (zpad, pad) in enumerate(pass_pads, start=1):
         before_neg = int((mv <= 0).sum())
-        before_below = int((mv < thr3 - 1e-9).sum())
+        before_below = int((mv < rep_thr).sum())
         if before_below == 0:
             break
-        fixed = _pass(phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, orientation_delta)
+        fixed = _pass(
+            phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientation_delta
+        )
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)
         after_neg = int((mv <= 0).sum())
-        after_below = int((mv < thr3 - 1e-9).sum())
+        after_below = int((mv < rep_thr).sum())
         mn = float(mv.min())
         passes.append(
             {
@@ -312,8 +321,8 @@ def mop_interior_3d(
         "n_neg_before": n_neg_before,
         "n_neg_after": int((mv <= 0).sum()),
         "n_below_before": n_below_before,
-        "n_below_after": int((mv < thr3 - 1e-9).sum()),
-        "n_below_report_after": int((mv < threshold - 1e-5).sum()),
+        "n_below_after": int((mv < rep_thr).sum()),
+        "n_below_report_after": int((mv < rep_thr).sum()),
         "min_T_after": float(mv.min()),
         "n_fixed": total_fixed,
         "passes": passes,
