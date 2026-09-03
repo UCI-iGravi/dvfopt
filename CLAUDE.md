@@ -217,6 +217,18 @@ interior with a frozen ring), then runs a frozen-rim 3D-interior mop
 (`mop_interior_3d`) for folds that need *both* slices of a pair to move — which
 the single-frozen-plane sweep structurally cannot fix.
 
+Parallelism: `n_workers` sizes ONE shared spawn pool that serves the cluster
+loop inside `march_slice`, the mop (`mop_interior_3d(n_workers=)` repairs each
+pass's boxes in batches of pairwise-disjoint boxes, in the serial order —
+byte-identical to serial) and the opt-in **segment-parallel sweep**
+`n_segments > 1` (z split into contiguous segments, each swept from its own
+mildest-inter-layer origin in one process with clusters serial — the pool
+refuses nesting — then the `n_segments - 1` seams repaired in the parent by
+one down-sweep `march_slice` each; `report.stages` gains `segments` / `seams`;
+`n_segments=1` is byte-identical to the single-origin sweep). Motivation: on
+the 528-slice volume the sweep took 16.5 h with the cluster pool busy ~27 % of
+the wall and the mop hours per serial pass.
+
 On the full 528-slice B0039 volume this took the 3D fold count from **1,058,831 →
 33** (99.997%). Of the residual ~33, Part XXIII of
 `research/strict_feasibility_3d/REPORT.md` measured **19 as decomposition

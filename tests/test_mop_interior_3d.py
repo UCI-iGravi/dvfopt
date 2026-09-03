@@ -161,3 +161,30 @@ def test_mop_rim_frozen():
     assert np.array_equal(phi_out[:, :, -1, :], phi[:, :, -1, :])
     assert np.array_equal(phi_out[:, :, :, 0], phi[:, :, :, 0])
     assert np.array_equal(phi_out[:, :, :, -1], phi[:, :, :, -1])
+
+
+def _several_separated_clusters():
+    """(3,8,30,30) dz==0 field with four inter-layer fold clusters: three
+    pairwise-disjoint under the mop's padding (one batch) and a fourth whose
+    padded box overlaps the first (forces a second batch)."""
+    rng = np.random.default_rng(2)
+    phi = rng.normal(0, 0.02, (3, 8, 30, 30)).astype(np.float64)
+    phi[0] = 0.0
+    for z, y, x in ((1, 5, 5), (3, 20, 20), (5, 5, 20), (2, 12, 5)):
+        phi[1, z, y : y + 3, x : x + 3] = +1.5
+        phi[1, z + 1, y : y + 3, x : x + 3] = -1.5
+    return phi
+
+
+def test_mop_parallel_is_byte_identical_to_serial():
+    phi = _several_separated_clusters()
+    if int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0:
+        pytest.skip("no fold planted")
+    ref, info_ref = mop_interior_3d(phi)
+    assert info_ref["n_fixed"] >= 2 and not np.array_equal(ref, phi)
+    # In-process pool_map seam: exercises the batching / paste-back path alone.
+    out, info = mop_interior_3d(phi, n_workers=2, pool_map=lambda w, a, n: [w(x) for x in a])
+    assert np.array_equal(out, ref) and info["n_fixed"] == info_ref["n_fixed"]
+    # The real shared spawn pool.
+    out2, info2 = mop_interior_3d(phi, n_workers=2)
+    assert np.array_equal(out2, ref) and info2["n_fixed"] == info_ref["n_fixed"]

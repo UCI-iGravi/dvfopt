@@ -142,7 +142,33 @@ def _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=None):
     )
 
 
-def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientation_delta=None):
+def _repair_box_worker(args):
+    """Pool worker: ``(box, thr3, thr2, mu, max_iters, orientation_delta) ->
+    (box2, v_after)``. Module-level + single picklable tuple (spawn-safe)."""
+    box, thr3, thr2, mu, max_iters, orientation_delta = args
+    return _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta)
+
+
+def _extents_overlap(a, b):
+    """True if two ``(z0, z1, y0, y1, x0, x1)`` half-open extents intersect."""
+    return all(a[i] < b[i + 1] and b[i] < a[i + 1] for i in (0, 2, 4))
+
+
+def _pass(
+    full,
+    mv,
+    zpad,
+    pad,
+    thr3,
+    thr2,
+    mu,
+    dil,
+    max_iters,
+    rep_thr,
+    orientation_delta=None,
+    n_workers=1,
+    pool_map=None,
+):
     """One repair pass over all current below-threshold clusters.
 
     ``mv`` is the caller's already-measured per-cube min simplex (3D) volume of
@@ -154,16 +180,24 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientat
     LP tolerance — 127k cubes / 700 clusters on the 528-slice B0039 volume
     against 2k / 260 under the report predicate — and turned one mop pass
     into a >24 h serial job. Returns n_fixed.
+
+    ``n_workers > 1`` runs the boxes on ``pool_map`` in batches of pairwise-
+    disjoint extents, byte-identical to the serial loop: boxes are walked in
+    ``find_objects`` order and a batch is closed as soon as the next box
+    overlaps one already in it, so every box in batch ``j+1`` comes AFTER every
+    box in batches ``0..j`` — each box is cropped from exactly the state the
+    serial loop would have cropped it from (its batch-mates are disjoint, so
+    their paste-backs cannot reach it), and paste-back keeps the serial order
+    and the ``v_after < v_before`` rule.
     """
     if dil < 0:
         raise ValueError(f'dil must be >= 0, got {dil}')
     bad = mv < rep_thr
     merged = binary_dilation(bad, iterations=dil) if dil >= 1 else bad
     lab, _ = cc_label(merged)
-    boxes = find_objects(lab)
     dyx = full[1:3]
-    fixed = 0
-    for bb in boxes:
+    exts = []
+    for bb in find_objects(lab):
         if bb is None:
             continue
         z0 = max(0, bb[0].start - zpad)
@@ -172,19 +206,56 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientat
         y1 = min(full.shape[2], bb[1].stop + pad + 1)
         x0 = max(0, bb[2].start - pad)
         x1 = min(full.shape[3], bb[2].stop + pad + 1)
-        box = dyx[:, z0 : z1 + 1, y0:y1, x0:x1].copy()
+        exts.append((z0, z1 + 1, y0, y1, x0, x1))  # half-open, as sliced below
+
+    def _crop(e):
+        # (box, v_before), or None when the crop is too small / already clean.
+        z0, z1, y0, y1, x0, x1 = e
+        box = dyx[:, z0:z1, y0:y1, x0:x1].copy()
         D, H, W = box.shape[1:]
         if D < 3 or H < 3 or W < 3:
-            continue
+            return None
         v_before = _viol(box, D, H, W, thr3, thr2)
-        if v_before <= 1e-12:
-            continue
-        box2, v_after = _repair_box(
-            box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta
-        )
+        return None if v_before <= 1e-12 else (box, v_before)
+
+    def _paste(e, box2, v_before, v_after):
+        z0, z1, y0, y1, x0, x1 = e
         if v_after < v_before:
-            dyx[:, z0 : z1 + 1, y0:y1, x0:x1] = box2
-            fixed += 1
+            dyx[:, z0:z1, y0:y1, x0:x1] = box2
+            return 1
+        return 0
+
+    fixed = 0
+    if n_workers <= 1 or pool_map is None:
+        for e in exts:
+            c = _crop(e)
+            if c is None:
+                continue
+            box, v_before = c
+            box2, v_after = _repair_box(
+                box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta
+            )
+            fixed += _paste(e, box2, v_before, v_after)
+        return fixed
+
+    # Contiguous runs of pairwise-disjoint extents, processed in order.
+    batches = [[]]
+    for e in exts:
+        if any(_extents_overlap(e, o) for o in batches[-1]):
+            batches.append([])
+        batches[-1].append(e)
+    for batch in batches:
+        crops = [(e, c) for e in batch if (c := _crop(e)) is not None]
+        if not crops:
+            continue
+        args = [(box, thr3, thr2, mu, max_iters, orientation_delta) for _, (box, _) in crops]
+        results = (
+            [_repair_box_worker(a) for a in args]
+            if len(args) == 1
+            else pool_map(_repair_box_worker, args, n_workers)
+        )
+        for (e, (_, v_before)), (box2, v_after) in zip(crops, results):
+            fixed += _paste(e, box2, v_before, v_after)
     return fixed
 
 
@@ -202,6 +273,8 @@ def mop_interior_3d(
     copy=True,
     verbose=0,
     orientation_delta=None,
+    n_workers=1,
+    pool_map=None,
 ):
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
@@ -251,6 +324,14 @@ def mop_interior_3d(
         float64 ``(3, D, H, W)`` array).
     verbose : int, default 0
         ``>= 1`` prints one bracketed line per pass.
+    orientation_delta : float or None, default None
+        Opt-in axial edge-monotonicity rows in every box LP (``None`` = off).
+    n_workers : int, default 1
+        ``> 1`` repairs a pass's boxes on the shared spawn pool
+        (``dvfopt.core._pool.pool_map``, imported lazily unless ``pool_map``
+        is given) in batches of pairwise-disjoint boxes, processed in the
+        serial order — byte-identical to ``n_workers=1`` (see ``_pass``).
+        ``<= 1`` is the unchanged serial loop.
 
     Returns
     -------
@@ -267,6 +348,8 @@ def mop_interior_3d(
     if thr3 is None:
         thr3 = threshold + 1e-4
     rep_thr = threshold - 1e-5  # the repair predicate (pipeline-report n_below)
+    if pool_map is None and n_workers > 1:
+        from dvfopt.core._pool import pool_map
 
     phi = np.asarray(phi)
     require_25d_input(phi, dz_tol)
@@ -288,7 +371,19 @@ def mop_interior_3d(
         if before_below == 0:
             break
         fixed = _pass(
-            phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters, rep_thr, orientation_delta
+            phi_out,
+            mv,
+            zpad,
+            pad,
+            thr3,
+            thr2,
+            mu,
+            dil,
+            max_iters,
+            rep_thr,
+            orientation_delta,
+            n_workers=n_workers,
+            pool_map=pool_map,
         )
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)

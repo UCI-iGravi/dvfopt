@@ -6,6 +6,38 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — 2.5D marching: parallel mop (`n_workers`) and segment-parallel sweep (`n_segments`)
+
+- Motivation (full-res 528-slice B0039 volume, 4 workers): the sweep took
+  16.5 h — interior layers ~14 s each but the 13 edge layers ~1 h each; the
+  cluster-pool workers were busy only ~27 % of the wall (one big cluster per
+  layer dominates) and the parent spent ~40 % in serial work. The mop ran
+  serially over ~260 boxes per pass on one core — hours per pass.
+- `mop_interior_3d(n_workers=, pool_map=)`: with `n_workers > 1` each pass's
+  boxes are repaired on the shared spawn pool in batches of pairwise-disjoint
+  (padded) boxes. Boxes are walked in the serial order and a batch is closed
+  as soon as the next box overlaps one already in it, so every box is cropped
+  from — and pasted back into, under the same `v_after < v_before` rule — the
+  exact state the serial loop would have used: **byte-identical to
+  `n_workers=1`** (tested, in-process seam and real pool). `correct_dvf_25d`
+  threads its `n_workers` into the mop.
+- `correct_dvf_25d(n_segments=)`: `> 1` splits z into that many contiguous
+  near-equal segments, each swept from its own origin (the mildest inter-layer
+  inside the segment) as one process on the shared pool (clusters run serially
+  inside a segment — the pool refuses nesting — so `n_workers` counts both the
+  segment workers and the cluster/mop workers; segments queue on it). Workers
+  receive and return only their `[dy, dx]` slab. The `n_segments - 1` seams
+  are then repaired in the parent, one down-sweep `march_slice` each (lower
+  segment's top slice against the frozen upper segment's bottom slice), before
+  the usual stats / mop / report. New `report.stages` entries `segments` and
+  `seams` (replacing `sweep`). Checkpoints keep working per slice: a segment's
+  slices are marked when its slab returns, seams as `seam:<z>`; a fully-marked
+  volume skips the segment stage on resume. `n_segments=1` (default) is the
+  single-origin sweep, byte-identical to before (tested); a pooled
+  `n_segments=3, n_workers=3` run equals the serial `n_segments=3` run byte
+  for byte (segments are deterministic given their slab). Needs
+  `D >= 2 * n_segments`.
+
 ### Fixed — 2.5D mop: repair predicate = the report predicate
 
 - `mop_interior_3d` clustered its boxes on its own LP target (`min_vol <
