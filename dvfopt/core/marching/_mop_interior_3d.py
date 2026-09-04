@@ -176,6 +176,19 @@ def _tiles(lo, hi, max_box, phase):
     return out
 
 
+def _levels(exts):
+    """Dependency level of each extent: ``1 + max(level of every EARLIER
+    extent it overlaps)``, else 0. Extents sharing a level are pairwise
+    disjoint (an overlap forces the later one a level higher), so a level is
+    one parallel batch; processing levels in order gives every box exactly the
+    paste-backs of its earlier overlapping boxes — the serial semantics."""
+    level = []
+    for i, e in enumerate(exts):
+        deps = [level[j] for j in range(i) if _extents_overlap(e, exts[j])]
+        level.append(1 + max(deps) if deps else 0)
+    return level
+
+
 def _extents_overlap(a, b):
     """True if two ``(z0, z1, y0, y1, x0, x1)`` half-open extents intersect."""
     return all(a[i] < b[i + 1] and b[i] < a[i + 1] for i in (0, 2, 4))
@@ -212,14 +225,13 @@ def _pass(
     against 2k / 260 under the report predicate — and turned one mop pass
     into a >24 h serial job. Returns n_fixed.
 
-    ``n_workers > 1`` runs the boxes on ``pool_map`` in batches of pairwise-
-    disjoint extents, byte-identical to the serial loop: boxes are walked in
-    ``find_objects`` order and a batch is closed as soon as the next box
-    overlaps one already in it, so every box in batch ``j+1`` comes AFTER every
-    box in batches ``0..j`` — each box is cropped from exactly the state the
-    serial loop would have cropped it from (its batch-mates are disjoint, so
-    their paste-backs cannot reach it), and paste-back keeps the serial order
-    and the ``v_after < v_before`` rule.
+    ``n_workers > 1`` runs the boxes on ``pool_map`` in dependency LEVELS
+    (:func:`_levels`), byte-identical to the serial loop: a box's level is one
+    above every earlier box it overlaps, so it is cropped only after all of
+    those have pasted back (exactly the state the serial loop would crop it
+    from), while boxes that do not overlap it — earlier or later — can neither
+    reach its region nor be reached by it. Levels run in order; paste-back
+    keeps the ``v_after < v_before`` rule.
     """
     if dil < 0:
         raise ValueError(f'dil must be >= 0, got {dil}')
@@ -285,12 +297,14 @@ def _pass(
             fixed += _paste(e, box2, v_before, v_after)
         return fixed
 
-    # Contiguous runs of pairwise-disjoint extents, processed in order.
-    batches = [[]]
-    for e in exts:
-        if any(_extents_overlap(e, o) for o in batches[-1]):
-            batches.append([])
-        batches[-1].append(e)
+    # Dependency levels (see _levels): a box waits only for the EARLIER boxes
+    # it overlaps and runs alongside everything else. The previous rule —
+    # close a batch on the first overlap with the batch so far — measured
+    # ~0.9 of 4 cores on the full B0039 volume (3.2 h of worker CPU over a
+    # 3.5 h pass, 2.3 h of it on one worker): find_objects order is spatial,
+    # so consecutive boxes usually touch and nearly every batch had one box.
+    lv = _levels(exts)
+    batches = [[e for e, k in zip(exts, lv) if k == n] for n in range(max(lv, default=-1) + 1)]
     for batch in batches:
         crops = [(e, c) for e in batch if (c := _crop(e)) is not None]
         if not crops:

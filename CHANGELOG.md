@@ -6,6 +6,16 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — 2.5D mop: parallel batches by dependency level (was ~1 of 4 cores)
+
+- The parallel mop grouped only CONSECUTIVE pairwise-disjoint boxes; because
+  `find_objects` order is spatial, neighbours touch and nearly every batch
+  held one box — measured on the full B0039 volume as 3.2 h of worker CPU
+  over a 3.5 h pass (2.3 h of it on one worker), i.e. ~0.9 of 4 cores.
+  Boxes are now scheduled by dependency level (`_levels`: one above every
+  earlier overlapping box), which is still byte-identical to the serial loop
+  and lets every spatially separated box run alongside the rest.
+
 ### Fixed — 2.5D mop: per-box futility stop (`stall_iters=4`, `stall_rtol=1e-2`)
 
 - Tiling giant boxes (below) did not make the full-volume mop tractable: a

@@ -257,3 +257,18 @@ def test_elastic_engine_futility_stop_ends_micro_step_grind():
 
     assert run(0) == 20
     assert run(4) <= 5
+
+
+def test_mop_levels_run_spread_boxes_together():
+    """A(0) < B overlaps A -> 1; C disjoint -> 0; D overlaps C -> 1: two levels
+    where the old consecutive-prefix rule made three batches ([A],[B,C],[D])."""
+    from dvfopt.core.marching._mop_interior_3d import _levels
+
+    A = (0, 5, 0, 10, 0, 10)
+    B = (0, 5, 8, 18, 0, 10)  # overlaps A on y
+    C = (0, 5, 40, 50, 0, 10)  # far away
+    D = (0, 5, 48, 58, 0, 10)  # overlaps C on y
+    assert _levels([A, B, C, D]) == [0, 1, 0, 1]
+    # transitive: E overlaps B (level 1) -> 2, even though E is disjoint from A
+    E = (0, 5, 16, 26, 0, 10)
+    assert _levels([A, B, C, D, E]) == [0, 1, 0, 1, 2]
