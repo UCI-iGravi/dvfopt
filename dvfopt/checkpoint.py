@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -101,7 +102,17 @@ class RunCheckpoint:
         sp = self.dir / 'state.json'
         tmp = sp.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(self.state, default=_json_scalar), encoding='utf-8')
-        os.replace(tmp, sp)
+        # Windows: a scanner/indexer can hold the just-written target for a
+        # moment and os.replace raises PermissionError; a tight mark() loop
+        # (one per sweep slice) hits it. Retry with backoff, then re-raise.
+        for k in range(8):
+            try:
+                os.replace(tmp, sp)
+                return
+            except PermissionError:
+                if k == 7:
+                    raise
+                time.sleep(0.02 * (2**k))
 
 
 def _json_scalar(o):

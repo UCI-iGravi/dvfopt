@@ -6,6 +6,19 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — 2.5D mop: giant residual boxes are tiled (`max_box=90`)
+
+- `mop_interior_3d` cropped each residual cluster into ONE box with no size
+  cap. On the 528-slice B0039 volume a plane-spanning cluster became a box
+  that a single worker solved whole for **5.6 h** (up to 40 SLP iterations
+  of a huge HiGHS LP) while the other three workers idled — the parallel mop
+  could not split it, and the serial mop was stuck on the same box. Boxes
+  wider than `max_box` on y/x are now tiled at stride `max_box` (the sweep's
+  `_cluster_boxes` idiom, phase-shifted by `max_box // 2` on even passes so a
+  seam-locked residual is tile-interior next pass); the tiles of one giant box
+  are pairwise disjoint, so they run in a single parallel batch. Boxes within
+  `max_box` are untouched (byte-identical), `max_box=None` disables the cap.
+
 ### Added — 2.5D marching: parallel mop (`n_workers`) and segment-parallel sweep (`n_segments`)
 
 - Motivation (full-res 528-slice B0039 volume, 4 workers): the sweep took

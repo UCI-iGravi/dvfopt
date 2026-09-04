@@ -244,7 +244,7 @@ with escalating freedom cannot move the true-floor cells.
 |----------|--------|---------|
 | `correct_dvf_25d()` / `Correct25DReport` | `dvfopt.pipeline_25d` | End-to-end 2.5D marching orchestrator |
 | `march_slice()` / `layer_min_v()` | `dvfopt.core.marching` | Per-slice sweep repair + inter-layer min-volume |
-| `mop_interior_3d()` | `dvfopt.core.marching` | Frozen-rim 3D-interior elastic-SLP residual mop |
+| `mop_interior_3d()` | `dvfopt.core.marching` | Frozen-rim 3D-interior elastic-SLP residual mop (`n_workers` batches disjoint boxes on the pool; `max_box=90` tiles giant boxes so one plane-spanning cluster cannot pin a single worker for hours) |
 
 **Other primitives:**
 

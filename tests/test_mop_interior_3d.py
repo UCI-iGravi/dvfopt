@@ -188,3 +188,34 @@ def test_mop_parallel_is_byte_identical_to_serial():
     # The real shared spawn pool.
     out2, info2 = mop_interior_3d(phi, n_workers=2)
     assert np.array_equal(out2, ref) and info2["n_fixed"] == info_ref["n_fixed"]
+
+
+def _wide_fold_band():
+    """(3,6,12,60) dz==0 field with one inter-layer fold band 52 columns wide —
+    a single connected residual cluster far wider than a small max_box."""
+    rng = np.random.default_rng(3)
+    phi = rng.normal(0, 0.02, (3, 6, 12, 60)).astype(np.float64)
+    phi[0] = 0.0
+    phi[1, 2, 4:8, 4:56] = +1.5
+    phi[1, 3, 4:8, 4:56] = -1.5
+    return phi
+
+
+def test_mop_giant_box_is_tiled_and_parallel_identical():
+    phi = _wide_fold_band()
+    if int((six_tet_min_volume_3d(phi) <= 0).sum()) == 0:
+        pytest.skip("no fold planted")
+    # Tiled (max_box=12 on a ~60-wide padded box -> several tiles) still repairs
+    # and reports MULTIPLE fixed boxes — the tiles, proving the cap engaged.
+    tiled, info = mop_interior_3d(phi, max_box=12)
+    assert info["n_fixed"] >= 2
+    assert info["n_below_after"] < info["n_below_before"]
+    # Tiles of one giant box are pairwise disjoint -> parallel == serial exactly.
+    par, info_p = mop_interior_3d(
+        phi, max_box=12, n_workers=2, pool_map=lambda w, a, n: [w(x) for x in a]
+    )
+    assert np.array_equal(par, tiled) and info_p["n_fixed"] == info["n_fixed"]
+    # The cap is inert on boxes that fit: uncapped == a max_box that swallows the box.
+    a, _ = mop_interior_3d(phi, max_box=None)
+    b, _ = mop_interior_3d(phi, max_box=1000)
+    assert np.array_equal(a, b)

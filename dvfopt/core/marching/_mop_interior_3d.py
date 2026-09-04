@@ -149,6 +149,20 @@ def _repair_box_worker(args):
     return _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta)
 
 
+def _tiles(lo, hi, max_box, phase):
+    """Half-open ``[lo, hi)`` as one interval when it fits ``max_box`` (or
+    ``max_box`` is None), else clipped tiles of stride ``max_box`` starting at
+    ``lo - phase``."""
+    if max_box is None or hi - lo <= max_box:
+        return [(lo, hi)]
+    out = []
+    for t in range(lo - phase, hi, max_box):
+        a, b = max(lo, t), min(hi, t + max_box)
+        if a < b:
+            out.append((a, b))
+    return out
+
+
 def _extents_overlap(a, b):
     """True if two ``(z0, z1, y0, y1, x0, x1)`` half-open extents intersect."""
     return all(a[i] < b[i + 1] and b[i] < a[i + 1] for i in (0, 2, 4))
@@ -168,6 +182,8 @@ def _pass(
     orientation_delta=None,
     n_workers=1,
     pool_map=None,
+    max_box=90,
+    phase=0,
 ):
     """One repair pass over all current below-threshold clusters.
 
@@ -206,7 +222,16 @@ def _pass(
         y1 = min(full.shape[2], bb[1].stop + pad + 1)
         x0 = max(0, bb[2].start - pad)
         x1 = min(full.shape[3], bb[2].stop + pad + 1)
-        exts.append((z0, z1 + 1, y0, y1, x0, x1))  # half-open, as sliced below
+        # Tile boxes wider than ``max_box`` on y/x (the sweep's
+        # ``_cluster_boxes`` idiom, phase-shifted across passes so a seam-
+        # locked residual is tile-interior next pass). Without this a plane-
+        # spanning residual cluster is ONE box that a single worker solves
+        # whole — measured 5.6 h on the 528-slice B0039 volume while the
+        # other workers idled. Boxes within ``max_box`` are left as-is, so the
+        # small-box path (and every test) is byte-identical to the uncapped mop.
+        for ty0, ty1 in _tiles(y0, y1, max_box, phase):
+            for tx0, tx1 in _tiles(x0, x1, max_box, phase):
+                exts.append((z0, z1 + 1, ty0, ty1, tx0, tx1))  # half-open, as sliced
 
     def _crop(e):
         # (box, v_before), or None when the crop is too small / already clean.
@@ -275,6 +300,7 @@ def mop_interior_3d(
     orientation_delta=None,
     n_workers=1,
     pool_map=None,
+    max_box=90,
 ):
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
@@ -332,6 +358,13 @@ def mop_interior_3d(
         is given) in batches of pairwise-disjoint boxes, processed in the
         serial order — byte-identical to ``n_workers=1`` (see ``_pass``).
         ``<= 1`` is the unchanged serial loop.
+    max_box : int or None, default 90
+        Boxes wider than this on y or x are tiled (stride ``max_box``,
+        phase-shifted by ``max_box // 2`` on even passes so seam-locked
+        residuals are tile-interior next pass — the sweep's idiom). The tiles
+        of one giant box are pairwise disjoint, so they run in ONE parallel
+        batch instead of one worker solving the whole box for hours. Boxes
+        within ``max_box`` are untouched; ``None`` disables the cap.
 
     Returns
     -------
@@ -384,6 +417,8 @@ def mop_interior_3d(
             orientation_delta,
             n_workers=n_workers,
             pool_map=pool_map,
+            max_box=max_box,
+            phase=((i - 1) % 2) * (max_box // 2) if max_box else 0,
         )
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)
