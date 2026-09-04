@@ -6,6 +6,20 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — 2.5D mop: per-box futility stop (`stall_iters=4`, `stall_rtol=1e-2`)
+
+- Tiling giant boxes (below) did not make the full-volume mop tractable: a
+  pass still took ~7 h and one worker 5.4 h. Measured directly on the densest
+  edge-layer region of the base sweep field, even a 3.7k-free-voxel box needs
+  > 11 min for four SLP solves — on a near-floor region nearly every tet row
+  is active, so the LP is ~50k rows at minutes per solve regardless of box
+  size, and `elastic_trust_solve`'s accept-micro-step (trust doubles back) /
+  reject (trust halves) alternation never reaches the trust floor, burning
+  all 40 solves. The engine gains an opt-in futility stop (end when the exact
+  violation has not dropped `stall_rtol` over the last `stall_iters` solves —
+  the 2D engine's a*-collapse bail, measured load-bearing there); the mop
+  passes 4 / 1 %, the sweep is untouched (`stall_iters=0`, byte-identical).
+
 ### Fixed — 2.5D mop: giant residual boxes are tiled (`max_box=90`)
 
 - `mop_interior_3d` cropped each residual cluster into ONE box with no size

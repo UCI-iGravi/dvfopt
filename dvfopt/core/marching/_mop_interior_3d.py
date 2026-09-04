@@ -71,7 +71,9 @@ def _viol(box, D, H, W, thr3, thr2):
     return tot
 
 
-def _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=None):
+def _repair_box(
+    box, thr3, thr2, mu, max_iters, orientation_delta=None, stall_iters=0, stall_rtol=1e-2
+):
     """Elastic SLP over interior dy/dx of a (2,D,H,W) box; rim frozen.
 
     The elastic trust-region SLP loop lives in
@@ -139,14 +141,25 @@ def _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=None):
         state=box.copy(),
         mu=mu,
         max_iters=max_iters,
+        stall_iters=stall_iters,
+        stall_rtol=stall_rtol,
     )
 
 
 def _repair_box_worker(args):
     """Pool worker: ``(box, thr3, thr2, mu, max_iters, orientation_delta) ->
     (box2, v_after)``. Module-level + single picklable tuple (spawn-safe)."""
-    box, thr3, thr2, mu, max_iters, orientation_delta = args
-    return _repair_box(box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta)
+    box, thr3, thr2, mu, max_iters, orientation_delta, stall_iters, stall_rtol = args
+    return _repair_box(
+        box,
+        thr3,
+        thr2,
+        mu,
+        max_iters,
+        orientation_delta=orientation_delta,
+        stall_iters=stall_iters,
+        stall_rtol=stall_rtol,
+    )
 
 
 def _tiles(lo, hi, max_box, phase):
@@ -184,6 +197,8 @@ def _pass(
     pool_map=None,
     max_box=90,
     phase=0,
+    stall_iters=0,
+    stall_rtol=1e-2,
 ):
     """One repair pass over all current below-threshold clusters.
 
@@ -258,7 +273,14 @@ def _pass(
                 continue
             box, v_before = c
             box2, v_after = _repair_box(
-                box, thr3, thr2, mu, max_iters, orientation_delta=orientation_delta
+                box,
+                thr3,
+                thr2,
+                mu,
+                max_iters,
+                orientation_delta=orientation_delta,
+                stall_iters=stall_iters,
+                stall_rtol=stall_rtol,
             )
             fixed += _paste(e, box2, v_before, v_after)
         return fixed
@@ -273,7 +295,10 @@ def _pass(
         crops = [(e, c) for e in batch if (c := _crop(e)) is not None]
         if not crops:
             continue
-        args = [(box, thr3, thr2, mu, max_iters, orientation_delta) for _, (box, _) in crops]
+        args = [
+            (box, thr3, thr2, mu, max_iters, orientation_delta, stall_iters, stall_rtol)
+            for _, (box, _) in crops
+        ]
         results = (
             [_repair_box_worker(a) for a in args]
             if len(args) == 1
@@ -301,6 +326,8 @@ def mop_interior_3d(
     n_workers=1,
     pool_map=None,
     max_box=90,
+    stall_iters=4,
+    stall_rtol=1e-2,
 ):
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
@@ -365,6 +392,14 @@ def mop_interior_3d(
         of one giant box are pairwise disjoint, so they run in ONE parallel
         batch instead of one worker solving the whole box for hours. Boxes
         within ``max_box`` are untouched; ``None`` disables the cap.
+    stall_iters, stall_rtol : int, float, default 4, 1e-2
+        Per-box futility stop (``elastic_trust_solve``): a box ends once its
+        exact violation has not dropped 1 % over the last 4 LP solves. On a
+        dense near-floor region nearly every tet row is active, so even a
+        3.7k-voxel box is a ~50k-row LP at minutes per solve, and the
+        accept-micro-step / reject alternation otherwise burns all
+        ``max_iters`` (measured: one such box pinned a worker 5.4 h). ``0``
+        disables the stop.
 
     Returns
     -------
@@ -419,6 +454,8 @@ def mop_interior_3d(
             pool_map=pool_map,
             max_box=max_box,
             phase=((i - 1) % 2) * (max_box // 2) if max_box else 0,
+            stall_iters=stall_iters,
+            stall_rtol=stall_rtol,
         )
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)

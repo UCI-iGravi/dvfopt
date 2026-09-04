@@ -219,3 +219,41 @@ def test_mop_giant_box_is_tiled_and_parallel_identical():
     a, _ = mop_interior_3d(phi, max_box=None)
     b, _ = mop_interior_3d(phi, max_box=1000)
     assert np.array_equal(a, b)
+
+
+def test_elastic_engine_futility_stop_ends_micro_step_grind():
+    """A box whose every candidate is accepted by a hair (1e-6) doubles its
+    trust back each time and never reaches the trust floor: without the stop
+    it burns all max_iters solves; with stall_iters=4 / 1 % it ends at <= 5."""
+    from scipy import sparse
+
+    from dvfopt.core.marching._elastic_engine import elastic_trust_solve
+
+    def run(stall_iters):
+        n_lp = [0]
+        v = [1.0]
+        x0 = np.zeros(2)
+
+        def blocks(_state):
+            n_lp[0] += 1
+            return [(sparse.csr_matrix(np.array([[1.0, 1.0]])), np.array([0.5]), 1.0)]
+
+        def viol(_state):
+            v[0] *= 1.0 - 1e-6  # every candidate a hair better -> accepted
+            return v[0]
+
+        elastic_trust_solve(
+            x0,
+            x0,
+            blocks,
+            viol,
+            lambda s, _x: s,
+            state=object(),
+            mu=1.0,
+            max_iters=20,
+            stall_iters=stall_iters,
+        )
+        return n_lp[0]
+
+    assert run(0) == 20
+    assert run(4) <= 5
