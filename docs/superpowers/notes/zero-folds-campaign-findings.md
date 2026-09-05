@@ -577,12 +577,21 @@ the sweep is LP-bound; Python micro-optimisation is worthless there.
    by dependency level (one above every earlier overlapping box; still
    byte-identical to serial, re-verified bit-for-bit on real data). Dry run on
    the edge band (159 boxes): **26 rounds instead of 57, mean 6.1 boxes per
-   round (max 15) instead of 2.8**; on the real volume the parent sits at 0 %
-   and the pool carries the mop (~3 cores averaged over the first minutes).
+   round (max 15) instead of 2.8**; on the real volume the parent now sits at
+   0 % and the pool carries the mop — but at **1.24 cores averaged over the
+   first 8 min** (599 s of worker CPU over 483 s), not 4. The heavy near-floor
+   boxes overlap each other, so they form dependency *chains* (the size-1
+   levels above), and a chain runs one box at a time on any number of
+   workers; the light, spatially spread boxes are what parallelise.
 
-The remaining floor is the per-solve price of a near-floor box. Only a cheaper
-formulation, or skipping cubes the best-of-4-diagonals certificate proves are
-at the geometric floor, would remove it — out of scope this round.
+The remaining floor is therefore two things: the per-solve price of a
+near-floor box, and the chains those boxes form. Levers not taken this round:
+a Jacobi / restricted-additive variant of the mop (overlapping boxes solved
+from one snapshot, disjoint cores pasted back — the 2D engine's RAS tiler
+idea, measured −26 % on one slice there) would break the chains at the cost of
+the exact serial semantics; a cheaper LP formulation, or skipping cubes the
+best-of-4-diagonals certificate proves are at the geometric floor, would cut
+the per-solve price.
 
 ### 10.4 The rows verdict
 
