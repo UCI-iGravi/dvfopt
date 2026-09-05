@@ -23,6 +23,7 @@ class TestPersistentPool:
         rebuilt only when the request grows past the current size."""
         from dvfopt.core._pool import get_pool, shutdown_pool
 
+        shutdown_pool()  # start clean: the pool is grow-only and other tests grow it
         try:
             p1 = get_pool(2)
             p2 = get_pool(2)

@@ -48,9 +48,20 @@ _CFG = dict(solver='barrier', constraint='simplex', record_history=False, verbos
 
 
 def _rows(res):
-    return [
-        {k: v for k, v in r.items() if k != 'wall_s'} for r in res.to_dataframe().to_dict('records')
-    ]
+    # Per-slice scalars straight off the results (no pandas — a dev extra the
+    # no-extras CI leg lacks); wall time excluded, it is not reproducible.
+    keys = (
+        "z",
+        "init_n_neg",
+        "init_min_T",
+        "final_n_neg",
+        "final_min_T",
+        "feasible",
+        "solver_used",
+        "n_outer_iters",
+        "notes",
+    )
+    return [{k: getattr(r, k) for k in keys} for r in res.slice_results]
 
 
 @pytest.mark.parametrize('n_workers', [None, 2])
