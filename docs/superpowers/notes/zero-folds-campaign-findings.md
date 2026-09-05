@@ -595,9 +595,25 @@ the per-solve price.
 
 ### 10.4 The rows verdict
 
-<!-- PENDING: fill from the AB25D base / rows summary lines (n_neg_out,
-n_neg_best_diag_out, n_below, min_T, L1 move; wall is soft — resumed and
-contended). -->
+Measured at the sweep stage — where the knob acts; the mop is identical
+machinery on both legs and chain-bound on this volume (§10.3) — band-wise from
+the sweep-final checkpoints (`sweep_verdict.py`, `sweep_verdict_floor.py`):
+
+| | folds (fixed diagonal) | folds under every diagonal (true floor) | sub-threshold (< 0.01 − 1e-5) | sub-threshold under every diagonal | min volume | L1 move from input | sweep wall |
+|---|---|---|---|---|---|---|---|
+| base | 66 | 23 | 2137 | 1345 | −0.281 | 306,088 | 16.5 h |
+| rows (`orientation_delta=0.01`) | 50 | 12 | 4384 | 2463 | −0.187 | 285,521 | ~20 h |
+
+The rows cut the fixed-diagonal folds by 24 % and halve their depth, and
+the true fold floor (negative under all four main diagonals) goes 23 → 12, so the rows remove real folds, not just re-split artifacts. They also move the field **6.7 % less** from the input (a
+prevention row is cheaper than a repair), so on fidelity and folds they win
+outright. The price is margin: twice as many cubes end up parked just under the
+0.01 threshold (the rows enforce edge projections ≥ δ = 0.01 and the LP lands
+cells at that bound), and those are exactly the mop's workload — the chain-bound
+near-floor boxes of §10.3. Recommendation: keep `orientation_delta` opt-in for
+the 2.5D chain as it stands; make it the default once the mop no longer pays
+per sub-threshold cube (a Jacobi/RAS mop, or a floor-skip on the
+best-diagonal certificate). Walls are soft (resumed, partly contended).
 
 ### 10.5 Artefacts
 

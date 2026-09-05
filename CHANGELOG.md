@@ -6,6 +6,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Measured — 2.5D `orientation_delta=0.01` on the full 528-slice B0039 volume (sweep stage)
+
+- base → rows: folds 66 → 50, true fold floor (negative under every main
+  diagonal) 23 → 12, min volume −0.281 → −0.187, L1 move −6.7 %; but
+  sub-threshold cubes 2137 → 4384 (cells parked at the 0.01 row margin), which
+  is the mop's workload. Stays opt-in; details in findings §10.
+
 ### Fixed — 2.5D mop: parallel batches by dependency level (was ~1 of 4 cores)
 
 - The parallel mop grouped only CONSECUTIVE pairwise-disjoint boxes; because
