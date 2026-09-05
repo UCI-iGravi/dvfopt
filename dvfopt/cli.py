@@ -95,21 +95,41 @@ def _correct_slice(job):
     from dvfopt.core._pool import pin_worker_threads
 
     pin_worker_threads()  # no-op in the parent, so the serial path is untouched
-    phi2, kwargs = job
+    z, phi2, kwargs = job
     from dvfopt import correct_dvf
 
     res = correct_dvf(phi2, **kwargs)
-    return res.corrected, res.feasible, res.init_n_neg, res.final_n_neg, res.wall_time
+    return z, res.corrected, res.feasible, res.init_n_neg, res.final_n_neg, res.wall_time
 
 
-def _map_slices(jobs, n_workers):
-    """Run the per-slice jobs in a process pool; results stay in slice order."""
-    from concurrent.futures import ProcessPoolExecutor
+def _map_slices(jobs, n_workers, on_result):
+    """Run the per-slice jobs in a process pool, handing each result to
+    ``on_result`` as it completes (completion order; the caller sorts by z)."""
+    from concurrent.futures import ProcessPoolExecutor, as_completed
 
     from dvfopt.core._pool import pinned_thread_env
 
     with pinned_thread_env(), ProcessPoolExecutor(max_workers=n_workers) as ex:
-        return list(ex.map(_correct_slice, jobs))
+        futures = [ex.submit(_correct_slice, job) for job in jobs]
+        for fut in as_completed(futures):
+            on_result(fut.result())
+
+
+def _checkpoint(args, phi, params, **kw):
+    """The run's ``RunCheckpoint`` under ``--checkpoint DIR`` (None without)."""
+    if not args.checkpoint:
+        return None
+    from dvfopt.checkpoint import RunCheckpoint
+
+    meta = dict(
+        pipeline=args.pipeline,
+        constraint=args.constraint,
+        objective=args.objective,
+        strategy=args.strategy,
+        threshold=args.threshold,
+        params=repr(params),
+    )
+    return RunCheckpoint(args.checkpoint, phi, meta, **kw).open()
 
 
 def _certificate(phi_in, phi_out, threshold, summary):
@@ -187,28 +207,43 @@ def _correct_slices(phi, args, params):
         **({} if args.threshold is None else {'threshold': args.threshold}),
         **params,
     )
-    jobs = [(phi[:, z : z + 1], kwargs) for z in range(phi.shape[1])]
-    n_workers = args.n_workers or 1
-    results = (
-        _map_slices(jobs, n_workers)
-        if n_workers > 1 and len(jobs) > 1
-        else [_correct_slice(job) for job in jobs]
-    )
+    D = phi.shape[1]
+    outs: dict = {}
+    rows: dict = {}
+    ck = _checkpoint(args, phi, params)
+    if ck is not None:
+        for z in ck.done:  # restore the finished slices (dz passes through, as correct_dvf does)
+            # ponytail: float64 like the solver's own output; a float32 input upcasts here
+            sl = np.array(phi[:, z : z + 1], dtype=np.float64)
+            sl[1:3, 0] = ck.field[1:3, z]
+            outs[z], rows[z] = sl, ck.rows[str(z)]
 
-    outs, rows, all_ok = [], [], True
-    for z, (corrected, feasible, init_n_neg, final_n_neg, wall_time) in enumerate(results):
-        outs.append(corrected)
-        all_ok &= feasible
-        rows.append(
-            {
-                'z': z,
-                'feasible': feasible,
-                'init_n_neg': init_n_neg,
-                'final_n_neg': final_n_neg,
-                'wall_time_s': wall_time,
-            }
-        )
-    out = np.concatenate(outs, axis=1)
+    def _done(result):
+        z, corrected, feasible, init_n_neg, final_n_neg, wall_time = result
+        outs[z] = corrected
+        rows[z] = {
+            'z': z,
+            'feasible': feasible,
+            'init_n_neg': init_n_neg,
+            'final_n_neg': final_n_neg,
+            'wall_time_s': wall_time,
+        }
+        if ck is not None:
+            ck.mark(z, corrected[1:3, 0], row=rows[z])
+
+    jobs = [(z, phi[:, z : z + 1], kwargs) for z in range(D) if z not in rows]
+    n_workers = args.n_workers or 1
+    if n_workers > 1 and len(jobs) > 1:
+        _map_slices(jobs, n_workers, _done)
+    else:
+        for job in jobs:
+            _done(_correct_slice(job))
+    if ck is not None:
+        ck.finish()
+
+    rows = [rows[z] for z in range(D)]
+    all_ok = all(bool(r['feasible']) for r in rows)
+    out = np.concatenate([outs[z] for z in range(D)], axis=1)
     summary = {
         'pipeline': 'slices',
         'constraint': args.constraint,
@@ -231,43 +266,57 @@ def _cmd_correct(args) -> int:
     report_dir = Path(args.report_dir) if args.report_dir else None
 
     if args.pipeline == 'solver':
-        from dvfopt import correct_dvf
+        # One solve = one checkpoint unit: --checkpoint only reloads a finished run.
+        ck = _checkpoint(args, phi, params, slab=lambda _unit: Ellipsis)
+        if ck is not None and ck.finished:
+            out, solve_info = ck.field.copy(), None
+            summary = dict(ck.rows['run'], resumed=True)
+            feasible = bool(summary['feasible'])
+        else:
+            from dvfopt import correct_dvf
 
-        res = correct_dvf(
-            phi,
-            constraint=args.constraint,
-            objective=args.objective,
-            strategy=args.strategy,
-            verbose=args.verbose,
-            record_history=report_dir is not None,
-            **common,
-            **params,
-        )
-        out, feasible, solve_info = res.corrected, res.feasible, res.info
-        summary = {
-            'pipeline': 'solver',
-            'constraint': args.constraint,
-            'objective': args.objective,
-            'strategy': args.strategy,
-            'feasible': res.feasible,
-            'init_n_neg': res.init_n_neg,
-            'init_min_T': res.init_min_T,
-            'final_n_neg': res.final_n_neg,
-            'final_min_T': res.final_min_T,
-            'wall_time_s': res.wall_time,
-        }
+            res = correct_dvf(
+                phi,
+                constraint=args.constraint,
+                objective=args.objective,
+                strategy=args.strategy,
+                verbose=args.verbose,
+                record_history=report_dir is not None,
+                **common,
+                **params,
+            )
+            out, feasible, solve_info = res.corrected, res.feasible, res.info
+            summary = {
+                'pipeline': 'solver',
+                'constraint': args.constraint,
+                'objective': args.objective,
+                'strategy': args.strategy,
+                'feasible': res.feasible,
+                'init_n_neg': res.init_n_neg,
+                'init_min_T': res.init_min_T,
+                'final_n_neg': res.final_n_neg,
+                'final_min_T': res.final_min_T,
+                'wall_time_s': res.wall_time,
+            }
+            if ck is not None:
+                ck.mark('run', out, row=summary)
+                ck.finish()
     elif args.pipeline == 'slices':
         out, feasible, summary, solve_info = _correct_slices(phi, args, params)
     elif args.pipeline == '25d':
         from dvfopt import correct_dvf_25d
 
-        out, rep = correct_dvf_25d(phi, verbose=args.verbose, **common, **params)
+        out, rep = correct_dvf_25d(
+            phi, verbose=args.verbose, checkpoint_dir=args.checkpoint, **common, **params
+        )
         feasible, solve_info = rep.feasible, None
         summary = {'pipeline': '25d', **asdict(rep)}
     else:  # '3d'
         from dvfopt import correct_dvf_3d
 
-        out, rep = correct_dvf_3d(phi, verbose=args.verbose, **common, **params)
+        out, rep = correct_dvf_3d(
+            phi, verbose=args.verbose, checkpoint_dir=args.checkpoint, **common, **params
+        )
         feasible, solve_info = rep.feasible, None
         summary = {'pipeline': '3d', **asdict(rep)}
 
@@ -421,6 +470,14 @@ def build_parser() -> argparse.ArgumentParser:
         '--report-dir',
         default=None,
         help='write summary.json (+ convergence.png for --pipeline solver) here',
+    )
+    pc.add_argument(
+        '--checkpoint',
+        default=None,
+        metavar='DIR',
+        help='make the run resumable: mirror finished slices/stages to DIR/field.npy + '
+        'state.json; re-running with the same input, options and DIR skips the finished '
+        'work (solver: a finished run is reloaded). A mismatched DIR is refused',
     )
     _common(pc)
 

@@ -2,8 +2,14 @@
 
 import logging
 
+import matplotlib
 import numpy as np
 import pytest
+
+# Headless plotting for EVERY test worker, before any test module imports pyplot:
+# several viz functions end in plt.show(), and with PySide6 installed the default
+# backend is the interactive qtagg, which pops real figure windows mid-suite.
+matplotlib.use("Agg")
 
 
 @pytest.fixture(autouse=True)

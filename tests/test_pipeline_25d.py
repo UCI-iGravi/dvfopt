@@ -123,3 +123,64 @@ def test_returns_report_dataclass():
     _, report = correct_dvf_25d(phi, n_workers=1)
     assert isinstance(report, Correct25DReport)
     assert isinstance(report.stages, list)
+
+
+def _planted_25d_folds_12():
+    """D=12 variant of ``_planted_25d_fold``: the z=2|3 fold plus a milder one
+    across the z=7|8 seam of a 3-segment split (both clear single-origin)."""
+    rng = np.random.default_rng(0)
+    phi = rng.normal(0, 0.02, (3, 12, 20, 20)).astype(np.float64)
+    phi[0] = 0.0
+    for z, amp in ((2, 1.5), (7, 1.0)):
+        phi[1, z, 8:11, 8:11] = +amp
+        phi[1, z + 1, 8:11, 8:11] = -amp
+    return phi
+
+
+def test_segments_default_and_one_are_the_single_origin_sweep():
+    vol = _planted_25d_folds_12()
+    ref, rep = correct_dvf_25d(vol)
+    out, _ = correct_dvf_25d(vol, n_segments=1)
+    assert np.array_equal(out, ref)
+    assert rep.stages[0]['stage'] == 'sweep'
+    with pytest.raises(ValueError, match='n_segments'):
+        correct_dvf_25d(vol, n_segments=7)
+
+
+def test_segment_parallel_sweep_clears_and_is_deterministic(tmp_path):
+    import json
+
+    vol = _planted_25d_folds_12()
+    if int((six_tet_min_volume_3d(vol) <= 0).sum()) == 0:
+        pytest.skip('no fold planted')
+    _, rep_single = correct_dvf_25d(vol)
+    out, rep = correct_dvf_25d(vol, n_segments=3)
+    assert [s['stage'] for s in rep.stages][:2] == ['segments', 'seams']
+    assert rep.n_neg_out == 0 == rep_single.n_neg_out
+    assert np.all(out[0] == 0.0)
+    # Segments are deterministic given their slab: the pooled run is byte-identical.
+    out_par, _ = correct_dvf_25d(vol, n_segments=3, n_workers=3)
+    assert np.array_equal(out_par, out)
+
+    # Checkpoint units: stop after the first segment lands, resume, reload.
+    ck = tmp_path / 'ck'
+
+    class _Stop(Exception):
+        pass
+
+    def stop_first(e):
+        raise _Stop
+
+    with pytest.raises(_Stop):
+        correct_dvf_25d(vol, n_segments=3, checkpoint_dir=ck, progress_callback=stop_first)
+    assert json.loads((ck / 'state.json').read_text())['done'] == [0, 1, 2, 3]
+    events = []
+    out_ck, _ = correct_dvf_25d(
+        vol, n_segments=3, checkpoint_dir=ck, progress_callback=lambda e: events.append(e['index'])
+    )
+    assert events[0] == 8, 'resume must skip the finished segment'
+    assert np.array_equal(out_ck, out)
+    done = json.loads((ck / 'state.json').read_text())['done']
+    assert done[4:] == [4, 5, 6, 7, 8, 9, 10, 11, 'seam:3', 'seam:7']
+    out_re, rep_re = correct_dvf_25d(vol, n_segments=3, checkpoint_dir=ck)
+    assert rep_re.stages[-1]['stage'] == 'resumed' and np.array_equal(out_re, out)

@@ -23,6 +23,7 @@ class TestPersistentPool:
         rebuilt only when the request grows past the current size."""
         from dvfopt.core._pool import get_pool, shutdown_pool
 
+        shutdown_pool()  # start clean: the pool is grow-only and other tests grow it
         try:
             p1 = get_pool(2)
             p2 = get_pool(2)
@@ -197,7 +198,7 @@ class TestThreadPinning:
         from dvfopt.cli import _correct_slice
 
         phi2 = np.zeros((2, 6, 6))
-        _correct_slice((phi2, {'verbose': 0}))
+        _correct_slice((0, phi2, {'verbose': 0}))
         assert calls == [1]
 
         from dvfopt.unified import DVFoptConfig, _solve_slice_worker

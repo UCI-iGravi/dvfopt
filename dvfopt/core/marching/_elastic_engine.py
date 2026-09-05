@@ -39,6 +39,8 @@ def elastic_trust_solve(
     trust_floor=1e-3,
     accept_rtol=1e-9,
     stop_viol=1e-12,
+    stall_iters=0,
+    stall_rtol=1e-2,
 ):
     """Shared elastic trust-region SLP engine.
 
@@ -66,15 +68,29 @@ def elastic_trust_solve(
     on accept the trust radius doubles (capped at ``trust_cap``), otherwise it
     halves (loop breaks below ``trust_floor``). LP failure also halves the
     trust radius. The loop stops once ``viol <= stop_viol``.
+
+    ``stall_iters > 0`` adds a FUTILITY stop: the loop ends when the exact
+    violation has not dropped by a relative ``stall_rtol`` over the last
+    ``stall_iters`` solves (accepted or rejected). A rejected candidate halves
+    the trust radius but an accepted micro-step doubles it back, so a box on a
+    near-floor region can alternate the two and burn every one of
+    ``max_iters`` solves for no progress — the 2D engine's a*-collapse
+    pathology, where the same stop was measured load-bearing. ``0`` (default)
+    is the unchanged loop.
     """
     x = np.asarray(x0)
     anchor = np.asarray(anchor)
     nf = x.size
     viol = viol_fn(state)
     trust = trust0
+    hist = []  # exact violation at the start of each solve (futility window)
     for _ in range(max_iters):
         if viol <= stop_viol:
             break
+        hist.append(viol)
+        if stall_iters and len(hist) > stall_iters:
+            if viol > hist[-1 - stall_iters] * (1.0 - stall_rtol):
+                break  # < stall_rtol relative decrease over stall_iters solves
         blocks = blocks_fn(state)
         sizes = [J.shape[0] for (J, _T, _thr) in blocks]
         Ka = int(sum(sizes))

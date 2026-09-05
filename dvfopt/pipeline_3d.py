@@ -91,6 +91,7 @@ def correct_dvf_3d(
     n_workers: int = 1,
     sparse_span_cutoff: float = 0.6,
     verbose: int = 0,
+    checkpoint_dir=None,
 ):
     """Drive a folded 3D DVF chunk toward strict simplex (3D) feasibility.
 
@@ -118,6 +119,16 @@ def correct_dvf_3d(
         In ``'auto'`` bulk mode, folds spanning more than this fraction of
         an axis are treated as "dense" -> global solve.
     verbose : int
+    checkpoint_dir : str or path-like or None, default None
+        Make the run resumable (``dvfopt.checkpoint.RunCheckpoint``): the
+        whole field is mirrored to ``<dir>/field.npy`` after the bulk stage,
+        after every escape iteration and after the multiscale re-seed, with
+        the stage record (and the escape loop's state) in ``state.json``.
+        Calling again with the same input / knobs / directory reloads the
+        field at the last finished stage and skips those stages' work; a
+        ``done`` checkpoint just reloads the result. The tighten stage is
+        not a resume point on its own (the run finishes right after it).
+        A mismatched checkpoint raises ``ValueError``.
 
     Returns
     -------
@@ -205,6 +216,34 @@ def correct_dvf_3d(
             stats=(mv, n_neg_in, n_below_in, min_in),
         )
 
+    # ---- Resumable checkpoint (opt-in): whole-field units per stage ----
+    ck = None
+    if checkpoint_dir is not None:
+        from dvfopt.checkpoint import RunCheckpoint
+
+        meta = dict(
+            threshold=threshold,
+            recover_threshold=recover_threshold,
+            bulk=bulk,
+            max_escape_iters=max_escape_iters,
+            escape_k_ring=escape_k_ring,
+            escape_feasibility_thr=escape_feasibility_thr,
+            thorough=thorough,
+            sparse_span_cutoff=sparse_span_cutoff,
+        )
+        ck = RunCheckpoint(checkpoint_dir, phi0, meta, slab=lambda _unit: Ellipsis).open()
+        if ck.finished:
+            cur[...] = ck.field
+            if verbose:
+                log_info(f'[3d resume] finished run reloaded from {checkpoint_dir}')
+            stages.append(dict(stage='resumed', n_neg=-1))
+            return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0)
+        if ck.done:
+            cur[...] = ck.field
+            st = _stats(cur, threshold)
+            if verbose:
+                log_info(f'[3d resume] {ck.done} from {checkpoint_dir}')
+
     # ---- Stage 1: bulk reduction ----
     n_fold, span = _fold_sparsity(mv, threshold)
     n_cubes = int(mv.size)
@@ -221,7 +260,9 @@ def correct_dvf_3d(
         # cheap path actually plateaus.
         route = 'global' if frac > 0.5 else 'active_band'
     ts = time.time()
-    if route == 'active_band':
+    if ck is not None and ck.is_done('bulk'):
+        stages.append(ck.rows['bulk']['stage'])
+    elif route == 'active_band':
         cur, info = active_band_alm_recovery_3d(
             cur,
             threshold=rec_thr,
@@ -236,21 +277,25 @@ def correct_dvf_3d(
         cur = _m10tet(cur, rec_thr, gpu=True)
     else:  # global
         cur = _m10tet(cur, rec_thr, gpu=False)
-    st = _stats(cur, threshold)  # threaded through the stages below
+    if ck is None or not ck.is_done('bulk'):
+        st = _stats(cur, threshold)  # threaded through the stages below
+        n_neg_b, n_below_b, min_b = st[1:]
+        if verbose:
+            log_info(
+                f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} ({time.time() - ts:.1f}s)',
+            )
+        stages.append(
+            dict(
+                stage=f'bulk:{route}',
+                n_neg=n_neg_b,
+                n_below=n_below_b,
+                min_T=min_b,
+                wall_s=time.time() - ts,
+            )
+        )
+        if ck is not None:
+            ck.mark('bulk', cur, row=dict(stage=stages[-1]))
     mv, n_neg_b, n_below_b, min_b = st
-    if verbose:
-        log_info(
-            f'[bulk:{route}] n_neg={n_neg_b} min_T={min_b:+.5f} ({time.time() - ts:.1f}s)',
-        )
-    stages.append(
-        dict(
-            stage=f'bulk:{route}',
-            n_neg=n_neg_b,
-            n_below=n_below_b,
-            min_T=min_b,
-            wall_s=time.time() - ts,
-        )
-    )
 
     # ---- Stage 2: coupled-escape loop ----
     # Pathology guard (a-priori): if a large FRACTION of cubes have no
@@ -270,6 +315,8 @@ def correct_dvf_3d(
             dict(stage='escape:skipped_pathological', n_neg=n_neg_b, best_diag_floor=bd_floor_in)
         )
         # `cur` is unchanged since the post-bulk measurement — reuse it.
+        if ck is not None:
+            ck.finish()
         return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=st)
 
     # Iterate the coupled k-ring escape; when it stalls, ESCALATE the halo
@@ -285,6 +332,17 @@ def correct_dvf_3d(
         stall = 0
         k = escape_k_ring
         for it in range(max_escape_iters):
+            name = f'escape{tag}{it + 1}'
+            if ck is not None and ck.is_done(name):
+                # Replay: the field is already restored; pick up the loop
+                # state (halo, stall counter, reference count, whether the
+                # loop ended here) the original iteration left behind.
+                row = ck.rows[name]
+                stages.append(row['stage'])
+                k, stall, last_n, stop = row['loop']
+                if stop:
+                    break
+                continue
             n_now = st[1]
             if n_now == 0:
                 break
@@ -322,25 +380,30 @@ def correct_dvf_3d(
                     wall_s=time.time() - ts,
                 )
             )
-            if n_after == 0:
-                break
-            if n_after >= last_n:
+            stop = n_after == 0
+            if not stop and n_after >= last_n:
                 stall += 1
                 chunk_min = min(cur.shape[1:])
                 if k == escape_k_ring and chunk_min > 4 * (k + 1):
+                    # escalate; `last_n` deliberately stays the pre-stall count
                     k += 1
                     stall = 0
                     if verbose:
                         log_info(f'[escape] stalled — escalating halo to k={k}')
-                    continue
-                if stall >= 2:
-                    if verbose:
-                        log_info('[escape] stalled — stopping')
-                    break
-            else:
+                else:
+                    if stall >= 2:
+                        if verbose:
+                            log_info('[escape] stalled — stopping')
+                        stop = True
+                    last_n = n_after
+            elif not stop:
                 stall = 0
                 k = escape_k_ring
-            last_n = n_after
+                last_n = n_after
+            if ck is not None:
+                ck.mark(name, cur, row=dict(stage=stages[-1], loop=[k, stall, last_n, stop]))
+            if stop:
+                break
         return cur, st
 
     cur, st = _run_escape(cur, st)
@@ -351,7 +414,10 @@ def correct_dvf_3d(
     # band's single-scale plateau in the research) and re-escape ONCE.
     n_esc = st[1]  # _run_escape returned the measurement of the final `cur`
     floor_frac = bd_floor_in / max(1, mv.size)
-    if (
+    if ck is not None and ck.is_done('multiscale_fallback'):
+        stages.append(ck.rows['multiscale_fallback']['stage'])
+        cur, st = _run_escape(cur, st, tag='2')
+    elif (
         thorough
         and n_esc > 0
         and route != 'multiscale'
@@ -373,6 +439,8 @@ def correct_dvf_3d(
             cur = seeded
             st = st_seed
         stages.append(dict(stage='multiscale_fallback', n_neg=n_seed, wall_s=time.time() - ts))
+        if ck is not None:
+            ck.mark('multiscale_fallback', cur, row=dict(stage=stages[-1]))
         cur, st = _run_escape(cur, st, tag='2')
 
     # ---- Stage 3: final tighten (n<threshold but feasible) ----
@@ -392,6 +460,8 @@ def correct_dvf_3d(
         n_below_fin = st[2]
         stages.append(dict(stage='tighten', n_below=n_below_fin, wall_s=time.time() - ts))
 
+    if ck is not None:
+        ck.finish(cur)
     # `st` always holds the measurement of the final `cur` here — reuse it.
     return cur, _finalize(cur, phi0, threshold, n_neg_in, bd_floor_in, stages, t0, stats=st)
 

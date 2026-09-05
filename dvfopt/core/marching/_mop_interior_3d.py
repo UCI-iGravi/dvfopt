@@ -71,7 +71,9 @@ def _viol(box, D, H, W, thr3, thr2):
     return tot
 
 
-def _repair_box(box, thr3, thr2, mu, max_iters):
+def _repair_box(
+    box, thr3, thr2, mu, max_iters, orientation_delta=None, stall_iters=0, stall_rtol=1e-2
+):
     """Elastic SLP over interior dy/dx of a (2,D,H,W) box; rim frozen.
 
     The elastic trust-region SLP loop lives in
@@ -117,7 +119,15 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         T3 = tet_volumes_flat(pf, D, H, W)
         J3 = jac3(pf).tocsc()[:, free3].tocsr()
         a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
-        return [(J3[a3], T3[a3], thr3)]
+        out = [(J3[a3], T3[a3], thr3)]
+        if orientation_delta is not None:
+            from dvfopt.core.marching._mono_rows import axial_mono_rows, mono_block
+
+            dxdy = np.concatenate([b[1].reshape(-1), b[0].reshape(-1)])  # [dx | dy]
+            mb = mono_block(axial_mono_rows(D, H, W), dxdy, free3, orientation_delta, ACTIVE_WINDOW)
+            if mb is not None:
+                out.append(mb)
+        return out
 
     def viol_fn(b):
         return _viol(b, D, H, W, thr3, thr2)
@@ -131,26 +141,106 @@ def _repair_box(box, thr3, thr2, mu, max_iters):
         state=box.copy(),
         mu=mu,
         max_iters=max_iters,
+        stall_iters=stall_iters,
+        stall_rtol=stall_rtol,
     )
 
 
-def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
+def _repair_box_worker(args):
+    """Pool worker: ``(box, thr3, thr2, mu, max_iters, orientation_delta) ->
+    (box2, v_after)``. Module-level + single picklable tuple (spawn-safe)."""
+    box, thr3, thr2, mu, max_iters, orientation_delta, stall_iters, stall_rtol = args
+    return _repair_box(
+        box,
+        thr3,
+        thr2,
+        mu,
+        max_iters,
+        orientation_delta=orientation_delta,
+        stall_iters=stall_iters,
+        stall_rtol=stall_rtol,
+    )
+
+
+def _tiles(lo, hi, max_box, phase):
+    """Half-open ``[lo, hi)`` as one interval when it fits ``max_box`` (or
+    ``max_box`` is None), else clipped tiles of stride ``max_box`` starting at
+    ``lo - phase``."""
+    if max_box is None or hi - lo <= max_box:
+        return [(lo, hi)]
+    out = []
+    for t in range(lo - phase, hi, max_box):
+        a, b = max(lo, t), min(hi, t + max_box)
+        if a < b:
+            out.append((a, b))
+    return out
+
+
+def _levels(exts):
+    """Dependency level of each extent: ``1 + max(level of every EARLIER
+    extent it overlaps)``, else 0. Extents sharing a level are pairwise
+    disjoint (an overlap forces the later one a level higher), so a level is
+    one parallel batch; processing levels in order gives every box exactly the
+    paste-backs of its earlier overlapping boxes — the serial semantics."""
+    level = []
+    for i, e in enumerate(exts):
+        deps = [level[j] for j in range(i) if _extents_overlap(e, exts[j])]
+        level.append(1 + max(deps) if deps else 0)
+    return level
+
+
+def _extents_overlap(a, b):
+    """True if two ``(z0, z1, y0, y1, x0, x1)`` half-open extents intersect."""
+    return all(a[i] < b[i + 1] and b[i] < a[i + 1] for i in (0, 2, 4))
+
+
+def _pass(
+    full,
+    mv,
+    zpad,
+    pad,
+    thr3,
+    thr2,
+    mu,
+    dil,
+    max_iters,
+    rep_thr,
+    orientation_delta=None,
+    n_workers=1,
+    pool_map=None,
+    max_box=90,
+    phase=0,
+    stall_iters=0,
+    stall_rtol=1e-2,
+):
     """One repair pass over all current below-threshold clusters.
 
     ``mv`` is the caller's already-measured per-cube min simplex (3D) volume of
-    ``full`` (no recompute here). Clusters on the sweep's predicate
-    ``mv < thr3 - 1e-9`` — sub-threshold cubes are repaired, not just
-    negatives. Returns n_fixed.
+    ``full`` (no recompute here). Clusters on the REPORT predicate
+    ``mv < rep_thr`` (= ``threshold - 1e-5``, the pipeline's ``n_below``) —
+    sub-threshold cubes are repaired, not just negatives; ``thr3`` is only the
+    per-box LP target. Clustering on the LP target itself (``thr3 - 1e-9``)
+    was measured to sweep up every cube the sweep parked AT its target within
+    LP tolerance — 127k cubes / 700 clusters on the 528-slice B0039 volume
+    against 2k / 260 under the report predicate — and turned one mop pass
+    into a >24 h serial job. Returns n_fixed.
+
+    ``n_workers > 1`` runs the boxes on ``pool_map`` in dependency LEVELS
+    (:func:`_levels`), byte-identical to the serial loop: a box's level is one
+    above every earlier box it overlaps, so it is cropped only after all of
+    those have pasted back (exactly the state the serial loop would crop it
+    from), while boxes that do not overlap it — earlier or later — can neither
+    reach its region nor be reached by it. Levels run in order; paste-back
+    keeps the ``v_after < v_before`` rule.
     """
     if dil < 0:
         raise ValueError(f'dil must be >= 0, got {dil}')
-    bad = mv < thr3 - 1e-9
+    bad = mv < rep_thr
     merged = binary_dilation(bad, iterations=dil) if dil >= 1 else bad
     lab, _ = cc_label(merged)
-    boxes = find_objects(lab)
     dyx = full[1:3]
-    fixed = 0
-    for bb in boxes:
+    exts = []
+    for bb in find_objects(lab):
         if bb is None:
             continue
         z0 = max(0, bb[0].start - zpad)
@@ -159,17 +249,77 @@ def _pass(full, mv, zpad, pad, thr3, thr2, mu, dil, max_iters):
         y1 = min(full.shape[2], bb[1].stop + pad + 1)
         x0 = max(0, bb[2].start - pad)
         x1 = min(full.shape[3], bb[2].stop + pad + 1)
-        box = dyx[:, z0 : z1 + 1, y0:y1, x0:x1].copy()
+        # Tile boxes wider than ``max_box`` on y/x (the sweep's
+        # ``_cluster_boxes`` idiom, phase-shifted across passes so a seam-
+        # locked residual is tile-interior next pass). Without this a plane-
+        # spanning residual cluster is ONE box that a single worker solves
+        # whole — measured 5.6 h on the 528-slice B0039 volume while the
+        # other workers idled. Boxes within ``max_box`` are left as-is, so the
+        # small-box path (and every test) is byte-identical to the uncapped mop.
+        for ty0, ty1 in _tiles(y0, y1, max_box, phase):
+            for tx0, tx1 in _tiles(x0, x1, max_box, phase):
+                exts.append((z0, z1 + 1, ty0, ty1, tx0, tx1))  # half-open, as sliced
+
+    def _crop(e):
+        # (box, v_before), or None when the crop is too small / already clean.
+        z0, z1, y0, y1, x0, x1 = e
+        box = dyx[:, z0:z1, y0:y1, x0:x1].copy()
         D, H, W = box.shape[1:]
         if D < 3 or H < 3 or W < 3:
-            continue
+            return None
         v_before = _viol(box, D, H, W, thr3, thr2)
-        if v_before <= 1e-12:
-            continue
-        box2, v_after = _repair_box(box, thr3, thr2, mu, max_iters)
+        return None if v_before <= 1e-12 else (box, v_before)
+
+    def _paste(e, box2, v_before, v_after):
+        z0, z1, y0, y1, x0, x1 = e
         if v_after < v_before:
-            dyx[:, z0 : z1 + 1, y0:y1, x0:x1] = box2
-            fixed += 1
+            dyx[:, z0:z1, y0:y1, x0:x1] = box2
+            return 1
+        return 0
+
+    fixed = 0
+    if n_workers <= 1 or pool_map is None:
+        for e in exts:
+            c = _crop(e)
+            if c is None:
+                continue
+            box, v_before = c
+            box2, v_after = _repair_box(
+                box,
+                thr3,
+                thr2,
+                mu,
+                max_iters,
+                orientation_delta=orientation_delta,
+                stall_iters=stall_iters,
+                stall_rtol=stall_rtol,
+            )
+            fixed += _paste(e, box2, v_before, v_after)
+        return fixed
+
+    # Dependency levels (see _levels): a box waits only for the EARLIER boxes
+    # it overlaps and runs alongside everything else. The previous rule —
+    # close a batch on the first overlap with the batch so far — measured
+    # ~0.9 of 4 cores on the full B0039 volume (3.2 h of worker CPU over a
+    # 3.5 h pass, 2.3 h of it on one worker): find_objects order is spatial,
+    # so consecutive boxes usually touch and nearly every batch had one box.
+    lv = _levels(exts)
+    batches = [[e for e, k in zip(exts, lv) if k == n] for n in range(max(lv, default=-1) + 1)]
+    for batch in batches:
+        crops = [(e, c) for e in batch if (c := _crop(e)) is not None]
+        if not crops:
+            continue
+        args = [
+            (box, thr3, thr2, mu, max_iters, orientation_delta, stall_iters, stall_rtol)
+            for _, (box, _) in crops
+        ]
+        results = (
+            [_repair_box_worker(a) for a in args]
+            if len(args) == 1
+            else pool_map(_repair_box_worker, args, n_workers)
+        )
+        for (e, (_, v_before)), (box2, v_after) in zip(crops, results):
+            fixed += _paste(e, box2, v_before, v_after)
     return fixed
 
 
@@ -186,12 +336,19 @@ def mop_interior_3d(
     dz_tol=1e-12,
     copy=True,
     verbose=0,
+    orientation_delta=None,
+    n_workers=1,
+    pool_map=None,
+    max_box=90,
+    stall_iters=4,
+    stall_rtol=1e-2,
 ):
     """Frozen-rim 3D-interior elastic-SLP mop of residual simplex (3D) folds.
 
     Crops a small box around each residual below-threshold cluster (the
-    sweep's predicate ``min_vol < thr3 - 1e-9`` — sub-threshold cubes are
-    repaired, not just negatives), freezes the entire rim (all six faces,
+    pipeline-report predicate ``min_vol < threshold - 1e-5`` — sub-threshold
+    cubes are repaired, not just negatives; ``thr3`` is the per-box LP
+    target), freezes the entire rim (all six faces,
     giving a seam-safe paste), and frees the true 3D interior
     ``(1:D-1, 1:H-1, 1:W-1)`` so both slices of a folded pair move together. Each cropped box is repaired with an elastic sequential-LP
     (inter-layer simplex (3D) linearized rows + intra-slice simplex (2D) exact-violation
@@ -234,6 +391,29 @@ def mop_interior_3d(
         float64 ``(3, D, H, W)`` array).
     verbose : int, default 0
         ``>= 1`` prints one bracketed line per pass.
+    orientation_delta : float or None, default None
+        Opt-in axial edge-monotonicity rows in every box LP (``None`` = off).
+    n_workers : int, default 1
+        ``> 1`` repairs a pass's boxes on the shared spawn pool
+        (``dvfopt.core._pool.pool_map``, imported lazily unless ``pool_map``
+        is given) in batches of pairwise-disjoint boxes, processed in the
+        serial order — byte-identical to ``n_workers=1`` (see ``_pass``).
+        ``<= 1`` is the unchanged serial loop.
+    max_box : int or None, default 90
+        Boxes wider than this on y or x are tiled (stride ``max_box``,
+        phase-shifted by ``max_box // 2`` on even passes so seam-locked
+        residuals are tile-interior next pass — the sweep's idiom). The tiles
+        of one giant box are pairwise disjoint, so they run in ONE parallel
+        batch instead of one worker solving the whole box for hours. Boxes
+        within ``max_box`` are untouched; ``None`` disables the cap.
+    stall_iters, stall_rtol : int, float, default 4, 1e-2
+        Per-box futility stop (``elastic_trust_solve``): a box ends once its
+        exact violation has not dropped 1 % over the last 4 LP solves. On a
+        dense near-floor region nearly every tet row is active, so even a
+        3.7k-voxel box is a ~50k-row LP at minutes per solve, and the
+        accept-micro-step / reject alternation otherwise burns all
+        ``max_iters`` (measured: one such box pinned a worker 5.4 h). ``0``
+        disables the stop.
 
     Returns
     -------
@@ -242,13 +422,16 @@ def mop_interior_3d(
     info : dict
         Keys: ``n_neg_before``/``n_neg_after`` (per-cube fold counts,
         ``mv <= 0``), ``n_below_before``/``n_below_after`` (per-cube
-        sub-threshold counts, ``mv < thr3 - 1e-9`` — the repair predicate),
-        ``n_below_report_after`` (per-cube ``mv < threshold - 1e-5`` — the
-        pipeline-report semantics), ``min_T_after``, ``n_fixed``,
+        sub-threshold counts under the repair predicate ``mv < threshold -
+        1e-5``), ``n_below_report_after`` (the same predicate — kept as an
+        alias of ``n_below_after`` for callers of the old key), ``min_T_after``, ``n_fixed``,
         ``passes`` (list of per-pass dicts), ``wall_s``.
     """
     if thr3 is None:
         thr3 = threshold + 1e-4
+    rep_thr = threshold - 1e-5  # the repair predicate (pipeline-report n_below)
+    if pool_map is None and n_workers > 1:
+        from dvfopt.core._pool import pool_map
 
     phi = np.asarray(phi)
     require_25d_input(phi, dz_tol)
@@ -260,20 +443,38 @@ def mop_interior_3d(
     # post-measurement is carried forward as the next pass's "before".
     mv = six_tet_min_volume_3d(phi_out)
     n_neg_before = int((mv <= 0).sum())
-    n_below_before = int((mv < thr3 - 1e-9).sum())
+    n_below_before = int((mv < rep_thr).sum())
 
     passes = []
     total_fixed = 0
     for i, (zpad, pad) in enumerate(pass_pads, start=1):
         before_neg = int((mv <= 0).sum())
-        before_below = int((mv < thr3 - 1e-9).sum())
+        before_below = int((mv < rep_thr).sum())
         if before_below == 0:
             break
-        fixed = _pass(phi_out, mv, zpad, pad, thr3, thr2, mu, dil, max_iters)
+        fixed = _pass(
+            phi_out,
+            mv,
+            zpad,
+            pad,
+            thr3,
+            thr2,
+            mu,
+            dil,
+            max_iters,
+            rep_thr,
+            orientation_delta,
+            n_workers=n_workers,
+            pool_map=pool_map,
+            max_box=max_box,
+            phase=((i - 1) % 2) * (max_box // 2) if max_box else 0,
+            stall_iters=stall_iters,
+            stall_rtol=stall_rtol,
+        )
         total_fixed += fixed
         mv = six_tet_min_volume_3d(phi_out)
         after_neg = int((mv <= 0).sum())
-        after_below = int((mv < thr3 - 1e-9).sum())
+        after_below = int((mv < rep_thr).sum())
         mn = float(mv.min())
         passes.append(
             {
@@ -301,8 +502,8 @@ def mop_interior_3d(
         "n_neg_before": n_neg_before,
         "n_neg_after": int((mv <= 0).sum()),
         "n_below_before": n_below_before,
-        "n_below_after": int((mv < thr3 - 1e-9).sum()),
-        "n_below_report_after": int((mv < threshold - 1e-5).sum()),
+        "n_below_after": int((mv < rep_thr).sum()),
+        "n_below_report_after": int((mv < rep_thr).sum()),
         "min_T_after": float(mv.min()),
         "n_fixed": total_fixed,
         "passes": passes,

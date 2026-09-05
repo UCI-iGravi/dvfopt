@@ -6,6 +6,94 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Measured — 2.5D `orientation_delta=0.01` on the full 528-slice B0039 volume (sweep stage)
+
+- base → rows: folds 66 → 50, true fold floor (negative under every main
+  diagonal) 23 → 12, min volume −0.281 → −0.187, L1 move −6.7 %; but
+  sub-threshold cubes 2137 → 4384 (cells parked at the 0.01 row margin), which
+  is the mop's workload. Stays opt-in; details in findings §10.
+
+### Fixed — 2.5D mop: parallel batches by dependency level (was ~1 of 4 cores)
+
+- The parallel mop grouped only CONSECUTIVE pairwise-disjoint boxes; because
+  `find_objects` order is spatial, neighbours touch and nearly every batch
+  held one box — measured on the full B0039 volume as 3.2 h of worker CPU
+  over a 3.5 h pass (2.3 h of it on one worker), i.e. ~0.9 of 4 cores.
+  Boxes are now scheduled by dependency level (`_levels`: one above every
+  earlier overlapping box), which is still byte-identical to the serial loop
+  and lets every spatially separated box run alongside the rest.
+
+### Fixed — 2.5D mop: per-box futility stop (`stall_iters=4`, `stall_rtol=1e-2`)
+
+- Tiling giant boxes (below) did not make the full-volume mop tractable: a
+  pass still took ~7 h and one worker 5.4 h. Measured directly on the densest
+  edge-layer region of the base sweep field, even a 3.7k-free-voxel box needs
+  > 11 min for four SLP solves — on a near-floor region nearly every tet row
+  is active, so the LP is ~50k rows at minutes per solve regardless of box
+  size, and `elastic_trust_solve`'s accept-micro-step (trust doubles back) /
+  reject (trust halves) alternation never reaches the trust floor, burning
+  all 40 solves. The engine gains an opt-in futility stop (end when the exact
+  violation has not dropped `stall_rtol` over the last `stall_iters` solves —
+  the 2D engine's a*-collapse bail, measured load-bearing there); the mop
+  passes 4 / 1 %, the sweep is untouched (`stall_iters=0`, byte-identical).
+
+### Fixed — 2.5D mop: giant residual boxes are tiled (`max_box=90`)
+
+- `mop_interior_3d` cropped each residual cluster into ONE box with no size
+  cap. On the 528-slice B0039 volume a plane-spanning cluster became a box
+  that a single worker solved whole for **5.6 h** (up to 40 SLP iterations
+  of a huge HiGHS LP) while the other three workers idled — the parallel mop
+  could not split it, and the serial mop was stuck on the same box. Boxes
+  wider than `max_box` on y/x are now tiled at stride `max_box` (the sweep's
+  `_cluster_boxes` idiom, phase-shifted by `max_box // 2` on even passes so a
+  seam-locked residual is tile-interior next pass); the tiles of one giant box
+  are pairwise disjoint, so they run in a single parallel batch. Boxes within
+  `max_box` are untouched (byte-identical), `max_box=None` disables the cap.
+
+### Added — 2.5D marching: parallel mop (`n_workers`) and segment-parallel sweep (`n_segments`)
+
+- Motivation (full-res 528-slice B0039 volume, 4 workers): the sweep took
+  16.5 h — interior layers ~14 s each but the 13 edge layers ~1 h each; the
+  cluster-pool workers were busy only ~27 % of the wall (one big cluster per
+  layer dominates) and the parent spent ~40 % in serial work. The mop ran
+  serially over ~260 boxes per pass on one core — hours per pass.
+- `mop_interior_3d(n_workers=, pool_map=)`: with `n_workers > 1` each pass's
+  boxes are repaired on the shared spawn pool in batches of pairwise-disjoint
+  (padded) boxes. Boxes are walked in the serial order and a batch is closed
+  as soon as the next box overlaps one already in it, so every box is cropped
+  from — and pasted back into, under the same `v_after < v_before` rule — the
+  exact state the serial loop would have used: **byte-identical to
+  `n_workers=1`** (tested, in-process seam and real pool). `correct_dvf_25d`
+  threads its `n_workers` into the mop.
+- `correct_dvf_25d(n_segments=)`: `> 1` splits z into that many contiguous
+  near-equal segments, each swept from its own origin (the mildest inter-layer
+  inside the segment) as one process on the shared pool (clusters run serially
+  inside a segment — the pool refuses nesting — so `n_workers` counts both the
+  segment workers and the cluster/mop workers; segments queue on it). Workers
+  receive and return only their `[dy, dx]` slab. The `n_segments - 1` seams
+  are then repaired in the parent, one down-sweep `march_slice` each (lower
+  segment's top slice against the frozen upper segment's bottom slice), before
+  the usual stats / mop / report. New `report.stages` entries `segments` and
+  `seams` (replacing `sweep`). Checkpoints keep working per slice: a segment's
+  slices are marked when its slab returns, seams as `seam:<z>`; a fully-marked
+  volume skips the segment stage on resume. `n_segments=1` (default) is the
+  single-origin sweep, byte-identical to before (tested); a pooled
+  `n_segments=3, n_workers=3` run equals the serial `n_segments=3` run byte
+  for byte (segments are deterministic given their slab). Needs
+  `D >= 2 * n_segments`.
+
+### Fixed — 2.5D mop: repair predicate = the report predicate
+
+- `mop_interior_3d` clustered its boxes on its own LP target (`min_vol <
+  thr3 - 1e-9`, thr3 = threshold + 1e-4) while the pipeline's `mop_max_folds`
+  gate and `feasible` count at the report predicate (`< threshold - 1e-5`).
+  On the 528-slice B0039 volume the sweep parks ~127k cubes AT thr3 within LP
+  tolerance, so one mop pass ran its serial box LPs over ~700 clusters (>24 h,
+  never finishing) instead of the ~260 clusters / ~2k cubes that are actually
+  below the report threshold. The mop now clusters on the report predicate;
+  thr3 remains the per-box LP target. `info['n_below_*']` count under that
+  predicate (`n_below_report_after` is kept as an alias).
+
 ### Changed — `data/dvfs/` is the centralized DVF suite
 
 - Every deformation field the repo consumes or produces now lives under one
@@ -22,6 +110,29 @@ follows [Semantic Versioning](https://semver.org/).
   working; the Python entry points (`benchmark_utils.cohort_dir`,
   `dvf_origins`, the crop/testcase scripts) now name the suite paths, with a
   fallback to the pre-suite cohort name for checkouts on the old layout.
+
+### Added — resumable runs: `checkpoint_dir` / `dvfopt correct --checkpoint DIR`
+
+- `dvfopt/checkpoint.py` — `RunCheckpoint`: a memmap mirror of the output
+  (`<dir>/field.npy`) plus an atomically rewritten `state.json` (validated meta
+  — shape, input sha256, the run's knobs — the finished unit ids, per-unit
+  report rows, `stage`). A checkpoint from a different input or options
+  raises `ValueError` naming the differing keys; a finished one reloads.
+- Wired into `correct_dvf_25d` (per sweep slice; the 2.5D helper from the
+  previous commit is refactored onto it), `DVFoptConfig(checkpoint_dir=)` (per
+  z-slice, serial and `n_workers>1` — the pool now marks slices as they land),
+  `correct_dvf_3d` (per stage: bulk, every escape iteration with its loop
+  state, the multiscale re-seed; tighten is not a separate resume point) and
+  the CLI's `--checkpoint DIR` on every `--pipeline` (`solver` = a finished
+  run reloads). `checkpoint_dir=None` is byte-identical to before.
+
+### Added — GUI: File → *New random folded field…*
+
+- `dvfopt.testdata.make_patch_folded_dvf(shape, n_patches=, patch=, amp=, base_amp=, seed=)`
+  builds a seeded synthetic 2D field — Gaussian-smoothed noise plus square
+  patches folded by a slope-`amp` flip along a random direction — and the GUI's
+  new File-menu action opens a spinbox form over it and loads the result through
+  the same path as a file (undo / metrics / fold strip behave identically).
 
 ## [0.6.0] — 2026-08-31
 

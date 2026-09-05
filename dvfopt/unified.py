@@ -119,6 +119,11 @@ class DVFoptConfig:
     # On spawn platforms (Windows/macOS) a SCRIPT calling fit() with n_workers>1
     # must guard the call under ``if __name__ == '__main__':``.
     n_workers: Optional[int] = None
+    # Resumable per-slice sweep (dvfopt.checkpoint.RunCheckpoint): each solved
+    # slice is mirrored to <dir>/field.npy with its result row in state.json;
+    # a re-run with the same input/config/dir skips the finished slices.
+    # Restored slices carry their scalars but no history/snapshots/info.
+    checkpoint_dir: Optional[str] = None
     record_history: bool = True
     record_snapshots: bool = False  # for plot_feasibility
 
@@ -423,9 +428,39 @@ class DVFopt:
                 f'Accepted: (2, H, W), (3, H, W), or (3, D, H, W).'
             )
 
-        slice_results = []
-        for z, phi2, sr in self._solve_slices(corrected, slices):
+        ck = None
+        by_z: dict[int, SliceResult] = {}
+        c = self.config
+        if c.checkpoint_dir is not None:
+            from dvfopt.checkpoint import RunCheckpoint
+
+            meta = dict(
+                constraint=c.constraint,
+                threshold=c.threshold,
+                err_tol=c.err_tol,
+                objective=c.objective,
+                eps_l1=c.eps_l1,
+                accuracy=c.accuracy,
+                solver=repr(c.solver),
+                strategy_kwargs=repr(c.strategy_kwargs),
+            )
+            ck = RunCheckpoint(c.checkpoint_dir, corrected, meta).open()
+            ck.restore_into(corrected)
+            for z in slices:
+                if ck.is_done(z):
+                    by_z[z] = SliceResult(corrected=None, z=z, info={}, **ck.rows[str(z)])
+        todo = [z for z in slices if z not in by_z]
+        for z, phi2, sr in self._solve_slices(corrected, todo):
             self._put_2d_slice(corrected, z, phi2)
+            if ck is not None:
+                ck.mark(z, phi2, row={k: getattr(sr, k) for k in _CHECKPOINT_ROW})
+            by_z[z] = sr
+        if ck is not None:
+            ck.finish()
+
+        slice_results = []
+        for z in slices:
+            sr = by_z[z]
             # Store a read-only (2, H, W) [dy, dx] VIEW into the assembled
             # volume rather than a per-slice copy — Result.corrected already
             # holds the assembled data, and duplicating every slice costs
@@ -455,12 +490,13 @@ class DVFopt:
 
         Serial by default; with ``config.n_workers > 1`` and more than one slice
         the solves run in a ``ProcessPoolExecutor`` (module-level worker,
-        picklable ``(config, phi2, z)`` args — spawn-safe). Results are yielded
-        in slice order regardless.
+        picklable ``(config, phi2, z)`` args — spawn-safe), yielding in
+        completion order so ``fit`` can checkpoint each slice as it lands;
+        ``fit`` reassembles in slice order.
         """
         n_workers = self.config.n_workers or 1
         if n_workers > 1 and len(slices) > 1:
-            from concurrent.futures import ProcessPoolExecutor
+            from concurrent.futures import ProcessPoolExecutor, as_completed
 
             from dvfopt.core._pool import pinned_thread_env
 
@@ -468,15 +504,15 @@ class DVFopt:
                 # Workers spawn on submit and inherit the env, so the pinning
                 # only has to be live across the submits.
                 with pinned_thread_env():
-                    futures = [
+                    futures = {
                         ex.submit(
                             _solve_slice_worker, self.config, _extract_2d_slice(corrected, z), z
-                        )
+                        ): z
                         for z in slices
-                    ]
-                for z, fut in zip(slices, futures):
+                    }
+                for fut in as_completed(futures):
                     phi2, sr = fut.result()
-                    yield z, phi2, sr
+                    yield futures[fut], phi2, sr
             return
         for z in slices:
             phi2 = _extract_2d_slice(corrected, z)
@@ -654,6 +690,21 @@ class DVFopt:
 # ============================================================
 # Helpers (constraint + strategy plumbing)
 # ============================================================
+
+
+# The per-slice scalars a checkpoint row carries (everything to_dataframe /
+# summary_dict read); history / snapshots / info are not persisted.
+_CHECKPOINT_ROW = (
+    'init_n_neg',
+    'init_min_T',
+    'final_n_neg',
+    'final_min_T',
+    'feasible',
+    'wall_time',
+    'solver_used',
+    'n_outer_iters',
+    'notes',
+)
 
 
 def _solve_slice_worker(config: DVFoptConfig, phi2: np.ndarray, z: int):

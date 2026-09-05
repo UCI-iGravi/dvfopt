@@ -513,3 +513,111 @@ Per-window: switching the rest of a window to `'tr'` after a bail (worse), scopi
 - Traces and experiments: `benchmarks/output/isqp_campaign/residual_*/` (per-window traces, dvfopt.log, post-mortems), `orient_*.txt`, `phase1_*.log`, `minimal_*.log`, `reseed_probe.txt`, `decollapse_*.txt`, `rung_trace_ab.txt`.
 - Fast crop pack (`benchmarks/make_hard_crops.py`): `z16_twist`, `z0_cluster`, `z0_sliver`.
 - 3D: `research-3d-all-tets` branch — 24 distinct tets; a strictly 6-tet-feasible field hid 557 inverted cells on the other diagonals.
+
+
+## 10. The 2.5D pipeline at full volume (2026-09-01 … 09-04): resumable runs, the mop's real cost, and the rows A/B
+
+Everything below is on the 528-slice B0039 Laplacian-exterior volume after the
+v2 per-slice 2D correction (`dz ≡ 0`), 4 workers, one pipeline at a time.
+
+### 10.1 Resumable runs (`checkpoint_dir`, `dvfopt correct --checkpoint DIR`)
+
+A full-volume 2.5D run is ~17 h of sweep; the first attempt was lost twice (a
+harness without the `__main__` guard re-ran the pipeline in every pool worker
+and exhausted the commit limit; a later 20 GB measurement next to two running
+pipelines OOM'd the rows mop). `dvfopt/checkpoint.py` (`RunCheckpoint`) mirrors
+the output to a memmap after every sweep slice / per-slice solve / 3D stage and
+records progress in an atomically rewritten `state.json` validated against the
+input hash and knobs; interrupt → resume is byte-identical to a cold run (nine
+tests). Both sweeps of the A/B were reloaded from their checkpoints in seconds,
+several times.
+
+### 10.2 The sweep
+
+| | residual folds after sweep | min volume | wall |
+|---|---|---|---|
+| base | 66 | −0.281 | 16.5 h |
+| rows (`orientation_delta=0.01`) | 50 | −0.187 | ~20 h (edge layers slower, partly contended) |
+
+Interior layers take ~14 s each; the 13 edge layers (z ≤ 12, 1000–1600 folds)
+take ~1 h each and are 60 % of the sweep. On those layers the rows leave
+~30 % fewer incoming folds for the next layer (z=0: 762 vs 1219) and slightly
+fewer residuals (z=12…8: 7/10/7/4/4 vs 5/17/11/10/7). A cProfile of the z=5
+layer: 5635 s wall, **20.8 s of Python (0.4 %)**, 409 HiGHS solves at ~14 s —
+the sweep is LP-bound; Python micro-optimisation is worthless there.
+
+### 10.3 The mop was the wall — four measured fixes
+
+1. **Predicate bug.** `mop_interior_3d` clustered on its LP target
+   (`min_vol < thr3 − 1e-9`, thr3 = threshold + 1e-4) while the pipeline's gate
+   and `feasible` count at the report predicate (`< threshold − 1e-5`). The
+   sweep parks ~127k cubes *at* thr3 within LP tolerance (579k at `< thr3`
+   exactly), so one pass ran serial box LPs over ~700 clusters instead of the
+   ~2.1k cubes / 261 clusters actually below the report threshold — a > 24 h
+   pass that never finished. Fixed: the mop clusters on the report predicate.
+2. **Parallel boxes + giant-box tiling.** Boxes are repaired on the shared spawn
+   pool; boxes wider than `max_box=90` are tiled (the sweep's idiom). Neither
+   made the pass tractable (still ~7 h, one worker 5.4 h), because:
+3. **The cost is near-floor LP grind, not box size.** Measured directly on the
+   densest edge region: a 3.7k-free-voxel box needs **> 11 min for four SLP
+   solves** — nearly every tet row is active there, so it is a ~50k-row LP at
+   minutes per solve regardless of size, and `elastic_trust_solve`'s
+   accept-micro-step (trust doubles back) / reject (trust halves) alternation
+   never reaches the trust floor, burning all 40 solves. The 2D engine's
+   a*-collapse bail, ported: stop when the exact violation has not dropped 1 %
+   over the last 4 solves (`stall_iters=4`, opt-in in the engine, default on in
+   the mop, sweep byte-identical). Pass 1: **3.5 h vs 7 h**, same quality
+   (66 → 30 folds vs 66 → 33).
+4. **Scheduling.** Even so, the four workers used 3.2 h of CPU over that 3.5 h
+   pass, 2.3 h of it on one worker (~0.9 of 4 cores), and pass 2 ran 100 %
+   in the parent for 5 h with the workers untouched: batches held only
+   *consecutive* disjoint boxes (`find_objects` order is spatial, so neighbours
+   touch), and singleton batches were solved in-process — which is where the
+   heavy, overlapping, near-floor boxes always landed. Boxes are now scheduled
+   by dependency level (one above every earlier overlapping box; still
+   byte-identical to serial, re-verified bit-for-bit on real data). Dry run on
+   the edge band (159 boxes): **26 rounds instead of 57, mean 6.1 boxes per
+   round (max 15) instead of 2.8**; on the real volume the parent now sits at
+   0 % and the pool carries the mop — but at **1.24 cores averaged over the
+   first 8 min** (599 s of worker CPU over 483 s), not 4. The heavy near-floor
+   boxes overlap each other, so they form dependency *chains* (the size-1
+   levels above), and a chain runs one box at a time on any number of
+   workers; the light, spatially spread boxes are what parallelise.
+
+The remaining floor is therefore two things: the per-solve price of a
+near-floor box, and the chains those boxes form. Levers not taken this round:
+a Jacobi / restricted-additive variant of the mop (overlapping boxes solved
+from one snapshot, disjoint cores pasted back — the 2D engine's RAS tiler
+idea, measured −26 % on one slice there) would break the chains at the cost of
+the exact serial semantics; a cheaper LP formulation, or skipping cubes the
+best-of-4-diagonals certificate proves are at the geometric floor, would cut
+the per-solve price.
+
+### 10.4 The rows verdict
+
+Measured at the sweep stage — where the knob acts; the mop is identical
+machinery on both legs and chain-bound on this volume (§10.3) — band-wise from
+the sweep-final checkpoints (`sweep_verdict.py`, `sweep_verdict_floor.py`):
+
+| | folds (fixed diagonal) | folds under every diagonal (true floor) | sub-threshold (< 0.01 − 1e-5) | sub-threshold under every diagonal | min volume | L1 move from input | sweep wall |
+|---|---|---|---|---|---|---|---|
+| base | 66 | 23 | 2137 | 1345 | −0.281 | 306,088 | 16.5 h |
+| rows (`orientation_delta=0.01`) | 50 | 12 | 4384 | 2463 | −0.187 | 285,521 | ~20 h |
+
+The rows cut the fixed-diagonal folds by 24 % and halve their depth, and
+the true fold floor (negative under all four main diagonals) goes 23 → 12, so the rows remove real folds, not just re-split artifacts. They also move the field **6.7 % less** from the input (a
+prevention row is cheaper than a repair), so on fidelity and folds they win
+outright. The price is margin: twice as many cubes end up parked just under the
+0.01 threshold (the rows enforce edge projections ≥ δ = 0.01 and the LP lands
+cells at that bound), and those are exactly the mop's workload — the chain-bound
+near-floor boxes of §10.3. Recommendation: keep `orientation_delta` opt-in for
+the 2.5D chain as it stands; make it the default once the mop no longer pays
+per sub-threshold cube (a Jacobi/RAS mop, or a floor-skip on the
+best-diagonal certificate). Walls are soft (resumed, partly contended).
+
+### 10.5 Artefacts
+
+`benchmarks/output/isqp_campaign/`: `ab25d_ck_base/`, `ab25d_ck_rows/`
+(sweep-final checkpoints), `ab25d_v2*.log` (sweeps), `ab25d_v3…v6.log`
+(the mop chain: parallel → tiled → futility → levels), `profile_z5.log`,
+`time_mop_tile.log`, and the scratch measurement scripts named in the CHANGELOG.

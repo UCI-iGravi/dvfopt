@@ -83,7 +83,7 @@ def _repair_cluster(args):
     FIRST, then per-slice simplex (2D) — the slack layout depends on this order) and
     the exact-violation acceptance oracle (both families).
     """
-    frozen_c, cur_c, anchor_c, cur_is_upper, thr3, thr2, mu, max_lp_iters = args
+    frozen_c, cur_c, anchor_c, cur_is_upper, thr3, thr2, mu, max_lp_iters, orientation_delta = args
     Hc, Wc = cur_c.shape[1:]
     n_pix = Hc * Wc
     jac3 = _get_jac(2, Hc, Wc)
@@ -148,8 +148,25 @@ def _repair_cluster(args):
         J2 = build_sparse_jacobian_T(p2, Hc, Wc).tocsc()[:, free2].tocsr()
         a3 = np.where(thr3 + ACTIVE_WINDOW > T3)[0]
         a2 = np.where(thr2 + ACTIVE_WINDOW > T2)[0]
-        # Block order matters: simplex (3D) rows first, then simplex (2D) (slack layout).
-        return [(J3[a3], T3[a3], thr3), (J2[a2], T2[a2], thr2)]
+        # Block order matters: simplex (3D) rows first, then simplex (2D) (slack layout);
+        # the optional monotonicity block is APPENDED (never inserted).
+        blocks = [(J3[a3], T3[a3], thr3), (J2[a2], T2[a2], thr2)]
+        if orientation_delta is not None:
+            from dvfopt.core.marching._mono_rows import axial_mono_rows, mono_block
+
+            # current plane's [dx | dy] flat; free2 is [dy, dx] of the DY_FIRST
+            # pack — the mono layout is [dx | dy], so free cols are [ii, n+ii]
+            dxdy = np.concatenate([c[1].ravel(), c[0].ravel()])
+            mb = mono_block(
+                axial_mono_rows(1, Hc, Wc),
+                dxdy,
+                np.concatenate([ii, n_pix + ii]),
+                orientation_delta,
+                ACTIVE_WINDOW,
+            )
+            if mb is not None:
+                blocks.append(mb)
+        return blocks
 
     cur, _ = elastic_trust_solve(
         _free_vec(cur_c),
@@ -223,6 +240,7 @@ def march_slice(
     n_workers=1,
     pool_map=None,
     max_lp_iters=12,
+    orientation_delta=None,
 ):
     """Repair ``cur_sl`` against the frozen neighbour. Returns (cur', n_before, n_after).
 
@@ -287,6 +305,7 @@ def march_slice(
                     thr2,
                     mu,
                     max_lp_iters,
+                    orientation_delta,
                 )
                 for (y0, y1, x0, x1) in batch
             ]
