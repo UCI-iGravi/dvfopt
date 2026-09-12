@@ -102,17 +102,21 @@ class RunCheckpoint:
         sp = self.dir / 'state.json'
         tmp = sp.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(self.state, default=_json_scalar), encoding='utf-8')
-        # Windows: a scanner/indexer can hold the just-written target for a
-        # moment and os.replace raises PermissionError; a tight mark() loop
-        # (one per sweep slice) hits it. Retry with backoff, then re-raise.
-        for k in range(8):
-            try:
-                os.replace(tmp, sp)
-                return
-            except PermissionError:
-                if k == 7:
-                    raise
-                time.sleep(0.02 * (2**k))
+        atomic_replace(tmp, sp)
+
+
+def atomic_replace(tmp, dst, *, retries=8):
+    """``os.replace(tmp, dst)`` with the Windows PermissionError backoff (a
+    scanner/indexer can hold the target for a moment).
+    """
+    for k in range(retries):
+        try:
+            os.replace(tmp, dst)
+            return
+        except PermissionError:
+            if k == retries - 1:
+                raise
+            time.sleep(0.02 * (2**k))
 
 
 def _json_scalar(o):
@@ -121,4 +125,4 @@ def _json_scalar(o):
     raise TypeError(f'not JSON-serialisable: {type(o).__name__}')
 
 
-__all__ = ['RunCheckpoint']
+__all__ = ['RunCheckpoint', 'atomic_replace']

@@ -52,7 +52,6 @@ tiles with damage accounting — and deliberately does NOT reuse
 
 import itertools
 import math
-import os
 import time
 from dataclasses import asdict, dataclass, field, fields, replace
 
@@ -1074,7 +1073,7 @@ def windowed_correct(
     ck = None
     done_units: set = set()
     if checkpoint_dir is not None:
-        from dvfopt.checkpoint import RunCheckpoint
+        from dvfopt.checkpoint import RunCheckpoint, atomic_replace
 
         meta = dict(
             engine='windowed',
@@ -1096,12 +1095,12 @@ def windowed_correct(
         tp = ck.dir / 'touched.npy'
         if ck.finished:
             phi[...] = ck.field
-            touched[...] = np.load(tp)
+            touched[...] = np.load(tp) if tp.exists() else False
             rep.resumed_from = 'finished'
             log_info(f'[windowed resume] finished run reloaded from {ck.dir}')
         elif ck.done:
             phi[...] = ck.field
-            touched[...] = np.load(tp)
+            touched[...] = np.load(tp) if tp.exists() else False
             last = ck.done[-1]
             row = ck.rows.get(str(last), {})
             rep.rounds = int(row.get('rounds', 0))
@@ -1119,7 +1118,7 @@ def windowed_correct(
         tmp = ck.dir / 'touched.npy.tmp'
         with open(tmp, 'wb') as f:  # np.save(path) would append another .npy suffix
             np.save(f, touched)
-        os.replace(tmp, ck.dir / 'touched.npy')
+        atomic_replace(tmp, ck.dir / 'touched.npy')
         ck.mark(
             unit,
             phi,
@@ -1389,7 +1388,11 @@ def windowed_correct(
             _fire("reanchor", phi)
             _mark('reanchor')
 
-    if ck is not None and not ck.finished:
+    # Only a run that actually completed gets stamped 'done' — a budget-expired exit
+    # leaves stage='run' with its last mark as the resume point (R7): stamping 'done'
+    # here unconditionally would make a time-budget-cut run look finished, so the next
+    # call would reload the UNFINISHED field and skip every stage, permanently.
+    if ck is not None and not ck.finished and not budget_hit and not _expired():
         ck.finish(phi)
 
     jf = min_field(constraint, phi)

@@ -58,6 +58,37 @@ def test_resume_after_a_round_keeps_the_invariants(tmp_path):
     assert rep2.folds_after == 0 and rep2.damage == 0
     np.testing.assert_array_equal(out2, out1)
     assert touched_out.any()  # the restored touched mask reached the caller
+    assert not rep2.windows  # restore path must not re-solve
+
+
+def test_budget_expired_run_stays_resumable(tmp_path):
+    """R7: a run cut short by ``time_budget_s`` must NOT stamp the checkpoint 'done' —
+    otherwise the next call takes the 'finished' branch and returns the UNFINISHED
+    field forever. ``time_budget_s=1e-6`` expires before the round loop's first check."""
+    phi = planted_fold(40, 44).astype(np.float64)
+    c = SimplexConstraint2DBilinear(shape=phi.shape[1:])
+    _run(phi, c, checkpoint_dir=tmp_path, time_budget_s=1e-6, coarse_to_fine=False)
+    state = json.loads((tmp_path / 'state.json').read_text())
+    assert state['stage'] == 'run'
+    out2, rep2 = _run(phi, c, checkpoint_dir=tmp_path)
+    assert rep2.folds_after == 0 and rep2.damage == 0
+    state2 = json.loads((tmp_path / 'state.json').read_text())
+    assert state2['stage'] == 'done'
+
+
+def test_fold_free_input_checkpoint_round_trips(tmp_path):
+    """A fold-free input (with the reseed stage off) never calls ``_mark`` — the round
+    loop finds nothing, and mop/reanchor each guard on there being work to do — so
+    ``touched.npy`` is never written even though the run completes and is marked
+    'done'. Resuming must tolerate the missing file rather than raise."""
+    phi = np.zeros((2, 12, 12), dtype=np.float64)
+    c = SimplexConstraint2DBilinear(shape=phi.shape[1:])
+    out1, rep1 = _run(phi, c, checkpoint_dir=tmp_path, reseed_rounds=0)
+    assert rep1.folds_after == 0
+    assert not (tmp_path / 'touched.npy').exists()
+    out2, rep2 = _run(phi, c, checkpoint_dir=tmp_path, reseed_rounds=0)
+    assert rep2.resumed_from == 'finished'
+    np.testing.assert_array_equal(out2, out1)
 
 
 def test_touched_out_covers_every_moved_voxel_3d():
