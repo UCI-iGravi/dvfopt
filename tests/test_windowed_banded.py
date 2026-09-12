@@ -13,17 +13,27 @@ def _two_clusters(D=30, H=12, W=12):
     """Two planted fold clusters: one inside band 0 (core ``[0, 15)``), one
     straddling the ``z=15`` core boundary (band 1's core is ``[15, 30)``).
 
-    ``planted_fold_3d(8, H, W, depth=1.4)`` punches its fold through the
-    WHOLE depth of an 8-slab, at ``z in [1, 7)`` (see ``tests/conftest.py``).
-    Pasting that 8-slab at z-offset 1 puts cluster A's fold at ``z in [2, 8)``
-    (inside ``[0, 15)``); pasting it again at z-offset 11 puts cluster B's
-    fold at ``z in [12, 18)`` (straddling ``z=15``).
+    ``planted_fold_3d(6, H, W, depth=3.0)`` punches its fold through the
+    WHOLE depth of a 6-slab, at ``z in [1, 5)`` (see ``tests/conftest.py``).
+    Pasting that 6-slab at z-offset 1 puts cluster A's fold at ``z in [2, 6)``
+    (inside ``[0, 15)``, well clear of the seam); pasting it again at
+    z-offset 12 puts cluster B's fold at ``z in [13, 17)`` -- 2 planes on
+    each side of ``z=15``.
+
+    ``depth=1.4`` (the original choice) leaves ``seam_folds_before == 0``:
+    each band's slab (``overlap=4``) sees cluster B in FULL, so the two
+    independent per-band solves converge to values close enough at the
+    seam that the composed cube never dips below threshold -- i.e. that
+    milder fixture never actually exercised the seam pass's repair job.
+    ``depth=3.0`` (measured, see the module test) makes the two
+    independent fixes disagree enough at the ``z=14``/``z=15`` boundary to
+    leave 2 genuine folds there, which the seam pass then clears to 0.
     """
     rng = np.random.default_rng(0)
     phi = rng.normal(0, 0.02, (3, D, H, W))
-    a = planted_fold_3d(8, H, W, depth=1.4)  # (3, 8, H, W); fold at z in [1, 7)
-    phi[:, 1:9] = a  # cluster A: z in [2, 8) -- inside band 0
-    phi[:, 11:19] = a  # cluster B: z in [12, 18) -- crosses the z=15 seam
+    a = planted_fold_3d(6, H, W, depth=3.0)  # (3, 6, H, W); fold at z in [1, 5)
+    phi[:, 1:7] = a  # cluster A: z in [2, 6) -- inside band 0, clear of the seam
+    phi[:, 12:18] = a  # cluster B: z in [13, 17) -- straddles the z=15 seam
     return phi
 
 
@@ -61,6 +71,11 @@ def test_banded_certifies_and_moves_locally(n_workers):
         verbose=0,
     )
     assert rep.bands == 2 and len(rep.band_walls) == 2
+    # The seam pass must have real work to do: cluster B's two independent per-band
+    # fixes disagree at the z=14/z=15 boundary (measured: 2 folds for both n_workers)
+    # -- this is what pins that banding, not just re-running the whole-volume engine,
+    # is actually being exercised here.
+    assert rep.seam_folds_before > 0
     assert rep.folds_after == 0 and rep.folds_after_zero == 0
     assert rep.best_diag_floor_after == 0
     assert rep.damage == 0

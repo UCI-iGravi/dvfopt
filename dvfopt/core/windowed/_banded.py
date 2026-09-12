@@ -23,10 +23,11 @@ it only opens windows where folds are still present, so its cost is the
 *cost of banding* (a boundary-free volume never triggers it), tracked as
 ``report.seam_windows``.
 
-Memory: the parent process holds the full ``phi`` plus ``j0`` / ``orig_fold``
-/ ``touched`` (all one array per voxel); each worker holds only its slab plus
-that slab's own engine temporaries — so peak worker memory scales with
-``band + 2 * overlap`` planes, not ``D``.
+Memory: the parent process holds the full ``phi`` plus ``orig_fold`` /
+``touched`` (one array per voxel each; the min-field map used to derive
+``orig_fold`` is freed before the sweep, not kept alive alongside it) — each
+worker holds only its slab plus that slab's own engine temporaries — so peak
+worker memory scales with ``band + 2 * overlap`` planes, not ``D``.
 
 ``overlap`` must be at least the constraint family's ``margin + ring`` (the
 frozen context a window's free pixels need to evaluate correctly); this is
@@ -165,6 +166,7 @@ def windowed_correct_banded(
         folds_before=int(orig_fold.sum()),
         min_before=float(j0.min()),
     )
+    del j0  # a full (D, H, W) float64 map; not needed again until the tail recomputes it
     touched = np.zeros(phi.shape[1:], bool)
     cores = [(z, min(D, z + band)) for z in range(0, D, band)]
     rep.bands = len(cores)
@@ -263,6 +265,12 @@ def windowed_correct_banded(
 
         rep.seam_folds_before = int(pixel_fold_mask(constraint, phi, threshold).sum())
         seam_dir = None if ck is None else ck.dir / 'seam'
+        # Deliberately UNCONDITIONAL — never gate this on `seam_folds_before > 0`. Each
+        # band discards its overlap moves on return, so every core-to-core boundary has one
+        # "mixed" voxel plane (z = lo - 1, the last plane of the previous core pasted against
+        # the first plane of the next) that no band's own `touched` covers; this call's
+        # `touched_out=touched` is what folds that plane into `touched` at all, even on a
+        # volume where the bands happened to leave zero folds at the seam.
         out, srep = windowed_correct(
             phi,
             inner,
