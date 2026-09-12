@@ -72,12 +72,42 @@ def test_ras_tile_task_on_patch_equals_full_snapshot_solve(cls, scale):
 
     phi = planted_fold(40, 44, scale=scale).astype(np.float64)  # (2, 40, 44) [dy, dx]
     c = cls(shape=phi.shape[1:])
-    ring = cm._locality_of(c).ring
     opts = cm._resolve_opts_for_test(2)
     if cls is JdetConstraint2D:  # what windowed_correct does for a non-DY_FIRST pack
         opts = replace(opts, orientation_delta=None)
-    tb = (12, 30, 10, 32)  # a tile box (y0, y1, x0, x1)
-    core = (14, 26, 12, 28)
+    _assert_patch_task_matches_whole_field(phi, c, (12, 30, 10, 32), (14, 26, 12, 28), opts)
+
+
+def test_ras_tile_task_3d_translates_every_axis():
+    """The 3D worker: same byte-for-byte pin on a ``SimplexConstraint3D`` volume.
+
+    The only dimension-dependent arithmetic in the worker is the translation
+    (``off[i // 2]`` on the boxes, ``off[nd - 2]`` / ``off[nd - 1]`` on ``fy0`` / ``fx0``),
+    so the tile box is chosen to give three DISTINCT axis offsets — a swapped or
+    2D-hardcoded index lands on the wrong axis and the record comparison fails.
+    """
+    pytest.importorskip('osqp')
+    from tests.conftest import planted_fold_3d
+
+    # (3, 12, 13, 14) [dz, dy, dx]; the fixture punches its fold at y, x = 2:4, too close
+    # to the low border for three distinct offsets — rolled deeper in (the base is iid
+    # noise, so the wrap introduces no seam).
+    phi = np.roll(planted_fold_3d(12, 13, 14), (3, 4), axis=(2, 3)).astype(np.float64)
+    c = SimplexConstraint3D(shape=phi.shape[1:])
+    tb = (6, 11, 4, 9, 5, 11)  # lows 6 / 4 / 5 -> offsets 4 / 2 / 3 with ring + 1 == 2
+    core = (7, 10, 5, 8, 6, 10)
+    off = tuple(cm._pad_box(tb, phi.shape[1:], 2)[2 * a] for a in range(3))
+    assert len(set(off)) == 3, off  # the point of this case
+    _assert_patch_task_matches_whole_field(phi, c, tb, core, cm._resolve_opts_for_test(3))
+
+
+def _assert_patch_task_matches_whole_field(phi, c, tb, core, opts):
+    """``_ras_tile_task`` on the tile's ring+1 patch == ``_solve_window`` on a private copy
+    of the whole field, values byte for byte and every record translated back to global."""
+    from dvfopt.objectives import L2Objective
+
+    ring = cm._locality_of(c).ring
+    shape = phi.shape[1:]
     assert (min_field(c, phi)[cm._box_slices(tb)] < 0.01).any()  # the tile has folds to fix
     # reference: old semantics — the whole field handed to the worker
     ref = np.array(phi, dtype=np.float64, copy=True)
@@ -98,7 +128,6 @@ def test_ras_tile_task_on_patch_equals_full_snapshot_solve(cls, scale):
     )
     want = ref[(slice(None), *cm._box_slices(core))].copy()
     # new: patch-only
-    shape = phi.shape[1:]
     pb = cm._pad_box(tb, shape, ring + 1)
     off = tuple(pb[2 * a] for a in range(len(shape)))
     patch = phi[(slice(None), *cm._box_slices(pb))].copy()

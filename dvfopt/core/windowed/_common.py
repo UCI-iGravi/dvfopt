@@ -1733,7 +1733,7 @@ def _solve_giant_schwarz(
     for _sweep in range(max_sweeps):
         if ras > 1:
             # Restricted additive Schwarz: every tile solves from the SAME
-            # snapshot concurrently; each pastes back only its disjoint
+            # iterate concurrently; each pastes back only its disjoint
             # step-grid core, so writes cannot conflict. Trades the
             # multiplicative sweep's within-sweep propagation for
             # parallelism; the sweep loop's progress check is unchanged.
@@ -1741,13 +1741,13 @@ def _solve_giant_schwarz(
 
             if expired is not None and expired():
                 return prev if prev is not None else -1
-            # one snapshot per sweep (the Jacobi iterate), but each task pickles only its
-            # tile's ring+1-padded patch (~tile^ndim floats, not the field):
-            # `build_subproblem` pads the local box by `ring` and clips to the patch, which
-            # clips exactly where the true image border clipped the +1 — so the enforced
-            # rows and the border flags are those of the whole-field solve (asserted
-            # byte-for-byte in tests/test_windowed_phase4.py).
-            snap = phi.copy()
+            # Each task carries ONLY its tile's ring+1-padded patch (~tile^ndim floats,
+            # never the field): `build_subproblem` pads the local box by `ring` and clips
+            # to the patch, which clips exactly where the true image border clipped the +1
+            # — so the enforced rows and the border flags are those of the whole-field
+            # solve (asserted byte-for-byte in tests/test_windowed_phase4.py). The whole
+            # arg list is cut from `phi` BEFORE the first paste-back below, so every tile
+            # of a sweep sees the same Jacobi iterate with no snapshot copy at all.
             args = []
             for tb, core in zip(tiles, cores):
                 if not (_nonempty(tb) and _nonempty(core)):
@@ -1756,7 +1756,7 @@ def _solve_giant_schwarz(
                 off = tuple(pb[2 * a] for a in range(ndim))
                 args.append(
                     (
-                        snap[(slice(None), *_box_slices(pb))].copy(),
+                        phi[(slice(None), *_box_slices(pb))].copy(),
                         off,
                         constraint,
                         tuple(tb[i] - off[i // 2] for i in range(len(tb))),
@@ -1770,7 +1770,6 @@ def _solve_giant_schwarz(
                         opts,
                     )
                 )
-            del snap
             for core, vals, sub_rep in pool_map(_ras_tile_task, args, ras):
                 phi[(slice(None), *_box_slices(core))] = vals
                 rep.windows.extend(sub_rep.windows)
