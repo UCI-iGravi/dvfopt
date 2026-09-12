@@ -53,7 +53,7 @@ tiles with damage accounting — and deliberately does NOT reuse
 import itertools
 import math
 import time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 
 import numpy as np
 from scipy import ndimage, sparse
@@ -419,6 +419,39 @@ def _pad_box(box, shape, pad):
         out.append(max(0, int(box[2 * ax]) - pad))
         out.append(min(int(n), int(box[2 * ax + 1]) + pad))
     return tuple(out)
+
+
+def _folds_in_box(constraint, phi, box, threshold):
+    """``int((min_field(constraint, phi)[_box_slices(box)] < threshold).sum())`` computed on
+    the box padded by ONE grid point per side (clipped to the field), never on the whole
+    field. Every cell / cube / central-difference stencil whose value lands inside ``box``
+    reads at most one grid point beyond it, so the padded sub-field reproduces those values
+    exactly (elementwise arithmetic — bit-identical, not merely close); the sub-field's own
+    last plane / row / column is ``+inf``, or one-sided for ``jdet``, exactly where the whole
+    field's is (the true border) and lies outside ``box`` otherwise."""
+    shape = phi.shape[1:]
+    pb = _pad_box(box, shape, 1)
+    sub = min_field(constraint, phi[(slice(None), *_box_slices(pb))])
+    inner = tuple(
+        slice(box[2 * a] - pb[2 * a], box[2 * a + 1] - pb[2 * a]) for a in range(len(shape))
+    )
+    return int((sub[inner] < threshold).sum())
+
+
+def _resolve_opts_for_test(dim):
+    """Test hook: the :class:`_InnerOpts` :func:`windowed_correct` builds at its OWN
+    defaults for a ``dim``-dimensional field (signature defaults -> per-dimension table
+    -> the 3D ``step_rule`` degrade), so a test can call :func:`_solve_window` /
+    :func:`_ras_tile_task` directly with the shipped knobs."""
+    import inspect
+
+    sig = inspect.signature(windowed_correct).parameters
+    kw = resolve_dim_defaults(
+        dim, **{f.name: sig[f.name].default for f in fields(_InnerOpts) if f.name in sig}
+    )
+    if dim == 3:
+        kw['step_rule'] = 'tr'  # 'exact_ls' is 2D-only (see windowed_correct)
+    return _InnerOpts(**kw)
 
 
 def find_windows(mask, margin, ring):
@@ -1690,7 +1723,6 @@ def _solve_giant_schwarz(
     ):  # an over-cap region thinner than 2 * ring on some interior axis has no inset to tile
         log_warning(f"windowed_correct: giant region {giant_box} has no tileable inset; skipped")
         return -1
-    gsl = _box_slices(giant_box)
 
     def _nonempty(b):
         return all(b[2 * a + 1] > b[2 * a] for a in range(ndim))
@@ -1709,32 +1741,42 @@ def _solve_giant_schwarz(
 
             if expired is not None and expired():
                 return prev if prev is not None else -1
-            # every task pickles the whole snapshot (a full-field copy per tile — phase 4's
-            # chunked driver is the fix; giant_workers is opt-in)
+            # one snapshot per sweep (the Jacobi iterate), but each task pickles only its
+            # tile's ring+1-padded patch (~tile^ndim floats, not the field):
+            # `build_subproblem` pads the local box by `ring` and clips to the patch, which
+            # clips exactly where the true image border clipped the +1 — so the enforced
+            # rows and the border flags are those of the whole-field solve (asserted
+            # byte-for-byte in tests/test_windowed_phase4.py).
             snap = phi.copy()
-            args = [
-                (
-                    snap,
-                    constraint,
-                    tb,
-                    core,
-                    threshold,
-                    objective,
-                    maxiter,
-                    ring,
-                    margin_delta,
-                    inner,
-                    opts,
+            args = []
+            for tb, core in zip(tiles, cores):
+                if not (_nonempty(tb) and _nonempty(core)):
+                    continue
+                pb = _pad_box(tb, shape, ring + 1)
+                off = tuple(pb[2 * a] for a in range(ndim))
+                args.append(
+                    (
+                        snap[(slice(None), *_box_slices(pb))].copy(),
+                        off,
+                        constraint,
+                        tuple(tb[i] - off[i // 2] for i in range(len(tb))),
+                        tuple(core[i] - off[i // 2] for i in range(len(core))),
+                        threshold,
+                        objective,
+                        maxiter,
+                        ring,
+                        margin_delta,
+                        inner,
+                        opts,
+                    )
                 )
-                for tb, core in zip(tiles, cores)
-                if _nonempty(tb) and _nonempty(core)
-            ]
+            del snap
             for core, vals, sub_rep in pool_map(_ras_tile_task, args, ras):
                 phi[(slice(None), *_box_slices(core))] = vals
                 rep.windows.extend(sub_rep.windows)
                 rep.backend_fallbacks += sub_rep.backend_fallbacks
                 rep.patience_fallbacks += sub_rep.patience_fallbacks
-            nf = int((min_field(constraint, phi)[gsl] < threshold).sum())
+            nf = _folds_in_box(constraint, phi, giant_box, threshold)
             if nf == 0 or (prev is not None and nf >= prev):
                 return nf
             prev = nf
@@ -1760,7 +1802,7 @@ def _solve_giant_schwarz(
                     inner=inner,
                     opts=opts,
                 )
-        nf = int((min_field(constraint, phi)[gsl] < threshold).sum())
+        nf = _folds_in_box(constraint, phi, giant_box, threshold)
         if nf == 0 or (prev is not None and nf >= prev):
             return nf  # cleared, or no further progress (geometric floor)
         prev = nf
@@ -1813,15 +1855,20 @@ def _ras_cores(tiles, step, inset):
 
 
 def _ras_tile_task(args):
-    """Pool worker: solve ONE giant tile on a private copy of the snapshot and
-    return the tile's core pixels (picklable; see ``giant_workers``)."""
+    """Pool worker: solve ONE giant tile on its ring+1-padded patch (never the whole
+    field) and return the tile's core values, boxes translated back to global.
+
+    ``args`` carries the patch, its global ``offset``, and the tile / core boxes in
+    PATCH-LOCAL coordinates (picklable; see ``giant_workers``). The patch is padded
+    one grid point beyond the window ring, so the sub-problem's own ring padding
+    clips exactly where the true image border clipped it — the enforced rows, the
+    border flags and hence the result are those of a whole-field solve."""
     from dvfopt.core._pool import pin_worker_threads
 
     pin_worker_threads()
-    snap, constraint, tb, core, threshold, objective, maxiter, ring, margin_delta, inner, opts = (
-        args
-    )
-    phi = np.array(snap, dtype=np.float64, copy=True)
+    patch, off, constraint, tb, core = args[:5]
+    threshold, objective, maxiter, ring, margin_delta, inner, opts = args[5:]
+    phi = np.array(patch, dtype=np.float64, copy=True)
     rep = SliceReport()
     _solve_window(
         phi,
@@ -1837,8 +1884,17 @@ def _ras_tile_task(args):
         inner=inner,
         opts=opts,
     )
-    csl = _box_slices(core)
-    return core, phi[(slice(None), *csl)].copy(), rep
+    # patch-local boxes -> global. `fy0` / `fx0` are the FREE box's last two axes
+    # (`_solve_window`: `box[-4]` / `box[-2]`), populated in every dimension, so both
+    # always shift; `ph` / `pw` are patch extents and are translation-invariant.
+    nd = len(off)
+    for w in rep.windows:
+        if w.patch_box:
+            w.patch_box = tuple(w.patch_box[i] + off[i // 2] for i in range(len(w.patch_box)))
+        w.fy0 += off[nd - 2]
+        w.fx0 += off[nd - 1]
+    core_global = tuple(core[i] + off[i // 2] for i in range(len(core)))
+    return core_global, phi[(slice(None), *_box_slices(core))].copy(), rep
 
 
 def _solve_window(
