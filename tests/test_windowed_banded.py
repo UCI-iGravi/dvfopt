@@ -142,6 +142,46 @@ def test_banded_checkpoint_reloads_a_finished_run(tmp_path):
     assert rep2.n_windows == rep1.n_windows
 
 
+@pytest.mark.parametrize('n_workers', [1, 2])
+def test_banded_checkpoint_write_failure_propagates(tmp_path, monkeypatch, n_workers):
+    """R15: a failed checkpoint write is not a broken pool.
+
+    It must propagate out of the sweep instead of being swallowed by the pool-break
+    guard and retried — a retry would re-run and re-commit that band, double-appending
+    its ``band_walls`` / ``band_folds_after`` row, double-counting ``n_windows`` and
+    re-marking ``band:k``. The checkpoint left behind must still be consistent: only
+    the bands whose mark completed, each exactly once, so an unpatched re-run resumes
+    and finishes.
+    """
+    import dvfopt.checkpoint as checkpoint
+
+    phi = _two_clusters()
+    c = SimplexConstraint3D(shape=phi.shape[1:])
+    kw = dict(constraint=c, threshold=0.01, band=15, overlap=4, n_workers=n_workers, verbose=0)
+    real = checkpoint.atomic_replace
+    writes = []
+
+    def flaky(tmp, dst, **rest):
+        if dst.name == 'touched.npy':
+            writes.append(dst)
+            if len(writes) == 2:  # band 1's commit — band 0 is committed and marked
+                raise OSError('touched.npy write failed')
+        return real(tmp, dst, **rest)
+
+    monkeypatch.setattr(checkpoint, 'atomic_replace', flaky)
+    with pytest.raises(OSError, match=r'touched\.npy write failed'):
+        windowed_correct_banded(phi, 'isqp', checkpoint_dir=tmp_path, **kw)
+    done = [str(u) for u in json.loads((tmp_path / 'state.json').read_text())['done']]
+    assert done == ['band:0']  # band 1 never marked, and no band marked twice
+    assert len(done) == len(set(done))
+
+    monkeypatch.undo()
+    out, rep = windowed_correct_banded(phi, 'isqp', checkpoint_dir=tmp_path, **kw)
+    assert rep.resumed_from == 'band:0' and len(rep.band_walls) == 2
+    assert rep.folds_after == 0 and rep.damage == 0
+    assert _folds(out) == 0
+
+
 def test_banded_checkpoint_resumes_mid_sweep(tmp_path):
     """The capstone's primary resume path: band 0 committed, band 1 not.
 

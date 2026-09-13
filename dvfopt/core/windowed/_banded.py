@@ -287,29 +287,34 @@ def windowed_correct_banded(
             from dvfopt.core._pool import _shutdown_if_current, get_pool, pinned_thread_env
 
             ex = get_pool(n_workers)
-            try:
-                # `map` submits every arg up front (so every slab is cut from the same
-                # pre-sweep field — the additive-Schwarz invariant) and yields in
-                # submission order, so each band is pasted, checkpointed and LOGGED as
-                # it lands instead of after the whole sweep. Workers spawn lazily, on
-                # the first submit, so the pinned env has to be live across the map.
-                with pinned_thread_env():
-                    for k, res in zip(todo, ex.map(_band_task, args)):
-                        _commit(k, res)
-                        del res  # one in-flight result at a time, never a full list
-                        n_committed += 1
-            except (BrokenProcessPool, OSError, RuntimeError):
-                # `pool_map`'s recovery, minus the bands already committed: tear the
-                # broken pool down (only if it is still ours) and finish the REMAINING
-                # bands in-process. Their slabs were cut before any paste, so the
-                # invariant survives the fallback.
-                _shutdown_if_current(ex)
-                for i in range(n_committed, len(todo)):
-                    _commit(todo[i], _band_task(args[i]))
-        else:
-            for i, k in enumerate(todo):
-                _commit(k, _band_task(args[i]))
-                args[i] = None  # free the slab as soon as its band is committed
+            # `map` submits every arg up front (so every slab is cut from the same
+            # pre-sweep field — the additive-Schwarz invariant) and yields in submission
+            # order, so each band is pasted, checkpointed and LOGGED as it lands instead
+            # of after the whole sweep. Workers spawn lazily, on the first submit, so the
+            # pinned env has to be live across the map.
+            with pinned_thread_env():
+                it = ex.map(_band_task, args)
+                for k in todo:
+                    # ONLY the FETCH is guarded (R15): a failure inside `_commit` is a
+                    # failed checkpoint write, not a dead pool, and must propagate as the
+                    # error it is — retrying it as a broken-pool recovery would re-run and
+                    # re-commit that band, double-counting its row.
+                    try:
+                        res = next(it)
+                    except (BrokenProcessPool, OSError, RuntimeError):
+                        # `pool_map`'s recovery, minus the bands already committed: tear
+                        # the broken pool down (only if it is still ours); the loop below
+                        # finishes the REMAINING bands in-process. Their slabs were cut
+                        # before any paste, so the invariant survives the fallback.
+                        _shutdown_if_current(ex)
+                        break
+                    _commit(k, res)
+                    del res  # one in-flight result at a time, never a full list
+                    n_committed += 1
+        # The serial path, and the tail of a broken-pool sweep: commit OUTSIDE any guard.
+        for i in range(n_committed, len(todo)):
+            _commit(todo[i], _band_task(args[i]))
+            args[i] = None  # free the slab as soon as its band is committed
         del args  # nothing slab-sized survives into the seam pass
 
         rep.seam_folds_before = int(pixel_fold_mask(constraint, phi, threshold).sum())
