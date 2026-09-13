@@ -532,6 +532,12 @@ input hash and knobs; interrupt → resume is byte-identical to a cold run (nine
 tests). Both sweeps of the A/B were reloaded from their checkpoints in seconds,
 several times.
 
+The windowed engine (fold *repair*, not the 2.5D marching prevention above)
+gained the same resumability plus a z-banded full-volume driver in the 3D
+port's phase 4 (`checkpoint_dir=` on `windowed_correct` / the new
+`windowed_correct_banded`) — see the CHANGELOG's phase-4 entry for the
+full-resolution B0039 rows as they land.
+
 ### 10.2 The sweep
 
 | | residual folds after sweep | min volume | wall |

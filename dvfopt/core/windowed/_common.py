@@ -53,13 +53,13 @@ tiles with damage accounting — and deliberately does NOT reuse
 import itertools
 import math
 import time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 
 import numpy as np
 from scipy import ndimage, sparse
 from scipy.sparse.linalg import spsolve
 
-from dvfopt._logging import log_warning, logger
+from dvfopt._logging import log_info, log_warning, logger
 from dvfopt.objectives import L2Objective, _kind_eps, make_objective
 
 from ._inners import _ISQP_LABELS, WindowSub, solve_window_inner
@@ -421,6 +421,39 @@ def _pad_box(box, shape, pad):
     return tuple(out)
 
 
+def _folds_in_box(constraint, phi, box, threshold):
+    """``int((min_field(constraint, phi)[_box_slices(box)] < threshold).sum())`` computed on
+    the box padded by ONE grid point per side (clipped to the field), never on the whole
+    field. Every cell / cube / central-difference stencil whose value lands inside ``box``
+    reads at most one grid point beyond it, so the padded sub-field reproduces those values
+    exactly (elementwise arithmetic — bit-identical, not merely close); the sub-field's own
+    last plane / row / column is ``+inf``, or one-sided for ``jdet``, exactly where the whole
+    field's is (the true border) and lies outside ``box`` otherwise."""
+    shape = phi.shape[1:]
+    pb = _pad_box(box, shape, 1)
+    sub = min_field(constraint, phi[(slice(None), *_box_slices(pb))])
+    inner = tuple(
+        slice(box[2 * a] - pb[2 * a], box[2 * a + 1] - pb[2 * a]) for a in range(len(shape))
+    )
+    return int((sub[inner] < threshold).sum())
+
+
+def _resolve_opts_for_test(dim):
+    """Test hook: the :class:`_InnerOpts` :func:`windowed_correct` builds at its OWN
+    defaults for a ``dim``-dimensional field (signature defaults -> per-dimension table
+    -> the 3D ``step_rule`` degrade), so a test can call :func:`_solve_window` /
+    :func:`_ras_tile_task` directly with the shipped knobs."""
+    import inspect
+
+    sig = inspect.signature(windowed_correct).parameters
+    kw = resolve_dim_defaults(
+        dim, **{f.name: sig[f.name].default for f in fields(_InnerOpts) if f.name in sig}
+    )
+    if dim == 3:
+        kw['step_rule'] = 'tr'  # 'exact_ls' is 2D-only (see windowed_correct)
+    return _InnerOpts(**kw)
+
+
 def find_windows(mask, margin, ring):
     """Free boxes around fold clusters, per-axis ``(lo, hi)`` pairs in axis order.
 
@@ -502,6 +535,9 @@ class SliceReport:
     polish_windows: int = 0
     polish_accepted: int = 0
     patience_fallbacks: int = 0  # windows that took the patience rung
+    # resumable runs (``checkpoint_dir=``): the last checkpoint unit done at resume
+    # ('' on an uninterrupted run, 'finished' when the mirror was already complete).
+    resumed_from: str = ''
     # coarse-to-fine warm start (see _coarse_warm_start). -1 == the stage did not
     # run (disabled, no folds, or the field too small for a meaningful coarse
     # problem); coarse_solve_s stays 0.0 then.
@@ -660,6 +696,8 @@ def windowed_correct(
     reseed_rounds=3,
     reseed_radius=2,
     time_budget_s=None,
+    checkpoint_dir=None,
+    touched_out=None,
     dim_defaults=True,
     verbose=1,
     record_history=False,
@@ -927,6 +965,29 @@ def windowed_correct(
     promoted benchmark driver. ``verbose`` reserves the standard solver
     verbosity contract (the engine itself emits no progress lines; warnings
     surface through the ``dvfopt`` logger regardless).
+
+    **Checkpoint / resume.** ``checkpoint_dir`` (``None`` = off, the default —
+    byte-identical to before) mirrors progress through
+    :class:`dvfopt.checkpoint.RunCheckpoint`: a unit is marked after the coarse
+    stage, after each round, after each giant-tiler sweep, after the mop, after
+    the re-seed stage and after the re-anchor stage, each mark mirroring the
+    current field to ``<checkpoint_dir>/field.npy`` / ``state.json`` and the
+    current ``touched`` mask to ``<checkpoint_dir>/touched.npy``. A resumed run
+    reloads the mirrored field and ``touched.npy``, restores the counters of the
+    last row into the report, skips every stage whose unit is done, and
+    re-enters the round loop with a fresh fold mask — so its ``rep.windows`` /
+    ``rep.history`` cover only the post-resume work and the round loop's
+    no-progress check restarts; the certificate and the damage accounting
+    (against the ORIGINAL input, through the restored ``touched``) are the same
+    invariants as an uninterrupted run. ``time_budget_s`` counts from the
+    resume. ``report.resumed_from`` names the last done unit at resume (``''``
+    on an uninterrupted run, ``'finished'`` when the mirror was already
+    complete — the whole run then just reloads). A checkpoint whose stored
+    knobs/shape/input hash disagree with this call raises ``ValueError``.
+    ``touched_out`` (optional bool array of the field's spatial shape) is
+    OR-ed with the engine's final ``touched`` mask in place, letting a caller
+    compose no-damage accounting across multiple ``windowed_correct`` calls
+    (e.g. a banded driver over sub-volumes).
     """
     if step_rule not in ('tr', 'exact_ls'):
         raise ValueError(f"unknown step_rule {step_rule!r}; valid: 'tr', 'exact_ls'")
@@ -1008,6 +1069,73 @@ def windowed_correct(
     orig_fold = j0 < threshold
     rep = SliceReport(folds_before=int(orig_fold.sum()), min_before=float(j0.min()))
     touched = np.zeros(shape, bool)  # union of every window's ENFORCED footprint
+
+    ck = None
+    done_units: set = set()
+    if checkpoint_dir is not None:
+        from dvfopt.checkpoint import RunCheckpoint, atomic_replace
+
+        meta = dict(
+            engine='windowed',
+            inner=str(inner),
+            constraint=type(constraint).__name__,
+            objective=type(objective).__name__,
+            threshold=float(threshold),
+            margin=int(margin),
+            maxiter=int(maxiter),
+            max_rounds=int(max_rounds),
+            max_window_area=int(max_window_area),
+            mop_margin=int(mop_margin),
+            orientation_delta=None if orientation_delta is None else float(orientation_delta),
+            orientation_rows=str(orientation_rows),
+            reseed_rounds=int(reseed_rounds),
+            reanchor=str(reanchor),
+        )
+        ck = RunCheckpoint(checkpoint_dir, phi_in, meta, slab=lambda _u: Ellipsis).open()
+        tp = ck.dir / 'touched.npy'
+        if ck.finished:
+            phi[...] = ck.field
+            touched[...] = np.load(tp) if tp.exists() else False
+            rep.resumed_from = 'finished'
+            log_info(f'[windowed resume] finished run reloaded from {ck.dir}')
+        elif ck.done:
+            phi[...] = ck.field
+            touched[...] = np.load(tp) if tp.exists() else False
+            last = ck.done[-1]
+            row = ck.rows.get(str(last), {})
+            rep.rounds = int(row.get('rounds', 0))
+            rep.giant_regions = int(row.get('giant_regions', 0))
+            rep.mop_windows = int(row.get('mop_windows', 0))
+            rep.mop_cleared = int(row.get('mop_cleared', 0))
+            rep.reseed_rounds_run = int(row.get('reseed_rounds_run', 0))
+            rep.resumed_from = str(last)
+            done_units = set(map(str, ck.done))
+            log_info(f'[windowed resume] {len(ck.done)} units from {ck.dir}, last {last!r}')
+
+    def _mark(unit):
+        if ck is None:
+            return
+        tmp = ck.dir / 'touched.npy.tmp'
+        with open(tmp, 'wb') as f:  # np.save(path) would append another .npy suffix
+            np.save(f, touched)
+        atomic_replace(tmp, ck.dir / 'touched.npy')
+        ck.mark(
+            unit,
+            phi,
+            row=dict(
+                rounds=rep.rounds,
+                n_windows=len(rep.windows),
+                giant_regions=rep.giant_regions,
+                mop_windows=rep.mop_windows,
+                mop_cleared=rep.mop_cleared,
+                reseed_rounds_run=rep.reseed_rounds_run,
+                folds=int(pixel_fold_mask(constraint, phi, threshold).sum()),
+            ),
+        )
+
+    def _skip(unit):
+        return unit in done_units or rep.resumed_from == 'finished'
+
     t0 = time.perf_counter()
     deadline = None if time_budget_s is None else t0 + float(time_budget_s)
 
@@ -1046,6 +1174,7 @@ def windowed_correct(
         coarse_to_fine
         and rep.folds_before > 0
         and min(shape) >= 4 * max(opts.giant_tile, coarse_factor)
+        and not _skip('coarse')
     ):
         t_coarse = time.perf_counter()
         delta, rep_c, warm_boxes = _coarse_warm_start(
@@ -1085,38 +1214,59 @@ def windowed_correct(
             entry["n_iter"] = rep.coarse_iters  # coarse windows are not in rep.windows
             rep.history.append(entry)
         _fire("coarse", phi)
+        _mark('coarse')
 
     budget_hit = False
     prev_nfold = None
-    for _rnd in range(max_rounds):
-        if _expired():
-            budget_hit = True
-            break
-        mask = pixel_fold_mask(constraint, phi, threshold)
-        nfold = int(mask.sum())
-        if nfold == 0:
-            break
-        if prev_nfold is not None and nfold >= prev_nfold:
-            break  # no progress — stop rather than spin
-        prev_nfold = nfold
-        rep.rounds += 1
-        round_w0 = len(rep.windows)
-        for box in find_windows(mask, margin, ring):
+    if rep.resumed_from != 'finished':
+        for _rnd in range(rep.rounds, max_rounds):
             if _expired():
                 budget_hit = True
                 break
-            # touched = the ENFORCED footprint (free box dilated by ring), not the
-            # bare free box: a free pixel influences constraints up to `ring` beyond
-            # the free box, so an infeasible solve could leave a violated row there.
-            # Marking it touched makes any such residual count as residual, never
-            # damage — so damage=0 is by construction, not merely for feasible solves.
-            touched[_box_slices(_pad_box(box, shape, ring))] = True
-            if _box_size(box) > max_window_area:
-                # too big for one QP -> overlapping-tile Schwarz decomposition
-                rep.giant_regions += 1
-                rep.giant_boxes.append(box)
-                giant_w0 = len(rep.windows)
-                _solve_giant_schwarz(
+            mask = pixel_fold_mask(constraint, phi, threshold)
+            nfold = int(mask.sum())
+            if nfold == 0:
+                break
+            if prev_nfold is not None and nfold >= prev_nfold:
+                break  # no progress — stop rather than spin
+            prev_nfold = nfold
+            rep.rounds += 1
+            round_w0 = len(rep.windows)
+            for box in find_windows(mask, margin, ring):
+                if _expired():
+                    budget_hit = True
+                    break
+                # touched = the ENFORCED footprint (free box dilated by ring), not the
+                # bare free box: a free pixel influences constraints up to `ring` beyond
+                # the free box, so an infeasible solve could leave a violated row there.
+                # Marking it touched makes any such residual count as residual, never
+                # damage — so damage=0 is by construction, not merely for feasible solves.
+                touched[_box_slices(_pad_box(box, shape, ring))] = True
+                if _box_size(box) > max_window_area:
+                    # too big for one QP -> overlapping-tile Schwarz decomposition
+                    rep.giant_regions += 1
+                    rep.giant_boxes.append(box)
+                    giant_w0 = len(rep.windows)
+                    _solve_giant_schwarz(
+                        phi,
+                        constraint,
+                        box,
+                        threshold,
+                        objective,
+                        maxiter,
+                        ring,
+                        rep,
+                        margin_delta,
+                        inner=inner,
+                        opts=opts,
+                        expired=_expired,
+                        on_sweep=lambda s, g=rep.giant_regions: _mark(f'giant:{g}:{s}'),
+                    )
+                    if record_history:
+                        rep.history.append(_stage_entry("giant", giant_w0))
+                    _fire("giant", phi)
+                    continue
+                _solve_window(
                     phi,
                     constraint,
                     box,
@@ -1125,33 +1275,16 @@ def windowed_correct(
                     maxiter,
                     ring,
                     rep,
-                    margin_delta,
+                    margin_delta=margin_delta,
                     inner=inner,
                     opts=opts,
-                    expired=_expired,
                 )
-                if record_history:
-                    rep.history.append(_stage_entry("giant", giant_w0))
-                _fire("giant", phi)
-                continue
-            _solve_window(
-                phi,
-                constraint,
-                box,
-                threshold,
-                objective,
-                maxiter,
-                ring,
-                rep,
-                margin_delta=margin_delta,
-                inner=inner,
-                opts=opts,
-            )
-        if record_history:
-            rep.history.append(_stage_entry(f"round{rep.rounds}", round_w0))
-        _fire(f"round{rep.rounds}", phi)
-        if budget_hit:
-            break
+            if record_history:
+                rep.history.append(_stage_entry(f"round{rep.rounds}", round_w0))
+            _fire(f"round{rep.rounds}", phi)
+            _mark(f'round:{rep.rounds}')
+            if budget_hit:
+                break
 
     if budget_hit:
         log_warning("windowed_correct: time budget exhausted; stopping with best-so-far field")
@@ -1189,7 +1322,7 @@ def windowed_correct(
             _fire("reseed", phi)
 
     # terminal mop: clear the boundary-stuck residual the round loop plateaued on
-    if mop_margin > 0 and not budget_hit:
+    if mop_margin > 0 and not budget_hit and not _skip('mop'):
         before_mop = int(pixel_fold_mask(constraint, phi, threshold).sum())
         if before_mop > 0:
             mop_w0 = len(rep.windows)
@@ -1212,14 +1345,16 @@ def windowed_correct(
             if record_history:
                 rep.history.append(_stage_entry("mop", mop_w0))
             _fire("mop", phi)
+            _mark('mop')
 
-    if reseed_rounds > 0 and not budget_hit:
+    if reseed_rounds > 0 and not budget_hit and not _skip('reseed'):
         _run_reseed()
+        _mark('reseed')
 
     # Post-feasibility re-anchor: recover fidelity now that no fold is left to trap
     # the inner in an objective basin. Only on a fold-free field, and reverted whole
     # if it somehow breaks that (per-tile verification should make this unreachable).
-    if reanchor != 'none' and not budget_hit and not _expired():
+    if reanchor != 'none' and not budget_hit and not _expired() and not _skip('reanchor'):
         if int(pixel_fold_mask(constraint, phi, threshold).sum()) == 0:
             saved = phi.copy()
             _reanchor_pass(
@@ -1251,6 +1386,14 @@ def windowed_correct(
             if record_history:
                 rep.history.append(_stage_entry("reanchor", len(rep.windows)))
             _fire("reanchor", phi)
+            _mark('reanchor')
+
+    # Only a run that actually completed gets stamped 'done' — a budget-expired exit
+    # leaves stage='run' with its last mark as the resume point (R7): stamping 'done'
+    # here unconditionally would make a time-budget-cut run look finished, so the next
+    # call would reload the UNFINISHED field and skip every stage, permanently.
+    if ck is not None and not ck.finished and not budget_hit and not _expired():
+        ck.finish(phi)
 
     jf = min_field(constraint, phi)
     after_fold = jf < threshold
@@ -1289,6 +1432,8 @@ def windowed_correct(
                 ),
             }
         )
+    if touched_out is not None:
+        touched_out |= touched
     return phi, rep
 
 
@@ -1646,6 +1791,7 @@ def _solve_giant_schwarz(
     inner="isqp",
     opts=None,
     expired=None,
+    on_sweep=None,
 ):
     """Clear a large connected fold region by overlapping-tile (additive Schwarz)
     decomposition. Each tile is an ordinary window (frozen ring = current iterate);
@@ -1690,7 +1836,6 @@ def _solve_giant_schwarz(
     ):  # an over-cap region thinner than 2 * ring on some interior axis has no inset to tile
         log_warning(f"windowed_correct: giant region {giant_box} has no tileable inset; skipped")
         return -1
-    gsl = _box_slices(giant_box)
 
     def _nonempty(b):
         return all(b[2 * a + 1] > b[2 * a] for a in range(ndim))
@@ -1701,7 +1846,7 @@ def _solve_giant_schwarz(
     for _sweep in range(max_sweeps):
         if ras > 1:
             # Restricted additive Schwarz: every tile solves from the SAME
-            # snapshot concurrently; each pastes back only its disjoint
+            # iterate concurrently; each pastes back only its disjoint
             # step-grid core, so writes cannot conflict. Trades the
             # multiplicative sweep's within-sweep propagation for
             # parallelism; the sweep loop's progress check is unchanged.
@@ -1709,32 +1854,43 @@ def _solve_giant_schwarz(
 
             if expired is not None and expired():
                 return prev if prev is not None else -1
-            # every task pickles the whole snapshot (a full-field copy per tile — phase 4's
-            # chunked driver is the fix; giant_workers is opt-in)
-            snap = phi.copy()
-            args = [
-                (
-                    snap,
-                    constraint,
-                    tb,
-                    core,
-                    threshold,
-                    objective,
-                    maxiter,
-                    ring,
-                    margin_delta,
-                    inner,
-                    opts,
+            # Each task carries ONLY its tile's ring+1-padded patch (~tile^ndim floats,
+            # never the field): `build_subproblem` pads the local box by `ring` and clips
+            # to the patch, which clips exactly where the true image border clipped the +1
+            # — so the enforced rows and the border flags are those of the whole-field
+            # solve (asserted byte-for-byte in tests/test_windowed_phase4.py). The whole
+            # arg list is cut from `phi` BEFORE the first paste-back below, so every tile
+            # of a sweep sees the same Jacobi iterate with no snapshot copy at all.
+            args = []
+            for tb, core in zip(tiles, cores):
+                if not (_nonempty(tb) and _nonempty(core)):
+                    continue
+                pb = _pad_box(tb, shape, ring + 1)
+                off = tuple(pb[2 * a] for a in range(ndim))
+                args.append(
+                    (
+                        phi[(slice(None), *_box_slices(pb))].copy(),
+                        off,
+                        constraint,
+                        tuple(tb[i] - off[i // 2] for i in range(len(tb))),
+                        tuple(core[i] - off[i // 2] for i in range(len(core))),
+                        threshold,
+                        objective,
+                        maxiter,
+                        ring,
+                        margin_delta,
+                        inner,
+                        opts,
+                    )
                 )
-                for tb, core in zip(tiles, cores)
-                if _nonempty(tb) and _nonempty(core)
-            ]
             for core, vals, sub_rep in pool_map(_ras_tile_task, args, ras):
                 phi[(slice(None), *_box_slices(core))] = vals
                 rep.windows.extend(sub_rep.windows)
                 rep.backend_fallbacks += sub_rep.backend_fallbacks
                 rep.patience_fallbacks += sub_rep.patience_fallbacks
-            nf = int((min_field(constraint, phi)[gsl] < threshold).sum())
+            nf = _folds_in_box(constraint, phi, giant_box, threshold)
+            if on_sweep is not None:
+                on_sweep(_sweep)
             if nf == 0 or (prev is not None and nf >= prev):
                 return nf
             prev = nf
@@ -1760,7 +1916,9 @@ def _solve_giant_schwarz(
                     inner=inner,
                     opts=opts,
                 )
-        nf = int((min_field(constraint, phi)[gsl] < threshold).sum())
+        nf = _folds_in_box(constraint, phi, giant_box, threshold)
+        if on_sweep is not None:
+            on_sweep(_sweep)
         if nf == 0 or (prev is not None and nf >= prev):
             return nf  # cleared, or no further progress (geometric floor)
         prev = nf
@@ -1813,15 +1971,20 @@ def _ras_cores(tiles, step, inset):
 
 
 def _ras_tile_task(args):
-    """Pool worker: solve ONE giant tile on a private copy of the snapshot and
-    return the tile's core pixels (picklable; see ``giant_workers``)."""
+    """Pool worker: solve ONE giant tile on its ring+1-padded patch (never the whole
+    field) and return the tile's core values, boxes translated back to global.
+
+    ``args`` carries the patch, its global ``offset``, and the tile / core boxes in
+    PATCH-LOCAL coordinates (picklable; see ``giant_workers``). The patch is padded
+    one grid point beyond the window ring, so the sub-problem's own ring padding
+    clips exactly where the true image border clipped it — the enforced rows, the
+    border flags and hence the result are those of a whole-field solve."""
     from dvfopt.core._pool import pin_worker_threads
 
     pin_worker_threads()
-    snap, constraint, tb, core, threshold, objective, maxiter, ring, margin_delta, inner, opts = (
-        args
-    )
-    phi = np.array(snap, dtype=np.float64, copy=True)
+    patch, off, constraint, tb, core = args[:5]
+    threshold, objective, maxiter, ring, margin_delta, inner, opts = args[5:]
+    phi = np.array(patch, dtype=np.float64, copy=True)
     rep = SliceReport()
     _solve_window(
         phi,
@@ -1837,8 +2000,17 @@ def _ras_tile_task(args):
         inner=inner,
         opts=opts,
     )
-    csl = _box_slices(core)
-    return core, phi[(slice(None), *csl)].copy(), rep
+    # patch-local boxes -> global. `fy0` / `fx0` are the FREE box's last two axes
+    # (`_solve_window`: `box[-4]` / `box[-2]`), populated in every dimension, so both
+    # always shift; `ph` / `pw` are patch extents and are translation-invariant.
+    nd = len(off)
+    for w in rep.windows:
+        if w.patch_box:
+            w.patch_box = tuple(w.patch_box[i] + off[i // 2] for i in range(len(w.patch_box)))
+        w.fy0 += off[nd - 2]
+        w.fx0 += off[nd - 1]
+    core_global = tuple(core[i] + off[i // 2] for i in range(len(core)))
+    return core_global, phi[(slice(None), *_box_slices(core))].copy(), rep
 
 
 def _solve_window(

@@ -21,7 +21,11 @@ import numpy as np
 
 class RunCheckpoint:
     """``slab(unit)`` maps a unit id to an index into the field; the default
-    is a z-slice's ``[dy, dx]`` planes, ``field[1:3, z]``."""
+    is a z-slice's ``[dy, dx]`` planes, ``field[1:3, z]``.
+
+    :meth:`mark` records a resumable unit (mirror + row + ``done``);
+    :meth:`note` records a row ONLY, for run-level bookkeeping a resumed run
+    needs back but which is not a unit ``slab`` can map."""
 
     def __init__(self, checkpoint_dir, phi_in, meta, *, slab=None):
         self.dir = Path(checkpoint_dir)
@@ -90,6 +94,15 @@ class RunCheckpoint:
         self.state['done'].append(unit)
         self._save()
 
+    def note(self, key, row):
+        """Record ``row`` under ``key`` WITHOUT appending to ``done``.
+
+        For counters a resumed run needs back that are not a resumable unit —
+        ``key`` never reaches ``restore_into``'s ``slab``, so it may be any
+        name (e.g. ``'seam'``) the unit ids would choke on."""
+        self.state['rows'][str(key)] = row
+        self._save()
+
     def finish(self, out=None):
         """Mirror the whole ``out`` (if given) and mark the run ``done``."""
         if out is not None:
@@ -102,17 +115,21 @@ class RunCheckpoint:
         sp = self.dir / 'state.json'
         tmp = sp.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(self.state, default=_json_scalar), encoding='utf-8')
-        # Windows: a scanner/indexer can hold the just-written target for a
-        # moment and os.replace raises PermissionError; a tight mark() loop
-        # (one per sweep slice) hits it. Retry with backoff, then re-raise.
-        for k in range(8):
-            try:
-                os.replace(tmp, sp)
-                return
-            except PermissionError:
-                if k == 7:
-                    raise
-                time.sleep(0.02 * (2**k))
+        atomic_replace(tmp, sp)
+
+
+def atomic_replace(tmp, dst, *, retries=8):
+    """``os.replace(tmp, dst)`` with the Windows PermissionError backoff (a
+    scanner/indexer can hold the target for a moment).
+    """
+    for k in range(retries):
+        try:
+            os.replace(tmp, dst)
+            return
+        except PermissionError:
+            if k == retries - 1:
+                raise
+            time.sleep(0.02 * (2**k))
 
 
 def _json_scalar(o):
@@ -121,4 +138,4 @@ def _json_scalar(o):
     raise TypeError(f'not JSON-serialisable: {type(o).__name__}')
 
 
-__all__ = ['RunCheckpoint']
+__all__ = ['RunCheckpoint', 'atomic_replace']
