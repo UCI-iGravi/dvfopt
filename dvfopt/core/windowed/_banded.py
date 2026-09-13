@@ -23,11 +23,17 @@ it only opens windows where folds are still present, so its cost is the
 *cost of banding* (a boundary-free volume never triggers it), tracked as
 ``report.seam_windows``.
 
-Memory: the parent process holds the full ``phi`` plus ``orig_fold`` /
-``touched`` (one array per voxel each; the min-field map used to derive
-``orig_fold`` is freed before the sweep, not kept alive alongside it) — each
-worker holds only its slab plus that slab's own engine temporaries — so peak
-worker memory scales with ``band + 2 * overlap`` planes, not ``D``.
+Memory: the parent process holds the working ``phi`` plus ``orig_fold`` /
+``touched`` (the min-field map used to derive ``orig_fold`` is freed before the
+sweep) and, while the sweep runs, the submitted slabs — every band's slab is
+cut from the same pre-sweep snapshot before anything is pasted, that being the
+additive-Schwarz invariant — plus at most ONE in-flight band result at a time:
+each result is pasted, checkpointed and dropped as it arrives, and the slabs
+are released before the seam pass. The seam pass then adds the engine's own
+copy of the field, its min-field map and, in the tail, the certificate's
+transients (``best_diagonal_min_volume`` allocates several cube-grid arrays).
+Each WORKER holds only its slab plus that slab's own engine temporaries, so
+peak worker memory scales with ``band + 2 * overlap`` planes, not ``D``.
 
 ``overlap`` must be at least the constraint family's ``margin + ring`` (the
 frozen context a window's free pixels need to evaluate correctly); this is
@@ -75,6 +81,9 @@ class BandedReport:
     seam_folds_before: int = 0  # folds on the composed field before the seam pass
     time_s: float = 0.0
     resumed_from: str = ''
+    # The seam pass's own report; None whenever the seam pass did not run in THIS
+    # process (a finished checkpoint reload restores the seam counters above from the
+    # 'seam' row, but not the SliceReport itself).
     seam: SliceReport | None = None
 
 
@@ -151,6 +160,8 @@ def windowed_correct_banded(
     need = int(engine_kw.get('margin', 3)) + loc.ring
     if overlap < need:
         raise ValueError(f'overlap {overlap} < margin + ring = {need}')
+    if band < 1:
+        raise ValueError(f'band must be >= 1, got {band}')
 
     from dvfopt.objectives import L2Objective
 
@@ -199,11 +210,20 @@ def windowed_correct_banded(
             ck.restore_into(phi)
             touched[...] = np.load(tp)
             rep.resumed_from = str(ck.done[-1])
+        if rep.resumed_from:
+            # Both branches restore the committed bands' counters: a reload must not
+            # report band_walls=[] / n_windows=0 (the driver writes exactly these into
+            # its record).
             for u in ck.done:
                 r = ck.rows.get(str(u), {})
                 rep.band_walls.append(float(r.get('wall_s', 0.0)))
                 rep.band_folds_after.append(int(r.get('folds_after', -1)))
                 rep.n_windows += int(r.get('n_windows', 0))
+            if ck.finished:
+                s = ck.rows.get('seam', {})
+                rep.seam_windows = int(s.get('seam_windows', 0))
+                rep.seam_folds_before = int(s.get('seam_folds_before', 0))
+                rep.n_windows = int(s.get('n_windows_total', rep.n_windows))
         if verbose and rep.resumed_from:
             log_info(f'[banded resume] {rep.resumed_from} from {ck.dir}')
 
@@ -241,13 +261,10 @@ def windowed_correct_banded(
                     kw,
                 )
             )
-        if n_workers > 1 and len(args) > 1:
-            from dvfopt.core._pool import pool_map
 
-            results = pool_map(_band_task, args, n_workers)
-        else:
-            results = [_band_task(a) for a in args]
-        for k, (vals, tch, nw, fa, wall) in zip(todo, results):
+        def _commit(k, res):
+            """Paste band ``k``'s core, update ``touched``, checkpoint it, log it."""
+            vals, tch, nw, fa, wall = res
             lo, hi = cores[k]
             phi[:, lo:hi] = vals
             touched[lo:hi] |= tch
@@ -262,6 +279,38 @@ def windowed_correct_banded(
                     f'[banded] band {k + 1}/{len(cores)} z[{lo},{hi}) windows {nw} '
                     f'folds_after {fa} {wall:.0f}s'
                 )
+
+        n_committed = 0  # how far into `todo` the commits have got
+        if n_workers > 1 and len(args) > 1:
+            from concurrent.futures.process import BrokenProcessPool
+
+            from dvfopt.core._pool import _shutdown_if_current, get_pool, pinned_thread_env
+
+            ex = get_pool(n_workers)
+            try:
+                # `map` submits every arg up front (so every slab is cut from the same
+                # pre-sweep field — the additive-Schwarz invariant) and yields in
+                # submission order, so each band is pasted, checkpointed and LOGGED as
+                # it lands instead of after the whole sweep. Workers spawn lazily, on
+                # the first submit, so the pinned env has to be live across the map.
+                with pinned_thread_env():
+                    for k, res in zip(todo, ex.map(_band_task, args)):
+                        _commit(k, res)
+                        del res  # one in-flight result at a time, never a full list
+                        n_committed += 1
+            except (BrokenProcessPool, OSError, RuntimeError):
+                # `pool_map`'s recovery, minus the bands already committed: tear the
+                # broken pool down (only if it is still ours) and finish the REMAINING
+                # bands in-process. Their slabs were cut before any paste, so the
+                # invariant survives the fallback.
+                _shutdown_if_current(ex)
+                for i in range(n_committed, len(todo)):
+                    _commit(todo[i], _band_task(args[i]))
+        else:
+            for i, k in enumerate(todo):
+                _commit(k, _band_task(args[i]))
+                args[i] = None  # free the slab as soon as its band is committed
+        del args  # nothing slab-sized survives into the seam pass
 
         rep.seam_folds_before = int(pixel_fold_mask(constraint, phi, threshold).sum())
         seam_dir = None if ck is None else ck.dir / 'seam'
@@ -288,6 +337,16 @@ def windowed_correct_banded(
         rep.n_windows += rep.seam_windows
         if ck is not None:
             _save_touched()
+            # A run-level row, NOT a unit: `note` keeps 'seam' out of `done`, where the
+            # slab lambda's int(...) would raise on it inside `restore_into`.
+            ck.note(
+                'seam',
+                dict(
+                    seam_windows=rep.seam_windows,
+                    seam_folds_before=rep.seam_folds_before,
+                    n_windows_total=rep.n_windows,
+                ),
+            )
             ck.finish(phi)
 
     jf = min_field(constraint, phi)

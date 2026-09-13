@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -132,3 +134,48 @@ def test_banded_checkpoint_reloads_a_finished_run(tmp_path):
     np.testing.assert_array_equal(out1, out2)
     assert rep2.resumed_from == 'finished'
     assert rep2.damage == 0 and rep2.folds_after == 0
+    # The reload must carry the real counters, not zeros: the band rows plus the
+    # run-level 'seam' row (the driver writes exactly these into its record).
+    assert len(rep2.band_walls) == 2 and rep2.band_folds_after == rep1.band_folds_after
+    assert rep2.seam_windows == rep1.seam_windows
+    assert rep2.seam_folds_before == rep1.seam_folds_before
+    assert rep2.n_windows == rep1.n_windows
+
+
+def test_banded_checkpoint_resumes_mid_sweep(tmp_path):
+    """The capstone's primary resume path: band 0 committed, band 1 not.
+
+    Simulated by rewriting ``state.json`` back to ``stage='run'`` with only
+    ``band:0`` done (and only its row), the way a kill between the two band marks
+    leaves it. The seam sub-checkpoint is removed with them: a real mid-sweep
+    interruption cannot have one (the seam pass runs after the whole sweep), and
+    band 1 re-runs against band 0's RESTORED neighbour planes, so the composed
+    field it produces is legitimately not the one run 1 handed the seam pass --
+    a resumed run is documented as equivalent, not byte-identical (keeping the
+    stale seam checkpoint here makes its own input hash refuse the run, which is
+    the correct refusal for a checkpoint of a different composed field).
+    """
+    import shutil
+
+    phi = _two_clusters()
+    c = SimplexConstraint3D(shape=phi.shape[1:])
+    kw = dict(constraint=c, threshold=0.01, band=15, overlap=4, n_workers=1, verbose=0)
+    windowed_correct_banded(phi, 'isqp', checkpoint_dir=tmp_path, **kw)
+
+    sp = tmp_path / 'state.json'
+    state = json.loads(sp.read_text())
+    assert state['done'] == ['band:0', 'band:1'] and 'seam' in state['rows']
+    state['stage'] = 'run'
+    state['done'] = ['band:0']
+    state['rows'] = {'band:0': state['rows']['band:0']}
+    sp.write_text(json.dumps(state))
+    shutil.rmtree(tmp_path / 'seam')
+
+    out, rep = windowed_correct_banded(phi, 'isqp', checkpoint_dir=tmp_path, **kw)
+    assert rep.resumed_from == 'band:0'
+    assert rep.bands == 2 and len(rep.band_walls) == 2  # one restored, one fresh
+    assert rep.seam_windows >= 1  # the seam pass ran again
+    assert rep.folds_after == 0 and rep.folds_after_zero == 0
+    assert rep.best_diag_floor_after == 0
+    assert rep.damage == 0
+    assert _folds(out) == 0  # the returned field certifies, independently of the report

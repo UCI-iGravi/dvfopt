@@ -101,6 +101,29 @@ def test_dvfopt_fit_resumes_and_matches_cold_run(
     )
 
 
+def test_checkpoint_note_records_a_row_without_a_unit(tmp_path):
+    """``note`` carries run-level counters across a reload: the row survives, the key
+    stays OUT of ``done`` — so ``restore_into``'s slab (here ``int(u)``) never sees it."""
+    phi = _volume()
+
+    def mk():
+        return RunCheckpoint(
+            tmp_path, phi, dict(engine='t'), slab=lambda u: (slice(None), int(u))
+        ).open()
+
+    ck = mk()
+    ck.mark(0, phi[:, 0], row=dict(wall_s=1.0))
+    ck.note('seam', dict(n=7))
+    ck.finish(phi)
+
+    again = mk()
+    assert again.rows['seam'] == {'n': 7} and again.rows['0'] == {'wall_s': 1.0}
+    assert again.done == [0]  # 'seam' is a row, not a unit
+    out = np.zeros_like(phi)
+    again.restore_into(out)  # would raise int('seam') had note appended to done
+    np.testing.assert_array_equal(out[:, 0], phi[:, 0])
+
+
 def test_dvfopt_checkpoint_mismatch_refuses_and_none_is_identical(tmp_path):
     phi = _volume(seed=3)
     ck = tmp_path / 'ck'

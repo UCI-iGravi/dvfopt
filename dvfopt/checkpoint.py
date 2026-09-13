@@ -21,7 +21,11 @@ import numpy as np
 
 class RunCheckpoint:
     """``slab(unit)`` maps a unit id to an index into the field; the default
-    is a z-slice's ``[dy, dx]`` planes, ``field[1:3, z]``."""
+    is a z-slice's ``[dy, dx]`` planes, ``field[1:3, z]``.
+
+    :meth:`mark` records a resumable unit (mirror + row + ``done``);
+    :meth:`note` records a row ONLY, for run-level bookkeeping a resumed run
+    needs back but which is not a unit ``slab`` can map."""
 
     def __init__(self, checkpoint_dir, phi_in, meta, *, slab=None):
         self.dir = Path(checkpoint_dir)
@@ -88,6 +92,15 @@ class RunCheckpoint:
         if row is not None:
             self.state['rows'][str(unit)] = row
         self.state['done'].append(unit)
+        self._save()
+
+    def note(self, key, row):
+        """Record ``row`` under ``key`` WITHOUT appending to ``done``.
+
+        For counters a resumed run needs back that are not a resumable unit —
+        ``key`` never reaches ``restore_into``'s ``slab``, so it may be any
+        name (e.g. ``'seam'``) the unit ids would choke on."""
+        self.state['rows'][str(key)] = row
         self._save()
 
     def finish(self, out=None):

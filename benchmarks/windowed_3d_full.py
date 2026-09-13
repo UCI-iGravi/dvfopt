@@ -108,8 +108,11 @@ def run(path, tag, band, overlap, n_workers, checkpoint_dir, serial):
     fold_in_mask, folds_in, folds_in_zero, floor_in, min_in = _fold_report(phi)
     t = time.perf_counter()
     if serial:
+        # No `.copy()`: both engines copy their input and never write to it, so `phi`
+        # stays the untouched reference the post-run metrics below need (and for a
+        # `.npy` input it stays file-backed, off the heap, for the whole solve).
         out, rep = windowed_correct(
-            phi.copy(),
+            phi,
             "isqp",
             constraint=c,
             objective=L2Objective(),
@@ -121,7 +124,7 @@ def run(path, tag, band, overlap, n_workers, checkpoint_dir, serial):
         bands, band_walls, seam_windows, seam_folds_before = 0, [], -1, -1
     else:
         out, rep = windowed_correct_banded(
-            phi.copy(),
+            phi,
             "isqp",
             constraint=c,
             objective=L2Objective(),
