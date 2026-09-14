@@ -18,18 +18,27 @@ follows [Semantic Versioning](https://semver.org/).
 
 - **Gates.** 2D byte-identity (`IDENTITY PASS`, 21 keys vs the #122 `route` reference set) held on eadf6a9, e258223 and the final code head b454ead; the one commit after it, 1b39f93 (the R15 checkpoint-write-failure follow-up), touches `_banded.py` only, which has no 2D entry point. 3D reproduction on eadf6a9 of twist / sliver / sub20 / subvol16 matched the pre-change records exactly in `folds_out`, `folds_out_zero`, `floor_out`, `new_folds`, `damage`, `moved_frac`, `l2_move` and `l1_move`; the only record differences are the #123 driver's de-duplicated `sqp_iters` and a `rounds` key the old records predate.
 
-- **The measurement ladder.** Pre-registered before any run — this PR changes no default or routing, so the only open question is whether the volumes certify and at what cost:
+- **Measured (2026-09-12 → 14).** The pre-registered rows below were not achieved: both full-volume chains were stopped — 38 h and 33 h of wall time spent, no band finished either. In their place, a 30-min instrumented probe supplies the phase-4 cadence number, the projection it implies, and the resulting scope call for this engine.
 
-  1. **Slab A/B** — `data/dvfs/crops_3d/slab_240_288.npy` (a raw B0039 z-cut): serial+checkpoint vs banded at 1 and 2 workers. Criterion: banding is viable if both banded runs certify at damage 0 with the seam pass under 25 % of the total windows; the 2-worker wall is the phase-4 throughput number.
-  2. **ds2 B0039 exterior** — `data/dvfs/cohort_ds2/B0039_laplacian_exterior_ds2.npy` (an exact 2x block-mean downsample of the cohort exterior field, displacements halved): banded at 4 workers with checkpointing — the first full-volume certificate.
-  3. **Full-res B0039 exterior** — the same banded config, checkpointed, background/monitored/resumable across sessions; the capstone this PR does not wait for.
+  | run | workers | wall | CPU per worker | bands done |
+  |---|---|---|---|---|
+  | slab A/B, banded, 2 workers (`slab_banded2`) | 2 | 38 h | 37 CPU-h | 0 |
+  | ds2 B0039 exterior, banded, 4 workers (`ck_ds2_b0039`) | 4 | 33 h | 33 CPU-h | 0 |
+
+  Both ran with the box shared with an unrelated job throughout (load 59-72 %). The band workers run at `verbose=0`, so neither chain gave any per-window visibility — hence a 30-min budgeted probe (`probe_band.py` / `probe_band.log`) on ds2 band 0's slab alone, from the `-gate` snapshot:
+
+  | slab shape | folds | giant region | tiles/sweep | windows solved | s/window (median / max) | SQP iters (median / max) | feasible | folds before → after |
+  |---|---|---|---|---|---|---|---|---|
+  | (3, 40, 160, 228), 1.46 M voxels | 12,832 (27 % of the volume's 48,274, in one band) | bbox (0..40, 41..134, 68..160), 342k voxels | ≈256 sixteen-cube tiles | 4 in 1,881 s | 493 / 854 | 29 / 61 | 1/4 | 12,832 → 12,759 |
+
+  Patch 5,508 voxels; ≈17 s per SQP iteration on the contended box (phase 1 measured 11 s at 17³ idle); 3 no-TR fallbacks, 0 backend/patience; damage 0. Projection: ≈256 tiles × ~600 s ≈ 43 h per sweep per band, up to 8 sweeps, then rounds / mop / re-seed on top of that — days per ds2 band, weeks for the ds2 volume, months for the full-res volume; the slab bands (3.5 M voxels, ~110k folds each) are larger still. Not stuck: this is the intrinsic per-QP cost of a 16³ tile times the tile count at real fold densities (the phase-1 U1 curve: 0.29 / 11 / 69 s per SQP iteration at 9³ / 17³ / 25³).
+
+  Conclusion: band-scale and full-volume 3D certification with this engine needs a ~100x cheaper window QP (the phase-3 QP-backend candidate) or far smaller tiles (9³ = 0.29 s/iteration, 5.5x cheaper per voxel-iteration, at the price of more seams). Until then the 3D windowed engine is a crop / sub-volume certifier (the 24³ pack, the 17³ / 20³ artefacts), the composite `m10_windowed_3d` is the cheap route where `m10_3d` certifies alone, and full volumes remain the 2.5D pipeline's territory (1,058,831 → 33 in 16.5 h on the 528-slice B0039). The banded driver and its checkpoints are correct and tested (the unit tests and the fix-wave gates above) but unmeasured at scale beyond this probe.
 
   | artefact | shape | voxels | folds @ 0.01 | folds @ 0 | best-diag floor | min |
   |---|---|---|---|---|---|---|
   | `slab_240_288` | (3, 48, 320, 456) | 7.0 M | 223,287 | 138,583 | 188,111 | −12.10 |
   | `B0039_laplacian_exterior_ds2` | (3, 264, 160, 228) | 9.6 M | 48,274 | 40,870 | 34,382 | −14.89 |
-
-  The slab and ds2 rows are appended to this entry when they land; the full-res B0039 row is the capstone that follows. The box is shared with an unrelated job (load 59-72 % at launch), so walls are contended — certificates and window counts are the load-independent columns.
 
 - **Not in this PR.** No `auto` / default / strategy-field / GUI change. `checkpoint_dir` is an engine kwarg (and the banded driver's own), not yet plumbed through `ISQPWindowedStrategy` or the CLI's windowed path. The seam pass is serial — no `giant_workers` inside it. The mop's own tiler is not checkpointed per sweep. `_banded.py` sits outside mypy's `files=`.
 
