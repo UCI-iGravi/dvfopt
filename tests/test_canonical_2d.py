@@ -532,3 +532,55 @@ def test_resume_keeps_a_measured_failure(tmp_path, monkeypatch):
     assert len(manifest["fields"]) == len(doctored)
     prov = _prov(new)
     assert (prov["n_reused"], prov["n_rerun"]) == (len(doctored), 0)
+
+
+def _tiny_old_run(
+    tmp_path, timing_mode="throughput", threshold=c2.THRESHOLD, cap_s=c2.DEFAULT_CAP_S
+):
+    """An old run dir written by hand (no solves): one measured row + manifest + summary."""
+    old = tmp_path / "old"
+    old.mkdir()
+    rec = c2.sentinel_record(c2.cases("synthetic", sample="smoke")[0], "isqp_none", "", timing_mode)
+    with c2.results_csv(old) as append:
+        append(rec)
+    c2._write_manifest(old, [rec], {})
+    prov = {"threshold": threshold, "cap_s": cap_s}
+    (old / "summary.json").write_text(json.dumps({"provenance": prov}), encoding="utf-8")
+    return old
+
+
+def _resume_into(tmp_path, old, **kw):
+    new = tmp_path / "new"
+    c2.run(
+        ["synthetic"],
+        ("isqp_none",),
+        sample="smoke",
+        run_dir=new,
+        explicit_configs=True,
+        resume=old,
+        **kw,
+    )
+    return new
+
+
+def test_resume_refuses_a_timing_mode_mismatch(tmp_path, monkeypatch):
+    calls = _counting_run_case(monkeypatch)
+    old = _tiny_old_run(tmp_path, timing_mode="throughput")
+    with pytest.raises(ValueError, match=r"timing_mode.*'throughput'.*'serial'"):
+        _resume_into(tmp_path, old, serial_timing=True)
+    assert calls == [] and not (tmp_path / "new").exists()  # refused before any write
+
+
+@pytest.mark.parametrize(
+    ("old_kw", "new_kw", "key"),
+    [
+        (dict(threshold=0.02), {}, "threshold"),
+        ({}, dict(cap_s=60.0), "cap_s"),
+    ],
+)
+def test_resume_refuses_a_protocol_mismatch(tmp_path, monkeypatch, old_kw, new_kw, key):
+    calls = _counting_run_case(monkeypatch)
+    old = _tiny_old_run(tmp_path, **old_kw)
+    with pytest.raises(ValueError, match=key):
+        _resume_into(tmp_path, old, **new_kw)
+    assert calls == [] and not (tmp_path / "new").exists()

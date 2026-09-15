@@ -899,15 +899,28 @@ def _dvf_ok(file: str, sha: str) -> bool:
 RERUN_REASONS = ("missing", *LOSS_PREFIXES, "dvf_missing_or_sha_mismatch")
 
 
-def _split_resume(old_dir, work) -> tuple:
+def _split_resume(old_dir, work, timing_mode, threshold, cap_s) -> tuple:
     """Split *work* against a previous run dir -> ``(reused, rerun, reasons)``.
 
     A pair's old row is reused verbatim iff it exists, its ``error`` is empty or
     a real measured failure (not a :data:`LOSS_PREFIXES` loss), and the DVF its
     manifest entry names (if any) still exists with the recorded sha256.
     ``reused`` are typed records in work-list order, ``rerun`` the pairs to run,
-    ``reasons`` a count per :data:`RERUN_REASONS`."""
+    ``reasons`` a count per :data:`RERUN_REASONS`.
+
+    Refuses (``ValueError``) an old run measured under a different protocol: a
+    ``threshold`` or ``cap_s`` differing from the old ``summary.json``, or a
+    reused row whose ``timing_mode`` differs — a throughput wall must never land
+    in a serial column (reused rows keep their ``time_s`` and ``hit_cap``)."""
     old_dir = Path(old_dir)
+    summary = old_dir / "summary.json"
+    if summary.is_file():
+        prov = json.loads(summary.read_text(encoding="utf-8"))["provenance"]
+        for name, new in (("threshold", threshold), ("cap_s", cap_s)):
+            if prov.get(name) != new:
+                raise ValueError(
+                    f"--resume {old_dir}: {name} mismatch (old {prov.get(name)!r}, new {new!r})"
+                )
     with open(old_dir / "results.csv", newline="", encoding="utf-8") as f:
         rows = {(r["source"], r["case"], r["config"]): r for r in csv.DictReader(f)}
     manifest = json.loads((old_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -931,6 +944,12 @@ def _split_resume(old_dir, work) -> tuple:
         else:
             reasons[why] += 1
             rerun.append((c, cfg))
+    for r in reused:
+        if r["timing_mode"] != timing_mode:
+            raise ValueError(
+                f"--resume {old_dir}: timing_mode mismatch on {r['label']} "
+                f"(old {r['timing_mode']!r}, new {timing_mode!r})"
+            )
     return reused, rerun, reasons
 
 
@@ -977,19 +996,18 @@ def run(
     timing_mode = "serial" if serial_timing else "throughput"
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(run_dir) if run_dir else REPO / "benchmarks" / "output" / f"2d_canonical_{stamp}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    run_name = run_dir.name
-    dvf_dir = DVF_ROOT / "results" / run_name
-    box_load = _box_load()
-
     work = _work_list(sources, config_names, sample, explicit_configs)
     by_key = {(c.source, c.id): c for c, _ in work}
     _log(f"{len(work)} (case, config) runs -> {run_dir}  [{timing_mode}, n_workers={n_workers}]")
     reused: list = []
     reasons = dict.fromkeys(RERUN_REASONS, 0)
-    if resume:
-        reused, work, reasons = _split_resume(resume, work)
+    if resume:  # may refuse: nothing has been written yet
+        reused, work, reasons = _split_resume(resume, work, timing_mode, threshold, cap_s)
         _log(f"resume from {resume}: reusing {len(reused)} rows, rerunning {len(work)} {reasons}")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run_name = run_dir.name
+    dvf_dir = DVF_ROOT / "results" / run_name
+    box_load = _box_load()
     # a lone pair still goes through a pool: a resumed crash must not kill the parent
     parallel = n_workers > 1 and len(work) > 0
     if isolate_configs and not parallel:
