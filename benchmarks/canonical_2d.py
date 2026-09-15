@@ -63,6 +63,21 @@ its input would not load, or its worker died — is a full ``-1`` row with
 denominator. ``-1`` is always a sentinel, never a measurement, and the median /
 IQR aggregates skip it.
 
+Fault tolerance (parallel pass only — the serial pass stays in-process, it is the
+wall column). A worker that dies abruptly breaks the whole ``ProcessPoolExecutor``
+and fails every running and queued future with ``BrokenProcessPool`` — an
+infrastructure loss, not a measurement, so those pairs are never recorded as
+such. Instead the first ``n_workers + 1`` unfinished pairs in submission order
+(the ones a worker could have been running, plus the one pre-queued call) are
+rerun ALONE, each in a fresh single-worker pool: a pair that breaks its own solo
+pool gets a measured ``WorkerCrash`` row, any other gets its real result. The
+rest are resubmitted to a fresh pool; past ``MAX_POOL_REBUILDS`` breaks every
+remaining pair runs isolated. ``--isolate-config`` sends named configs straight
+to that isolated path after the parallel pass. ``--resume RUN_DIR`` reuses every
+measured row of a previous run (its DVF verified by sha256) and reruns only the
+losses (missing rows, ``BrokenProcessPool`` / ``WorkerCrash`` rows, missing or
+altered DVFs).
+
 CLI::
 
     # smoke (no gitignored data needed)
@@ -75,6 +90,10 @@ CLI::
     # the per-case wall column the paper quotes
     python benchmarks/canonical_2d.py --source origins --serial-timing
 
+    # rerun only what a crashed / broken-pool run lost
+    python benchmarks/canonical_2d.py --source origins --n-workers 4 \\
+        --resume benchmarks/output/2d_canonical_<stamp> --isolate-config slsqp_windowed
+
 Run it from the repo root (the gitignored data resolves relative to this file).
 """
 
@@ -85,10 +104,13 @@ import csv
 import datetime
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
 import time
+from concurrent.futures import as_completed
+from concurrent.futures.process import BrokenProcessPool, ProcessPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
@@ -724,6 +746,194 @@ def run_case(
     return rec
 
 
+#: Pool rebuilds allowed per run; past it, every remaining pair runs isolated.
+MAX_POOL_REBUILDS = 5
+#: TEST-ONLY: see :func:`_pool_worker`.
+CRASH_ENV = "CANONICAL_2D_TEST_CRASH_CASE"
+#: ``error`` prefixes that mark an infrastructure loss, not a measurement.
+LOSS_PREFIXES = ("BrokenProcessPool", "WorkerCrash")
+
+
+def _pool_worker(case: Case, cfg_name: str, **kw) -> dict:
+    """The process-pool entry point: :func:`run_case` in a spawned worker.
+
+    TEST-ONLY crash hook: when the env var ``CANONICAL_2D_TEST_CRASH_CASE``
+    equals this pair's case id or ``<case>::<config>``, the worker dies with
+    ``os._exit(1)`` before solving — the abrupt, exception-less death that
+    breaks a ``ProcessPoolExecutor``. Never set it outside the tests. The serial
+    path calls :func:`run_case` directly, so the hook cannot kill the parent.
+    """
+    if os.environ.get(CRASH_ENV) in (case.id, f"{case.id}::{cfg_name}"):
+        os._exit(1)
+    return run_case(case, cfg_name, **kw)
+
+
+def _new_pool(n: int) -> ProcessPoolExecutor:
+    return ProcessPoolExecutor(max_workers=n, initializer=pin_worker_threads)
+
+
+def _run_isolated(case: Case, cfg_name: str, kw: dict, why: str) -> tuple:
+    """Run one pair ALONE in a fresh single-worker pool -> ``(record, crashed)``.
+
+    Alone, a pool break can only be this pair's own death, so it is recorded as
+    a measured ``WorkerCrash`` row (no DVF). An ordinary exception out of the
+    future keeps the dead-worker row with that error."""
+    with pinned_thread_env(), _new_pool(1) as ex:
+        fut = ex.submit(_pool_worker, case, cfg_name, **kw)
+        try:
+            return fut.result(), False
+        except BrokenProcessPool:
+            err = f"WorkerCrash: worker process terminated abruptly ({why})"
+            return sentinel_record(case, cfg_name, err, kw["timing_mode"]), True
+        except Exception as exc:
+            err = f"{type(exc).__name__}: {exc}"
+            return sentinel_record(case, cfg_name, err, kw["timing_mode"]), False
+
+
+def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
+    """The parallel pass with pool-break recovery. Returns the counters.
+
+    ``kw_for(case, cfg)`` gives the :func:`run_case` kwargs of a pair and
+    ``record(rec)`` lands a row. A ``BrokenProcessPool`` never becomes a row:
+    once the pool has broken and every future has resolved, the unfinished
+    pairs are sorted back into submission order and the first
+    ``n_workers + 1`` are the suspects. Workers take calls FIFO, so the pairs a
+    worker was running are always the earliest unfinished ones (at most
+    ``n_workers``); the ``+ 1`` covers the call the executor pre-queues. Each
+    suspect reruns alone (:func:`_run_isolated`) — only a pair that breaks its
+    own solo pool is a ``WorkerCrash`` — and the rest go to a fresh pool. After
+    ``MAX_POOL_REBUILDS`` breaks the remaining pairs all run isolated. Pairs
+    whose config is in *isolate* run isolated after the parallel pass.
+    """
+    isolate = set(isolate)
+    pending = [p for p in work if p[1] not in isolate]
+    stats = {"pool_breaks": 0, "worker_crashes": 0}
+
+    def land(rec):
+        record(rec)
+        _log(f"{rec['label']} done  {rec['error']}".rstrip())
+
+    def solo(pair, why):
+        rec, crashed = _run_isolated(*pair, kw_for(*pair), why)
+        stats["worker_crashes"] += crashed
+        land(rec)
+        return rec
+
+    while pending:
+        if stats["pool_breaks"] > MAX_POOL_REBUILDS:
+            _log(
+                f"pool-rebuild cap ({MAX_POOL_REBUILDS}) exceeded: running the "
+                f"{len(pending)} remaining pairs one at a time in isolation"
+            )
+            for pair in pending:
+                solo(pair, "isolated run past the pool-rebuild cap")
+            break
+        lost = []
+        with pinned_thread_env(), _new_pool(n_workers) as ex:
+            futs = {ex.submit(_pool_worker, *pair, **kw_for(*pair)): pair for pair in pending}
+            for fut in as_completed(futs):
+                c, cfg = futs[fut]
+                try:
+                    rec = fut.result()
+                except BrokenProcessPool:  # an infrastructure loss: rerun, never a row
+                    lost.append((c, cfg))
+                    continue
+                except Exception as exc:  # an ordinary worker exception is a row
+                    err = f"{type(exc).__name__}: {exc}"
+                    rec = sentinel_record(c, cfg, err, kw_for(c, cfg)["timing_mode"])
+                land(rec)
+        if not lost:
+            break
+        stats["pool_breaks"] += 1
+        order = {pair: i for i, pair in enumerate(pending)}
+        lost.sort(key=order.__getitem__)
+        suspects, pending = lost[: n_workers + 1], lost[n_workers + 1 :]
+        labels = [f"{c.id}__{cfg}" for c, cfg in suspects]
+        _log(
+            f"POOL BREAK #{stats['pool_breaks']}: {len(lost)} unfinished pairs; "
+            f"rerunning the {len(suspects)} suspects alone: {labels}"
+        )
+        outcome = [solo(p, "isolated rerun after a pool break")["error"] or "ok" for p in suspects]
+        _log(
+            f"pool break #{stats['pool_breaks']} suspects: "
+            + ", ".join(f"{lab} -> {o.split(':')[0]}" for lab, o in zip(labels, outcome))
+            + f"; resubmitting {len(pending)} pairs to a fresh pool"
+        )
+    for pair in work:
+        if pair[1] in isolate:
+            solo(pair, "isolated run, --isolate-config")
+    return stats
+
+
+_STR_KEYS = (*_IDENT_KEYS, "error", "timing_mode", "out_path", "sha256")
+
+
+def _typed_row(row: dict) -> dict:
+    """A ``results.csv`` row back to the types :func:`run_case` produced, so a
+    reused row aggregates like a fresh one AND writes back byte-identically
+    (``""`` <-> None, ``True``/``False``, int, float repr, else the string)."""
+    out: dict = {}
+    for k, v in row.items():
+        if k in _STR_KEYS:
+            out[k] = v
+        elif v == "":
+            out[k] = None
+        elif v in ("True", "False"):
+            out[k] = v == "True"
+        else:
+            for conv in (int, float, str):
+                try:
+                    out[k] = conv(v)
+                    break
+                except ValueError:
+                    pass
+    return out
+
+
+def _dvf_ok(file: str, sha: str) -> bool:
+    p = Path(file)
+    p = p if p.is_absolute() else REPO / p
+    return p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == sha
+
+
+RERUN_REASONS = ("missing", *LOSS_PREFIXES, "dvf_missing_or_sha_mismatch")
+
+
+def _split_resume(old_dir, work) -> tuple:
+    """Split *work* against a previous run dir -> ``(reused, rerun, reasons)``.
+
+    A pair's old row is reused verbatim iff it exists, its ``error`` is empty or
+    a real measured failure (not a :data:`LOSS_PREFIXES` loss), and the DVF its
+    manifest entry names (if any) still exists with the recorded sha256.
+    ``reused`` are typed records in work-list order, ``rerun`` the pairs to run,
+    ``reasons`` a count per :data:`RERUN_REASONS`."""
+    old_dir = Path(old_dir)
+    with open(old_dir / "results.csv", newline="", encoding="utf-8") as f:
+        rows = {(r["source"], r["case"], r["config"]): r for r in csv.DictReader(f)}
+    manifest = json.loads((old_dir / "manifest.json").read_text(encoding="utf-8"))
+    entries = {(e["source"], e["case"], e["config"]): e for e in manifest["fields"]}
+    reused, rerun = [], []
+    reasons = dict.fromkeys(RERUN_REASONS, 0)
+    for c, cfg in work:
+        key = (c.source, c.id, cfg)
+        row = rows.get(key)
+        why = None
+        if row is None:
+            why = "missing"
+        else:
+            why = next((p for p in LOSS_PREFIXES if row["error"].startswith(p)), None)
+            entry = entries.get(key, {})
+            file = entry.get("file", row["out_path"])
+            if why is None and file and not _dvf_ok(file, entry.get("sha256", row["sha256"])):
+                why = "dvf_missing_or_sha_mismatch"
+        if why is None:
+            reused.append(_typed_row(row))
+        else:
+            reasons[why] += 1
+            rerun.append((c, cfg))
+    return reused, rerun, reasons
+
+
 def _work_list(sources, config_names, sample, explicit_configs):
     """``[(case, cfg_name)]`` in a deterministic order, applying the protocol's
     source filter (the two engine rows everywhere, the rest of the taxonomy on
@@ -753,8 +963,15 @@ def run(
     explicit_configs=False,
     threshold=THRESHOLD,
     verbose=0,
+    resume=None,
+    isolate_configs=(),
 ):
-    """Run the benchmark and write the run directory. Returns its ``Path``."""
+    """Run the benchmark and write the run directory. Returns its ``Path``.
+
+    *resume* is a previous run dir whose measured rows are reused (see
+    :func:`_split_resume`); *isolate_configs* run one pair at a time in their
+    own single-worker pool after the parallel pass (ignored on the serial path,
+    which is in-process by design)."""
     if serial_timing:
         n_workers = 1
     timing_mode = "serial" if serial_timing else "throughput"
@@ -768,6 +985,16 @@ def run(
     work = _work_list(sources, config_names, sample, explicit_configs)
     by_key = {(c.source, c.id): c for c, _ in work}
     _log(f"{len(work)} (case, config) runs -> {run_dir}  [{timing_mode}, n_workers={n_workers}]")
+    reused: list = []
+    reasons = dict.fromkeys(RERUN_REASONS, 0)
+    if resume:
+        reused, work, reasons = _split_resume(resume, work)
+        _log(f"resume from {resume}: reusing {len(reused)} rows, rerunning {len(work)} {reasons}")
+    # a lone pair still goes through a pool: a resumed crash must not kill the parent
+    parallel = n_workers > 1 and len(work) > 0
+    if isolate_configs and not parallel:
+        _log("WARNING: --isolate-config ignored: the serial path runs in-process")
+    pool_stats = {"pool_breaks": 0, "worker_crashes": 0}
 
     # Inputs are loaded lazily, inside the worker (or just before the serial
     # solve): the parent never holds one array per queued run.
@@ -785,25 +1012,16 @@ def run(
             append_row(rec)
             _write_manifest(run_dir, records, by_key)
 
-        if n_workers > 1 and len(work) > 1:
-            from concurrent.futures import ProcessPoolExecutor, as_completed
-
-            with (
-                pinned_thread_env(),
-                ProcessPoolExecutor(max_workers=n_workers, initializer=pin_worker_threads) as ex,
-            ):
-                futs = {
-                    ex.submit(run_case, c, cfg, out_path=out_path(c, cfg), **kw): (c, cfg)
-                    for (c, cfg) in work
-                }
-                for i, fut in enumerate(as_completed(futs), 1):
-                    c, cfg = futs[fut]
-                    try:
-                        rec = fut.result()
-                    except Exception as exc:  # a dead worker is a row, not a lost chain
-                        rec = sentinel_record(c, cfg, f"{type(exc).__name__}: {exc}", timing_mode)
-                    _record(rec)
-                    _log(f"{rec['label']} done ({i}/{len(futs)})  {rec['error']}".rstrip())
+        for rec in reused:  # a resumed run's measured rows land first, in work order
+            _record(rec)
+        if parallel:
+            pool_stats = _run_parallel(
+                work,
+                n_workers,
+                lambda c, cfg: dict(out_path=out_path(c, cfg), **kw),
+                _record,
+                isolate_configs,
+            )
         else:
             phi = corr = None
             prev_case = load_err = None
@@ -834,6 +1052,14 @@ def run(
         threshold,
         total_s,
         box_load,
+        extra_provenance={
+            **pool_stats,
+            "isolated_configs": list(isolate_configs) if parallel else [],
+            "resumed_from": str(resume) if resume else None,
+            "n_reused": len(reused),
+            "n_rerun": len(work),
+            "rerun_reasons": reasons,
+        },
     )
     _write_report(run_dir, records, threshold, total_s)
     if figures:
@@ -980,6 +1206,7 @@ def _write_summary(
     threshold,
     total_s,
     box_load,
+    extra_provenance=None,
 ):
     groups = {}
     for r in records:
@@ -1003,6 +1230,7 @@ def _write_summary(
             "configs": {k: CONFIGS[k] for k in config_names},
             "sdlogj_clip": SDLOGJ_CLIP,
             "total_time_s": total_s,
+            **(extra_provenance or {}),
         },
         "gauges": GAUGES,
         "notes": [ANTS_Z_NOTE, SENTINEL_NOTE],
@@ -1233,6 +1461,21 @@ def _parse_args(argv=None):
     p.add_argument("--table", action="store_true")
     p.add_argument("--hist-case", default=None, help="case id for the jdet histogram figure")
     p.add_argument("--verbose", type=int, default=0)
+    p.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_DIR",
+        help="reuse RUN_DIR's measured rows; rerun only missing / BrokenProcessPool / "
+        "WorkerCrash rows and rows whose DVF is missing or altered",
+    )
+    p.add_argument(
+        "--isolate-config",
+        nargs="+",
+        choices=list(CONFIGS),
+        default=[],
+        metavar="CFG",
+        help="run these configs after the parallel pass, one pair per single-worker pool",
+    )
     return p.parse_args(argv)
 
 
@@ -1251,6 +1494,8 @@ def main(argv=None):
         hist_case=a.hist_case,
         explicit_configs=a.config is not None,
         verbose=a.verbose,
+        resume=a.resume,
+        isolate_configs=tuple(a.isolate_config),
     )
     return 0 if run_dir else 1
 

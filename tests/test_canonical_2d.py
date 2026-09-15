@@ -400,3 +400,135 @@ def test_markdown_table_has_one_row_per_group():
     # a group with no windowed row reads n/a, never "-1"
     md2 = c2.markdown_table([{**recs[0], "damage": -1, "time_s": -1}])
     assert md2.splitlines()[-1].endswith("| n/a |") and "| -1 " not in md2
+
+
+# ---------------------------------------------------------------------------
+# Fault tolerance: pool-break recovery, --isolate-config, --resume
+# ---------------------------------------------------------------------------
+
+_FT_CONFIGS = ("isqp_none", "slp")
+
+
+def _rows(run_dir):
+    with open(Path(run_dir) / "results.csv", newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def _prov(run_dir):
+    return json.loads((Path(run_dir) / "summary.json").read_text(encoding="utf-8"))["provenance"]
+
+
+def _ft_run(tmp_path, monkeypatch, name, **kw):
+    pytest.importorskip("osqp", reason="the isqp inner needs the [solvers] extra")
+    monkeypatch.setattr(c2, "DVF_ROOT", tmp_path / "dvfs")
+    run_dir = tmp_path / name
+    c2.run(["synthetic"], _FT_CONFIGS, sample="smoke", run_dir=run_dir, explicit_configs=True, **kw)
+    return run_dir
+
+
+def _crash_target():
+    return c2.cases("synthetic", sample="smoke")[0].id
+
+
+def test_pool_break_isolates_the_crashing_pair(tmp_path, monkeypatch):
+    target = _crash_target()
+    monkeypatch.setenv(c2.CRASH_ENV, f"{target}::slp")
+    run_dir = _ft_run(tmp_path, monkeypatch, "run", n_workers=2)
+    rows = _rows(run_dir)
+    assert len(rows) == 2 * len(_FT_CONFIGS)
+    for r in rows:
+        assert not r["error"].startswith("BrokenProcessPool"), r["label"]
+        if (r["case"], r["config"]) == (target, "slp"):
+            assert r["error"].startswith("WorkerCrash") and r["feasible"] == "False"
+            assert r["out_path"] == "" and r["n_neg_init"] == "-1"
+        else:
+            assert r["error"] == "", r["label"]  # every other pair is measured
+    prov = _prov(run_dir)
+    assert prov["pool_breaks"] >= 1 and prov["worker_crashes"] == 1
+
+
+def test_isolate_config_runs_its_pairs_alone(tmp_path, monkeypatch):
+    target = _crash_target()
+    monkeypatch.setenv(c2.CRASH_ENV, f"{target}::slp")
+    run_dir = _ft_run(tmp_path, monkeypatch, "run", n_workers=2, isolate_configs=("slp",))
+    crashed = [r for r in _rows(run_dir) if r["error"]]
+    assert [(r["case"], r["config"]) for r in crashed] == [(target, "slp")]
+    assert crashed[0]["error"].startswith("WorkerCrash")
+    prov = _prov(run_dir)
+    assert prov["pool_breaks"] == 0 and prov["worker_crashes"] == 1
+    assert prov["isolated_configs"] == ["slp"]
+
+
+def _doctor(run_dir, edit):
+    rows = _rows(run_dir)
+    rows = edit(rows)
+    with open(Path(run_dir) / "results.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=c2.record_keys())
+        w.writeheader()
+        w.writerows(rows)
+    return rows
+
+
+def _counting_run_case(monkeypatch):
+    calls = []
+    real = c2.run_case
+
+    def wrapped(case, cfg, *a, **k):
+        calls.append((case.id, cfg))
+        return real(case, cfg, *a, **k)
+
+    monkeypatch.setattr(c2, "run_case", wrapped)
+    return calls
+
+
+def test_resume_reruns_only_the_losses(tmp_path, monkeypatch):
+    old = _ft_run(tmp_path, monkeypatch, "old")
+    key = lambda r: (r["case"], r["config"])  # noqa: E731
+
+    def edit(rows):
+        rows[1]["error"] = "BrokenProcessPool: A process in the process pool was terminated"
+        Path(c2.REPO / rows[2]["out_path"]).write_bytes(b"tampered")  # sha mismatch
+        del rows[3]  # missing
+        return rows
+
+    doctored = _doctor(old, edit)
+    calls = _counting_run_case(monkeypatch)
+    new = _ft_run(tmp_path, monkeypatch, "new", resume=old)
+    lost = {key(doctored[1]), key(doctored[2])} | (
+        {(c.id, cfg) for c in c2.cases("synthetic", sample="smoke") for cfg in _FT_CONFIGS}
+        - {key(r) for r in doctored}
+    )
+    assert set(calls) == lost and len(calls) == 3
+    rows = {key(r): r for r in _rows(new)}
+    assert len(rows) == 2 * len(_FT_CONFIGS)
+    assert rows[key(doctored[0])] == doctored[0]  # reused verbatim, every field
+    assert all(rows[k]["error"] == "" for k in lost)
+    prov = _prov(new)
+    assert prov["resumed_from"] == str(old)
+    assert (prov["n_reused"], prov["n_rerun"]) == (1, 3)
+    assert prov["rerun_reasons"] == {
+        "missing": 1,
+        "BrokenProcessPool": 1,
+        "WorkerCrash": 0,
+        "dvf_missing_or_sha_mismatch": 1,
+    }
+
+
+def test_resume_keeps_a_measured_failure(tmp_path, monkeypatch):
+    old = _ft_run(tmp_path, monkeypatch, "old")
+
+    def edit(rows):
+        rows[0]["error"] = "MemoryError: Unable to allocate 15.1 GiB"
+        return rows
+
+    doctored = _doctor(old, edit)
+    calls = _counting_run_case(monkeypatch)
+    new = _ft_run(tmp_path, monkeypatch, "new", resume=old)
+    assert calls == []  # nothing to rerun, and still a complete run dir
+    assert _rows(new) == doctored
+    for name in ("summary.json", "manifest.json"):
+        assert (new / name).is_file()
+    manifest = json.loads((new / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["fields"]) == len(doctored)
+    prov = _prov(new)
+    assert (prov["n_reused"], prov["n_rerun"]) == (len(doctored), 0)
