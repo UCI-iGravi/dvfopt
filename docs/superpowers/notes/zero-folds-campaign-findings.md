@@ -627,3 +627,207 @@ best-diagonal certificate). Walls are soft (resumed, partly contended).
 (sweep-final checkpoints), `ab25d_v2*.log` (sweeps), `ab25d_v3…v6.log`
 (the mop chain: parallel → tiled → futility → levels), `profile_z5.log`,
 `time_mop_tile.log`, and the scratch measurement scripts named in the CHANGELOG.
+
+## 12. The canonical 2D benchmark (2026-09-14 … 09-15)
+
+One pinned engine, one pre-registered protocol, every 2D source in the repo, nothing
+dropped. The driver is `benchmarks/canonical_2d.py` (branch `feat/2d-canonical-benchmark`).
+`dvfopt/` is byte-identical to main `4636af8` for the whole branch, so every number is the
+shipped engine's own behavior. The tracked results live in `docs/paper/results/2d_canonical/`:
+one directory per source (`results.csv`, `summary.json`, `manifest.json`, `table.md`, figures)
+and a README with the protocol, the metric and gauge definitions and the per-source tables.
+Protocol, plan and ledger: `docs/superpowers/notes/2026-09-11-2d-canonical-benchmark-handoff.md`,
+`docs/superpowers/plans/2026-09-11-2d-canonical-benchmark.md`,
+`.superpowers/sdd/2026-09-11-2d-canonical-benchmark/progress.md`.
+
+### 12.1 What was run
+
+Engine call: `correct_dvf(phi, threshold=0.01, record_history=True, **config)`, no per-case
+knobs. Seven configs: `isqp_none` and `isqp_l2` (bilinear rows, the windowed engine, objective
+`none` / `l2`), `auto` (bilinear), `slp` (simplex, L1), `barrier` and `m14` (simplex, L2), and
+`slsqp_windowed` (central-difference Jdet, L2). The two `isqp_*` configs run on every source.
+The other five run on the three small sources (origins, crops, synthetic).
+
+`certified` means 0 bilinear values below `0.01 - 1e-5` after the solve. The bilinear column is
+exactly `cell_min_jdet_2d / 2`, the triangle-area scale the solver constrains, so a paper must not
+halve it again. A method's own-gauge `feasible` flag is reported beside it, never instead of it.
+
+| source | pairs | config | certified | wall median, s | wall kind |
+|---|---|---|---|---|---|
+| crops (TUNING SET) | 3 | `isqp_none` / `isqp_l2` / `auto` | 3/3 each | 6.28 / 41.43 / 32.17 | throughput, load 76 % |
+| crops (TUNING SET) | 3 | `barrier` / `m14` / `slp` | 0/3 each | 2.195 / 6.617 / 8.286 | throughput, load 76 % |
+| crops (TUNING SET) | 3 | `slsqp_windowed` | 0/3 (3/3 own gauge) | 915.6 | throughput, load 76 % |
+| synthetic | 13 | `isqp_none` / `isqp_l2` / `auto` | 13/13 each | 0.1276 / 0.3028 / 0.2246 | throughput, load 24 % |
+| synthetic | 13 | `barrier` / `m14` / `slp` | 1/13, 1/13, 4/13 | 0.4013 / 0.5038 / 0.7087 | throughput, load 24 % |
+| synthetic | 13 | `slsqp_windowed` | 0/13 (13/13 own gauge) | 0.06125 | throughput, load 24 % |
+| origins | 27 | `isqp_none` | 26/27 | 4.348 | serial, load 2 % |
+| origins | 27 | `isqp_l2` | 27/27 | 10.25 | serial, load 2 % |
+| ANTs controls | 85 | `isqp_none` | 85/85 (0 pixels moved) | 0.4254 | throughput, load 2 % |
+| cohort (7 brains) | 85 | `isqp_none` | 85/85 | 86.45 | throughput, load 39 % |
+| cohort (7 brains) | 85 | `isqp_l2` | 85/85 | 209.6 | throughput, load 39 % |
+
+<!-- ORIGINS-FINAL: filled after pass 3 -->
+
+Damage is 0 on every windowed row. The box was shared with unrelated jobs for most of the
+session, so only the origins serial pass supplies a per-case wall column. On identical pairs
+the throughput walls ran about 2.6x slower: `m2_demons_brainpair_weak` × `isqp_none` 147 s
+serial vs 394 s throughput, `m2_ffd_brainpair_coarse` × `isqp_none` 951 s vs 2,498 s.
+
+The one uncertified origins row is `m2_ffd_brainpair_coarse` × `isqp_none`. Its input is 39.5 %
+folded. Pure feasibility stops 6 bilinear cells short of the gauge (worst −5.09e-4 in the serial
+pass) after moving about 87 % of the pixels by up to 89 px. `isqp_l2` certifies the same field.
+The main residual cluster sits in a patch the input had folded completely. Its cells are
+x-slivers: the vertical edge projection sits exactly at `orientation_delta` = 0.01 while the
+horizontal one has collapsed, so the linear edge rows bind in y and the cells cannot open in x.
+
+**Crops.** The on-disk crops reproduce the documented fold counts (simplex 645 / 598 / 0 → 0)
+but not the historical move and wall figures in CLAUDE.md. Four historical engine commits
+reproduce today's `z0_sliver` result bit for bit, so there is no engine regression. The
+historical figures came from an earlier cut of the crop file. Measured here: `z0_sliver` L2 move
+805.8 (`isqp_none`) and 910.6 (`isqp_l2`). Under `isqp_none` the sliver moves 97 % of its pixels,
+RMS about 11 px per component, to clear 18 near-threshold bilinear folds. The crops are the
+engine's tuning set and are never quoted as a held-out result.
+
+### 12.2 The certificate costs the landmarks on pin-collapsed cohort slices
+
+All 170 cohort rows certify (85 slices × 2 configs, 0 error rows, damage 0). This includes the
+collapsed-pin slices the earlier cohort sweep had called a data obstruction: B0039 z1, B0039 z11
+and B0032 z1. The price is landmark fidelity. The median registration residual at the prescribed
+Laplacian correspondences changes as follows (px):
+
+| slice | before | after `isqp_l2` | after `isqp_none` |
+|---|---|---|---|
+| B0039 z1 | 1.56 | 132.7 | 135.1 |
+| B0039 z2 | 1.51 | 124.0 | 127.2 |
+| B0032 z1 | 0.96 | 77.5 | 78.9 |
+| B0304 z128 | 0.0308 | 20.44 | 19.19 |
+| B0039 z11 | 0.153 | 8.01 | 7.861 |
+| B0304 z181 | 0.486 | 5.075 | 5.278 |
+| B0039 z16 | 0.0356 | 1.811 | 2.348 |
+| B0039 z264 | 0.00864 | 0.04168 | 0.06633 |
+
+The B0039 z1 × `isqp_l2` figure was recomputed from the saved field. All 20 landmarks lie on
+moved pixels. The median displacement there is 134.2 px, while only 8.6 % of the slice moved. On
+these slices the certificate is not a fidelity claim, and the residual must be reported beside it.
+
+### 12.3 Reproducibility and verdict stability
+
+Two pooled runs agree bit for bit. Their workers are pinned to one BLAS thread. The two
+throughput passes of `m2_ffd_brainpair_coarse` × `isqp_none`, before and after a machine
+restart, match in all 16 outcome fields. A pooled run and an in-process run of the same pair
+agree only discretely. Certificates, fold counts under every gauge, damage, windows, rounds and
+SQP iterations match. On that pair the L1 and L2 moves differ by about 3e-5 relative, and the
+worst bilinear residual by 2.4 % (−5.22e-4 pooled vs −5.09e-4 in-process). The most plausible
+cause is the BLAS thread count. That is supported, not proven.
+
+Over all 54 origins pairs (27 fields × `isqp_none` / `isqp_l2`), serial vs throughput: **0
+certified-verdict flips and 0 pairs with any discrete-field difference.** Two pairs are
+gauge-marginal, with the worst bilinear value within 2.5 % of 0.01. Both are `isqp_l2` and both
+certify in both passes: `m1_laplacian_cohort_B0039_z264` at 0.010002 and
+`m2_ffd_brainpair_coarse` at 0.010216. No verdict depends on BLAS threading. Results are never
+described as bit-identical between pooled and in-process runs.
+
+### 12.4 The scale limit of `slsqp_windowed`
+
+`m2_ffd_brainpair_coarse` × `slsqp_windowed` failed in 0.015 s with
+`MemoryError: Unable to allocate 429. GiB for an array with shape (57520089628,)`. The traced
+SLSQP driver (`dvfopt/core/primitives/slsqp.py`) allocates scipy's worst-case dense workspace:
+
+`buffer_size = n(n+1)/2 + 3mn − (m+5n+7)·meq + 9m + 8n² + 35n + meq² + 28`
+
+(plus `2n(n+1)` when there are no inequality rows). A windowed Jacobian solve on k free pixels
+has n = 2k, m = k and meq = 0, so the buffer is about 40·k² float64 values. With k = 37,920 the
+formula gives 57,520,089,628, equal to the error's array length to the element. The failing
+window therefore held exactly 37,920 free pixels, 89.8 % of the 160×264 slice, with one Jacobian
+row per free pixel. The workspace is quadratic in window area, so `slsqp_windowed` does not apply
+to dense folding at slice scale. The row is a measured failure, kept in every denominator.
+
+<!-- ORIGINS-FINAL: filled after pass 3 -->
+
+### 12.5 Recovery provenance
+
+The origins taxonomy run (27 fields × 7 configs = 189 pairs) did not finish in one pass.
+
+1. A machine restart cut the first attempt at 48 rows. That partial run is kept apart and not
+   merged. The rerun started fresh.
+2. The rerun's pool broke after 58 measured rows and the MemoryError row. All four workers died
+   at once and 130 pairs became `BrokenProcessPool` rows. Those are infrastructure losses, not
+   measurements. The driver gained `--resume` (reuse measured rows and their sha256-verified
+   fields, rerun only losses), pool-break recovery (rerun the break's suspects alone) and
+   `--isolate-config` (run a config one pair at a time in its own single-worker pool).
+3. The first recovery measured 110 of the 130 and then hung (defect D1, §12.6). A second pass
+   started on the last 20 pairs, all `slsqp_windowed`.
+4. Under ruling R17, pass 3 reruns those pairs from the code-final driver `e1d3a88`, whose
+   isolated path gives each pair a 6 h cap.
+
+The table's rows come from three driver commits. 59 rows were measured at `cdbf5f4` and 110 at
+`90fccab`. The two commits differ only in the runner (`--resume`, pool-break recovery,
+`--isolate-config`). `run_case` and every metric it calls are byte-identical between them. Pass 3
+runs at `e1d3a88`. It is measurement-equivalent (R17(4)): its one change on the measurement path
+sets `certified = feasible = False` when a solve raises, which affects only error rows.
+
+<!-- ORIGINS-FINAL: filled after pass 3 -->
+
+### 12.6 Driver defect D1 and the no-progress watchdog
+
+**D1, the nested-pool shutdown hang.** The first recovery finished its parallel pass and never
+started its isolated phase. Every process in its tree sat at 0 CPU. Each pool worker held a
+nested process pool, spawned inside the worker by the `slp` or `m14` strategy, and the driver
+blocked shutting the outer pool down. Killing the grandchildren let all four workers exit on
+their own, which supports the diagnosis. The fix (`37eecde`) closes every pool without waiting
+on worker exit. It shuts the pool down without waiting, then terminates lingering workers and
+their descendants after a short grace. A test-only hook reproduces the nested pool: before the
+fix `run()` never returned (killed at 240 s), after it the run ends in about 10 s.
+
+**The watchdog (R12).** `37eecde` also added a no-progress watchdog, and `5904a0b` fixed what it
+records. When a pool completes no pair for `CANONICAL_2D_NO_PROGRESS_S` seconds (default 6 h),
+the driver records the first `n_workers` running pairs in submission order. Each becomes a
+`WatchdogTimeout: no result within <T> s (parallel pass | isolated run)` row with `hit_cap=True`.
+Every other unfinished pair, including the call the executor pre-queues, is resubmitted to a
+fresh pool. A recorded pair stalled for the full timeout and would stall again, so it is a
+measured "did not finish within T" outcome, not an infrastructure loss. `--resume` keeps it and
+refuses an old run made under a different `watchdog_timeout_s`. Summaries from `e1d3a88` record
+`watchdog_timeout_s` in their provenance. The tracked runs were made by `cdbf5f4` and `90fccab`,
+which predate the watchdog, so each of them ran to the engine's own termination.
+
+A related chain-script lesson: a dead worker's orphaned grandchild inherits the stdout pipe, so
+a `| grep` stage never sees EOF and the chain blocks until the orphan is killed.
+
+### 12.7 Rotated-branch census
+
+The certificate is a per-cell gauge, and a cell rotated by 180° still has a positive
+determinant. So the certified outputs were checked for cells with both edge projections
+negative. **Across all 399 certified outputs measured, the engine never introduced a cell
+rotated past 90°: every such cell in a certified output was already present, and untouched, in
+its input.** The 399 cover `origins_serial`, `ants_isqp`, `cohort_isqp` and the first origins
+recovery, all configs. The one output that carries such cells is `m4_svf_synthetic_subpixel`
+(75 cells under `isqp_none`, `isqp_l2` and `auto`, identically in both passes). All 75 are input
+cells the engine did not move. The engine removed the input's other 50 rotated cells, which lay
+inside fold windows. The 75 are orientation-preserving (forward-difference Jdet 0.255 to 8.707),
+with a median x-edge rotation of 112°. They are large local rotations of the synthetic SVF, not
+folds, and the certificate correctly passes them.
+
+Proxy caveat: "both edge projections < 0" flags any cell rotated past 90°. A smooth large
+rotation is a valid injective deformation, so the proxy is not a fold indicator. The claim is
+about cells the engine introduced, never global injectivity.
+
+<!-- ORIGINS-FINAL: filled after pass 3 -->
+
+### 12.8 Engine follow-up: `sqp_iters` misses the polish iterations
+
+The driver's `sqp_iters` sums `n_iter` over the engine's history, skipping nested `giant*`
+entries. `windowed_correct` records its re-seed and re-anchor stages with `n_iter = 0`, although
+their polish solves iterate (`dvfopt/core/windowed/_common.py`). So `sqp_iters` counts the round,
+coarse and mop iterations only. It must never be quoted as a total on a row where the re-seed or
+re-anchor stage ran. The fix belongs in the engine (record the real inner iteration counts). It
+is outside this benchmark's branch, which leaves `dvfopt/` untouched.
+
+### 12.9 Artefacts
+
+Tracked: `docs/paper/results/2d_canonical/{crops, synthetic, origins_serial, ants, cohort}/`.
+Gitignored run directories: `benchmarks/output/2d_canonical/<row>/`. Corrected fields:
+`data/dvfs/results/<run>/<source>/<case>__<config>.npz`, each listed with its sha256 in the
+source's `manifest.json`. `origins_all/` and `origins_all_partial_restart/` hold aggregates over
+sentinel rows and must not be used.
+
+<!-- ORIGINS-FINAL: filled after pass 3 -->

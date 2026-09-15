@@ -41,7 +41,8 @@ plan: `docs/superpowers/plans/2026-09-11-2d-canonical-benchmark.md`; ledger:
   the real time to the exception. A run exceeding its 2-hour soft cap (`--cap-s`, default 7200 s)
   is recorded as `hit_cap=True` but is not interrupted by that cap, and `time_budget_s` is left
   `None`. The one interruption is the pool path's **no-progress watchdog** (driver commits from
-  5904a0b on): when a pool completes no pair for `watchdog_timeout_s` (default 6 h, env
+  37eecde on; recorded as kept `WatchdogTimeout` rows from 5904a0b on): when a pool completes no
+  pair for `watchdog_timeout_s` (default 6 h, env
   `CANONICAL_2D_NO_PROGRESS_S`), the pairs its workers were running are cut and recorded as
   `WatchdogTimeout` rows (`-1`, `hit_cap=True`), which `--resume` keeps as measured "did not
   finish" outcomes. The tracked runs here were made by drivers cdbf5f4 / 90fccab, which predate
