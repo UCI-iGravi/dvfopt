@@ -1,0 +1,219 @@
+{
+  "run": "crops_all",
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "fields": [
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__isqp_none.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "isqp_none",
+      "shape": "3x1x35x42",
+      "sha256": "6fd4930ddc7261235e7f3cb2813d7063a891c739bf1d5ad53a826ae64ff5feab",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__isqp_l2.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "isqp_l2",
+      "shape": "3x1x35x42",
+      "sha256": "34530a47ab8491e042fd43e0ee589b1970b37e6e0890561777fd86708f21b3e3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__auto.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "auto",
+      "shape": "3x1x35x42",
+      "sha256": "34530a47ab8491e042fd43e0ee589b1970b37e6e0890561777fd86708f21b3e3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__slp.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "slp",
+      "shape": "3x1x35x42",
+      "sha256": "4b9349fb6a9e1c9a87eff4a4dcc46d927233251b036c0c82ae4e69c1204c56c8",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__barrier.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "barrier",
+      "shape": "3x1x35x42",
+      "sha256": "4a686fc5063089cbc2ac5b8d50a8583a43437461d26c7e6a20639d81d4acf588",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__m14.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "m14",
+      "shape": "3x1x35x42",
+      "sha256": "214586e1709136147d80b62558abcd8a947dc4a29a8a2cd05786cf256129faa7",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_cluster__slsqp_windowed.npz",
+      "case": "z0_cluster",
+      "source": "crops",
+      "config": "slsqp_windowed",
+      "shape": "3x1x35x42",
+      "sha256": "27472d65237e6262d5a6848e0b24da2c5e09238f01a66b72c92371463cbe79b9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_cluster.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__isqp_none.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "isqp_none",
+      "shape": "3x1x53x52",
+      "sha256": "0503fadaafd96cad5bb7b53a4d1de10df53780479e3d1557406db2d3ec9a50ac",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__isqp_l2.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "isqp_l2",
+      "shape": "3x1x53x52",
+      "sha256": "f237fe1abc409f9a285a735d1d67e6e69307fd774881f801b6caa4f5f9912340",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__auto.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "auto",
+      "shape": "3x1x53x52",
+      "sha256": "0503fadaafd96cad5bb7b53a4d1de10df53780479e3d1557406db2d3ec9a50ac",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__slp.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "slp",
+      "shape": "3x1x53x52",
+      "sha256": "33c3ab26b6e2c0ecef0e1c918d5304dbb90ebeb80ac74337e22a9cbef5c69d18",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__barrier.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "barrier",
+      "shape": "3x1x53x52",
+      "sha256": "21bc5cdf4725cb78a7da1fa5d6ea916d6b4814b53d40a8868e7fcc59ffa12539",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__m14.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "m14",
+      "shape": "3x1x53x52",
+      "sha256": "3c74165059d6f02e6e8ce79284c4aab38eeca0c4eb4395c252019057e3943322",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z0_sliver__slsqp_windowed.npz",
+      "case": "z0_sliver",
+      "source": "crops",
+      "config": "slsqp_windowed",
+      "shape": "3x1x53x52",
+      "sha256": "33c3ab26b6e2c0ecef0e1c918d5304dbb90ebeb80ac74337e22a9cbef5c69d18",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z0_sliver.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__isqp_none.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "isqp_none",
+      "shape": "3x1x50x50",
+      "sha256": "863c4c1e42f1cc0d7a24f788a03596f1995569ec384027ec2cf2d5da7ecb2711",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__isqp_l2.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "isqp_l2",
+      "shape": "3x1x50x50",
+      "sha256": "9067abf58a1fbd022e5a6c6635b7b29af4f1e9c8a120cc6ec685816351952bff",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__auto.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "auto",
+      "shape": "3x1x50x50",
+      "sha256": "9067abf58a1fbd022e5a6c6635b7b29af4f1e9c8a120cc6ec685816351952bff",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__slp.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "slp",
+      "shape": "3x1x50x50",
+      "sha256": "98530189478db8ef6214341a81f12ac2150eb7f81aefdb6c8e9062da7352674a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__barrier.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "barrier",
+      "shape": "3x1x50x50",
+      "sha256": "33c6470ca082713a4c755ca100c39c34375da228e908b1b85c29c344f6f266d1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__m14.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "m14",
+      "shape": "3x1x50x50",
+      "sha256": "0cd5b9825f11f75b894ce9d49287bef2f1ea8a12bdf76bd500c49ef6d28eb747",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\crops_all\\crops\\z16_twist__slsqp_windowed.npz",
+      "case": "z16_twist",
+      "source": "crops",
+      "config": "slsqp_windowed",
+      "shape": "3x1x50x50",
+      "sha256": "35d88d331f46ff6657efbae35c822b7a204daa8f62fcc0b82ecc402d0270a4c1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\crops\\z16_twist.npy",
+      "error": ""
+    }
+  ]
+}
