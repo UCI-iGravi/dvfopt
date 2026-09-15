@@ -106,10 +106,12 @@ import hashlib
 import json
 import os
 import platform
+import signal
 import subprocess
 import sys
 import time
-from concurrent.futures import as_completed
+from concurrent.futures import FIRST_COMPLETED, wait
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from concurrent.futures.process import BrokenProcessPool, ProcessPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -750,6 +752,16 @@ def run_case(
 MAX_POOL_REBUILDS = 5
 #: TEST-ONLY: see :func:`_pool_worker`.
 CRASH_ENV = "CANONICAL_2D_TEST_CRASH_CASE"
+#: TEST-ONLY: see :func:`_test_nested_pool`.
+NESTED_POOL_ENV = "CANONICAL_2D_TEST_NESTED_POOL"
+#: No-progress watchdog: a pool that completes no pair for this many seconds is
+#: closed and its in-flight pairs recorded as ``WorkerCrash`` rows. It must
+#: exceed the longest legitimate single pair; override with the env var
+#: ``CANONICAL_2D_NO_PROGRESS_S`` (tests).
+NO_PROGRESS_S = float(os.environ.get("CANONICAL_2D_NO_PROGRESS_S", 6 * 3600))
+#: Seconds a closed pool's workers get to exit on their own before their
+#: process trees are killed (see :func:`_close_pool`).
+CLOSE_GRACE_S = 5.0
 #: ``error`` prefixes that mark an infrastructure loss, not a measurement.
 LOSS_PREFIXES = ("BrokenProcessPool", "WorkerCrash")
 
@@ -765,11 +777,69 @@ def _pool_worker(case: Case, cfg_name: str, **kw) -> dict:
     """
     if os.environ.get(CRASH_ENV) in (case.id, f"{case.id}::{cfg_name}"):
         os._exit(1)
+    if os.environ.get(NESTED_POOL_ENV) is not None:
+        _test_nested_pool(os.environ[NESTED_POOL_ENV])
     return run_case(case, cfg_name, **kw)
+
+
+_TEST_NESTED_POOLS: list = []
+
+
+def _test_nested_pool(pid_dir: str) -> None:
+    """TEST-ONLY (``CANONICAL_2D_TEST_NESTED_POOL``): give this worker a live
+    nested ``ProcessPoolExecutor`` with one spawned child, kept referenced for
+    the worker's lifetime — what ``slp`` / ``m14`` leave behind through
+    ``dvfopt.core._pool.get_pool``, and what hung the outer pool's blocking
+    shutdown (D1). A non-empty value is a directory that receives one
+    ``<worker pid>.pids`` file listing the worker and grandchild pids."""
+    if _TEST_NESTED_POOLS:
+        return
+    ex = ProcessPoolExecutor(max_workers=1)
+    child = ex.submit(os.getpid).result()  # the submit spawns the child
+    _TEST_NESTED_POOLS.append(ex)
+    if pid_dir:
+        Path(pid_dir, f"{os.getpid()}.pids").write_text(f"{os.getpid()} {child}", encoding="utf-8")
 
 
 def _new_pool(n: int) -> ProcessPoolExecutor:
     return ProcessPoolExecutor(max_workers=n, initializer=pin_worker_threads)
+
+
+def _kill_tree(pid: int) -> None:
+    """Kill *pid* and every descendant (stdlib only: ``psutil`` is not a
+    declared dependency). Windows: ``taskkill /T`` walks the tree from the live
+    root. POSIX: ``pgrep -P`` recursion, children first."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
+        return
+    kids = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, check=False)
+    for kid in kids.stdout.split():
+        _kill_tree(int(kid))
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def _close_pool(ex: ProcessPoolExecutor) -> None:
+    """Close a pool WITHOUT waiting on its workers, then kill the stragglers.
+
+    Never ``shutdown(wait=True)`` (nor a ``with`` block): a worker that ran
+    ``slp`` / ``m14`` holds a live nested pool (``dvfopt.core._pool.get_pool``)
+    and blocks joining it while exiting, so a waiting shutdown never returns
+    (D1). Workers still alive after :data:`CLOSE_GRACE_S` are killed with their
+    descendants, the nested-pool grandchildren. Killing them also lets the
+    executor's management thread exit, which the interpreter joins at exit."""
+    # ``_processes`` is private, but it is the only handle on the worker
+    # processes, and ``shutdown()`` clears it, so read it first.
+    procs = list((getattr(ex, "_processes", None) or {}).values())
+    ex.shutdown(wait=False, cancel_futures=True)
+    deadline = time.monotonic() + CLOSE_GRACE_S
+    for proc in procs:
+        proc.join(max(0.0, deadline - time.monotonic()))
+    for proc in procs:
+        if proc.is_alive():
+            _kill_tree(proc.pid)
 
 
 def _run_isolated(case: Case, cfg_name: str, kw: dict, why: str) -> tuple:
@@ -778,16 +848,23 @@ def _run_isolated(case: Case, cfg_name: str, kw: dict, why: str) -> tuple:
     Alone, a pool break can only be this pair's own death, so it is recorded as
     a measured ``WorkerCrash`` row (no DVF). An ordinary exception out of the
     future keeps the dead-worker row with that error."""
-    with pinned_thread_env(), _new_pool(1) as ex:
-        fut = ex.submit(_pool_worker, case, cfg_name, **kw)
+    with pinned_thread_env():
+        ex = _new_pool(1)
         try:
-            return fut.result(), False
-        except BrokenProcessPool:
-            err = f"WorkerCrash: worker process terminated abruptly ({why})"
-            return sentinel_record(case, cfg_name, err, kw["timing_mode"]), True
-        except Exception as exc:
-            err = f"{type(exc).__name__}: {exc}"
-            return sentinel_record(case, cfg_name, err, kw["timing_mode"]), False
+            fut = ex.submit(_pool_worker, case, cfg_name, **kw)
+            try:
+                return fut.result(timeout=NO_PROGRESS_S), False
+            except BrokenProcessPool:
+                err = f"WorkerCrash: worker process terminated abruptly ({why})"
+                return sentinel_record(case, cfg_name, err, kw["timing_mode"]), True
+            except FutureTimeoutError:
+                err = f"WorkerCrash: no result within {NO_PROGRESS_S:g} s, no-progress watchdog ({why})"
+                return sentinel_record(case, cfg_name, err, kw["timing_mode"]), True
+            except Exception as exc:
+                err = f"{type(exc).__name__}: {exc}"
+                return sentinel_record(case, cfg_name, err, kw["timing_mode"]), False
+        finally:
+            _close_pool(ex)
 
 
 def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
@@ -804,6 +881,12 @@ def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
     own solo pool is a ``WorkerCrash`` — and the rest go to a fresh pool. After
     ``MAX_POOL_REBUILDS`` breaks the remaining pairs all run isolated. Pairs
     whose config is in *isolate* run isolated after the parallel pass.
+
+    Every pool is closed by :func:`_close_pool`, never by a waiting shutdown.
+    If no future completes for :data:`NO_PROGRESS_S`, the watchdog closes the
+    pool, lands each in-flight (``running()``) pair as a ``WorkerCrash`` row,
+    as a suspect that dies alone, and resubmits the not-yet-started pairs to a
+    fresh pool (counted as a pool break).
     """
     isolate = set(isolate)
     pending = [p for p in work if p[1] not in isolate]
@@ -828,25 +911,53 @@ def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
             for pair in pending:
                 solo(pair, "isolated run past the pool-rebuild cap")
             break
-        lost = []
-        with pinned_thread_env(), _new_pool(n_workers) as ex:
-            futs = {ex.submit(_pool_worker, *pair, **kw_for(*pair)): pair for pair in pending}
-            for fut in as_completed(futs):
-                c, cfg = futs[fut]
-                try:
-                    rec = fut.result()
-                except BrokenProcessPool:  # an infrastructure loss: rerun, never a row
-                    lost.append((c, cfg))
-                    continue
-                except Exception as exc:  # an ordinary worker exception is a row
-                    err = f"{type(exc).__name__}: {exc}"
-                    rec = sentinel_record(c, cfg, err, kw_for(c, cfg)["timing_mode"])
-                land(rec)
+        lost, stuck = [], []
+        order = {pair: i for i, pair in enumerate(pending)}
+        with pinned_thread_env():
+            ex = _new_pool(n_workers)
+            try:
+                futs = {ex.submit(_pool_worker, *pair, **kw_for(*pair)): pair for pair in pending}
+                waiting = set(futs)
+                while waiting:
+                    done, waiting = wait(
+                        waiting, timeout=NO_PROGRESS_S, return_when=FIRST_COMPLETED
+                    )
+                    if not done:  # the watchdog: the pool stopped delivering
+                        stuck = [futs[f] for f in waiting if f.running()]
+                        lost += [futs[f] for f in waiting if not f.running()]
+                        break
+                    for fut in done:
+                        c, cfg = futs[fut]
+                        try:
+                            rec = fut.result()
+                        except BrokenProcessPool:  # an infrastructure loss: rerun, never a row
+                            lost.append((c, cfg))
+                            continue
+                        except Exception as exc:  # an ordinary worker exception is a row
+                            err = f"{type(exc).__name__}: {exc}"
+                            rec = sentinel_record(c, cfg, err, kw_for(c, cfg)["timing_mode"])
+                        land(rec)
+            finally:
+                _close_pool(ex)
+        lost.sort(key=order.__getitem__)
+        if stuck:
+            stats["pool_breaks"] += 1
+            stuck.sort(key=order.__getitem__)
+            labels = [f"{c.id}__{cfg}" for c, cfg in stuck]
+            _log(
+                f"WATCHDOG: no pair finished in {NO_PROGRESS_S:g} s; recording the "
+                f"{len(stuck)} in-flight pairs as WorkerCrash: {labels}; "
+                f"resubmitting {len(lost)} pairs"
+            )
+            for c, cfg in stuck:
+                stats["worker_crashes"] += 1
+                err = f"WorkerCrash: no result within {NO_PROGRESS_S:g} s (no-progress watchdog)"
+                land(sentinel_record(c, cfg, err, kw_for(c, cfg)["timing_mode"]))
+            pending = lost
+            continue
         if not lost:
             break
         stats["pool_breaks"] += 1
-        order = {pair: i for i, pair in enumerate(pending)}
-        lost.sort(key=order.__getitem__)
         suspects, pending = lost[: n_workers + 1], lost[n_workers + 1 :]
         labels = [f"{c.id}__{cfg}" for c, cfg in suspects]
         _log(

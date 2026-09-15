@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -584,3 +586,78 @@ def test_resume_refuses_a_protocol_mismatch(tmp_path, monkeypatch, old_kw, new_k
     with pytest.raises(ValueError, match=key):
         _resume_into(tmp_path, old, **new_kw)
     assert calls == [] and not (tmp_path / "new").exists()
+
+
+# ---------------------------------------------------------------------------
+# D1: a worker holding a live nested pool must not hang the driver's shutdown
+# ---------------------------------------------------------------------------
+
+_NESTED_TIMEOUT_S = 300
+_NESTED_SCRIPT = """
+import sys
+import time
+from pathlib import Path
+sys.path.insert(0, 'benchmarks')
+import canonical_2d as c2
+c2.DVF_ROOT = Path(sys.argv[1]) / 'dvfs'
+c2.run(['synthetic'], ('isqp_none', 'slp'), sample='smoke', run_dir=Path(sys.argv[1]) / 'run',
+       explicit_configs=True, n_workers=2, isolate_configs=tuple(sys.argv[2:]))
+"""
+
+
+def _alive(pid: int) -> bool:
+    import subprocess
+
+    if sys.platform == "win32":
+        out = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True
+        ).stdout
+        return str(pid) in out.split()
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("isolate", [(), ("slp",)], ids=["parallel", "isolate_config"])
+def test_nested_pool_in_a_worker_does_not_hang_the_run(tmp_path, isolate):
+    import subprocess
+
+    pytest.importorskip("osqp", reason="the isqp inner needs the [solvers] extra")
+    pid_dir = tmp_path / "pids"
+    pid_dir.mkdir()
+    env = {**os.environ, c2.NESTED_POOL_ENV: str(pid_dir), "PYTHONPATH": str(c2.REPO)}
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _NESTED_SCRIPT, str(tmp_path), *isolate], cwd=c2.REPO, env=env
+    )
+    try:
+        proc.wait(timeout=_NESTED_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        c2._kill_tree(proc.pid)
+        pytest.fail(f"run hung past {_NESTED_TIMEOUT_S} s (D1: blocking nested-pool shutdown)")
+    assert proc.returncode == 0
+    rows = _rows(tmp_path / "run")
+    assert len(rows) == 2 * len(_FT_CONFIGS)
+    assert all(r["error"] == "" for r in rows), [(r["label"], r["error"]) for r in rows]
+    # (c) no worker or nested-pool grandchild of the run outlives it
+    pids = [int(x) for f in pid_dir.glob("*.pids") for x in f.read_text().split()]
+    assert pids, "the nested-pool hook never ran"
+    deadline = time.monotonic() + 30
+    while any(map(_alive, pids)) and time.monotonic() < deadline:
+        time.sleep(0.5)
+    assert not [p for p in pids if _alive(p)]
+
+
+def test_watchdog_records_stuck_pairs_instead_of_hanging(tmp_path, monkeypatch):
+    # a timeout shorter than a worker's spawn: every in-flight pair is "stuck"
+    monkeypatch.setattr(c2, "NO_PROGRESS_S", 0.5)
+    monkeypatch.setattr(c2, "MAX_POOL_REBUILDS", 0)  # the leftovers run isolated
+    run_dir = _ft_run(tmp_path, monkeypatch, "run", n_workers=2)
+    rows = _rows(run_dir)
+    assert len(rows) == 2 * len(_FT_CONFIGS)
+    for r in rows:
+        assert r["error"].startswith("WorkerCrash") and "watchdog" in r["error"], r["label"]
+        assert r["out_path"] == "" and r["n_neg_init"] == "-1"
+    prov = _prov(run_dir)
+    assert prov["pool_breaks"] == 1 and prov["worker_crashes"] == len(rows)
