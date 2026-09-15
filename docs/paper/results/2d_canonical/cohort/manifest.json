@@ -1,0 +1,1709 @@
+{
+  "run": "cohort_isqp",
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "fields": [
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z0__isqp_none.npz",
+      "case": "cohort_B0032_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "74890bec7ffaa224bcfed4334ac2c660e67f7dffabf02b3d77ea2e417b37d2f5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z48__isqp_none.npz",
+      "case": "cohort_B0032_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d9d78cc84ad87fbe2b58ba7a319cff6642d250bc2099914b8f74a1aa84e9dfb2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z1__isqp_none.npz",
+      "case": "cohort_B0032_z1",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "44345b86544f4b19b1a040857ef1b1ded377a2709cf854e8de700755e90178ce",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z96__isqp_none.npz",
+      "case": "cohort_B0032_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8e2375b0b8132dec5207b2c7d488cb93d02bc800d809d9523232a02cfec44935",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z48__isqp_l2.npz",
+      "case": "cohort_B0032_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "92706f7e1d58824d391985d9f211c4a211460ac6e63244f425a6192002821e36",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z96__isqp_l2.npz",
+      "case": "cohort_B0032_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "d29c0933b6b6eb8926e94cb261fb8e39317b5eb812507b44c1ffdc176b441c49",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z0__isqp_l2.npz",
+      "case": "cohort_B0032_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "49d292ee270f872a92d74af1ae57ebc5d5e5094e88119620488b00ddde1bcb89",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z144__isqp_none.npz",
+      "case": "cohort_B0032_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c3cf715fb32d146c696cf5fa93d73961f05650281c1bd0f47fdbcb3a0f69bf3e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z1__isqp_l2.npz",
+      "case": "cohort_B0032_z1",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "c6466372f3af324de534e0a78b547232d27a7167bf343c553d9c9936eca338f0",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z192__isqp_none.npz",
+      "case": "cohort_B0032_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "08ff8fb411d0dde7e90a712d1b310cb42d7e84a2755baf6cb4ee5728f1ae2957",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z240__isqp_none.npz",
+      "case": "cohort_B0032_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "501511bb699bb372357be2745f0b1f453b5bd5bec66ccc9866f7376a474f495b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z192__isqp_l2.npz",
+      "case": "cohort_B0032_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "9e162ce21a6aaa4e7f6be9855d9b2b1f5456defb58feb9ba2f353e7124eeebb5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z144__isqp_l2.npz",
+      "case": "cohort_B0032_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "a13330683a80c5cf2a2089cc98f20e3b439d6874c3391a9c3ea934329013f0eb",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z240__isqp_l2.npz",
+      "case": "cohort_B0032_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "b443be4a37c0fa3d5d95fa1b0e4026499d1cbb53c1bac766b893ac637cab1e46",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z288__isqp_none.npz",
+      "case": "cohort_B0032_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "fe35cebe2e38366c03239763d5d57c2ce0e32a86d7a7ec1a1a1f8b82c98a9813",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z336__isqp_none.npz",
+      "case": "cohort_B0032_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "6c4fb1391b3bcfc35f1ff1b1405eafa64b6710e94ef9a88e5b64c6ed4b6bf6f4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z384__isqp_none.npz",
+      "case": "cohort_B0032_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "345ba7549b12d90ca37d8e00d781cc409e76a63c66e7d487a5e5ce5d897e7052",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z432__isqp_none.npz",
+      "case": "cohort_B0032_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d6cdcd944b7f9a75738c72ee27e09f2b6c591c4dc66e79af275d2ef04cbb957e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z288__isqp_l2.npz",
+      "case": "cohort_B0032_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "14f26a09bc8d2ce4ae666853cdb6a925d6ee0dee6b9c9895765ae2f2e66aaf28",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z336__isqp_l2.npz",
+      "case": "cohort_B0032_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "3cddd0bfbbb330a9ad0c35ffd159960e4262b001d2d2c497780065ce72baf8c5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z384__isqp_l2.npz",
+      "case": "cohort_B0032_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "c199a43217f9995c26dbf869a779eea867a8dc8193da2f7db9c5284c91233968",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z480__isqp_none.npz",
+      "case": "cohort_B0032_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "96961a3fcbc1b55dfd620d06b9f6c4bd6fd45934d1329b5f6b7e3a08a87f37e1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z432__isqp_l2.npz",
+      "case": "cohort_B0032_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "203c7c2b663c5997ad827a42e1826beeb264040658a0e753f01355b157117281",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0032_z480__isqp_l2.npz",
+      "case": "cohort_B0032_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "4658ba14c9ee700312d15cffa2a5ba0f0eee856f5a338c10b18a7d9c75817a64",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z0__isqp_none.npz",
+      "case": "cohort_B0039_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7359a9b07afe4d279afdf517f3f4bbfeb335d98f3ff1bc5f11c47a5194b424be",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z1__isqp_none.npz",
+      "case": "cohort_B0039_z1",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d965d885e8e0802518b29fcade7a506905628c64b4b35ba352f52c595fb6684b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z0__isqp_l2.npz",
+      "case": "cohort_B0039_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "bb0419eff067ebb3dcc9cbebba56be3c70f8ffef095b7cdeac2c0d719832f349",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z11__isqp_none.npz",
+      "case": "cohort_B0039_z11",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "828744172aecaedddd02a20d379cee8e707fb34770061583f722c27de26c1bef",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z1__isqp_l2.npz",
+      "case": "cohort_B0039_z1",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1af294bd32cf3c7d0e067e2df1c4b5f14e44eba205b30495084153373863077a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z16__isqp_none.npz",
+      "case": "cohort_B0039_z16",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f3152f2ce5a311f4b5f008f91a1a533c50675c2213c42ebb09e7e7091de2af93",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z16__isqp_l2.npz",
+      "case": "cohort_B0039_z16",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "a60c2c12e02ca07c59a8c77bfc19bc4b98699c3175b7d079606aed7fa673f3d1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z2__isqp_l2.npz",
+      "case": "cohort_B0039_z2",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "5d750141d1ee59182fdb0e8e589304c57b7b53d6de98b17ae8629c563f1adc85",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z48__isqp_none.npz",
+      "case": "cohort_B0039_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d2ca55f5085c3ec224858e6987e7324fc1b31e7f04b71813e9b11f4f14a882d2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z2__isqp_none.npz",
+      "case": "cohort_B0039_z2",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f22224b5dd80dd255d12951dc6c88ae681c37295c59f7cf57c48e8fa43e30b98",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z48__isqp_l2.npz",
+      "case": "cohort_B0039_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "097e3713770b909d70873cfa6c2969652c248e881871d351217ddec9c5edf971",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z96__isqp_none.npz",
+      "case": "cohort_B0039_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "02a69106e8037c29d1c5f5e2dbed6d3db7f108f932f4304129ba985a02d76032",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z144__isqp_none.npz",
+      "case": "cohort_B0039_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4f36ad83f16b53eb08aa71ecf2ac5bf33a73b02ed4ed22d4df5f0152d811a977",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z11__isqp_l2.npz",
+      "case": "cohort_B0039_z11",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "0b543e5d57ffa10954cb083c09740441cb149889c2db3483ace6094dfe72e927",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z96__isqp_l2.npz",
+      "case": "cohort_B0039_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "cbcc330f91626de281aa5ba7c64a51e4247dc23f494d252a2bf1527524e9ad9d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z192__isqp_none.npz",
+      "case": "cohort_B0039_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "5f3814cceadd449c7512454eae1cf62896ac88579dc685cb572b535f34dd214d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z240__isqp_none.npz",
+      "case": "cohort_B0039_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "46fa1b83fe13e7b624acc0aed2ecec7a2587c6eec67f6091fe4b8f176a0f2ef9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z144__isqp_l2.npz",
+      "case": "cohort_B0039_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "827b1a656a063b03f98af228f9fdd24222361319fa6e8a2dcb05159f744b072c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z264__isqp_none.npz",
+      "case": "cohort_B0039_z264",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "11a2d38abc9dd942bb3f718cad3d61fd0f08017ac075619feb724286374b0557",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z192__isqp_l2.npz",
+      "case": "cohort_B0039_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "eedb524557167fef208ae8609f0470df35af9cae4941bd04da782b96261d83b0",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z240__isqp_l2.npz",
+      "case": "cohort_B0039_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "40f2febbf619ddd915ed761f5af57aa7545fb0a103088ab05489d424fadbbca2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z288__isqp_none.npz",
+      "case": "cohort_B0039_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f5fe5d102f6238d896d6088191da5bbd577eab542d80d86011ca0885d63ebc95",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z264__isqp_l2.npz",
+      "case": "cohort_B0039_z264",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1470c79270f7ea40f5c1663654a0238ac4eb4829769ee231082cbd3fa9909726",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z336__isqp_none.npz",
+      "case": "cohort_B0039_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "254dd0baf4fe9e4fbd64c90636330ad9950c6397a0f319a1efd66fb993e62cff",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z384__isqp_none.npz",
+      "case": "cohort_B0039_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a960c9d9ca0242d048f7b9745b5a901f360f7cd07e633c3599a9a8b7ef055902",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z288__isqp_l2.npz",
+      "case": "cohort_B0039_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "c612b3c1b56f763f7206f2514d03bce679c01307f77a28f59616472bc19e28a4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z336__isqp_l2.npz",
+      "case": "cohort_B0039_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "4ec66677aa75535a519e53831e5331f331fc544e252349b5dce67ddd1597ab4f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z384__isqp_l2.npz",
+      "case": "cohort_B0039_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "9f6ae0b32c32ff4acf16e6169dbc787845742e4f6ac12193317e9d2889d0d997",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z432__isqp_none.npz",
+      "case": "cohort_B0039_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "85cf69a9c56ffa40033226f0801d03e714369b0eb2fe99e4dcc2945e1acf253e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z0__isqp_none.npz",
+      "case": "cohort_B0049_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8eb463961ad9d0536134b7a8421b1f173b414b85f7f015f6b276e2e2ec2282c3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z0__isqp_l2.npz",
+      "case": "cohort_B0049_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "c965715d89f00ff87ba3db5a1933ac94d0419a61555d0e2d7e456a83e551ed45",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z48__isqp_none.npz",
+      "case": "cohort_B0049_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e3b0bcdf175550ebc243ae59a459ea3ed9e343c229c402790b74170eeb6cd2eb",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z480__isqp_none.npz",
+      "case": "cohort_B0039_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c648e0fa99edeefe5b3fbf494bd3be468eba8e5be9602a3701ca2a053e94a186",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z96__isqp_none.npz",
+      "case": "cohort_B0049_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "529828d0a682903a319ae02d981b860654ac60f19d749d816d43b50a84c9415d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z48__isqp_l2.npz",
+      "case": "cohort_B0049_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "db33c559de480d079008549109ab1a92fc0f4c56ffd9391424fc3d78752c4ebe",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z432__isqp_l2.npz",
+      "case": "cohort_B0039_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "ca19d61c93b18935cb3cf5102feee0d6667c029274dbc0f396eac0a50007b3c6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z144__isqp_none.npz",
+      "case": "cohort_B0049_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "692870d1d1847acf0aeddb5b933943b4e4ccbb661fa129da42cde0df1cfc7043",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z96__isqp_l2.npz",
+      "case": "cohort_B0049_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "7c3b63bfb2506e774ca28aa1a99225171b7bcf79b912d957f4a73c2875e3a3f4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0039_z480__isqp_l2.npz",
+      "case": "cohort_B0039_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "e0886c93950bb1b37f3d84781401c2231bcdd5320ec25533a989065d16975e89",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z192__isqp_none.npz",
+      "case": "cohort_B0049_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "1853494a6b1e3ab5693367921455b50fc06c5333e7127d35ef67fab087248549",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z144__isqp_l2.npz",
+      "case": "cohort_B0049_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "b212d3bbc6da95f739fc20743ba1eabc04176dc4482d0e72bc21f7a57f2e3967",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z240__isqp_none.npz",
+      "case": "cohort_B0049_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e382ba5baacffd4e3698b61eb69c39f2f1672d41cd4bbfade1ba7203183dae92",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z288__isqp_none.npz",
+      "case": "cohort_B0049_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "3ab802ee844367be8c394f6a14ba1e3e03674f01d69bc5e2e16ab2f68809d873",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z192__isqp_l2.npz",
+      "case": "cohort_B0049_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "b15bed98ef0f7108fc3f213c2bdf8f6cc868a13eac5727436204e173cc8fc80a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z240__isqp_l2.npz",
+      "case": "cohort_B0049_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "eadc71fbfb557562cccf63207c60e572e6e2fecf477086edde51d70b4171b31f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z336__isqp_none.npz",
+      "case": "cohort_B0049_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e134549abbb8805aab60845abd06a59d7fa75d9b9a92bbc0595193635a956798",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z288__isqp_l2.npz",
+      "case": "cohort_B0049_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "342f4175c7c93fa62a93f6278e03f3c2337463e5006aab4c0f8499e40d7f6223",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z384__isqp_none.npz",
+      "case": "cohort_B0049_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "60569260622cb14d48fa16c135b39b2cd3aea97b7df5970a7d4b333800fd8d76",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z336__isqp_l2.npz",
+      "case": "cohort_B0049_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "a103b7363f207efbbb956283fb348feb632ca42ee5e5c3bac031d4ffb199e79b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z432__isqp_none.npz",
+      "case": "cohort_B0049_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d6bfa096622bce16d5117387e3a62e11e5a431719443e38242b27c903de3ddb8",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z480__isqp_none.npz",
+      "case": "cohort_B0049_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a75f246a3e66a15219dd4200575d8b4429d0a4a6a793269e27de19b00f0eaeab",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z0__isqp_none.npz",
+      "case": "cohort_B0053_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9d2b5b604421ec1c41a2d02d0f3ca6d1a0588abb61ca43f6c9f5be6043a52580",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z0__isqp_l2.npz",
+      "case": "cohort_B0053_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f411b98e491e66d59352e590e6fc2702336fb19fe790e0f7bdae1b846fa6d921",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z384__isqp_l2.npz",
+      "case": "cohort_B0049_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "cc280c9479f87b6f434fa2c9c8d73dd2bb9e625ddb9897ce58f57a5cce2d920d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z48__isqp_none.npz",
+      "case": "cohort_B0053_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7fc0bfb438187a93b3eb7ecd5f851e5c437bd82234876b9020e26d1381386a01",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z48__isqp_l2.npz",
+      "case": "cohort_B0053_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f4c9706f84bb9e5d6bd3f556dfa7a01d0c6adc063121fb77ee6ae4095f6f1b6e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z96__isqp_none.npz",
+      "case": "cohort_B0053_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f74acd5db6dae9410932fe0e207e049fa5b074d3d3851f4bce0fabb16c32f2ae",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z432__isqp_l2.npz",
+      "case": "cohort_B0049_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f083410b67cfbfce40d527acd5d86f25175aff8c1aabe9fc8d7fb767cf79bd7f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z144__isqp_none.npz",
+      "case": "cohort_B0053_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "60054ba4e74eaf560f03fd7fa399701a59a5566e5abd6cbf4e2fa40d7766dffd",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0049_z480__isqp_l2.npz",
+      "case": "cohort_B0049_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "d10ccc582736059dc5ef5a743cd2fdc1187d6533cfba6ecb36ed44e913f1f9b9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z192__isqp_none.npz",
+      "case": "cohort_B0053_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4456356b489f0a204bfc3baa2eaec2206505d093fdcf82743a1e9b2987c225fe",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z96__isqp_l2.npz",
+      "case": "cohort_B0053_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1caa1abc46252056737985cc983426f082ba307a02f6cc6a93495565ac1cba43",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z144__isqp_l2.npz",
+      "case": "cohort_B0053_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "4911c321b5c91d574c70ae31fb0e76fe89ef5e0c6d1498744da46485c519afda",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z240__isqp_none.npz",
+      "case": "cohort_B0053_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7995c5a934c98750ce240ac83b05bef518fd9a3e60eed94e77b155b069d3823b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z288__isqp_none.npz",
+      "case": "cohort_B0053_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "148f9719f8a50e41a751f7e531d957f5d4f98d1e0154b2927135919ccfa713fc",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z192__isqp_l2.npz",
+      "case": "cohort_B0053_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "5c4c871ada4fa03d8de00115385e07fa17ff3141bf157a256e6415ff375098a4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z240__isqp_l2.npz",
+      "case": "cohort_B0053_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "af2d5c30ecfd97d955c48a6b8a833e3ab19ac2487a78f872541787c49c3aa0f9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z336__isqp_none.npz",
+      "case": "cohort_B0053_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7c972cd49c1df4e2c4ac24a9ac42c216c92df8c697cd52af5986d7e7d320aae2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z288__isqp_l2.npz",
+      "case": "cohort_B0053_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1a81ee40497d1081f00253b50f28ad3919c99a603ff49556a1c097b30462d489",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z432__isqp_none.npz",
+      "case": "cohort_B0053_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "991523ab6305a22744fe3723460af507fce467f90c0d727b614e2fbfa18a301f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z384__isqp_none.npz",
+      "case": "cohort_B0053_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "99c5a6cd9e04967b585104b9d82f307f8a25ea918f301667ef3fec01e2501933",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z336__isqp_l2.npz",
+      "case": "cohort_B0053_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "65152364c5224c68d9676f30ebb39b48f508f3189ecc54d935d347d16ec98855",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z432__isqp_l2.npz",
+      "case": "cohort_B0053_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "96a1bae3774dcd464bc2095176d1ac2cdf25ef61b64dc57e378624b0b1945ca6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z0__isqp_none.npz",
+      "case": "cohort_B0200_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "664561ec7c9543665f5dabc6757796b3a80e048528fa9cd71b6aa94963621b86",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z0__isqp_l2.npz",
+      "case": "cohort_B0200_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f24f96fbc23238c2e5f61b69c20b232b7a2e5951f643ff82c520161248e6c19c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z480__isqp_none.npz",
+      "case": "cohort_B0053_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9791b8481f6b42d7c14f5203dc9fd340b8f53ece5dec45d39c89bd350b6bb19c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z48__isqp_none.npz",
+      "case": "cohort_B0200_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e3b7d871fb476318166576514acc23b1edbeec9248574d7cb6ba05c3966169e6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z384__isqp_l2.npz",
+      "case": "cohort_B0053_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "157964ea540e02327d9a05ec030b790ed34fa5172e8233f0ad2976634dabad3c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z96__isqp_none.npz",
+      "case": "cohort_B0200_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "aac4b2e14dad058352d05508f6ae0577d2888cff202134e0feed0ffb27dd15fd",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z144__isqp_none.npz",
+      "case": "cohort_B0200_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d55ccbc1144baa07b48d7c918268ef302aa7148895f692ff378a7764e6a0d48a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z48__isqp_l2.npz",
+      "case": "cohort_B0200_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "2f6ea4a1ecc86afda7923a88b6cc37cbc5e9623fb1d2a61882583451e58ce524",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0053_z480__isqp_l2.npz",
+      "case": "cohort_B0053_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "e831c01791a06436548b1c34a1f47a20d9d561cb88f1d2b8016da39b10cdd071",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z192__isqp_none.npz",
+      "case": "cohort_B0200_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a3e55853423f503e5e953677aa4acd5588e256cb240a31142cfb695a97ceec8f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z96__isqp_l2.npz",
+      "case": "cohort_B0200_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "e1ae98fdfbd76a5bca776698d596f3f1a48eeee454a7cfa9ab6cdab466776aae",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z144__isqp_l2.npz",
+      "case": "cohort_B0200_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "48b0f5d52c309efcc0fc7961de7c58f29325696db946704b5c1308064c334453",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z240__isqp_none.npz",
+      "case": "cohort_B0200_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "5908562fad6e882b3621afe997e3bad17170c00a81430a329ac3e5c13c14dac2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z192__isqp_l2.npz",
+      "case": "cohort_B0200_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f64609c16b184b8a06b81d2f31b7b2d053c4d7bca8b6528b66bfdee6ec57dae1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z288__isqp_none.npz",
+      "case": "cohort_B0200_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "69032a82807a94aca988fe4a52b0b14867cceba4f0e5474bec26d363aceafa02",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z336__isqp_none.npz",
+      "case": "cohort_B0200_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e45b660b50756af2e2b5f40fc8868d22828242c0bd3e4b745fdd498bd6cc7327",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z240__isqp_l2.npz",
+      "case": "cohort_B0200_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f4b3030698166ca073175f1db8fd50083d66fa3c4949d068dc3861cf742fad56",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z336__isqp_l2.npz",
+      "case": "cohort_B0200_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "a8d2900d1b614c081dab97332d8162b970e287d5d529ac43b8bea2db17b1049a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z384__isqp_none.npz",
+      "case": "cohort_B0200_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "11f4717d62a09728ade3e450f5645a6c8680adfaf7bd3bdf63d8626e855fe131",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z288__isqp_l2.npz",
+      "case": "cohort_B0200_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "91116542c34b9549510cdd6d723756cd6197cabe7013d00b86dc879a6e9c2560",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z480__isqp_none.npz",
+      "case": "cohort_B0200_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "106abc8d05413aef7892bd93e158db0194014b5705876966458d007c6b1c4151",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z432__isqp_none.npz",
+      "case": "cohort_B0200_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c2dd5183f0cafa0ae6391549c1ee8a20223dc3b22e65b8e987cadd7b1b95f2a4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z0__isqp_none.npz",
+      "case": "cohort_B0213_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "20cdb2bceb299a19539cbd52948204e51dac5d25675851d16f60eee63cd0bbc5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z0__isqp_l2.npz",
+      "case": "cohort_B0213_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "9023328a4e44a58da59ad739eb11c36636ed3a8a4d3794a4e9ba295f34ecc2b0",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z384__isqp_l2.npz",
+      "case": "cohort_B0200_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "2ca4bc9e751575636f394421cad0d80d64662e1bb239107c240b9bdfb87313f4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z48__isqp_none.npz",
+      "case": "cohort_B0213_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "1a7d44a0fe004ce3d1a4dc526aa92a118e61b98a9cde3fd114de69c66e729cc6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z96__isqp_none.npz",
+      "case": "cohort_B0213_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "5a4c0f2831b4204d6911f4a9bd648966aa9f72dfbda3cb92520061dcb36b351d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z48__isqp_l2.npz",
+      "case": "cohort_B0213_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "e90d5336410a92d27396c914bb4b3e06974b4c7b2ab02a116cecc80975df5689",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z432__isqp_l2.npz",
+      "case": "cohort_B0200_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "852c4c76eaa16ed4eba515411aad3f567513a560c57b27d96b6173dc98f7df5a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0200_z480__isqp_l2.npz",
+      "case": "cohort_B0200_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "46973594150c42a47f953033d65b6601208fe867c93d5921f2e54eaa81a03ae4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z144__isqp_none.npz",
+      "case": "cohort_B0213_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "eea88ea6c9998bfba73f9ee1d29b578966043c63ac36db9363c057a56c984f60",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z144__isqp_l2.npz",
+      "case": "cohort_B0213_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "4a850144acf8054096552a4cf607aa685146fdd9eadde89f1945241d99132f0e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z192__isqp_none.npz",
+      "case": "cohort_B0213_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "2da386421c7b18e22f0d02d8c892e853094d1ff264a0ec38e8fa6970593a1997",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z96__isqp_l2.npz",
+      "case": "cohort_B0213_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "0d25e2c72756735bf587ea7eafa89e6d87a6c3b885291e1f77b836b7f1af6a20",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z240__isqp_none.npz",
+      "case": "cohort_B0213_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4915d4317bd78f32e92a6922466802b88d9dc872d520679d04235db46a679563",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z288__isqp_none.npz",
+      "case": "cohort_B0213_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "abd43914409cd44e46c2004f0014b18bc6a1bf3b8bc14bfe4b7daf65e9dcc7ee",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z192__isqp_l2.npz",
+      "case": "cohort_B0213_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "e07e0b9599bf5c2a7bd630261fcafc8f82bc50ab0aef3bbadd2908777a8a1c9f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z240__isqp_l2.npz",
+      "case": "cohort_B0213_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "80f148043008450f13cf07eb5999e7a5fc587974f496990182bffc3e97a9c461",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z336__isqp_none.npz",
+      "case": "cohort_B0213_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8251850cbb29cee5385d3caf0a6e7c3f6e5c4bfbc17f43d4000393a7196c2c09",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z288__isqp_l2.npz",
+      "case": "cohort_B0213_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "cf21a6981945d262352b7de0d63e3314e9a453db2f65c6385d55792176166d83",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z384__isqp_none.npz",
+      "case": "cohort_B0213_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f576bbe56f6a8c079dff33058d285a75b0ce5732828cc1fb0208f1cde8108f36",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z432__isqp_none.npz",
+      "case": "cohort_B0213_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "58c49a1e0a0b007f6d5f1d99a9060245d7bbf58d883ac69e6b5140befbbcc8e2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z336__isqp_l2.npz",
+      "case": "cohort_B0213_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "39a3aa8e8cadb57be0a6dc733f78a4cc466998203334c02edf411f9ac2b2e49c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z384__isqp_l2.npz",
+      "case": "cohort_B0213_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "18cde4f3dc1592926eee002e32a9d6314065fc9142165370c6829599da116db7",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z0__isqp_none.npz",
+      "case": "cohort_B0304_z0",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z0__isqp_l2.npz",
+      "case": "cohort_B0304_z0",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z48__isqp_none.npz",
+      "case": "cohort_B0304_z48",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "0b5aafdff4436d3580df922e83b3266b3762122565eb51efb7e7cbf843481b75",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z48__isqp_l2.npz",
+      "case": "cohort_B0304_z48",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "0b5aafdff4436d3580df922e83b3266b3762122565eb51efb7e7cbf843481b75",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z96__isqp_none.npz",
+      "case": "cohort_B0304_z96",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "b0ac5d7cdaa457514db2188d313bbca1ecefe829b5d6e431044c8b022edc2a77",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z96__isqp_l2.npz",
+      "case": "cohort_B0304_z96",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "b0ac5d7cdaa457514db2188d313bbca1ecefe829b5d6e431044c8b022edc2a77",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z480__isqp_none.npz",
+      "case": "cohort_B0213_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4af32e24577efab1905e9b066290cd6ec1faaf662f3d50e55d087dbed6074414",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z432__isqp_l2.npz",
+      "case": "cohort_B0213_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "9edade1b07123e7645d83fed96378f8074685bfd122e70ff65395d4a991c0ac1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0213_z480__isqp_l2.npz",
+      "case": "cohort_B0213_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "6e84796c28cf667e4ae5941ec466173baf51537478d46a7fa029528b83eacd1e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z128__isqp_none.npz",
+      "case": "cohort_B0304_z128",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "2bd462ea0ac3fd66242b9c545a9a35506360a77f10d1b8803c4ea9e572324663",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z128__isqp_l2.npz",
+      "case": "cohort_B0304_z128",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "c42dc216e8151d3036f2d016a35835f92ed96c7a4e228a76fab96014b8e421de",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z144__isqp_none.npz",
+      "case": "cohort_B0304_z144",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "1d39cd25bc04c8a67459759e5dc39bd9266b9cc29f6c860abc670d945db180d1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z192__isqp_none.npz",
+      "case": "cohort_B0304_z192",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "41b062c000dd65a8ae1ba1bf91846d8b93928e640f8bfd6725de0e991a261d12",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z181__isqp_none.npz",
+      "case": "cohort_B0304_z181",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "27bb8d32741b0aa3049602f92bc3c1844930c7a3a37f2fe3cb6bad5c57af871d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z240__isqp_none.npz",
+      "case": "cohort_B0304_z240",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9148299d0b8b7630bba540775b4dac70348230ae2861b8447f51ef8e67a451a6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z240__isqp_l2.npz",
+      "case": "cohort_B0304_z240",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "929c7ce0f84da301b95ff88b40b3b5dfb70d4204f6787f76063826ec97a52f06",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z181__isqp_l2.npz",
+      "case": "cohort_B0304_z181",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "6b0beb540f6e691e5c66b37728c319084d5db11cfebf7dd0d602f10ef947f592",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z192__isqp_l2.npz",
+      "case": "cohort_B0304_z192",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "f2cde3a6ef5471f63a58b9684621959525378dec48b09f30f1eb1ce79d3e9dfa",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z288__isqp_none.npz",
+      "case": "cohort_B0304_z288",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d17ae4741c4f3bb19fd63fa3daafda563cf64cfca6de6129fbf227cf5800c931",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z144__isqp_l2.npz",
+      "case": "cohort_B0304_z144",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "159619b12ebb980f01e8ccfe73e5ddbde4f84a5a4958fcb9b468b494d1c8b247",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z336__isqp_none.npz",
+      "case": "cohort_B0304_z336",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a986e2eb3577cb805f78ea607521b8e8bf2cc658ef907a8ab8b824c8be98c312",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z384__isqp_none.npz",
+      "case": "cohort_B0304_z384",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8dc710b201edfb8de969d779902be7a3108690330a3255b1095b5880a7447198",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z288__isqp_l2.npz",
+      "case": "cohort_B0304_z288",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "15969c1e15939c11f9ea6566ebda3f4e69754939d255d171c16ad7d8f84f3be7",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z336__isqp_l2.npz",
+      "case": "cohort_B0304_z336",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "edb8324e71c102f18eb6ead4b26ba085a5d4f611de621a821a2c830a7bfa4058",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z480__isqp_none.npz",
+      "case": "cohort_B0304_z480",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "1defef13a0f9d3ba8024cc190e037b810d8db526be34638a325d65e7402a3547",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z480__isqp_l2.npz",
+      "case": "cohort_B0304_z480",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1defef13a0f9d3ba8024cc190e037b810d8db526be34638a325d65e7402a3547",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z384__isqp_l2.npz",
+      "case": "cohort_B0304_z384",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "29d30c40446385ae81a0747a7644d9b9e80e95fa4f120a1e75dd5dbe65ae508b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z432__isqp_none.npz",
+      "case": "cohort_B0304_z432",
+      "source": "cohort",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "76e6c60b8f7fc057d3d95dc576eb0897cd54145ab548405dc7114e1d15a99e36",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\cohort_isqp\\cohort\\cohort_B0304_z432__isqp_l2.npz",
+      "case": "cohort_B0304_z432",
+      "source": "cohort",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "46adc66d105558f725fbf6f36aa9f93bbc70520129d1a10d07c5627050c29f6b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\laplacian_deformation_field.npz",
+      "error": ""
+    }
+  ]
+}

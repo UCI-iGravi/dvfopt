@@ -142,6 +142,11 @@ on identical pairs, `m2_demons_brainpair_weak` × `isqp_none` ran 147 s serial v
 and `m2_ffd_brainpair_coarse` × `isqp_none` ran 951 s serial vs 2,498 s throughput — about 2.6x.
 Only the serial pass's `time_s` column should be quoted as this source's wall.
 
+The `cohort` walls (`cohort/`) are likewise a **throughput** pass, not the paper's per-case wall
+column: `n_workers=4`, run while the box also carried the `origins` recovery chain (an unrelated
+job). The idle-box serial re-timing of a cohort subset (z=0 and z=240 of every brain) is the
+recorded follow-up — see Status and Regeneration.
+
 ## Caveats
 
 - **R4 — the on-disk crops do not reproduce CLAUDE.md's historical move/wall figures.** CLAUDE.md
@@ -197,11 +202,17 @@ docs/paper/results/2d_canonical/
 │   ├── summary.json
 │   ├── manifest.json
 │   └── table.md                # no figures/: this run was not passed --figures
-└── ants/                       # FINAL — the ANTs "already injective" control
+├── ants/                       # FINAL — the ANTs "already injective" control
+│   ├── results.csv
+│   ├── summary.json
+│   ├── manifest.json
+│   └── table.md                # no figures/: this run was not passed --figures
+└── cohort/                     # FINAL — the cohort sample (throughput walls, see Walls)
     ├── results.csv
     ├── summary.json
     ├── manifest.json
-    └── table.md                # no figures/: this run was not passed --figures
+    ├── table.md
+    └── figures/*.png
 ```
 
 One subdirectory per source, matching the run-dir names in
@@ -213,8 +224,8 @@ be regenerated locally, not tracked. Corrected DVFs are never tracked: they live
 `manifest.json` here lists every one with its case, config, shape and sha256, plus the untouched
 *input* path (inputs are never duplicated).
 
-Pending sources (`origins` full taxonomy, `cohort`) will each get their own subdirectory here, in
-the same shape, once their chains finish — see Status.
+The pending source (`origins` full taxonomy) will get its own subdirectory here, in the same
+shape, once its recovery chain finishes — see Status.
 
 ## Regeneration
 
@@ -263,9 +274,9 @@ python benchmarks/canonical_2d.py --source ants \
     --config isqp_none --n-workers 4 --table \
     --run-dir benchmarks/output/2d_canonical/ants_isqp
 
-# cohort sample, the two engine configs, throughput pass — PENDING
-python benchmarks/canonical_2d.py --source cohort \
-    --config isqp_none isqp_l2 --n-workers 4 --table \
+# cohort sample, the two engine configs, throughput pass — FINAL, this directory's cohort/
+python benchmarks/canonical_2d.py --source cohort --config isqp_none isqp_l2 \
+    --n-workers 4 --figures --table \
     --run-dir benchmarks/output/2d_canonical/cohort_isqp
 ```
 
@@ -281,17 +292,16 @@ python benchmarks/canonical_2d.py --source cohort --config isqp_none isqp_l2 \
 
 ## Status
 
-- **`crops`, `synthetic`, `origins` (serial-timing pass), `ants`: FINAL.** Tracked here in full
-  (see the tables below).
+- **`crops`, `synthetic`, `origins` (serial-timing pass), `ants`, `cohort`: FINAL.** Tracked here
+  in full (see the tables below).
 - **`origins` (full 7-config taxonomy, throughput): being recovered.** The original
   `origins_all` run lost 130 of its 189 pairs to a dead pool worker
   (`BrokenProcessPool`) mid-run; a recovery run reuses the 59 rows it did measure and reruns
   exactly the 130 losses, with `slsqp_windowed` pairs isolated one at a time. It replaces
   `origins_all`, whose aggregates (`summary.json`/`table.md`, computed over the 130 sentinel rows)
   must not be used.
-- **`cohort`: running.** The cohort sample is still solving as of this commit; its subdirectory,
-  the findings-note section, the CHANGELOG entry and the CLAUDE.md benchmarks-bullet update are
-  appended by a later commit once it and the origins recovery finish.
+- The findings-note section, the CHANGELOG entry and the CLAUDE.md benchmarks-bullet update follow
+  in a later commit, once the origins recovery also finishes.
 
 ## Results — `crops` (TUNING SET)
 
@@ -363,3 +373,59 @@ wall column for `origins` (see Walls for the serial-vs-throughput inflation on t
 bilinear fold on input, and no pixel moved — the engine leaves an already-injective warp untouched.
 Box load at start: 0% (near-idle). See the Caveats note on ANTs slice-index reversal before pairing
 these rows with `cohort_*` rows by z.
+
+## Results — cohort sample (7 brains, Laplacian-exterior)
+
+<!-- pasted verbatim from cohort/table.md, including its legend comment -->
+
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cohort | isqp_l2 | 85 | 85/85 | 85/85 | 209.6 [164, 391.6] | 1037 [752, 2052] | 36.42 [29.87, 59.4] | 0.357 -> 0.1861 | 0.00214 -> 0 | 0 |
+| cohort | isqp_none | 85 | 85/85 | 85/85 | 86.45 [58.76, 176.1] | 1511 [1094, 3539] | 44.32 [36.49, 75.61] | 0.357 -> 0.1706 | 0.00214 -> 0 | 0 |
+
+### Hard slices
+
+One row per slice × config, read directly from `cohort/results.csv` (not from the ledger).
+
+| slice | config | certified | input bilinear folds | worst bilinear after | wall s | L2 move | moved frac | damage | corr n | corr resid median before -> after (px) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| B0039 z1 | isqp_l2 | yes | 3975 | 0.01046 | 1155.1 | 2038.2 | 0.0856 | 0 | 20 | 1.56 -> 132.7 |
+| B0039 z1 | isqp_none | yes | 3975 | 0.01085 | 738.21 | 2416.9 | 0.086 | 0 | 20 | 1.56 -> 135.1 |
+| B0039 z2 | isqp_l2 | yes | 3935 | 0.01053 | 1009.8 | 1977.8 | 0.0837 | 0 | 17 | 1.51 -> 124 |
+| B0039 z2 | isqp_none | yes | 3935 | 0.01068 | 1338.9 | 2341.1 | 0.088 | 0 | 17 | 1.51 -> 127.2 |
+| B0039 z11 | isqp_l2 | yes | 3135 | 0.01052 | 919.55 | 566.05 | 0.0945 | 0 | 131 | 0.153 -> 8.01 |
+| B0039 z11 | isqp_none | yes | 3135 | 0.01088 | 230.01 | 736.93 | 0.0944 | 0 | 131 | 0.153 -> 7.861 |
+| B0039 z16 | isqp_l2 | yes | 2203 | 0.01023 | 207.63 | 189.6 | 0.117 | 0 | 287 | 0.0356 -> 1.811 |
+| B0039 z16 | isqp_none | yes | 2203 | 0.011 | 85.961 | 227.68 | 0.117 | 0 | 287 | 0.0356 -> 2.348 |
+| B0039 z264 | isqp_l2 | yes | 1244 | 0.01 | 177.16 | 36.788 | 0.26 | 0 | 1127 | 0.00864 -> 0.04168 |
+| B0039 z264 | isqp_none | yes | 1244 | 0.011 | 70.812 | 45.953 | 0.291 | 0 | 1127 | 0.00864 -> 0.06633 |
+| B0032 z1 | isqp_l2 | yes | 4641 | 0.01053 | 876.73 | 1575.3 | 0.138 | 0 | 132 | 0.961 -> 77.51 |
+| B0032 z1 | isqp_none | yes | 4641 | 0.01089 | 475.86 | 1817.8 | 0.141 | 0 | 132 | 0.961 -> 78.85 |
+| B0304 z128 | isqp_l2 | yes | 9139 | 0.01086 | 1543.1 | 1091.5 | 0.507 | 0 | 461 | 0.0308 -> 20.44 |
+| B0304 z128 | isqp_none | yes | 9139 | 0.011 | 1031.1 | 1418.5 | 0.506 | 0 | 461 | 0.0308 -> 19.19 |
+| B0304 z181 | isqp_l2 | yes | 34359 | 0.01077 | 2497 | 882.87 | 0.67 | 0 | 497 | 0.486 -> 5.075 |
+| B0304 z181 | isqp_none | yes | 34359 | 0.011 | 2398.2 | 1109.5 | 0.683 | 0 | 497 | 0.486 -> 5.278 |
+
+### Findings
+
+All 170 rows certified: 85 slices x {`isqp_none`, `isqp_l2`}, 0 error rows, damage 0 everywhere.
+81 of the 85 slices folded on input. 75 of the 85 slices carry correspondences (`corr_n > 0`). All
+8 named hard slices (B0039 z1, z2, z11, z16, z264; B0032 z1; B0304 z128, z181) certify under both
+configs — see the Hard slices table above.
+
+**Fidelity cost.** On the pin-collapsed volume-edge slices, certification is reached by moving the
+field far from the registration's own landmarks. The median correspondence residual (px, at the
+prescribed Laplacian boundary correspondences) rises from about 1.5 px to 124-135 px on B0039 z1
+and z2, and from 0.96 px to about 78 px on B0032 z1: exactly, B0039 z1 1.56 -> 132.7 (`isqp_l2`) /
+135.1 (`isqp_none`) px; B0039 z2 1.51 -> 124.0 (`isqp_l2`) / 127.2 (`isqp_none`) px; B0032 z1 0.96
+-> 77.5 (`isqp_l2`) / 78.9 (`isqp_none`) px. It stays under about 2 px on the ordinary slices —
+e.g. B0039 z16 0.0356 -> 1.81 (`isqp_l2`) / 2.35 (`isqp_none`) px, and B0039 z264 0.0086 -> 0.042
+(`isqp_l2`) / 0.066 (`isqp_none`) px.
+
+This was verified directly on B0039 z1 x `isqp_l2` from the saved corrected field
+(`data/dvfs/results/cohort_isqp/cohort/cohort_B0039_z1__isqp_l2.npz`): all 20 landmarks lie on
+moved pixels, and the median displacement there is 134.2 px, while only 8.6% of the slice moved.
+
+The certificate therefore is not a fidelity claim on these slices, and the residual must be read
+beside it.
