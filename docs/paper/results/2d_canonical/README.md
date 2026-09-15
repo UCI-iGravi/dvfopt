@@ -32,12 +32,20 @@ plan: `docs/superpowers/plans/2026-09-11-2d-canonical-benchmark.md`; ledger:
   for the full taxonomy on ~600 cohort/ANTs slices.
 - **The three hard B0039 crops (`z0_sliver`, `z0_cluster`, `z16_twist`) are the engine's TUNING
   set** — every table below says so, and their numbers are never quoted as a held-out result.
-- **Nothing is dropped:** a case that fails to load or a solve that raises is still a full row
-  (`feasible=False`, `-1` metrics, the error text) in `results.csv`, in `manifest.json`, and in
-  every aggregate denominator; only the median/IQR *distributions* skip sentinel rows (see Metric
-  definitions). A run exceeding its 2-hour soft cap (`--cap-s`, default 7200 s) is recorded as
-  `hit_cap=True` but is **not** interrupted — `time_budget_s` is left `None` so the engine always
-  runs to its own termination.
+- **Nothing is dropped:** every pair is a row in `results.csv`, in `manifest.json`, and in every
+  aggregate denominator; only the median/IQR *distributions* skip sentinel rows (see Metric
+  definitions). A pair that never produced a result (its input would not load, its pool worker
+  died, or the watchdog cut it) is a full `-1` row with `feasible=False` and the error text. A
+  solve that *raises* is not a `-1` row: it carries the error text, `feasible=False` and
+  `certified=False`, its metrics are real values of the unchanged input field, and its `time_s` is
+  the real time to the exception. A run exceeding its 2-hour soft cap (`--cap-s`, default 7200 s)
+  is recorded as `hit_cap=True` but is not interrupted by that cap, and `time_budget_s` is left
+  `None`. The one interruption is the pool path's **no-progress watchdog** (driver commits from
+  5904a0b on): when a pool completes no pair for `watchdog_timeout_s` (default 6 h, env
+  `CANONICAL_2D_NO_PROGRESS_S`), the pairs its workers were running are cut and recorded as
+  `WatchdogTimeout` rows (`-1`, `hit_cap=True`), which `--resume` keeps as measured "did not
+  finish" outcomes. The tracked runs here were made by drivers cdbf5f4 / 90fccab, which predate
+  the watchdog, so every one of them ran to the engine's own termination.
 - **Walls:** throughput passes use `n_workers` (2-4); the paper's per-case wall column is meant to
   come from a serial pass on an idle box. See Walls below — this session's box was never idle.
 
@@ -69,7 +77,10 @@ Every record is one `(input, output, result)` triple, computed by `benchmarks/ca
 - **The existing `cohort_benchmark` row schema**, unchanged names, on the central-difference Jdet
   (`dvfopt.jacobian.numpy_jdet.jacobian_det2D`): `n_neg_init`/`n_neg_final`,
   `neg_vol_init`/`neg_vol_final`, `n_clusters_init`/`n_clusters_final`,
-  `min_jdet_init`/`min_jdet_final`, `l2_err`, `time_s`.
+  `min_jdet_init`/`min_jdet_final`, `l2_err`, `time_s`. **Gauge trap:** this schema's
+  `n_neg_init`/`n_neg_final` count central-difference `jdet < 0.01` (the threshold itself, no
+  `err_tol`), which is NOT the `<family>_n_neg_*` gauge below (`fold_stats`'s `n_neg`, values
+  `<= 0`) nor the `<family>_n_below_*` gauge (`< 0.01 - 1e-5`). Same prefix, different predicate.
 - **The four certificate families, before and after, each at two gauges:** `simplex` (2 triangles
   per cell, fixed BL-TR diagonal), `bilinear` (4 triangles per cell, both diagonals), `finite`
   (forward-difference Jdet, 1 triangle per cell), `jdet` (central-difference Jdet). Each family
@@ -96,17 +107,26 @@ Every record is one `(input, output, result)` triple, computed by `benchmarks/ca
   `damage` (`res.info.extras['damage']`; must be exactly 0 on every windowed row — a nonzero value
   is a bug report, not a result), `n_windows`, `giant_regions`, `mop_cleared`, `rounds` (count of
   phases named `round*`), `sqp_iters` (sum of `n_iter` over phases NOT named `giant*` — a `giant`
-  phase is nested inside its round entry, so `total_iter` would double-count it). **`-1` on every
+  phase is nested inside its round entry, so `total_iter` would double-count it). **`sqp_iters`
+  is not the total SQP count when the re-seed or re-anchor stage ran:** it counts the round,
+  coarse and mop iterations, while the engine's history records the re-seed and re-anchor stages
+  with `n_iter = 0` even though their polish solves iterate (`dvfopt/core/windowed/_common.py`);
+  never quote it as a total on such a row. **`mop_cleared` is signed** — the engine's folded
+  pixels before the mop minus after — so a `-1` on a windowed row is a measurement (the mop left
+  one more folded pixel than it found; e.g. `origins_serial`'s `m2_ffd_brainpair_coarse` ×
+  `isqp_none`), not a sentinel. **`-1` on every
   other strategy** (`barrier`, `slp`, `m14`, `slsqp_windowed`) — the other strategies report phases
   in their own units (L-BFGS iterations, named SLP stages with `n_iter=0`), and summing those under
   the same column name would mix three different quantities. `slsqp_windowed` is
   `SLSQPWindowedStrategy`, a different class from the windowed I-SLSQP engine — the driver's
   `WINDOWED_STRATEGY_NAMES = ("ISQPWindowedStrategy", "WindowedWrapperStrategy")` never names it —
   so its rows carry `-1` here unconditionally, not "when it did not resolve to the windowed engine".
-  `-1` is always a sentinel, never a measurement: the median/IQR aggregates
-  (`_quantiles`) skip rows where the value is negative, but the count/rate denominators (`n`,
-  `feasible_rate`, `certified_rate`) still include every row, including full-sentinel rows for a
-  case that never produced a result at all (load failure or a dead pool worker).
+  Apart from the signed `mop_cleared`, `-1` is a sentinel, never a measurement. The median/IQR
+  aggregates apply the sentinel rule by row type: an engine column is aggregated over the
+  windowed rows only (`damage >= 0`), sign kept, and every other column skips the never-ran rows
+  (whose values are all `-1`). The count/rate denominators (`n`, `feasible_rate`,
+  `certified_rate`) still include every row, including full-sentinel rows for a case that never
+  produced a result at all (load failure, a dead pool worker, or a watchdog cut).
 - **Move and locality:** `moved_frac` (fraction of pixels with any channel changed by more than
   `1e-9`), `l1_move` (`sum(|phi_out - phi_in|)`), `l2_move` (`norm(phi_out - phi_in)`), `max_move`
   (`max(|phi_out - phi_in|)`), `mean_move_moved` (`l1_move` divided by the count of moved pixels).
@@ -114,7 +134,9 @@ Every record is one `(input, output, result)` triple, computed by `benchmarks/ca
   registration residual at the prescribed Laplacian boundary correspondences),
   `corr_resid_mad_init/final` (MAD, scaled by 1.4826), and the outlier counts
   `corr_n_outliers`/`corr_n_large`/`corr_n_high_resid`/`corr_n_incoherent` from
-  `correspondence_analysis.analyze_slice`. **`-1` on every non-cohort row.**
+  `correspondence_analysis.analyze_slice`. **`-1` on every non-cohort row, and on cohort slices
+  that carry no correspondences** — in `cohort/` that is 20 rows (10 slices × 2 configs: every
+  brain's z0, plus B0304 z48, z96 and z480).
 - **Injectivity diagnostics (optional, cheap):** `ift_min_radius_<init|final>` and
   `ift_frac_subpixel_<init|final>` from `dvfopt.metrics.injectivity_stats` — the quantitative-IFT
   radius **estimate**, orientation-blind and never a certificate; read beside the four certificate
@@ -122,13 +144,19 @@ Every record is one `(input, output, result)` triple, computed by `benchmarks/ca
 - **Provenance, per run directory** (`summary.json`'s `provenance` block): git commit,
   `dvfopt.__version__`, the config dict, `n_workers`, python + OS, box CPU load at the start of the
   run, `time_budget_s` (always `null` — the engine is never given a soft budget internally),
-  `cap_s` (the driver's own recorded-not-enforced cap), and `hit_cap` per row.
+  `cap_s` (the driver's own recorded-not-enforced cap), and `hit_cap` per row. Drivers after
+  65c1b15 also record `git_dirty` (tracked-file changes in the driver's repo, `null` without
+  git), `dvfopt_path` (the directory of the `dvfopt` actually imported — so `git_commit` can be
+  matched to the engine that ran), `driver_path`, and `watchdog_timeout_s`. **The tracked
+  summaries below predate these four keys** and do not carry them; their engine was verified
+  separately (see Engine pin).
 
 ## Walls
 
-The box was **not idle** during this session's runs — two unrelated user jobs (one already
-running for 70+ CPU-hours, a second started mid-session) held CPU load between 24% and 76%
-throughout. Every wall (`time_s`) in `crops/` and `synthetic/` is a **throughput** pass
+The box was **not idle** for most of this session's runs — two unrelated user jobs (one already
+running for 70+ CPU-hours, a second started mid-session) put the recorded start load at 24%
+(`synthetic`), 39% (`cohort`) and 76% (`crops`); only `origins_serial` and `ants` started on a
+near-idle box (2%). Every wall (`time_s`) in `crops/` and `synthetic/` is a **throughput** pass
 (`timing_mode: "throughput"`, recorded `n_workers: 1` since both sources are small enough to run
 sequentially without a pool) taken under that contention, not the paper's intended idle-box serial
 column. The pre-registered idle-box serial subsets (origins: all 27 cases; cohort: z=0 and z=240 of
@@ -171,15 +199,17 @@ recorded follow-up — see Status and Regeneration.
   `SLSQPWindowedStrategy`, a different class from the windowed I-SLSQP engine, so it never
   resolves to it); it is exactly 0 on every group that does contain windowed rows in the results so
   far.
-- **Reproducibility across timing modes is discrete, not bit-identical.** Two runs pinned to the
-  same BLAS threading (the two throughput passes of `m2_ffd_brainpair_coarse` × `isqp_none`, before
-  and after a machine restart) agree bit-for-bit in all 16 outcome fields. Across timing modes
-  (serial vs throughput) on the same pair the *discrete* outcome is identical — certified, feasible,
-  fold counts under every gauge, damage, windows, rounds, SQP iterations — while continuous outputs
-  (L1 / L2 / max move) differ by about 3e-5 relative and the worst residual value by about 2.5 %.
-  Most plausibly this is because pool workers are pinned to one BLAS thread and the in-process
-  serial path is not (supported by the pinned-vs-pinned bit-identical check above, not proven
-  further). **Never describe results as bit-identical across timing modes** — only within one.
+- **Reproducibility between pooled and in-process runs is discrete, not bit-identical.** Two
+  pooled runs, whose workers are pinned to one BLAS thread (the two throughput passes of
+  `m2_ffd_brainpair_coarse` × `isqp_none`, before and after a machine restart), agree bit-for-bit
+  in all 16 outcome fields. Between a pooled (pinned) run and an in-process (unpinned) run of the
+  same pair the *discrete* outcome is identical — certified, feasible, fold counts under every
+  gauge, damage, windows, rounds, SQP iterations — while continuous outputs (L1 / L2 / max move)
+  differ by about 3e-5 relative and the worst residual value by about 2.5 %. Most plausibly this
+  is the BLAS pinning (supported by the pinned-vs-pinned bit-identical check above, not proven
+  further). `timing_mode` does NOT record pinning: the `crops/` and `synthetic/` rows are
+  `timing_mode=throughput` but ran in-process and unpinned (`n_workers=1`). **Never describe
+  results as bit-identical between pooled and in-process runs** — only within one kind.
 
 ## Layout
 
@@ -371,7 +401,7 @@ wall column for `origins` (see Walls for the serial-vs-throughput inflation on t
 
 85 slices (7 brains × 11 sampled slices + 8 named hard slices), all certified, none with any
 bilinear fold on input, and no pixel moved — the engine leaves an already-injective warp untouched.
-Box load at start: 0% (near-idle). See the Caveats note on ANTs slice-index reversal before pairing
+Box load at start: 2% (near-idle). See the Caveats note on ANTs slice-index reversal before pairing
 these rows with `cohort_*` rows by z.
 
 ## Results — cohort sample (7 brains, Laplacian-exterior)

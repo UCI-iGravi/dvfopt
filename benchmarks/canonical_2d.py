@@ -9,10 +9,14 @@ writes one self-contained run directory plus the corrected DVFs.
 Protocol (pre-registered — see
 ``docs/superpowers/notes/2026-09-11-2d-canonical-benchmark-handoff.md``):
 ``correct_dvf(phi, threshold=0.01, record_history=True, **config)`` at the
-pinned commit, no per-case knobs, ``time_budget_s`` NOT set (the engine runs to
-its own termination; ``--cap-s`` is a wall-clock the driver only *records* as
-``hit_cap``). Nothing is dropped: a case that raises stays as a row with its
-error text and ``feasible=False``, and every aggregate includes it. The three
+pinned commit, no per-case knobs, ``time_budget_s`` NOT set (the engine is never
+given a soft budget; ``--cap-s`` is a wall-clock the driver only *records* as
+``hit_cap``). The one interruption is the pool path's no-progress watchdog (see
+Fault tolerance): a pair that delivers no result within ``NO_PROGRESS_S`` is cut.
+Nothing is dropped: a solve that raises stays as a row with its error text,
+``feasible=False`` and ``certified=False`` (its metrics are real values of the
+unchanged input, its ``time_s`` the time to the exception), and every aggregate
+includes it. The three
 hard crops are the engine's TUNING set — label them as such in every table.
 
 Metrics per (input, output, result) — :func:`metrics`:
@@ -42,10 +46,18 @@ Metrics per (input, output, result) — :func:`metrics`:
 * engine accounting from ``res.info`` on windowed rows (``damage`` — must be 0 —
   ``n_windows``, ``giant_regions``, ``mop_cleared``, ``rounds``, ``sqp_iters``
   summed over phases NOT named ``giant*``, since a giant phase is nested in its
-  round and ``total_iter`` double-counts it), ``-1`` elsewhere;
+  round and ``total_iter`` double-counts it), ``-1`` elsewhere.
+  ``mop_cleared`` is SIGNED (the engine's folded pixels before the mop minus
+  after), so ``-1`` on a windowed row is a measurement ("the mop left one more"),
+  not a sentinel: whether a row's engine columns are sentinels is read from the
+  row type (``damage >= 0`` marks a windowed row), never from ``mop_cleared``.
+  ``sqp_iters`` counts the round, coarse and mop iterations only: the engine's
+  history records the re-seed and re-anchor stages with ``n_iter = 0`` although
+  their polish solves do iterate (``dvfopt/core/windowed/_common.py``), so on a
+  row where either stage ran ``sqp_iters`` is NOT the total;
 * the correspondence residual on cohort slices (median / MAD before and after at
   the prescribed Laplacian boundary conditions, plus the outlier counts), ``-1``
-  elsewhere.
+  elsewhere, including cohort slices that carry no correspondences.
 
 Outputs (``<run-dir>/``): ``results.csv`` (one row per case x config),
 ``summary.json`` (per source x config aggregates + provenance + the gauge legend
@@ -58,10 +70,10 @@ shared cohort writer. Corrected DVFs go to
 ``results.csv`` and ``manifest.json`` are written INCREMENTALLY (header first,
 then one flushed row per completed run), so an interrupted or crashed chain
 leaves a partial but valid run directory. A run that never produced a result —
-its input would not load, or its worker died — is a full ``-1`` row with
-``feasible=False`` and its error text, present in the CSV, the manifest and every
-denominator. ``-1`` is always a sentinel, never a measurement, and the median /
-IQR aggregates skip it.
+its input would not load, its worker died, or the watchdog cut it — is a full
+``-1`` row with ``feasible=False`` and its error text, present in the CSV, the
+manifest and every denominator. ``-1`` is a sentinel everywhere except the
+signed ``mop_cleared``, and the median / IQR aggregates skip sentinel rows.
 
 Fault tolerance (parallel pass only — the serial pass stays in-process, it is the
 wall column). A worker that dies abruptly breaks the whole ``ProcessPoolExecutor``
@@ -73,10 +85,25 @@ rerun ALONE, each in a fresh single-worker pool: a pair that breaks its own solo
 pool gets a measured ``WorkerCrash`` row, any other gets its real result. The
 rest are resubmitted to a fresh pool; past ``MAX_POOL_REBUILDS`` breaks every
 remaining pair runs isolated. ``--isolate-config`` sends named configs straight
-to that isolated path after the parallel pass. ``--resume RUN_DIR`` reuses every
-measured row of a previous run (its DVF verified by sha256) and reruns only the
-losses (missing rows, ``BrokenProcessPool`` / ``WorkerCrash`` rows, missing or
-altered DVFs).
+to that isolated path after the parallel pass. Every pool uses the ``spawn``
+start method on every platform (as ``dvfopt.core._pool`` does: forking a parent
+with a live OpenMP runtime kills the child).
+
+The no-progress watchdog: when a pool completes no pair for ``NO_PROGRESS_S``
+seconds (default 6 h, env ``CANONICAL_2D_NO_PROGRESS_S``), the pool is closed,
+the pairs its workers were running become ``WatchdogTimeout`` rows (full ``-1``,
+``hit_cap=True``) and every other unfinished pair goes to a fresh pool; an
+isolated pair with no result in that time gets the same row. A
+``WatchdogTimeout`` is a measured outcome ("did not finish within T"), so
+``--resume`` KEEPS it. The effective timeout is recorded as
+``watchdog_timeout_s`` in the provenance, and ``--resume`` refuses a previous
+run made with a different one.
+
+``--resume RUN_DIR`` reuses every measured row of a previous run (its DVF
+verified by sha256) and reruns only the losses (missing rows,
+``BrokenProcessPool`` / ``WorkerCrash`` rows, missing or altered DVFs). It must
+write to a different ``--run-dir``: resuming in place would truncate the old
+``results.csv`` and silently drop any old row outside the new work list.
 
 CLI::
 
@@ -104,6 +131,7 @@ import csv
 import datetime
 import hashlib
 import json
+import multiprocessing
 import os
 import platform
 import signal
@@ -189,11 +217,16 @@ ANTS_Z_NOTE = (
     "hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z."
 )
 SENTINEL_NOTE = (
-    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, "
-    "giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed "
-    "engine, corr_* is -1 outside the cohort, and a run that never produced a result "
-    "(load failure / dead worker) is a full -1 row with feasible=False and its error. "
-    "Rates and denominators count those rows; the median/IQR aggregates skip them."
+    "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, "
+    "mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is "
+    "-1 outside the cohort and on cohort slices with no correspondences, and a run "
+    "that never produced a result (load failure / dead worker / WatchdogTimeout, "
+    "the last with hit_cap=True and kept by --resume) is a full -1 row with "
+    "feasible=False and its error. Exception: mop_cleared is SIGNED (before minus "
+    "after the mop), so -1 on a windowed row (damage >= 0) is a measurement. "
+    "sqp_iters excludes the re-seed / re-anchor polish iterations (the engine "
+    "history records those stages with n_iter=0). Rates and denominators count "
+    "every row; the median/IQR aggregates skip sentinel rows."
 )
 
 #: ``cohort_benchmark``'s row schema, in its existing order — these keep their names.
@@ -735,6 +768,8 @@ def run_case(
     rec.update(metrics(phi_in, phi_out, res, threshold, elapsed))
     rec.update(_corr_stats(phi_in, phi_out, corr_pts))
     rec["error"] = err
+    if err:  # a raised solve never certifies, even when its unchanged input was clean
+        rec["certified"] = rec["feasible"] = False
     rec["timing_mode"] = timing_mode
     rec["hit_cap"] = bool(elapsed > cap_s)
     rec["out_path"] = ""
@@ -804,7 +839,7 @@ def _test_nested_pool(pid_dir: str) -> None:
     ``<worker pid>.pids`` file listing the worker and grandchild pids."""
     if _TEST_NESTED_POOLS:
         return
-    ex = ProcessPoolExecutor(max_workers=1)
+    ex = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
     child = ex.submit(os.getpid).result()  # the submit spawns the child
     _TEST_NESTED_POOLS.append(ex)
     if pid_dir:
@@ -812,7 +847,15 @@ def _test_nested_pool(pid_dir: str) -> None:
 
 
 def _new_pool(n: int) -> ProcessPoolExecutor:
-    return ProcessPoolExecutor(max_workers=n, initializer=pin_worker_threads)
+    """Every pool spawns, on every platform: Linux's default ``fork`` of a parent
+    whose OpenMP runtime is live makes libgomp terminate the child (see
+    ``dvfopt.core._pool.get_pool``), which this driver would mislabel as a
+    ``WorkerCrash``."""
+    return ProcessPoolExecutor(
+        max_workers=n,
+        initializer=pin_worker_threads,
+        mp_context=multiprocessing.get_context("spawn"),
+    )
 
 
 def _kill_tree(pid: int) -> None:
@@ -822,8 +865,14 @@ def _kill_tree(pid: int) -> None:
     if sys.platform == "win32":
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
         return
-    kids = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, check=False)
-    for kid in kids.stdout.split():
+    try:
+        kids = subprocess.run(
+            ["pgrep", "-P", str(pid)], capture_output=True, text=True, check=False
+        ).stdout.split()
+    except OSError as exc:  # no procps: never abort the run from a finally
+        _log(f"WARNING: cannot list the children of {pid} ({exc}); its descendants are not killed")
+        kids = []
+    for kid in kids:
         _kill_tree(int(kid))
     try:
         os.kill(pid, signal.SIGKILL)
@@ -951,6 +1000,10 @@ def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
             ex = _new_pool(n_workers)
             try:
                 futs = {ex.submit(_pool_worker, *pair, **kw_for(*pair)): pair for pair in pending}
+                # spawn starts every worker at the first submit; a broken pool clears the table
+                worker_pids = sorted(
+                    p.pid for p in (getattr(ex, "_processes", None) or {}).values()
+                )
                 waiting = set(futs)
                 while waiting:
                     done, waiting = wait(
@@ -996,6 +1049,11 @@ def _run_parallel(work, n_workers, kw_for, record, isolate=()) -> dict:
         _log(
             f"POOL BREAK #{stats['pool_breaks']}: {len(lost)} unfinished pairs; "
             f"rerunning the {len(suspects)} suspects alone: {labels}"
+        )
+        _log(
+            f"WARNING: the broken pool's workers {worker_pids} are gone, but their spawn "
+            "children (nested pools) may be orphaned and keep this process's stdout pipe "
+            "open: check for python processes whose parent PID is dead and kill them"
         )
         outcome = [solo(p, "isolated rerun after a pool break")["error"] or "ok" for p in suspects]
         _log(
@@ -1053,14 +1111,19 @@ def _split_resume(old_dir, work, timing_mode, threshold, cap_s) -> tuple:
     ``reasons`` a count per :data:`RERUN_REASONS`.
 
     Refuses (``ValueError``) an old run measured under a different protocol: a
-    ``threshold`` or ``cap_s`` differing from the old ``summary.json``, or a
-    reused row whose ``timing_mode`` differs — a throughput wall must never land
-    in a serial column (reused rows keep their ``time_s`` and ``hit_cap``)."""
+    ``threshold``, ``cap_s`` or ``watchdog_timeout_s`` differing from the old
+    ``summary.json`` (a summary predating ``watchdog_timeout_s`` skips that one
+    check), or a reused row whose ``timing_mode`` differs — a throughput wall must
+    never land in a serial column (reused rows keep their ``time_s`` and
+    ``hit_cap``), and a kept ``WatchdogTimeout`` row must mean the same T."""
     old_dir = Path(old_dir)
     summary = old_dir / "summary.json"
     if summary.is_file():
         prov = json.loads(summary.read_text(encoding="utf-8"))["provenance"]
-        for name, new in (("threshold", threshold), ("cap_s", cap_s)):
+        checks = [("threshold", threshold), ("cap_s", cap_s)]
+        if "watchdog_timeout_s" in prov:
+            checks.append(("watchdog_timeout_s", NO_PROGRESS_S))
+        for name, new in checks:
             if prov.get(name) != new:
                 raise ValueError(
                     f"--resume {old_dir}: {name} mismatch (old {prov.get(name)!r}, new {new!r})"
@@ -1137,9 +1200,17 @@ def run(
     which is in-process by design)."""
     if serial_timing:
         n_workers = 1
+    # a repeated --source / --config must not run (and count) every pair twice
+    sources, config_names = tuple(dict.fromkeys(sources)), tuple(dict.fromkeys(config_names))
     timing_mode = "serial" if serial_timing else "throughput"
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(run_dir) if run_dir else REPO / "benchmarks" / "output" / f"2d_canonical_{stamp}"
+    if resume and Path(resume).resolve() == run_dir.resolve():
+        raise ValueError(
+            f"--resume {resume}: --run-dir is the same directory; resuming in place would "
+            "truncate its results.csv and drop every old row outside the new work list — "
+            "pass a new --run-dir"
+        )
     work = _work_list(sources, config_names, sample, explicit_configs)
     by_key = {(c.source, c.id): c for c, _ in work}
     _log(f"{len(work)} (case, config) runs -> {run_dir}  [{timing_mode}, n_workers={n_workers}]")
@@ -1256,11 +1327,13 @@ def results_csv(run_dir):
         yield append
 
 
-#: Aggregated per source x config as median + IQR. Every one of these is
-#: non-negative by construction, so a ``-1`` can only be a sentinel (a case that
-#: never ran, or an engine column on a non-windowed strategy) and is skipped:
-#: the DENOMINATORS (``n``, the rates) still count those rows, the DISTRIBUTIONS
-#: do not.
+#: Aggregated per source x config as median + IQR. The sentinel rule is by ROW
+#: TYPE: an engine column (:data:`ENGINE_KEYS`) is aggregated over the windowed
+#: rows only (``damage >= 0``), with its sign kept, so a signed engine value is
+#: never dropped as a sentinel; every other column is non-negative by
+#: construction, so its ``-1`` is a never-ran row and is skipped. The
+#: DENOMINATORS (``n``, the rates) still count every row, the DISTRIBUTIONS do
+#: not.
 _AGG_KEYS = (
     "time_s",
     "l1_move",
@@ -1280,9 +1353,10 @@ _AGG_KEYS = (
 )
 
 
-def _quantiles(vals):
-    """Median / IQR over the non-sentinel values, or ``None`` if there are none."""
-    v = np.asarray([x for x in vals if x is not None and x >= 0], dtype=np.float64)
+def _quantiles(vals, signed=False):
+    """Median / IQR over the non-sentinel values, or ``None`` if there are none.
+    ``signed=True``: the caller already dropped the sentinel rows, keep negatives."""
+    v = np.asarray([x for x in vals if x is not None and (signed or x >= 0)], dtype=np.float64)
     if v.size == 0:
         return None
     q1, med, q3 = (float(x) for x in np.percentile(v, [25, 50, 75]))
@@ -1316,9 +1390,30 @@ def _group_summary(rows):
             sum(1 for r in rows if r[f"{fam}_n_below_final"] == 0) / n
         )
         out[f"rate_{fam}_zero_at_0"] = sum(1 for r in rows if r[f"{fam}_n_neg_final"] == 0) / n
+    windowed = [r for r in rows if r["damage"] >= 0]  # the row type, never an engine value's sign
     for k in _AGG_KEYS:
-        out[k] = _quantiles([r.get(k) for r in rows])
+        if k in ENGINE_KEYS:
+            out[k] = _quantiles([r.get(k) for r in windowed], signed=True)
+        else:
+            out[k] = _quantiles([r.get(k) for r in rows])
     return out
+
+
+def _git_dirty():
+    """Tracked-file changes in the driver's repo (untracked files ignored, as
+    ``git describe --dirty``), or ``None`` when git is unavailable."""
+    try:
+        return bool(
+            subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=REPO,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        )
+    except Exception:
+        return None
 
 
 def _git_commit():
@@ -1376,6 +1471,10 @@ def _write_summary(
     summary = {
         "provenance": {
             "git_commit": _git_commit(),
+            "git_dirty": _git_dirty(),
+            "dvfopt_path": os.path.dirname(dvfopt.__file__),  # the engine actually imported
+            "driver_path": str(Path(__file__).resolve()),
+            "watchdog_timeout_s": NO_PROGRESS_S,
             "dvfopt_version": dvfopt.__version__,
             "generated": datetime.datetime.now().isoformat(timespec="seconds"),
             "python": sys.version.split()[0],

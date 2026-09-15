@@ -120,6 +120,28 @@ def test_metrics_identity_field_is_clean_and_unmoved():
     assert m["certified"] is True
 
 
+def test_raised_solve_on_a_clean_input_is_never_certified(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("solver exploded")
+
+    monkeypatch.setattr(c2, "correct_dvf", boom)
+    case = c2.Case(id="clean", source="synthetic")
+    rec = c2.run_case(case, "isqp_none", np.zeros((3, 1, 8, 8)))
+    assert rec["error"] == "RuntimeError: solver exploded"
+    assert rec["certified"] is False and rec["feasible"] is False
+    assert rec["bilinear_n_below_final"] == 0  # the unchanged field is clean, still not certified
+    assert rec["out_path"] == ""
+
+
+def test_mop_cleared_is_signed_and_engine_aggregates_follow_the_row_type():
+    rec = c2.sentinel_record(c2.Case(id="a", source="s"), "isqp_none", "")
+    windowed = {**rec, "damage": 0, "sqp_iters": 12, "rounds": 1, "n_windows": 3, "mop_cleared": -1}
+    got = c2._group_summary([windowed, rec])  # rec: a never-ran (non-windowed) row
+    assert got["n"] == 2 and got["n_windowed_rows"] == 1
+    assert got["sqp_iters"]["n"] == 1 and got["sqp_iters"]["median"] == 12
+    assert c2._quantiles([-1, 3], signed=True)["min"] == -1  # a signed value is kept
+
+
 def _fake_res(strategy_name, phases=(), extras=None, feasible=True):
     """A stand-in SolveResult/SolveInfo for the accounting tests."""
     from dvfopt.solver import PhaseInfo, SolveInfo, SolveResult
@@ -369,7 +391,12 @@ def test_smoke_run_writes_every_artifact(tmp_path, monkeypatch):
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["provenance"]["time_budget_s"] is None
     assert summary["provenance"]["dvfopt_version"]
-    assert summary["provenance"]["git_commit"]
+    prov = summary["provenance"]
+    assert prov["git_commit"]
+    assert prov["git_dirty"] in (True, False, None)
+    assert prov["dvfopt_path"] == os.path.dirname(c2.dvfopt.__file__)
+    assert Path(prov["driver_path"]) == Path(c2.__file__).resolve()
+    assert prov["watchdog_timeout_s"] == c2.NO_PROGRESS_S
     grp = summary["groups"]["synthetic/isqp_none"]
     assert grp["n"] == n_cases
     assert grp["max_damage"] == 0, "the windowed engine must never damage"
@@ -537,9 +564,14 @@ def test_resume_keeps_a_measured_failure(tmp_path, monkeypatch):
 
 
 def _tiny_old_run(
-    tmp_path, timing_mode="throughput", threshold=c2.THRESHOLD, cap_s=c2.DEFAULT_CAP_S
+    tmp_path,
+    timing_mode="throughput",
+    threshold=c2.THRESHOLD,
+    cap_s=c2.DEFAULT_CAP_S,
+    watchdog_timeout_s=None,
 ):
-    """An old run dir written by hand (no solves): one measured row + manifest + summary."""
+    """An old run dir written by hand (no solves): one measured row + manifest + summary.
+    ``watchdog_timeout_s=None`` writes a summary predating that key."""
     old = tmp_path / "old"
     old.mkdir()
     rec = c2.sentinel_record(c2.cases("synthetic", sample="smoke")[0], "isqp_none", "", timing_mode)
@@ -547,6 +579,8 @@ def _tiny_old_run(
         append(rec)
     c2._write_manifest(old, [rec], {})
     prov = {"threshold": threshold, "cap_s": cap_s}
+    if watchdog_timeout_s is not None:
+        prov["watchdog_timeout_s"] = watchdog_timeout_s
     (old / "summary.json").write_text(json.dumps({"provenance": prov}), encoding="utf-8")
     return old
 
@@ -578,6 +612,7 @@ def test_resume_refuses_a_timing_mode_mismatch(tmp_path, monkeypatch):
     [
         (dict(threshold=0.02), {}, "threshold"),
         ({}, dict(cap_s=60.0), "cap_s"),
+        (dict(watchdog_timeout_s=20.0), {}, "watchdog_timeout_s"),
     ],
 )
 def test_resume_refuses_a_protocol_mismatch(tmp_path, monkeypatch, old_kw, new_kw, key):
@@ -586,6 +621,53 @@ def test_resume_refuses_a_protocol_mismatch(tmp_path, monkeypatch, old_kw, new_k
     with pytest.raises(ValueError, match=key):
         _resume_into(tmp_path, old, **new_kw)
     assert calls == [] and not (tmp_path / "new").exists()
+
+
+def test_resume_into_the_same_run_dir_is_refused(tmp_path, monkeypatch):
+    calls = _counting_run_case(monkeypatch)
+    old = _tiny_old_run(tmp_path)
+    before = (old / "results.csv").read_bytes()
+    with pytest.raises(ValueError, match="same directory"):
+        c2.run(["synthetic"], ("isqp_none",), sample="smoke", run_dir=old, resume=old)
+    assert calls == [] and (old / "results.csv").read_bytes() == before  # nothing written
+
+
+def test_repeated_sources_and_configs_are_deduplicated(monkeypatch):
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_work_list(sources, config_names, *a):
+        seen.update(sources=tuple(sources), configs=tuple(config_names))
+        raise Stop
+
+    monkeypatch.setattr(c2, "_work_list", fake_work_list)
+    with pytest.raises(Stop):  # stops before anything is written
+        c2.run(["synthetic", "crops", "synthetic"], ("slp", "isqp_none", "slp"))
+    assert seen == {"sources": ("synthetic", "crops"), "configs": ("slp", "isqp_none")}
+
+
+def test_new_pool_spawns_on_every_platform():
+    ex = c2._new_pool(1)  # no submit: no worker is started
+    try:
+        assert ex._mp_context.get_start_method() == "spawn"
+    finally:
+        c2._close_pool(ex)
+
+
+def test_kill_tree_without_pgrep_warns_instead_of_raising(monkeypatch, capsys):
+    def no_pgrep(*a, **k):
+        raise FileNotFoundError("pgrep")
+
+    killed = []
+    monkeypatch.setattr(c2.sys, "platform", "linux")
+    monkeypatch.setattr(c2.subprocess, "run", no_pgrep)
+    monkeypatch.setattr(c2.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(c2.os, "kill", lambda pid, sig: killed.append(pid))
+    c2._kill_tree(12345)
+    assert killed == [12345]  # the root is still killed
+    assert "WARNING: cannot list the children of 12345" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -655,9 +737,10 @@ def test_nested_pool_in_a_worker_does_not_hang_the_run(tmp_path, isolate):
     assert not [p for p in pids if _alive(p)]
 
 
-# Longer than a fresh pool's spawn + import + first smoke solve, far shorter
-# than the stall hook's hour.
-_WATCHDOG_S = "20"
+# Longer than a fresh SPAWNED pool's start + full import + first smoke solve on a
+# starved runner, far shorter than the stall hook's hour, and small enough that
+# the run (one watchdog fire + the resubmitted pairs) fits _SUBPROCESS_TIMEOUT_S.
+_WATCHDOG_S = "60"
 
 
 @pytest.mark.parametrize("isolate", [(), ("slp",)], ids=["parallel", "isolate_config"])
@@ -677,13 +760,16 @@ def test_watchdog_records_only_the_stalled_pairs_and_resume_keeps_them(
     assert len(rows) == 2 * len(_FT_CONFIGS)
     for r in rows:
         if (r["case"], r["config"]) in stalled:
-            assert r["error"] == f"WatchdogTimeout: no result within 20 s ({where})"
+            assert r["error"] == f"WatchdogTimeout: no result within {_WATCHDOG_S} s ({where})"
             assert r["hit_cap"] == "True" and r["out_path"] == "" and r["n_neg_init"] == "-1"
         else:
             assert r["error"] == "", r["label"]  # measured, never wrongly marked
     prov = _prov(old)
     assert prov["worker_crashes"] == 0 and prov["pool_breaks"] == (0 if isolate else 1)
-    # --resume keeps a WatchdogTimeout row: a stall is an outcome, not a loss
+    assert prov["watchdog_timeout_s"] == float(_WATCHDOG_S)
+    # --resume keeps a WatchdogTimeout row: a stall is an outcome, not a loss (under
+    # the same T — a different one is refused)
+    monkeypatch.setattr(c2, "NO_PROGRESS_S", float(_WATCHDOG_S))
     calls = _counting_run_case(monkeypatch)
     new = _ft_run(tmp_path, monkeypatch, "new", resume=old)
     assert calls == []
