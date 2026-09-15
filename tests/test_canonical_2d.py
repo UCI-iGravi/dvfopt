@@ -118,6 +118,108 @@ def test_metrics_identity_field_is_clean_and_unmoved():
     assert m["certified"] is True
 
 
+def _fake_res(strategy_name, phases=(), extras=None, feasible=True):
+    """A stand-in SolveResult/SolveInfo for the accounting tests."""
+    from dvfopt.solver import PhaseInfo, SolveInfo, SolveResult
+
+    info = SolveInfo(
+        strategy_name=strategy_name,
+        phases=[PhaseInfo(name=n, n_iter=i) for n, i in phases],
+        total_iter=sum(i for _, i in phases),
+        extras=dict(extras or {}),
+    )
+    return SolveResult(np.zeros((3, 1, 4, 4)), 0, 0.0, 0, 0.0, feasible, 0.0, info)
+
+
+def test_engine_stats_excludes_nested_giant_phases():
+    # a giant phase is nested INSIDE its round, so summing both double-counts
+    phases = [("round1", 40), ("giant", 25), ("round2", 10), ("mop", 5), ("final", 0)]
+    res = _fake_res(
+        "ISQPWindowedStrategy",
+        phases,
+        dict(damage=0, n_windows=7, giant_regions=1, mop_cleared=2),
+    )
+    got = c2._engine_stats(res)
+    assert got["sqp_iters"] == 55  # 40 + 10 + 5, NOT total_iter's 80
+    assert got["rounds"] == 2
+    assert (got["damage"], got["n_windows"], got["giant_regions"], got["mop_cleared"]) == (
+        0,
+        7,
+        1,
+        2,
+    )
+
+
+def test_engine_stats_are_sentinels_off_the_windowed_engine():
+    # barrier logs L-BFGS iterations and slp/m14 log named stages — neither is
+    # an SQP count, so every engine column must be -1 rather than a wrong number
+    for name, phases in (
+        ("BarrierStrategy", [("penalty", 1), ("penalty", 2), ("barrier", 42)]),
+        ("SLPStrategy", [("iters", 0), ("converged", 0)]),
+        ("SLSQPWindowedStrategy", []),
+    ):
+        got = c2._engine_stats(_fake_res(name, phases))
+        assert got == dict.fromkeys(c2.ENGINE_KEYS, -1), name
+    assert c2._engine_stats(None) == dict.fromkeys(c2.ENGINE_KEYS, -1)
+    # an `auto` run reports the RESOLVED class, so it still counts as windowed
+    assert c2._engine_stats(_fake_res("ISQPWindowedStrategy", [("round1", 3)]))["rounds"] == 1
+
+
+def test_corr_stats_match_analytic_residuals():
+    # two correspondences on an 8x8 slice: fixed -> moving prescribes (dy, dx)
+    sec = np.zeros((3, 1, 8, 8))
+    fp = np.array([[0, 2, 3], [0, 5, 6]])
+    mp = np.array([[0, 4, 3], [0, 5, 9]])  # prescribed (dy,dx) = (2,0) and (0,3)
+    sec[1, 0, 2, 3], sec[2, 0, 2, 3] = 2.0, 0.0  # honored exactly -> residual 0
+    sec[1, 0, 5, 6], sec[2, 0, 5, 6] = 0.0, 0.0  # missed by (0,3)  -> residual 3
+    out = sec.copy()
+    out[1, 0, 2, 3] = 5.0  # the correction breaks the first BC by 3
+    got = c2._corr_stats(sec, out, (mp, fp))
+    assert got["corr_n"] == 2
+    assert got["corr_resid_med_init"] == pytest.approx(1.5)  # median of {0, 3}
+    assert got["corr_resid_med_final"] == pytest.approx(3.0)  # median of {3, 3}
+    assert got["corr_resid_mad_final"] == pytest.approx(0.0)
+    assert c2._corr_stats(sec, out, None)["corr_n"] == -1  # sentinel off the cohort
+
+
+def test_ants_volume_reorients_to_the_cohort_grid(monkeypatch):
+    # a warp stored on the permuted grid: its spatial axes are the cohort's
+    # (D, H, W) permuted, its channels in the order of its own axes
+    monkeypatch.setattr(c2, "COHORT_SHAPE", (4, 3, 5))
+    monkeypatch.setattr(c2, "COHORT_VARIANT", "v")
+    small = np.zeros((3, 5, 3, 4))
+    small[0] = 1.0  # tag the channel that must end up as the new axis-0 component
+    monkeypatch.setattr(c2, "load_dvf", lambda p: small)
+    c2._ants_volume.cache_clear()
+    got = c2._ants_volume("B0000")
+    assert got.shape == (3, 4, 3, 5)
+    assert np.array_equal(got[2], np.ones((4, 3, 5)))  # channels permuted with the axes
+    c2._ants_volume.cache_clear()
+    monkeypatch.setattr(c2, "load_dvf", lambda p: np.zeros((3, 9, 9, 9)))
+    with pytest.raises(ValueError, match="permutation"):
+        c2._ants_volume("B0000")
+    c2._ants_volume.cache_clear()
+
+
+def test_ants_reorientation_keeps_a_fold_free_field_fold_free(monkeypatch):
+    # a smooth, fold-free field stays fold-free through the reorientation:
+    # a permutation of the axes with the matching component permutation is a
+    # relabelling of the grid, not a deformation
+    rng = np.random.default_rng(1)
+    base = np.zeros((3, 4, 9, 11))
+    base[1:] = rng.normal(0, 0.02, (2, 4, 9, 11))
+    stored = np.transpose(base, (0, 3, 2, 1))[[2, 1, 0]]  # to the on-disk order
+    monkeypatch.setattr(c2, "COHORT_SHAPE", (4, 9, 11))
+    monkeypatch.setattr(c2, "load_dvf", lambda p: stored)
+    c2._ants_volume.cache_clear()
+    got = c2._ants_volume("B0000")
+    assert np.allclose(got, base)
+    for z in range(4):
+        m = c2.metrics(c2.as_field(base[:, z]), c2.as_field(got[:, z]))
+        assert m["bilinear_n_below_init"] == 0 and m["bilinear_n_below_final"] == 0
+    c2._ants_volume.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -175,17 +277,57 @@ def test_work_list_applies_the_protocol_source_filter():
 # ---------------------------------------------------------------------------
 
 
-def test_results_csv_leads_with_the_existing_schema(tmp_path):
-    recs = [
-        {"label": "a__x", "case": "a", "source": "s", "config": "x", "n_neg_init": 1, "extra": 2},
-        {"label": "b__x", "case": "b", "source": "s", "config": "x", "n_neg_init": 0, "other": 3},
-    ]
-    c2._write_results_csv(tmp_path, recs)
+def test_results_csv_header_leads_with_the_schema_and_rows_stream(tmp_path):
+    keys = c2.record_keys()
+    assert keys[:7] == c2._IDENT_KEYS
+    assert keys[7:17] == c2._SCHEMA_COLS  # cohort_benchmark's schema, in its order
+    case = c2.Case(id="a", source="s")
+    with c2.results_csv(tmp_path) as append:
+        # the header exists BEFORE any row — a crashed chain still leaves a CSV
+        with open(tmp_path / "results.csv", newline="", encoding="utf-8") as f:
+            assert list(csv.reader(f)) == [list(keys)]
+        append(c2.sentinel_record(case, "x", "Boom: nope"))
+        append({**c2.sentinel_record(case, "y", ""), "n_neg_init": 7, "stray": 1})
     with open(tmp_path / "results.csv", newline="", encoding="utf-8") as f:
-        rows = list(csv.reader(f))
-    assert rows[0][:5] == ["label", "case", "source", "config", "n_neg_init"]
-    assert set(rows[0][5:]) == {"extra", "other"}  # union of every row's keys
-    assert len(rows) == 3
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 2
+    assert rows[0]["label"] == "a__x" and rows[0]["error"] == "Boom: nope"
+    assert rows[1]["n_neg_init"] == "7"
+    assert "stray" not in rows[0]  # unknown keys never widen the header mid-stream
+
+
+def test_sentinel_record_is_a_full_minus_one_row():
+    rec = c2.sentinel_record(c2.Case(id="a", source="origins", tool="t"), "isqp_none", "IOError: x")
+    assert set(rec) == set(c2.record_keys())
+    assert rec["feasible"] is False and rec["certified"] is False and rec["hit_cap"] is False
+    assert rec["error"] == "IOError: x" and rec["out_path"] == "" and rec["shape"] == ""
+    for k in ("time_s", "n_neg_init", "n_neg_final", "l2_move", "damage", "bilinear_n_below_final"):
+        assert rec[k] == -1, k
+    # it counts against every rate but contributes to no distribution
+    grp = c2._group_summary([rec])
+    assert grp["n"] == 1 and grp["certified_rate"] == 0.0 and grp["errors"] == 1
+    assert grp["max_damage"] is None and grp["time_s"] is None
+
+
+def test_load_failure_becomes_a_row(tmp_path, monkeypatch):
+    bad = c2.Case(id="ghost", source="origins", path="nowhere.npy", key="file:nowhere.npy")
+    monkeypatch.setattr(c2, "DVF_ROOT", tmp_path / "dvfs")
+    monkeypatch.setattr(c2, "_work_list", lambda *a, **k: [(bad, "isqp_none")])
+    run_dir = tmp_path / "run"
+    c2.run(["origins"], ("isqp_none",), run_dir=run_dir, explicit_configs=True)
+    with open(run_dir / "results.csv", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1  # a dropped case is the one outcome the protocol forbids
+    assert rows[0]["case"] == "ghost" and rows[0]["feasible"] == "False"
+    assert rows[0]["error"] and rows[0]["out_path"] == ""
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["fields"]) == 1 and manifest["fields"][0]["file"] == ""
+    assert manifest["fields"][0]["error"]
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    grp = summary["groups"]["origins/isqp_none"]
+    assert grp["n"] == 1 and grp["certified_rate"] == 0.0 and grp["max_damage"] is None
+    assert any("sentinel" in n for n in summary["notes"])
+    assert summary["gauges"]["bilinear"]["scale"].endswith("cell_min_jdet_2d / 2")
 
 
 def test_smoke_run_writes_every_artifact(tmp_path, monkeypatch):
@@ -251,5 +393,10 @@ def test_markdown_table_has_one_row_per_group():
         )
     ]
     md = c2.markdown_table(recs)
-    assert md.count("\n") == 2  # header + separator + one row
+    lines = md.splitlines()
+    assert len(lines) == 4  # gauge legend + header + separator + one row
+    assert lines[0].startswith("<!-- certificate gauges:") and "det/2" in lines[0]
     assert "TUNING SET" in md and "1/1" in md
+    # a group with no windowed row reads n/a, never "-1"
+    md2 = c2.markdown_table([{**recs[0], "damage": -1, "time_s": -1}])
+    assert md2.splitlines()[-1].endswith("| n/a |") and "| -1 " not in md2

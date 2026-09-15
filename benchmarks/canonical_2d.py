@@ -48,11 +48,20 @@ Metrics per (input, output, result) — :func:`metrics`:
   elsewhere.
 
 Outputs (``<run-dir>/``): ``results.csv`` (one row per case x config),
-``summary.json`` (per source x config aggregates + provenance),
-``manifest.json`` (every saved DVF with case, config, shape, sha256 and the
-INPUT's source path — inputs are not duplicated), ``figures/`` with
-``--figures``, and ``report/report.html`` from the shared cohort writer.
-Corrected DVFs go to ``data/dvfs/results/<run-name>/<source>/<case>__<cfg>.npz``.
+``summary.json`` (per source x config aggregates + provenance + the gauge legend
+and the sentinel / ANTs-orientation notes), ``manifest.json`` (every run with its
+case, config, shape, sha256 and the INPUT's source path — inputs are not
+duplicated), ``figures/`` with ``--figures``, and ``report/report.html`` from the
+shared cohort writer. Corrected DVFs go to
+``data/dvfs/results/<run-name>/<source>/<case>__<cfg>.npz``.
+
+``results.csv`` and ``manifest.json`` are written INCREMENTALLY (header first,
+then one flushed row per completed run), so an interrupted or crashed chain
+leaves a partial but valid run directory. A run that never produced a result —
+its input would not load, or its worker died — is a full ``-1`` row with
+``feasible=False`` and its error text, present in the CSV, the manifest and every
+denominator. ``-1`` is always a sentinel, never a measurement, and the median /
+IQR aggregates skip it.
 
 CLI::
 
@@ -80,6 +89,7 @@ import platform
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -146,6 +156,22 @@ COHORT_Z_STEP = 48
 HARD_SLICES = {"B0039": (1, 2, 11, 16, 264), "B0032": (1,), "B0304": (128, 181)}
 COHORT_VARIANT = "laplacian_exterior"
 
+#: Carried in summary.json and manifest.json so nobody pairs the two sources by id.
+ANTS_Z_NOTE = (
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; "
+    "the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row "
+    f"may correspond to the cohort's z = {COHORT_SHAPE[0] - 1} - k. A reversal negates "
+    "the axis and its displacement component together, so every Jacobian sign (and "
+    "hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z."
+)
+SENTINEL_NOTE = (
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, "
+    "giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed "
+    "engine, corr_* is -1 outside the cohort, and a run that never produced a result "
+    "(load failure / dead worker) is a full -1 row with feasible=False and its error. "
+    "Rates and denominators count those rows; the median/IQR aggregates skip them."
+)
+
 #: ``cohort_benchmark``'s row schema, in its existing order — these keep their names.
 _SCHEMA_COLS = (
     "n_neg_init",
@@ -167,6 +193,39 @@ _FAMILIES = (
     ("finite", FiniteJdetConstraint2D),
     ("jdet", JdetConstraint2D),
 )
+
+#: What each certificate column MEANS — its rows, its scale, and the two gauges.
+#: Written into ``summary.json`` and above the markdown table so the numbers are
+#: never read at the wrong scale (the simplicial families are triangle areas,
+#: i.e. HALF the determinant: ``bilinear == cell_min_jdet_2d / 2`` exactly).
+GAUGES = {
+    "simplex": {
+        "rows": "2 triangles per cell (fixed BL-TR diagonal)",
+        "scale": "triangle area = det/2",
+        "per": "cell (last row/col are +inf)",
+    },
+    "bilinear": {
+        "rows": "4 triangles per cell (both diagonals)",
+        "scale": "triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2",
+        "per": "cell (last row/col are +inf)",
+        "note": "the headline certificate: certified = bilinear_n_below_final == 0",
+    },
+    "finite": {
+        "rows": "forward-difference Jdet (1 triangle per cell)",
+        "scale": "determinant",
+        "per": "cell (last row/col are +inf)",
+    },
+    "jdet": {
+        "rows": "central-difference Jdet",
+        "scale": "determinant",
+        "per": "pixel",
+    },
+    "_gauges": {
+        "n_neg": "count of values <= 0",
+        "n_below": f"count of values < threshold - err_tol ({THRESHOLD} - {ERR_TOL})",
+        "min": "minimum value, at the column's own scale",
+    },
+}
 
 
 def _log(msg):
@@ -320,7 +379,9 @@ def cases(source: str, sample: str = "canonical") -> list:
             for z in _cohort_zs(b):
                 out.append(
                     Case(
-                        id=f"{b}_z{z}",
+                        # source-prefixed: a cohort slice and its ANTs twin would
+                        # otherwise share an id (and a manifest entry, and a label)
+                        id=f"{source}_{b}_z{z}",
                         source=source,
                         tool=tool,
                         shape=(3, 1, COHORT_SHAPE[1], COHORT_SHAPE[2]),
@@ -416,15 +477,27 @@ def _certificates(phi, threshold, suffix) -> dict:
     return out
 
 
+#: ``SolveInfo.strategy_name`` values that mean "the ``dvfopt.core.windowed``
+#: engine ran" — the only strategies whose engine columns are meaningful. An
+#: ``auto`` run that resolved to it reports the resolved class name, so it counts.
+WINDOWED_STRATEGY_NAMES = ("ISQPWindowedStrategy", "WindowedWrapperStrategy")
+
+#: Engine columns: ``-1`` on every non-windowed row, and skipped by the aggregates.
+ENGINE_KEYS = ("damage", "n_windows", "giant_regions", "mop_cleared", "rounds", "sqp_iters")
+
+
 def _engine_stats(res) -> dict:
-    """Engine accounting from ``res.info``; ``-1`` for a non-windowed strategy."""
-    out = dict.fromkeys(
-        ("damage", "n_windows", "giant_regions", "mop_cleared", "rounds", "sqp_iters"), -1
-    )
-    if res is None:
-        return out
+    """Engine accounting from ``res.info``, ``-1`` for every other strategy.
+
+    The sentinel is unconditional outside the windowed engine: the other
+    strategies DO report phases (``barrier`` logs its L-BFGS iterations,
+    ``slp`` / ``m14`` log named stages with ``n_iter=0``), and summing those as
+    ``sqp_iters`` / counting them as ``rounds`` would put three different
+    quantities in one column.
+    """
+    out = dict.fromkeys(ENGINE_KEYS, -1)
     info = getattr(res, "info", None)
-    if info is None:
+    if info is None or getattr(info, "strategy_name", "") not in WINDOWED_STRATEGY_NAMES:
         return out
     extras = getattr(info, "extras", {}) or {}
     for k in ("damage", "n_windows", "giant_regions", "mop_cleared"):
@@ -548,11 +621,52 @@ def metrics(phi_in, phi_out, res=None, threshold: float = THRESHOLD, elapsed: fl
 # Runner
 # ---------------------------------------------------------------------------
 
+_IDENT_KEYS = ("label", "case", "source", "config", "mechanism", "tool", "shape")
+_TAIL_KEYS = ("error", "timing_mode", "hit_cap", "out_path", "sha256")
+
+
+def _identity(case: Case, cfg_name: str, shape: str = "") -> dict:
+    return {
+        "label": f"{case.id}__{cfg_name}",
+        "case": case.id,
+        "source": case.source,
+        "config": cfg_name,
+        "mechanism": case.mechanism,
+        "tool": case.tool,
+        "shape": shape,
+    }
+
+
+@lru_cache(maxsize=1)
+def record_keys() -> tuple:
+    """Every record key, in CSV order, derived ONCE from the real builders on a
+    tiny field — so the header can be written before the first row exists and can
+    never drift from what :func:`run_case` produces."""
+    z = np.zeros((3, 1, 4, 4))
+    seen = dict.fromkeys(_IDENT_KEYS)
+    seen.update(dict.fromkeys(metrics(z, z)))
+    seen.update(dict.fromkeys(_corr_stats(z, z, None)))
+    seen.update(dict.fromkeys(_TAIL_KEYS))
+    ordered = [c for c in _LEAD_COLS if c in seen] + [k for k in seen if k not in _LEAD_COLS]
+    return tuple(ordered)
+
+
+def sentinel_record(case: Case, cfg_name: str, error: str, timing_mode="throughput") -> dict:
+    """A full row for a (case, config) that never produced a result — a load
+    failure or a dead worker. Every metric is ``-1``, ``feasible`` is False and
+    ``error`` carries the reason, so the row is in the CSV, in the manifest (with
+    no DVF) and in every denominator: nothing is dropped."""
+    rec = dict.fromkeys(record_keys(), -1)
+    rec.update(_identity(case, cfg_name))
+    rec.update(dict.fromkeys(("feasible", "certified", "hit_cap"), False))
+    rec.update(error=error, timing_mode=timing_mode, out_path="", sha256="")
+    return rec
+
 
 def run_case(
     case: Case,
     cfg_name: str,
-    phi_in,
+    phi_in=None,
     corr_pts=None,
     *,
     threshold: float = THRESHOLD,
@@ -562,10 +676,21 @@ def run_case(
     verbose: int = 0,
 ) -> dict:
     """Solve one (case, config) and return its record. Module-level and picklable
-    — this is the process-pool worker. Saves the corrected DVF to *out_path*
-    (``.npz``, key ``arr``) when given, and never raises: a failed solve becomes
-    a row with ``error`` set and the unchanged field as the output."""
+    — this is the process-pool worker.
+
+    The input is loaded HERE (``phi_in=None``, the default) so the parent never
+    holds one array per queued run; pass an array to reuse a load across the
+    configs of one case. Saves the corrected DVF to *out_path* (``.npz``, key
+    ``arr``) when given, and never raises: a failed load or a failed solve comes
+    back as a row with ``error`` set.
+    """
     pin_worker_threads()
+    if phi_in is None:
+        try:
+            phi_in = load_case(case)
+            corr_pts = case_correspondences(case) if corr_pts is None else corr_pts
+        except Exception as exc:
+            return sentinel_record(case, cfg_name, f"{type(exc).__name__}: {exc}", timing_mode)
     phi_in = np.asarray(phi_in, dtype=np.float64)
     t0 = time.perf_counter()
     err = ""
@@ -582,15 +707,7 @@ def run_case(
         res, phi_out, err = None, phi_in.copy(), f"{type(exc).__name__}: {exc}"
     elapsed = time.perf_counter() - t0
 
-    rec = {
-        "label": f"{case.id}__{cfg_name}",
-        "case": case.id,
-        "source": case.source,
-        "config": cfg_name,
-        "mechanism": case.mechanism,
-        "tool": case.tool,
-        "shape": "x".join(str(n) for n in phi_in.shape),
-    }
+    rec = _identity(case, cfg_name, "x".join(str(n) for n in phi_in.shape))
     rec.update(metrics(phi_in, phi_out, res, threshold, elapsed))
     rec.update(_corr_stats(phi_in, phi_out, corr_pts))
     rec["error"] = err
@@ -598,7 +715,7 @@ def run_case(
     rec["hit_cap"] = bool(elapsed > cap_s)
     rec["out_path"] = ""
     rec["sha256"] = ""
-    if out_path:
+    if out_path and not err:
         p = Path(out_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(p, arr=phi_out)  # save_dvf handles .npy/sitk only
@@ -649,45 +766,62 @@ def run(
     box_load = _box_load()
 
     work = _work_list(sources, config_names, sample, explicit_configs)
+    by_key = {(c.source, c.id): c for c, _ in work}
     _log(f"{len(work)} (case, config) runs -> {run_dir}  [{timing_mode}, n_workers={n_workers}]")
 
-    # The parent loads every input (one cohort/ANTs volume cached at a time) and
-    # ships the (3, 1, H, W) section to the worker — a few MB per pickle.
-    tasks = []
-    for case, cfg in work:
-        try:
-            phi = load_case(case)
-        except Exception as exc:
-            _log(f"WARNING: cannot load {case.id}: {type(exc).__name__}: {exc} — skipped")
-            continue
-        out_path = str(dvf_dir / case.source / f"{case.id}__{cfg}.npz")
-        tasks.append((case, cfg, phi, case_correspondences(case), out_path))
+    # Inputs are loaded lazily, inside the worker (or just before the serial
+    # solve): the parent never holds one array per queued run.
+    def out_path(case, cfg):
+        return str(dvf_dir / case.source / f"{case.id}__{cfg}.npz")
 
     t_run = time.perf_counter()
     kw = dict(threshold=threshold, cap_s=cap_s, timing_mode=timing_mode, verbose=verbose)
-    if n_workers > 1 and len(tasks) > 1:
-        from concurrent.futures import ProcessPoolExecutor
+    records: list = []
+    with results_csv(run_dir) as append_row:
+        # Each row is flushed to results.csv (and the manifest rewritten) as it
+        # lands, so an interrupted or crashed chain still leaves a valid run dir.
+        def _record(rec):
+            records.append(rec)
+            append_row(rec)
+            _write_manifest(run_dir, records, by_key)
 
-        with (
-            pinned_thread_env(),
-            ProcessPoolExecutor(max_workers=n_workers, initializer=pin_worker_threads) as ex,
-        ):
-            futs = [
-                ex.submit(run_case, c, cfg, phi, cp, out_path=op, **kw)
-                for (c, cfg, phi, cp, op) in tasks
-            ]
-            records = []
-            for i, f in enumerate(futs, 1):
-                records.append(f.result())
-                _log(f"{records[-1]['label']} done ({i}/{len(futs)})")
-    else:
-        records = []
-        for i, (c, cfg, phi, cp, op) in enumerate(tasks, 1):
-            _log(f"{c.id}__{cfg} ({i}/{len(tasks)}) ...")
-            records.append(run_case(c, cfg, phi, cp, out_path=op, **kw))
+        if n_workers > 1 and len(work) > 1:
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+
+            with (
+                pinned_thread_env(),
+                ProcessPoolExecutor(max_workers=n_workers, initializer=pin_worker_threads) as ex,
+            ):
+                futs = {
+                    ex.submit(run_case, c, cfg, out_path=out_path(c, cfg), **kw): (c, cfg)
+                    for (c, cfg) in work
+                }
+                for i, fut in enumerate(as_completed(futs), 1):
+                    c, cfg = futs[fut]
+                    try:
+                        rec = fut.result()
+                    except Exception as exc:  # a dead worker is a row, not a lost chain
+                        rec = sentinel_record(c, cfg, f"{type(exc).__name__}: {exc}", timing_mode)
+                    _record(rec)
+                    _log(f"{rec['label']} done ({i}/{len(futs)})  {rec['error']}".rstrip())
+        else:
+            phi = corr = None
+            prev_case = load_err = None
+            for i, (c, cfg) in enumerate(work, 1):
+                _log(f"{c.id}__{cfg} ({i}/{len(work)}) ...")
+                if c != prev_case:  # one load shared by every config of a case
+                    prev_case, phi, corr, load_err = c, None, None, None
+                    try:
+                        phi, corr = load_case(c), case_correspondences(c)
+                    except Exception as exc:
+                        load_err = f"{type(exc).__name__}: {exc}"
+                        _log(f"WARNING: cannot load {c.id}: {load_err}")
+                if phi is None:
+                    _record(sentinel_record(c, cfg, load_err or "LoadError", timing_mode))
+                    continue
+                _record(run_case(c, cfg, phi, corr, out_path=out_path(c, cfg), **kw))
     total_s = time.perf_counter() - t_run
 
-    _write_results_csv(run_dir, records)
     _write_summary(
         run_dir,
         records,
@@ -701,7 +835,6 @@ def run(
         total_s,
         box_load,
     )
-    _write_manifest(run_dir, records, {c.id: c for c, _ in work})
     _write_report(run_dir, records, threshold, total_s)
     if figures:
         make_figures(run_dir / "figures", records, hist_case=hist_case)
@@ -718,19 +851,28 @@ def run(
 # ---------------------------------------------------------------------------
 
 
-def _write_results_csv(run_dir, records):
-    """One row per case x config. Columns: the identity + existing schema keys
-    first, in their existing order, then every other key in first-seen order."""
-    seen = dict.fromkeys(k for r in records for k in r)
-    cols = [c for c in _LEAD_COLS if c in seen] + [k for k in seen if k not in _LEAD_COLS]
-    with open(run_dir / "results.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
+@contextmanager
+def results_csv(run_dir):
+    """Open ``results.csv``, write the header NOW — the schema is known before the
+    first row (:func:`record_keys`) — and yield an ``append(record)`` that flushes
+    after every row, so a chain that dies mid-way still leaves a readable CSV."""
+    with open(Path(run_dir) / "results.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=record_keys(), extrasaction="ignore")
         w.writeheader()
-        for r in records:
-            w.writerow({k: r.get(k) for k in cols})
+        f.flush()
+
+        def append(rec):
+            w.writerow({k: rec.get(k) for k in record_keys()})
+            f.flush()
+
+        yield append
 
 
-#: Aggregated per source x config as median + IQR.
+#: Aggregated per source x config as median + IQR. Every one of these is
+#: non-negative by construction, so a ``-1`` can only be a sentinel (a case that
+#: never ran, or an engine column on a non-windowed strategy) and is skipped:
+#: the DENOMINATORS (``n``, the rates) still count those rows, the DISTRIBUTIONS
+#: do not.
 _AGG_KEYS = (
     "time_s",
     "l1_move",
@@ -738,6 +880,9 @@ _AGG_KEYS = (
     "max_move",
     "moved_frac",
     "sqp_iters",
+    "rounds",
+    "n_windows",
+    "damage",
     "sdlogj_init",
     "sdlogj_final",
     "frac_nonpos_jdet_init",
@@ -748,7 +893,8 @@ _AGG_KEYS = (
 
 
 def _quantiles(vals):
-    v = np.asarray([x for x in vals if x is not None], dtype=np.float64)
+    """Median / IQR over the non-sentinel values, or ``None`` if there are none."""
+    v = np.asarray([x for x in vals if x is not None and x >= 0], dtype=np.float64)
     if v.size == 0:
         return None
     q1, med, q3 = (float(x) for x in np.percentile(v, [25, 50, 75]))
@@ -765,13 +911,17 @@ def _quantiles(vals):
 
 def _group_summary(rows):
     n = len(rows)
+    damages = [r["damage"] for r in rows if r["damage"] >= 0]
     out = {
         "n": n,
         "feasible_rate": sum(1 for r in rows if r["feasible"]) / n,
         "certified_rate": sum(1 for r in rows if r["certified"]) / n,
         "errors": sum(1 for r in rows if r["error"]),
         "hit_cap": sum(1 for r in rows if r["hit_cap"]),
-        "max_damage": max(r["damage"] for r in rows),
+        # None (JSON null) when no row in the group ran the windowed engine —
+        # never -1, which would read as "damage minus one"
+        "max_damage": max(damages) if damages else None,
+        "n_windowed_rows": len(damages),
     }
     for fam, _ in _FAMILIES:  # certification rate under each gauge (after)
         out[f"rate_{fam}_zero_at_threshold"] = (
@@ -779,9 +929,7 @@ def _group_summary(rows):
         )
         out[f"rate_{fam}_zero_at_0"] = sum(1 for r in rows if r[f"{fam}_n_neg_final"] == 0) / n
     for k in _AGG_KEYS:
-        q = _quantiles([r.get(k) for r in rows])
-        if q is not None:
-            out[k] = q
+        out[k] = _quantiles([r.get(k) for r in rows])
     return out
 
 
@@ -856,6 +1004,8 @@ def _write_summary(
             "sdlogj_clip": SDLOGJ_CLIP,
             "total_time_s": total_s,
         },
+        "gauges": GAUGES,
+        "notes": [ANTS_Z_NOTE, SENTINEL_NOTE],
         "n_runs": len(records),
         "n_certified": sum(1 for r in records if r["certified"]),
         "groups": {k: _group_summary(v) for k, v in sorted(groups.items())},
@@ -864,8 +1014,14 @@ def _write_summary(
     return summary
 
 
-def _write_manifest(run_dir, records, case_by_id):
-    """Every saved DVF with its case, config, shape, sha256 and INPUT path."""
+def _write_manifest(run_dir, records, case_by_key):
+    """Every run, with its case, config, shape, sha256 and INPUT path.
+
+    Keyed by ``(source, id)`` — the cohort and its ANTs twin are different
+    inputs, and only the pair identifies one. A run that produced no DVF (a load
+    failure, a dead worker, a failed solve) is still listed, with an empty
+    ``file`` and its ``error``: nothing is dropped from the record of the run.
+    """
     entries = [
         {
             "file": r["out_path"],
@@ -874,13 +1030,17 @@ def _write_manifest(run_dir, records, case_by_id):
             "config": r["config"],
             "shape": r["shape"],
             "sha256": r["sha256"],
-            "input_path": case_by_id[r["case"]].path,
+            "input_path": getattr(case_by_key.get((r["source"], r["case"])), "path", ""),
+            "error": r["error"],
         }
         for r in records
-        if r["out_path"]
     ]
     (run_dir / "manifest.json").write_text(
-        json.dumps({"run": run_dir.name, "fields": entries}, indent=2), encoding="utf-8"
+        json.dumps(
+            {"run": run_dir.name, "notes": [ANTS_Z_NOTE, SENTINEL_NOTE], "fields": entries},
+            indent=2,
+        ),
+        encoding="utf-8",
     )
 
 
@@ -919,20 +1079,39 @@ def make_figures(fig_dir, records, hist_case=None):
     fig_dir = Path(fig_dir)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. folds before/after per source (bilinear gauge at the threshold)
+    # 1. folds before/after per source (bilinear gauge at the threshold).
+    # The INPUT count is per case — summing it over configs would multiply the
+    # "before" bar by the number of configs; the "after" bars are per config.
     srcs = sorted({r["source"] for r in records})
-    fig, ax = plt.subplots(figsize=(1.6 * max(len(srcs), 3) + 2, 3.6))
+    cfgs = sorted({r["config"] for r in records})
+    rows_ok = [r for r in records if r["bilinear_n_below_init"] >= 0]  # skip never-ran rows
+    before = []
+    for s in srcs:
+        seen = {}
+        for r in rows_ok:
+            if r["source"] == s:
+                seen.setdefault(r["case"], r["bilinear_n_below_init"])
+        before.append(sum(seen.values()))
+    fig, ax = plt.subplots(figsize=(1.9 * max(len(srcs), 3) + 2, 3.6))
     x = np.arange(len(srcs))
-    before = [sum(r["bilinear_n_below_init"] for r in records if r["source"] == s) for s in srcs]
-    after = [sum(r["bilinear_n_below_final"] for r in records if r["source"] == s) for s in srcs]
-    ax.bar(x - 0.2, np.maximum(before, 0.5), 0.4, label="before", color=cb._C_BEFORE)
-    ax.bar(x + 0.2, np.maximum(after, 0.5), 0.4, label="after", color=cb._C_AFTER)
+    w = 0.8 / (len(cfgs) + 1)
+    ax.bar(x - 0.4 + w / 2, np.maximum(before, 0.5), w, label="before (input)", color=cb._C_BEFORE)
+    for i, cfg in enumerate(cfgs, 1):
+        after = [
+            sum(
+                r["bilinear_n_below_final"]
+                for r in rows_ok
+                if r["source"] == s and r["config"] == cfg
+            )
+            for s in srcs
+        ]
+        ax.bar(x - 0.4 + w * (i + 0.5), np.maximum(after, 0.5), w, label=f"after · {cfg}")
     ax.set_yscale("log")
     ax.set_xticks(x)
     ax.set_xticklabels(srcs)
     ax.set_ylabel("folded cells (bilinear, < 0.01)")
     ax.set_title("Folds before / after by source (0.5 = zero, log axis)")
-    ax.legend()
+    ax.legend(fontsize=7)
     fig.savefig(fig_dir / "folds_by_source.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -972,33 +1151,51 @@ def make_figures(fig_dir, records, hist_case=None):
 
 
 def markdown_table(records) -> str:
-    """Markdown summary per source x config: medians with IQR in brackets."""
+    """Markdown summary per source x config: medians with IQR in brackets.
+
+    Prefixed by the gauge legend, so the certificate scales travel with the
+    numbers (the simplicial columns are triangle areas = det/2).
+    """
     groups = {}
     for r in records:
         groups.setdefault((r["source"], r["config"]), []).append(r)
+    legend = [
+        "<!-- certificate gauges: "
+        + "; ".join(
+            f"{k}: {v['rows']}, {v['scale']}, per {v['per']}"
+            for k, v in GAUGES.items()
+            if not k.startswith("_")
+        )
+        + ". certified = bilinear has 0 values < 0.01 - 1e-5 after."
+        + " -1 is a sentinel (see summary.json notes), skipped by every median. -->"
+    ]
     head = (
         "| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | "
         "L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |"
     )
-    lines = [head, "|" + "---|" * 11]
+    lines = [*legend, head, "|" + "---|" * 11]
 
-    def med(rows, k):
+    def med(rows, k, fmt=".4g"):
         q = _quantiles([r[k] for r in rows])
-        return f"{q['median']:.4g} [{q['q1']:.4g}, {q['q3']:.4g}]" if q else "n/a"
+        return f"{q['median']:{fmt}} [{q['q1']:{fmt}}, {q['q3']:{fmt}}]" if q else "n/a"
+
+    def med1(rows, k, fmt=".4g"):
+        q = _quantiles([r[k] for r in rows])
+        return f"{q['median']:{fmt}}" if q else "n/a"
 
     for (src, cfg), rows in sorted(groups.items()):
         n = len(rows)
         note = " (TUNING SET)" if src == "crops" else ""
+        damages = [r["damage"] for r in rows if r["damage"] >= 0]
         lines.append(
             f"| {src}{note} | {cfg} | {n} | "
             f"{sum(1 for r in rows if r['certified'])}/{n} | "
             f"{sum(1 for r in rows if r['feasible'])}/{n} | "
             f"{med(rows, 'time_s')} | {med(rows, 'l1_move')} | {med(rows, 'l2_move')} | "
-            f"{np.median([r['sdlogj_init'] for r in rows]):.4g} -> "
-            f"{np.median([r['sdlogj_final'] for r in rows]):.4g} | "
-            f"{np.median([r['frac_nonpos_jdet_init'] for r in rows]):.3g} -> "
-            f"{np.median([r['frac_nonpos_jdet_final'] for r in rows]):.3g} | "
-            f"{max(r['damage'] for r in rows)} |"
+            f"{med1(rows, 'sdlogj_init')} -> {med1(rows, 'sdlogj_final')} | "
+            f"{med1(rows, 'frac_nonpos_jdet_init', '.3g')} -> "
+            f"{med1(rows, 'frac_nonpos_jdet_final', '.3g')} | "
+            f"{max(damages) if damages else 'n/a'} |"
         )
     return "\n".join(lines)
 
