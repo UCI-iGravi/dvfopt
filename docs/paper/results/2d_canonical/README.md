@@ -97,10 +97,13 @@ Every record is one `(input, output, result)` triple, computed by `benchmarks/ca
   is a bug report, not a result), `n_windows`, `giant_regions`, `mop_cleared`, `rounds` (count of
   phases named `round*`), `sqp_iters` (sum of `n_iter` over phases NOT named `giant*` — a `giant`
   phase is nested inside its round entry, so `total_iter` would double-count it). **`-1` on every
-  other strategy** (`barrier`, `slp`, `m14`, `slsqp_windowed` when it did not resolve to the
-  windowed engine) — the other strategies report phases in their own units (L-BFGS iterations,
-  named SLP stages with `n_iter=0`), and summing those under the same column name would mix three
-  different quantities. `-1` is always a sentinel, never a measurement: the median/IQR aggregates
+  other strategy** (`barrier`, `slp`, `m14`, `slsqp_windowed`) — the other strategies report phases
+  in their own units (L-BFGS iterations, named SLP stages with `n_iter=0`), and summing those under
+  the same column name would mix three different quantities. `slsqp_windowed` is
+  `SLSQPWindowedStrategy`, a different class from the windowed I-SLSQP engine — the driver's
+  `WINDOWED_STRATEGY_NAMES = ("ISQPWindowedStrategy", "WindowedWrapperStrategy")` never names it —
+  so its rows carry `-1` here unconditionally, not "when it did not resolve to the windowed engine".
+  `-1` is always a sentinel, never a measurement: the median/IQR aggregates
   (`_quantiles`) skip rows where the value is negative, but the count/rate denominators (`n`,
   `feasible_rate`, `certified_rate`) still include every row, including full-sentinel rows for a
   case that never produced a result at all (load failure or a dead pool worker).
@@ -131,6 +134,14 @@ sequentially without a pool) taken under that contention, not the paper's intend
 column. The pre-registered idle-box serial subsets (origins: all 27 cases; cohort: z=0 and z=240 of
 every brain) are the recorded follow-up, to be run once the box is confirmed idle — see Status.
 
+The **origins serial-timing pass** (`origins_serial/`) is that follow-up for `origins`: it ran on a
+near-idle box (load 2 % at its start; `timing_mode=serial`, one in-process solve at a time, no
+pool) and supplies the paper's per-case wall column for this source. The throughput passes
+(`n_workers=4` on a shared, contended box) measured the same pairs with inflated walls: observed
+on identical pairs, `m2_demons_brainpair_weak` × `isqp_none` ran 147 s serial vs 394 s throughput,
+and `m2_ffd_brainpair_coarse` × `isqp_none` ran 951 s serial vs 2,498 s throughput — about 2.6x.
+Only the serial pass's `time_s` column should be quoted as this source's wall.
+
 ## Caveats
 
 - **R4 — the on-disk crops do not reproduce CLAUDE.md's historical move/wall figures.** CLAUDE.md
@@ -151,8 +162,19 @@ every brain) are the recorded follow-up, to be run once the box is confirmed idl
   `cohort_*` and `ants_*` rows by z.
 - **`max_damage` is meaningful only on windowed rows.** It is `null` (not `-1`, which would read as
   "damage minus one is better than zero") whenever a group has no windowed-engine row at all
-  (`barrier`/`slp`/`m14` groups, and any `slsqp_windowed` group that did not resolve to the windowed
-  engine); it is exactly 0 on every group that does contain windowed rows in the results so far.
+  (`barrier`/`slp`/`m14` groups, and every `slsqp_windowed` group — `slsqp_windowed` is
+  `SLSQPWindowedStrategy`, a different class from the windowed I-SLSQP engine, so it never
+  resolves to it); it is exactly 0 on every group that does contain windowed rows in the results so
+  far.
+- **Reproducibility across timing modes is discrete, not bit-identical.** Two runs pinned to the
+  same BLAS threading (the two throughput passes of `m2_ffd_brainpair_coarse` × `isqp_none`, before
+  and after a machine restart) agree bit-for-bit in all 16 outcome fields. Across timing modes
+  (serial vs throughput) on the same pair the *discrete* outcome is identical — certified, feasible,
+  fold counts under every gauge, damage, windows, rounds, SQP iterations — while continuous outputs
+  (L1 / L2 / max move) differ by about 3e-5 relative and the worst residual value by about 2.5 %.
+  Most plausibly this is because pool workers are pinned to one BLAS thread and the in-process
+  serial path is not (supported by the pinned-vs-pinned bit-identical check above, not proven
+  further). **Never describe results as bit-identical across timing modes** — only within one.
 
 ## Layout
 
@@ -165,7 +187,17 @@ docs/paper/results/2d_canonical/
 │   ├── manifest.json
 │   ├── table.md
 │   └── figures/*.png
-└── synthetic/                 # FINAL — the synthetic-case row
+├── synthetic/                 # FINAL — the synthetic-case row
+│   ├── results.csv
+│   ├── summary.json
+│   ├── manifest.json
+│   └── table.md                # no figures/: this run was not passed --figures
+├── origins_serial/             # FINAL — origins, serial-timing wall column
+│   ├── results.csv
+│   ├── summary.json
+│   ├── manifest.json
+│   └── table.md                # no figures/: this run was not passed --figures
+└── ants/                       # FINAL — the ANTs "already injective" control
     ├── results.csv
     ├── summary.json
     ├── manifest.json
@@ -173,16 +205,16 @@ docs/paper/results/2d_canonical/
 ```
 
 One subdirectory per source, matching the run-dir names in
-`benchmarks/output/2d_canonical/<row>/` (gitignored). `report/` (the `cohort_benchmark`-shared
-`report.html` + its own filtered CSV/JSON copy) is **not** copied here — it duplicates
-`results.csv`/`summary.json` at a filtered column set and is meant to be regenerated locally, not
-tracked. Corrected DVFs are never tracked: they live under
+`benchmarks/output/2d_canonical/<row>/` (gitignored) — `ants/` here holds `ants_isqp/`'s output.
+`report/` (the `cohort_benchmark`-shared `report.html` + its own filtered CSV/JSON copy) is **not**
+copied here — it duplicates `results.csv`/`summary.json` at a filtered column set and is meant to
+be regenerated locally, not tracked. Corrected DVFs are never tracked: they live under
 `data/dvfs/results/<run-name>/<source>/<case>__<config>.npz` (gitignored), and each source's
 `manifest.json` here lists every one with its case, config, shape and sha256, plus the untouched
 *input* path (inputs are never duplicated).
 
-Pending sources (`origins`, `ants`, `cohort`) will each get their own subdirectory here, in the
-same shape, once their chains finish — see Status.
+Pending sources (`origins` full taxonomy, `cohort`) will each get their own subdirectory here, in
+the same shape, once their chains finish — see Status.
 
 ## Regeneration
 
@@ -203,18 +235,30 @@ python benchmarks/canonical_2d.py --source synthetic \
     --table \
     --run-dir benchmarks/output/2d_canonical/synthetic_all
 
-# origins, all 7 configs, throughput pass — PENDING
+# origins, all 7 configs, throughput pass — being recovered, see Status (was origins_all, invalid;
+# origins_all_recovered replaces it)
 python benchmarks/canonical_2d.py --source origins \
     --config isqp_none isqp_l2 auto slp barrier m14 slsqp_windowed \
     --n-workers 4 --figures --table \
     --run-dir benchmarks/output/2d_canonical/origins_all
 
-# origins, the paper's wall column (isqp_none / isqp_l2 only, serial) — PENDING
+# origins, the paper's wall column (isqp_none / isqp_l2 only, serial) — FINAL, this directory's
+# origins_serial/
 python benchmarks/canonical_2d.py --source origins \
-    --config isqp_none isqp_l2 --serial-timing \
+    --config isqp_none isqp_l2 --serial-timing --table \
     --run-dir benchmarks/output/2d_canonical/origins_serial
 
-# ANTs controls, isqp_none only (expected 0 -> 0 at ~0 s) — PENDING
+# origins recovery: reuse origins_all's measured rows, rerun exactly its 130 BrokenProcessPool
+# losses, with slsqp_windowed pairs isolated one at a time (--resume / --isolate-config exist from
+# driver commit 90fccab onward) — this run replaces origins_all; origins_all's own aggregates must
+# not be used
+python benchmarks/canonical_2d.py --source origins \
+    --config isqp_none isqp_l2 auto slp barrier m14 slsqp_windowed \
+    --n-workers 4 --resume benchmarks/output/2d_canonical/origins_all \
+    --isolate-config slsqp_windowed --figures --table \
+    --run-dir benchmarks/output/2d_canonical/origins_all_recovered
+
+# ANTs controls, isqp_none only (expected 0 -> 0 at ~0 s) — FINAL, this directory's ants/
 python benchmarks/canonical_2d.py --source ants \
     --config isqp_none --n-workers 4 --table \
     --run-dir benchmarks/output/2d_canonical/ants_isqp
@@ -237,10 +281,17 @@ python benchmarks/canonical_2d.py --source cohort --config isqp_none isqp_l2 \
 
 ## Status
 
-- **`crops` and `synthetic`: FINAL.** Tracked here in full (see the tables below).
-- **`origins`, `origins_serial`, `ants`, `cohort`: PENDING.** Rows still running as of this
-  commit; their subdirectories, the findings-note section, the CHANGELOG entry and the CLAUDE.md
-  benchmarks-bullet update are appended by a later commit once they finish.
+- **`crops`, `synthetic`, `origins` (serial-timing pass), `ants`: FINAL.** Tracked here in full
+  (see the tables below).
+- **`origins` (full 7-config taxonomy, throughput): being recovered.** The original
+  `origins_all` run lost 130 of its 189 pairs to a dead pool worker
+  (`BrokenProcessPool`) mid-run; a recovery run reuses the 59 rows it did measure and reruns
+  exactly the 130 losses, with `slsqp_windowed` pairs isolated one at a time. It replaces
+  `origins_all`, whose aggregates (`summary.json`/`table.md`, computed over the 130 sentinel rows)
+  must not be used.
+- **`cohort`: running.** The cohort sample is still solving as of this commit; its subdirectory,
+  the findings-note section, the CHANGELOG entry and the CLAUDE.md benchmarks-bullet update are
+  appended by a later commit once it and the origins recovery finish.
 
 ## Results — `crops` (TUNING SET)
 
@@ -282,3 +333,33 @@ Box load at start: 24% (much less contended than the crops row). Both `isqp_*` r
 certify 13/13; `slsqp_windowed` again has the smallest move but 0/13 under the bilinear gauge
 despite 13/13 feasibility under its own central-Jdet constraint. No `figures/` for this row (run
 without `--figures`).
+
+## Results — origins — serial timing pass
+
+<!-- pasted verbatim from origins_serial/table.md, including its legend comment -->
+
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| origins | isqp_l2 | 27 | 27/27 | 27/27 | 10.25 [0.497, 109] | 1034 [21.28, 5703] | 17.87 [1.833, 161.5] | 0.8696 -> 0.8042 | 0.00662 -> 0 | 0 |
+| origins | isqp_none | 27 | 26/27 | 26/27 | 4.348 [0.3431, 19.02] | 1075 [23.75, 8891] | 18.12 [1.971, 194] | 0.8696 -> 0.7981 | 0.00662 -> 0 | 0 |
+
+Box load at start: 2% (near-idle; see Walls). `isqp_l2` certifies 27/27; `isqp_none`'s single
+non-certified, non-feasible row is `m2_ffd_brainpair_coarse` — a 39.5%-folded input where pure
+feasibility plateaus a handful of bilinear cells a few 1e-4 short of the threshold (worst residual
+about -5.1e-4) while the in-solve L2 objective (`isqp_l2`) clears it; this is the paper's per-case
+wall column for `origins` (see Walls for the serial-vs-throughput inflation on this same pair).
+
+## Results — ANTs controls
+
+<!-- pasted verbatim from ants/table.md, including its legend comment -->
+
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ants | isqp_none | 85 | 85/85 | 85/85 | 0.4254 [0.3573, 0.5056] | 0 [0, 0] | 0 [0, 0] | 0.1395 -> 0.1395 | 0 -> 0 | 0 |
+
+85 slices (7 brains × 11 sampled slices + 8 named hard slices), all certified, none with any
+bilinear fold on input, and no pixel moved — the engine leaves an already-injective warp untouched.
+Box load at start: 0% (near-idle). See the Caveats note on ANTs slice-index reversal before pairing
+these rows with `cohort_*` rows by z.

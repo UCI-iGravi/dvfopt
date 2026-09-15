@@ -1,0 +1,374 @@
+{
+  "provenance": {
+    "git_commit": "cdbf5f4",
+    "dvfopt_version": "0.5.0",
+    "generated": "2026-09-15T04:16:23",
+    "python": "3.12.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "n_workers": 1,
+    "timing_mode": "serial",
+    "box_load_pct_at_start": 2.0,
+    "threshold": 0.01,
+    "err_tol": 1e-05,
+    "time_budget_s": null,
+    "cap_s": 7200.0,
+    "sample": "canonical",
+    "sources": [
+      "origins"
+    ],
+    "configs": {
+      "isqp_none": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "none"
+      },
+      "isqp_l2": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "l2"
+      }
+    },
+    "sdlogj_clip": 0.001,
+    "total_time_s": 6849.5204223
+  },
+  "gauges": {
+    "simplex": {
+      "rows": "2 triangles per cell (fixed BL-TR diagonal)",
+      "scale": "triangle area = det/2",
+      "per": "cell (last row/col are +inf)"
+    },
+    "bilinear": {
+      "rows": "4 triangles per cell (both diagonals)",
+      "scale": "triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2",
+      "per": "cell (last row/col are +inf)",
+      "note": "the headline certificate: certified = bilinear_n_below_final == 0"
+    },
+    "finite": {
+      "rows": "forward-difference Jdet (1 triangle per cell)",
+      "scale": "determinant",
+      "per": "cell (last row/col are +inf)"
+    },
+    "jdet": {
+      "rows": "central-difference Jdet",
+      "scale": "determinant",
+      "per": "pixel"
+    },
+    "_gauges": {
+      "n_neg": "count of values <= 0",
+      "n_below": "count of values < threshold - err_tol (0.01 - 1e-05)",
+      "min": "minimum value, at the column's own scale"
+    }
+  },
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "n_runs": 54,
+  "n_certified": 53,
+  "groups": {
+    "origins/isqp_l2": {
+      "n": 27,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 10.248269900002924,
+        "q1": 0.4969803999993019,
+        "q3": 108.98727275000056,
+        "iqr": 108.49029235000125,
+        "min": 0.0013505000024451874,
+        "max": 2869.439452499999,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 1033.7526871413436,
+        "q1": 21.27675365484852,
+        "q3": 5702.924310721617,
+        "iqr": 5681.647557066769,
+        "min": 0.0,
+        "max": 535555.2397534165,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 17.86880214397263,
+        "q1": 1.8325459536144486,
+        "q3": 161.4926848949562,
+        "iqr": 159.66013894134176,
+        "min": 0.0,
+        "max": 4061.949276217643,
+        "n": 27
+      },
+      "max_move": {
+        "median": 1.8987440594643665,
+        "q1": 0.3738615128375107,
+        "q3": 17.080920765351713,
+        "iqr": 16.707059252514203,
+        "min": 0.0,
+        "max": 103.19663760285854,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.1810302734375,
+        "q1": 0.024003770616319444,
+        "q3": 0.6948042436079546,
+        "iqr": 0.6708004729916351,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 176.0,
+        "q1": 20.0,
+        "q3": 342.5,
+        "iqr": 322.5,
+        "min": 0.0,
+        "max": 6715.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 8.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 16.0,
+        "q1": 4.0,
+        "q3": 36.5,
+        "iqr": 32.5,
+        "min": 0.0,
+        "max": 292.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8041989152563622,
+        "q1": 0.34320451398699064,
+        "q3": 1.2961451040073766,
+        "iqr": 0.952940590020386,
+        "min": 0.004048048594251088,
+        "max": 2.1523118452682035,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      }
+    },
+    "origins/isqp_none": {
+      "n": 27,
+      "feasible_rate": 0.9629629629629629,
+      "certified_rate": 0.9629629629629629,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 0.9629629629629629,
+      "rate_simplex_zero_at_0": 0.9629629629629629,
+      "rate_bilinear_zero_at_threshold": 0.9629629629629629,
+      "rate_bilinear_zero_at_0": 0.9629629629629629,
+      "rate_finite_zero_at_threshold": 0.9629629629629629,
+      "rate_finite_zero_at_0": 0.9629629629629629,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 4.347679100003006,
+        "q1": 0.34314399999857415,
+        "q3": 19.02176965000035,
+        "iqr": 18.678625650001777,
+        "min": 0.0015090000015334226,
+        "max": 950.7035892000022,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 1075.0811624398564,
+        "q1": 23.75081557981104,
+        "q3": 8890.804294351095,
+        "iqr": 8867.053478771284,
+        "min": 0.0,
+        "max": 648489.7971180931,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 18.123940075601325,
+        "q1": 1.9705816618892686,
+        "q3": 193.99426591099,
+        "iqr": 192.02368424910074,
+        "min": 0.0,
+        "max": 4530.858766573633,
+        "n": 27
+      },
+      "max_move": {
+        "median": 2.0855505672405252,
+        "q1": 0.43002646566818203,
+        "q3": 17.16970682552129,
+        "iqr": 16.739680359853107,
+        "min": 0.0,
+        "max": 103.19651762771423,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.1910552978515625,
+        "q1": 0.05372450086805555,
+        "q3": 0.6726616753472222,
+        "iqr": 0.6189371744791666,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 40.0,
+        "q1": 12.0,
+        "q3": 184.5,
+        "iqr": 172.5,
+        "min": 0.0,
+        "max": 2572.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 5.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 12.0,
+        "q1": 3.0,
+        "q3": 29.5,
+        "iqr": 26.5,
+        "min": 0.0,
+        "max": 152.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.7980672922280645,
+        "q1": 0.329107986818201,
+        "q3": 1.2142468355305616,
+        "iqr": 0.8851388487123606,
+        "min": 0.004048048594251088,
+        "max": 1.9811357474800397,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      }
+    }
+  }
+}
