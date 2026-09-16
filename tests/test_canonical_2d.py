@@ -283,6 +283,13 @@ def test_unknown_source_and_sample_raise():
         c2.cases("synthetic", sample="nope")
 
 
+def test_isqp_l1_config_is_the_windowed_engines_l1_anchor_on_small_sources():
+    assert c2.CONFIGS["isqp_l1"] == dict(
+        constraint="bilinear", strategy="isqp_windowed", objective="l1"
+    )
+    assert "isqp_l1" not in c2._EVERY_SOURCE_CONFIGS
+
+
 def test_work_list_applies_the_protocol_source_filter():
     cs = c2.cases("synthetic", sample="smoke")
     assert cs, "synthetic registry is never empty"

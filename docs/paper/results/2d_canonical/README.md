@@ -14,7 +14,7 @@ plan: `docs/superpowers/plans/2026-09-11-2d-canonical-benchmark.md`; ledger:
   pinned commit. No per-case knobs. `err_tol` is the package default, `1e-5`.
   `constraint='bilinear'` is the 4-triangle-per-cell certificate (both diagonals); the simplex
   families' `'simplex_standard'` row is the fixed-diagonal 2-triangle one.
-- **Seven configs** (`benchmarks/canonical_2d.py`'s `CONFIGS`):
+- **Seven configs** (`benchmarks/canonical_2d.py`'s `CONFIGS`), plus the `isqp_l1` amendment below:
 
   | config | constraint | strategy | objective |
   |---|---|---|---|
@@ -30,6 +30,10 @@ plan: `docs/superpowers/plans/2026-09-11-2d-canonical-benchmark.md`; ledger:
   the taxonomy runs on the three small sources only (origins, crops, synthetic) so the paper's
   "across methods AND across registration sources on a common axis" table exists without paying
   for the full taxonomy on ~600 cohort/ANTs slices.
+- **`isqp_l1` (ruling R19, amendment):** the windowed engine's L1 anchor (`bilinear` +
+  `isqp_windowed` + `objective='l1'`), added alongside the taxonomy rows on the small sources only
+  (origins, crops, synthetic) — not one of the two every-source engine headline rows. Status:
+  pending, no numbers yet.
 - **The three hard B0039 crops (`z0_sliver`, `z0_cluster`, `z16_twist`) are the engine's TUNING
   set** — every table below says so, and their numbers are never quoted as a held-out result.
 - **Nothing is dropped:** every pair is a row in `results.csv`, in `manifest.json`, and in every

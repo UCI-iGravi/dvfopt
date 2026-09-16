@@ -18,6 +18,9 @@ Nothing is dropped: a solve that raises stays as a row with its error text,
 unchanged input, its ``time_s`` the time to the exception), and every aggregate
 includes it. The three
 hard crops are the engine's TUNING set — label them as such in every table.
+``isqp_l1`` (R19 amendment) is the windowed engine's L1 anchor and, like the
+rest of the taxonomy beyond the two ``isqp_*`` headline rows, runs on the small
+sources only.
 
 Metrics per (input, output, result) — :func:`metrics`:
 
@@ -182,6 +185,8 @@ SOURCES = ("origins", "cohort", "ants", "crops", "synthetic")
 CONFIGS = {
     "isqp_none": dict(constraint="bilinear", strategy="isqp_windowed", objective="none"),
     "isqp_l2": dict(constraint="bilinear", strategy="isqp_windowed", objective="l2"),
+    #: R19 amendment: the windowed engine's L1 anchor, run on the small sources only.
+    "isqp_l1": dict(constraint="bilinear", strategy="isqp_windowed", objective="l1"),
     "auto": dict(constraint="bilinear", strategy="auto", objective="auto"),
     "slp": dict(constraint="simplex_standard", strategy="slp", objective="l1"),
     "barrier": dict(constraint="simplex_standard", strategy="barrier", objective="l2"),
