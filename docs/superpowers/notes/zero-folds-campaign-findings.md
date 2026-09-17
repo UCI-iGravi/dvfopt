@@ -666,7 +666,19 @@ halve it again. A method's own-gauge `feasible` flag is reported beside it, neve
 | cohort (7 brains) | 85 | `isqp_none` | 85/85 | 86.45 | throughput, load 39 % |
 | cohort (7 brains) | 85 | `isqp_l2` | 85/85 | 209.6 | throughput, load 39 % |
 
-<!-- ORIGINS-FINAL: filled after pass 3 -->
+**Final origins taxonomy** (`origins_all_v4`, all 8 configs, pooled/throughput across the recovery
+and amendment passes):
+
+| source | pairs | config | certified | wall median, s | wall kind |
+|---|---|---|---|---|---|
+| origins | 27 | `isqp_l2` | 27/27 | 32.13 | throughput, pooled across passes |
+| origins | 27 | `auto` | 27/27 | 21.01 | throughput, pooled across passes |
+| origins | 27 | `isqp_none` | 26/27 | 7.765 | throughput, pooled across passes |
+| origins | 27 | `isqp_l1` | 24/27 | 45.66 | throughput, pooled across passes |
+| origins | 27 | `slp` | 3/27 | 20.13 | throughput, pooled across passes |
+| origins | 27 | `m14` | 4/27 | 17.19 | throughput, pooled across passes |
+| origins | 27 | `barrier` | 3/27 | 26.23 | throughput, pooled across passes |
+| origins | 27 | `slsqp_windowed` | 3/27 (19/27 feasible, own gauge) | 0.3216 | throughput, but this config's pairs each ran isolated, one at a time |
 
 Damage is 0 on every windowed row. The box was shared with unrelated jobs for most of the
 session, so only the origins serial pass supplies a per-case wall column. On identical pairs
@@ -742,7 +754,32 @@ window therefore held exactly 37,920 free pixels, 89.8 % of the 160×264 slice, 
 row per free pixel. The workspace is quadratic in window area, so `slsqp_windowed` does not apply
 to dense folding at slice scale. The row is a measured failure, kept in every denominator.
 
-<!-- ORIGINS-FINAL: filled after pass 3 -->
+**The full origins outcome legend for `slsqp_windowed`** (27 pairs, each run isolated one at a
+time under a 21,600 s / 6 h no-progress watchdog, ruling R17): 3/27 bilinear-certified
+(`m1_laplacian_cohort_B0039_z264`, `m2_demons_brainpair_smooth`, `m4_ants_cohort_B0039_z264`), 17
+finished but were not bilinear-certified (feasible only under the config's own central-difference
+Jdet gauge, or not even that), 1 `MemoryError` (`m2_ffd_brainpair_coarse`, 429 GiB, 16,319
+central-diff folds on 160×264 — the workspace-size failure above), 1 `WorkerCrash`
+(`m2_ffd_brainpair_fine`, 9,289 folds on 160×264 — see below), and 5 `WatchdogTimeout` at the 6 h
+cap: `m2_demons_brainpair_weak` (11,827 folds, 160×264), `m2_tvl1_brainpair_a60` (7,019 folds,
+160×264), `m3_proxy_synthetic_strong` (4,110 folds, 192×192), `m2_ilk_synthetic_r3` (1,425 folds,
+192×192) and `m3_voxelmorph_ellipses_direct` (800 folds, 64×64). Every finished-in-seconds pair sat
+at a few hundred folds or fewer; every pair that did not finish in 6 h sat at ~1,400 folds or
+above, a clean split apart from the crash.
+
+**The `WorkerCrash` (ruling R18).** `m2_ffd_brainpair_fine` × `slsqp_windowed` crashed with
+`WorkerCrash: worker process terminated abruptly` seconds after its worker spawned, in both its
+pass-3 attempt and its single pass-4 isolated rerun — the same text, no output field either time.
+Under R18 this is now recorded as a MEASURED failure of the baseline config on this field, not an
+infrastructure loss, and there is no further rerun. At the time of the first crash the evidence
+ruled out both the 429 GiB `MemoryError` path (this crash raises nothing; the process simply dies)
+and a box-wide memory kill (40.8 GB RAM free, no Windows application-error report and no
+resource-exhaustion event in the crash window). The **working hypothesis** — unproven — is that
+the vendored traced SLSQP core's dense workspace (the same `_slsqplib` allocation derived above)
+takes an element count that exceeds an addressable index range at this window's size, so the
+allocation succeeds and the C core then indexes out of range and kills the process instead of
+raising a catchable error. This is a hypothesis, stated as such, and is NOT independently
+verified.
 
 ### 12.5 Recovery provenance
 
@@ -763,10 +800,28 @@ The origins taxonomy run (27 fields × 7 configs = 189 pairs) did not finish in 
 The table's rows come from three driver commits. 59 rows were measured at `cdbf5f4` and 110 at
 `90fccab`. The two commits differ only in the runner (`--resume`, pool-break recovery,
 `--isolate-config`). `run_case` and every metric it calls are byte-identical between them. Pass 3
-runs at `e1d3a88`. It is measurement-equivalent (R17(4)): its one change on the measurement path
-sets `certified = feasible = False` when a solve raises, which affects only error rows.
+runs at `e1d3a88`. It is measurement-equivalent (R17(4)): `git diff 90fccab e1d3a88 --
+benchmarks/canonical_2d.py` touches the measurement path in one hunk (`run_case` sets `certified =
+feasible = False` when the solve raises, which affects only error rows — the reused `MemoryError`
+row already reads `False`/`False`); everything else in the diff is runner plumbing (spawn context,
+pool close, the watchdog), resume guards, aggregation and provenance keys. `dvfopt/` is untouched
+on the branch throughout, so pass-3 rows are measurement-equivalent to the 169 reused rows.
 
-<!-- ORIGINS-FINAL: filled after pass 3 -->
+Pass 3 ran `origins_all_v3`: `--resume origins_all_final --isolate-config slsqp_windowed`, giving
+each of the 20 remaining `slsqp_windowed` pairs its own 6 h watchdog cap, one at a time (uncontended
+— no other pair or pool shared the box while a `slsqp_windowed` pair ran). It ended cleanly at 189
+rows: 169 reused, 20 rerun, 0 pool breaks, 1 `WorkerCrash`. The full 27-pair `slsqp_windowed`
+outcome legend (3 certified, 17 finished-but-uncertified, 1 `MemoryError` carried over from the
+169 reused rows, 5 `WatchdogTimeout` and 1 `WorkerCrash` newly measured by this pass) is in §12.4.
+
+Pass 4 (ruling R19) ran `origins_all_v4` from a fresh snapshot at `c0f8af0` (the commit that adds
+the `isqp_l1` config): `--resume origins_all_v3 --config <the 7> isqp_l1 --isolate-config
+slsqp_windowed --n-workers 4`, reusing the 188 rows `origins_all_v3` had measured and running only
+the 27 new `isqp_l1` pairs plus the single R18 rerun of the crashed `WorkerCrash` pair — 28 reruns
+in total, 216/216 rows, 0 pool breaks, git commit `c0f8af0`, `dvfopt/` still identical to main. The
+27 new `isqp_l1` pairs ran pooled at `n_workers=4` (a throughput pass), unlike pass 3's isolated
+`slsqp_windowed` pairs. `origins_all_v4` is the FINAL origins run directory; its tracked copy is
+`docs/paper/results/2d_canonical/origins/`.
 
 ### 12.6 Driver defect D1 and the no-progress watchdog
 
@@ -811,7 +866,12 @@ Proxy caveat: "both edge projections < 0" flags any cell rotated past 90°. A sm
 rotation is a valid injective deformation, so the proxy is not a fold indicator. The claim is
 about cells the engine introduced, never global injectivity.
 
-<!-- ORIGINS-FINAL: filled after pass 3 -->
+**The final origins census.** Over the FINAL origins directory (`origins_all_v4`, every certified
+row across all 8 configs): **117 certified origins outputs, 0 introduced rotated cells** past 90°.
+This is the origins-final number, separate from the 399-output figure above, which covers the
+other tracked sources (`origins_serial`, `ants_isqp`, `cohort_isqp`) plus the pre-final origins
+rows measured before the taxonomy closed — the two figures are not summed, since the 399 already
+counts an earlier, superseded slice of the origins rows. The same proxy caveat applies to both.
 
 ### 12.8 Engine follow-up: `sqp_iters` misses the polish iterations
 
@@ -824,10 +884,43 @@ is outside this benchmark's branch, which leaves `dvfopt/` untouched.
 
 ### 12.9 Artefacts
 
-Tracked: `docs/paper/results/2d_canonical/{crops, synthetic, origins_serial, ants, cohort}/`.
-Gitignored run directories: `benchmarks/output/2d_canonical/<row>/`. Corrected fields:
+Tracked: `docs/paper/results/2d_canonical/{crops, synthetic, origins, origins_serial, ants,
+cohort}/` — `origins/` (the FINAL 8-config taxonomy, from `origins_all_v4`) joins the previously
+tracked sources; `crops/` and `synthetic/` now carry the `isqp_l1` row alongside their original
+seven. Gitignored run directories: `benchmarks/output/2d_canonical/<row>/`, including the pass
+history `origins_all` (invalid, pre-`--resume`) / `origins_all_recovered` / `origins_all_v3` /
+`origins_all_v4` and `crops_all_v2` / `synthetic_all_v2`. Corrected fields:
 `data/dvfs/results/<run>/<source>/<case>__<config>.npz`, each listed with its sha256 in the
 source's `manifest.json`. `origins_all/` and `origins_all_partial_restart/` hold aggregates over
-sentinel rows and must not be used.
+sentinel rows and must not be used; `origins_all_v3`'s own aggregates are likewise superseded by
+`origins_all_v4`'s.
 
-<!-- ORIGINS-FINAL: filled after pass 3 -->
+### 12.10 The `isqp_l1` amendment (ruling R19)
+
+The user asked, after the pre-registered protocol had closed, for the windowed engine's own L1
+anchor as a benchmark row: `isqp_l1 = dict(constraint="bilinear", strategy="isqp_windowed",
+objective="l1")`. This is documented engine behaviour, not a new code path — the exact-line-search
+step rule fits the eps-smoothed L1 approximation and falls back to the `'tr'` ratio-test
+acceptance when the true merit did not decrease. Scope was the three small sources only (origins,
+crops, synthetic — 43 pairs); cohort and ANTs kept their two pre-registered engine rows.
+
+**Numbers** (`origins_all_v4` / `crops_all_v2` / `synthetic_all_v2`, verified against
+`results.csv` and `summary.json`): origins 24/27 certified (median wall 45.7 s, L2 move 22.35, L1
+move 883.5, moved fraction 0.108), against `isqp_none` (26/27, 7.8 s, 18.12, 1075.1, 0.191) and
+`isqp_l2` (27/27, 32.1 s, 17.87, 1033.8, 0.181); `auto` medians 21.0 s. Crops 3/3 (L2 move 681.5,
+the smallest of the four engine rows against `isqp_none` 787.5 and `isqp_l2` 690.5; L1 move
+16,981, also the smallest; wall 19.6 s). Synthetic 13/13 (moved fraction 0.56 vs 0.81 for
+`isqp_l2` and 1.0 for `isqp_none`).
+
+**The three origins misses** are the three heaviest brain-pair fields: `m2_demons_brainpair_weak`
+(10 bilinear cells below the gauge after 3,352 s), `m2_ffd_brainpair_fine` (3 below after 3,837 s)
+and `m2_ffd_brainpair_coarse` (57 below, worst −0.0068, after 16,483 s — the only capped engine
+row, `hit_cap=True`). On this evidence the eps-smoothed L1 anchor is less robust than `none` /
+`l2` on dense fold fields.
+
+Over the 24 origins cases where all three engine objectives (`none`, `l1`, `l2`) certify: total L2
+move 2,968 / 2,629 / 2,420; total L1 move 239,194 / 157,690 / 151,646; total wall 1,655 s / 3,564 s
+/ 5,311 s. Pairwise against `isqp_l2`, `isqp_l1` wins the L1 move on 16/24 cases but never the L2
+move (0/24), and loses the L1 total only because the heaviest cases dominate the sum. The real
+signature of the L1 anchor is **sparsity** — a smaller moved fraction (0.108 vs 0.181) — not a
+smaller total move, and it is not a faster route than `none` or `l2` either.
