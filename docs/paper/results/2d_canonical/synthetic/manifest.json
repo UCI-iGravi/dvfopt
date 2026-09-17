@@ -1,8 +1,8 @@
 {
-  "run": "synthetic_all",
+  "run": "synthetic_all_v2",
   "notes": [
     "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
-    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+    "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort and on cohort slices with no correspondences, and a run that never produced a result (load failure / dead worker / WatchdogTimeout, the last with hit_cap=True and kept by --resume) is a full -1 row with feasible=False and its error. Exception: mop_cleared is SIGNED (before minus after the mop), so -1 on a windowed row (damage >= 0) is a measurement. sqp_iters excludes the re-seed / re-anchor polish iterations (the engine history records those stages with n_iter=0). Rates and denominators count every row; the median/IQR aggregates skip sentinel rows."
   ],
   "fields": [
     {
@@ -852,7 +852,7 @@
       "config": "isqp_none",
       "shape": "3x1x7x7",
       "sha256": "0ff77e286a51897ad5a02cfb9b0ceff9cf8b9270183b490af3ab8effe196585f",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -862,7 +862,7 @@
       "config": "isqp_l2",
       "shape": "3x1x7x7",
       "sha256": "d26d5fa4425037f8038b74301859446486a1db5e33da243d5b4ba5ba8c5038ce",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -872,7 +872,7 @@
       "config": "auto",
       "shape": "3x1x7x7",
       "sha256": "2801028e6dae5e09716f3eda4f588734340e275dee036c36e8a96361783ffc5c",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -882,7 +882,7 @@
       "config": "slp",
       "shape": "3x1x7x7",
       "sha256": "2ba0d503816189522fbc015eef4d087b7021773d460b1d6572dad4d0b70d189a",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -892,7 +892,7 @@
       "config": "barrier",
       "shape": "3x1x7x7",
       "sha256": "f939881693e5db4eb9c211e79127d2a54118d2d7c2350c51f63c5f771963b1da",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -902,7 +902,7 @@
       "config": "m14",
       "shape": "3x1x7x7",
       "sha256": "a8923095ebd83c3b6ead0a62992494a9e03654b18d8a13c1123289182e91c622",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     },
     {
@@ -912,7 +912,137 @@
       "config": "slsqp_windowed",
       "shape": "3x1x7x7",
       "sha256": "57ad96632fe704844b30cbb9ee02392ba0426558059c8d5a33b2a6145bd551ba",
-      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01a_10x10_crossing__isqp_l1.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "ac9aea55a19e38baf3e95e8c9d5bb1f5606ee36fb43cc8f5bd6cf3f2a05ed155",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01b_10x10_opposite__isqp_l1.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "48f1ee8bff3082a74168be98a37a45d52480d2b23e6194ae94f475cdd764cd78",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01c_20x40_edges__isqp_l1.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x40",
+      "sha256": "1a52b24f3fb7d2ffc416846bf00136a59a49f07b9f86c3dad72eb39d2872bcd0",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01d_20x40_crossing__isqp_l1.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x40",
+      "sha256": "12d4a7fc42d2f815270cc63a6e45115dcb2b5be70981c37d364f8438a962102e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03a_10x10_opposite__isqp_l1.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "2d65822e001770c4d9098283b6d8761e8172b1d9d9a01041d60ef87f581d95ee",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03b_10x10_crossing__isqp_l1.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "6733b6b6398a17921a0c1aab96c3747d3a26b102320d582db652c7a8889ecc9f",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03c_20x20_opposite__isqp_l1.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1fbb396e75e8dc438d2a6dffce2dbee670e8623187acac1277d7e95b6d032022",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03d_20x20_crossing__isqp_l1.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "d34564521fd0746d6d58848bcf925b146b6a534fe55fefe7963cc741ce1d0025",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01e_20x20_random_spirals__isqp_l1.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1c68c1044f5f12e200c9b034c33f467f39b53c5daa07401b73c0207235bde072",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01f_20x20_random_seed_42__isqp_l1.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "126a012aa53043a392f360f7ccf465077420114f4bc1e3df0dd5ca35ff5685ce",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03a_10x10_random_seed_42__isqp_l1.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "0feb3c3b6082b1481a0366db80800d2c25d1c7f84baa684ad2a98c50cd916703",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03c_20x20_random_seed_42__isqp_l1.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1c68c1044f5f12e200c9b034c33f467f39b53c5daa07401b73c0207235bde072",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\bowtie_7x7_shoelace__isqp_l1.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x7x7",
+      "sha256": "18ca7039959c4ff5719662296e73ec1ccbfb6c2cb63cb77915fbbdc94bfbba4c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
       "error": ""
     }
   ]

@@ -1,13 +1,17 @@
 {
   "provenance": {
-    "git_commit": "cdbf5f4",
+    "git_commit": "c0f8af0",
+    "git_dirty": false,
+    "dvfopt_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\dvfopt",
+    "driver_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\benchmarks\\canonical_2d.py",
+    "watchdog_timeout_s": 21600.0,
     "dvfopt_version": "0.5.0",
-    "generated": "2026-09-14T19:47:11",
+    "generated": "2026-09-17T02:42:17",
     "python": "3.12.13",
     "platform": "Windows-11-10.0.26200-SP0",
     "n_workers": 1,
     "timing_mode": "throughput",
-    "box_load_pct_at_start": 24.0,
+    "box_load_pct_at_start": 4.0,
     "threshold": 0.01,
     "err_tol": 1e-05,
     "time_budget_s": null,
@@ -51,10 +55,27 @@
         "constraint": "jdet",
         "strategy": "slsqp_windowed",
         "objective": "l2"
+      },
+      "isqp_l1": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "l1"
       }
     },
     "sdlogj_clip": 0.001,
-    "total_time_s": 84.19033190002665
+    "total_time_s": 18.968126399995526,
+    "pool_breaks": 0,
+    "worker_crashes": 0,
+    "isolated_configs": [],
+    "resumed_from": "benchmarks/output/2d_canonical/synthetic_all",
+    "n_reused": 91,
+    "n_rerun": 13,
+    "rerun_reasons": {
+      "missing": 13,
+      "BrokenProcessPool": 0,
+      "WorkerCrash": 0,
+      "dvf_missing_or_sha_mismatch": 0
+    }
   },
   "gauges": {
     "simplex": {
@@ -86,10 +107,10 @@
   },
   "notes": [
     "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
-    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+    "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort and on cohort slices with no correspondences, and a run that never produced a result (load failure / dead worker / WatchdogTimeout, the last with hit_cap=True and kept by --resume) is a full -1 row with feasible=False and its error. Exception: mop_cleared is SIGNED (before minus after the mop), so -1 on a windowed row (damage >= 0) is a measurement. sqp_iters excludes the re-seed / re-anchor polish iterations (the engine history records those stages with n_iter=0). Rates and denominators count every row; the median/IQR aggregates skip sentinel rows."
   ],
-  "n_runs": 91,
-  "n_certified": 45,
+  "n_runs": 104,
+  "n_certified": 58,
   "groups": {
     "synthetic/auto": {
       "n": 13,
@@ -360,6 +381,158 @@
         "iqr": 20.0,
         "min": 0.0,
         "max": 42.0,
+        "n": 13
+      }
+    },
+    "synthetic/isqp_l1": {
+      "n": 13,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 13,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 0.4712860999861732,
+        "q1": 0.16843849999713711,
+        "q3": 1.7372407000220846,
+        "iqr": 1.5688022000249475,
+        "min": 0.035743099986575544,
+        "max": 7.234977100015385,
+        "n": 13
+      },
+      "l1_move": {
+        "median": 43.981129850719526,
+        "q1": 8.02797794344135,
+        "q3": 388.01055122116753,
+        "iqr": 379.9825732777262,
+        "min": 2.0599029439290923,
+        "max": 1458.013848958891,
+        "n": 13
+      },
+      "l2_move": {
+        "median": 7.014777558647096,
+        "q1": 3.2734132283067203,
+        "q3": 33.68999379951912,
+        "iqr": 30.416580571212403,
+        "min": 1.0531421380459558,
+        "max": 90.98208182063775,
+        "n": 13
+      },
+      "max_move": {
+        "median": 3.0746775529058246,
+        "q1": 2.067185838907317,
+        "q3": 7.540835692563014,
+        "iqr": 5.473649853655696,
+        "min": 0.7093685798439716,
+        "max": 17.708497526712005,
+        "n": 13
+      },
+      "moved_frac": {
+        "median": 0.56,
+        "q1": 0.455,
+        "q3": 1.0,
+        "iqr": 0.5449999999999999,
+        "min": 0.28,
+        "max": 1.0,
+        "n": 13
+      },
+      "sqp_iters": {
+        "median": 30.0,
+        "q1": 19.0,
+        "q3": 39.0,
+        "iqr": 20.0,
+        "min": 5.0,
+        "max": 183.0,
+        "n": 13
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 13
+      },
+      "n_windows": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 1.0,
+        "max": 4.0,
+        "n": 13
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 13
+      },
+      "sdlogj_init": {
+        "median": 2.3096815629176173,
+        "q1": 1.8660990071875083,
+        "q3": 3.6964764765384888,
+        "iqr": 1.8303774693509804,
+        "min": 0.2072524478741433,
+        "max": 4.302505258063545,
+        "n": 13
+      },
+      "sdlogj_final": {
+        "median": 1.0491635882419388,
+        "q1": 0.8727487523596298,
+        "q3": 1.4041640358862724,
+        "iqr": 0.5314152835266426,
+        "min": 0.05728878185186958,
+        "max": 2.1614603777134143,
+        "n": 13
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.14,
+        "q1": 0.075,
+        "q3": 0.37,
+        "iqr": 0.295,
+        "min": 0.0,
+        "max": 0.4725,
+        "n": 13
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 13
+      },
+      "n_neg_init": {
+        "median": 34.0,
+        "q1": 14.0,
+        "q3": 148.0,
+        "iqr": 134.0,
+        "min": 0.0,
+        "max": 189.0,
+        "n": 13
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
         "n": 13
       }
     },
