@@ -1,0 +1,11 @@
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| crops (TUNING SET) | auto | 3 | 3/3 | 3/3 | 32.17 [31.35, 75.42] | 1.743e+04 [9596, 2.131e+04] | 690.5 [380.6, 748.2] | 2.66 -> 1.586 | 0.208 -> 0 | 0 |
+| crops (TUNING SET) | barrier | 3 | 0/3 | 1/3 | 2.195 [1.115, 2.372] | 1331 [665.3, 4431] | 47.19 [23.6, 157.7] | 2.66 -> 1.788 | 0.208 -> 0.0264 | n/a |
+| crops (TUNING SET) | isqp_l1 | 3 | 3/3 | 3/3 | 19.57 [12.91, 93.79] | 1.698e+04 [9254, 1.894e+04] | 681.5 [380.8, 697.1] | 2.66 -> 1.687 | 0.208 -> 0 | 0 |
+| crops (TUNING SET) | isqp_l2 | 3 | 3/3 | 3/3 | 41.43 [35.68, 177.1] | 1.743e+04 [9596, 2.155e+04] | 690.5 [380.6, 800.5] | 2.66 -> 1.795 | 0.208 -> 0 | 0 |
+| crops (TUNING SET) | isqp_none | 3 | 3/3 | 3/3 | 6.28 [4.813, 45.43] | 2.466e+04 [1.459e+04, 2.492e+04] | 787.5 [455.3, 796.6] | 2.66 -> 1.586 | 0.208 -> 0 | 0 |
+| crops (TUNING SET) | m14 | 3 | 0/3 | 1/3 | 6.617 [5.973, 8.955] | 2050 [1025, 5997] | 76.68 [38.34, 193.8] | 2.66 -> 1.677 | 0.208 -> 0.0216 | n/a |
+| crops (TUNING SET) | slp | 3 | 0/3 | 2/3 | 8.286 [7.491, 9.169] | 2114 [1057, 1.477e+04] | 87.11 [43.55, 514.8] | 2.66 -> 1.677 | 0.208 -> 0.004 | n/a |
+| crops (TUNING SET) | slsqp_windowed | 3 | 0/3 | 3/3 | 915.6 [457.8, 4000] | 975.5 [487.8, 3057] | 34 [17, 113.8] | 2.66 -> 2.004 | 0.208 -> 0 | n/a |

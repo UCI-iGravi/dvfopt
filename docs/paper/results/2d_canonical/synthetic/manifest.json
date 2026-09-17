@@ -1,0 +1,1049 @@
+{
+  "run": "synthetic_all_v2",
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort and on cohort slices with no correspondences, and a run that never produced a result (load failure / dead worker / WatchdogTimeout, the last with hit_cap=True and kept by --resume) is a full -1 row with feasible=False and its error. Exception: mop_cleared is SIGNED (before minus after the mop), so -1 on a windowed row (damage >= 0) is a measurement. sqp_iters excludes the re-seed / re-anchor polish iterations (the engine history records those stages with n_iter=0). Rates and denominators count every row; the median/IQR aggregates skip sentinel rows."
+  ],
+  "fields": [
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__isqp_none.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x10x10",
+      "sha256": "00a5c37c4568e67e8a71995583cfd3fcd4536ec0d167905ec694626e89b15c72",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__isqp_l2.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x10x10",
+      "sha256": "c5a1f925a5902ca88111e52dd2d385b7449758ba7061233df7076a1641bc962a",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__auto.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x10x10",
+      "sha256": "dbe8415017686f2c943730d8f870a044d8f4f48a72f0e0a5a36df73000992d3a",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__slp.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x10x10",
+      "sha256": "7a55eaaecbd0f548b03d90b8c72910662cbfcfbbb4eb4e75faf379d8978391af",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__barrier.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x10x10",
+      "sha256": "bef9dbfcf83b981bb1e559e1fce049b91f1205c8856c150aaca3442ec120db64",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__m14.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x10x10",
+      "sha256": "2ff0d1543a37b4d04929ab0336e3046d3075666aab845930b3266da0dfc4fee4",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01a_10x10_crossing__slsqp_windowed.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x10x10",
+      "sha256": "b327f1662320bea4ad405b9b1b520387f3903cb442b0cd0a3e86cabd2af068a5",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__isqp_none.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x10x10",
+      "sha256": "9d716c54887a725ba3b85b667ea516b1bce3444145ebe4d347c0b98b221d6508",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__isqp_l2.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x10x10",
+      "sha256": "7a06d1ddd5299cdb8aef13f5d91c2a537fd2469354b2198c030b1c087438c380",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__auto.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x10x10",
+      "sha256": "249d59ee398a9c02f70a01cbb594cb5b34398fae7c400f8227da8b6f63e5422b",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__slp.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x10x10",
+      "sha256": "91688f82b15893afd976e32c049691489a85429cf02fd398972ded33e3c18976",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__barrier.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x10x10",
+      "sha256": "f049c628cdb388620dfbe81d21efeda3093ad51f71d2f2a3f321b390b98a7867",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__m14.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x10x10",
+      "sha256": "b04ccbd0fa75671bc62db7fac913a5787873ab3631230600a06452535da4397e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01b_10x10_opposite__slsqp_windowed.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x10x10",
+      "sha256": "b5510c3ff99cec501b90933345a6c9c033ee68bc2675f57081349e72a8c030ff",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__isqp_none.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x40",
+      "sha256": "1caa65d724a2c2daae3181b86d05ac8d3eb32e29d91edf32351a1df758d68b7e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__isqp_l2.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x40",
+      "sha256": "d2c748671881a08de141131b7660c41fab0d06f265c2dcdfe04d38c2d8ae1627",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__auto.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x40",
+      "sha256": "d1324555d6c676d05d979858885877a47dc6cbe501eca0260f87c297f6134a75",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__slp.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x40",
+      "sha256": "4f28f248ba101e4d03feaec10b98e838f2b8fd549171f1a70e3dc4c9f5562e03",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__barrier.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x40",
+      "sha256": "ae36ef1d91ac5c82a49bd51d784e87db6702b7764b5ec67f198681e6d0a73d95",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__m14.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x40",
+      "sha256": "42b52bb102d047afc3fefb32d30cc95059441a67971ef114ab11d406d3869bd1",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01c_20x40_edges__slsqp_windowed.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x40",
+      "sha256": "e9c179b5043fc67bd95c417720448c0625b38cfe088e4fe254182a1afcd4c7e9",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__isqp_none.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x40",
+      "sha256": "005a0bcd90d9e2f53e92225b211881cdf23d533ad3525037593ac6e5ccf62aa3",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__isqp_l2.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x40",
+      "sha256": "70d824aee1a25a47889d0af77f488014c5b43a5d4547cf83b6e3eae754169fdb",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__auto.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x40",
+      "sha256": "d6cf8edbc5ac85852f0a1c56e4a3e83d2cb71dfe3c3f50fd2415168db1713885",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__slp.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x40",
+      "sha256": "b392f9a2a3139b7c77a93a69c7c18a5a4cdf47de0bb0104a39196067ec8a3ba5",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__barrier.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x40",
+      "sha256": "202fd115376287ae742e4848e213bc1cff61eda751153cc32e81ce381f5bcd59",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__m14.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x40",
+      "sha256": "b782ac2f43488fbd80a22597dbc41663b50356a4dfc880d2a97760bc5cb4f4df",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01d_20x40_crossing__slsqp_windowed.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x40",
+      "sha256": "18fda04a0b859680455863319099453db8c48192bc9bc0c0e2e1551adfeea8cc",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__isqp_none.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x10x10",
+      "sha256": "d5871b72ec7c0f41d9e72f002b8782146ba08eec59f26c9c08a1b21d87386edc",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__isqp_l2.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x10x10",
+      "sha256": "18551192812ee97e0761c5e44b728d7b9da4dc0fad8e822506db4239dc81b4cf",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__auto.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x10x10",
+      "sha256": "4abf9a5b11f94b7df27ba7abb524303bee610341875a18b7fb714414baa3dd3c",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__slp.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x10x10",
+      "sha256": "a58b4da1a4757007d8a0bd2f129b2bef7d9578dd1f476f17b9d1be5193f47685",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__barrier.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x10x10",
+      "sha256": "17e27210cc7359985c222220e26978e72845edad7ca5ed4187d4d87e95b22758",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__m14.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x10x10",
+      "sha256": "192489ced83ccffea71aa303aaa12639499c7e7edd26761873c25be99629bfaf",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_opposite__slsqp_windowed.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x10x10",
+      "sha256": "ffaf375ed83e41034e2ecd3dfda36549dca6ec449000132394ec9a950e4646f4",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__isqp_none.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x10x10",
+      "sha256": "a23f326f4947928d6ae79a0362dbbce5f11dad1b83a9daf19c812f95b2ada9bc",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__isqp_l2.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x10x10",
+      "sha256": "7436b00e2bd12f78a05d00cfbd462bf50dffaf9642454bd4a1cd10d5dfe298fb",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__auto.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x10x10",
+      "sha256": "52dbd5d8db95890144dd47455f49569f61dbbf6fb04a1ebe2949dd7cafd0d687",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__slp.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x10x10",
+      "sha256": "248a58aeda8411ec184e854aa8107ab9af8e44c664e98a1714ee1961bc2f879b",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__barrier.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x10x10",
+      "sha256": "c667bc0cefd666e6100df3a129a5b0d40d3eaff408a853152b7ed79a3c9caf5b",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__m14.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x10x10",
+      "sha256": "61482a90c90eb603c2ee490161745b2e122ff8f3a726bba393ee09be3f1e183e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03b_10x10_crossing__slsqp_windowed.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x10x10",
+      "sha256": "d3494dd54e70e9bdf182af5ab81a9815ff110a6812ea2a436cc82bd8165c2555",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__isqp_none.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x20",
+      "sha256": "7240a9de8ff617cefd58fe5fa1ff813625ed9730ad55c65efa2b16e41a71344e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__isqp_l2.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x20",
+      "sha256": "a4e8581193ab55926b89579e8a94951495fdb815c941601de4ceaa040446028e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__auto.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x20",
+      "sha256": "b38bd4047d1a85beb7b36a7466a3ffdcdc3e95e69b8ed1a663895b2fad3b5ca0",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__slp.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x20",
+      "sha256": "0f968e6d23d695d24a9208b013598464ef50839a6eddfa03ade2c97cb8e249f9",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__barrier.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x20",
+      "sha256": "4907eb00b41c68b850640ac2dde25df8c60539ab76c4a7e0cebdd33b21ba40fd",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__m14.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x20",
+      "sha256": "90be3f9571fa2e37c2b73a0a4eeb9788bfe9272a38da1508ff8da8e1bc246db9",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_opposite__slsqp_windowed.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x20",
+      "sha256": "cc4a538e8bcbd85baab75c73941e6fd6c3cffc63e1c61fd3cb86b06b95c30070",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__isqp_none.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x20",
+      "sha256": "58a1f1b9dc9673434a673ca3652c4b483901fab5bc4160c5126535503ce44fe5",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__isqp_l2.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x20",
+      "sha256": "9635493dd1fb02f222a6844d750311dc7be853d9977a85d914a8484c77c68e66",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__auto.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x20",
+      "sha256": "d0a1e8c140d551df1bfff3aebb7a76871621224afaa9bed261f6c4c8f682ba60",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__slp.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x20",
+      "sha256": "6da8bb8e21f18278543973ccd00459a84a3fe842921ba977a5211193fbd3c581",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__barrier.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x20",
+      "sha256": "4f635c0bb251cdbff6cb5fca565dda4b875fb678005b1579c8fe5d0aee1a2a22",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__m14.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x20",
+      "sha256": "3f60b9e0503b2b2051d4c43b5e7da1b2ec3a252093c4da55b4fbec9ab6a0610b",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03d_20x20_crossing__slsqp_windowed.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x20",
+      "sha256": "5294cbae00a6865661c56968800ea26a811ca8d643475f95b86bbdc3f25ce7b5",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__isqp_none.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x20",
+      "sha256": "d37b13aee3c5345f6f672f9209e3eb09ec99624ca5042bfd4c15a549bf6330ed",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__isqp_l2.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x20",
+      "sha256": "e5c5606d4ecd0d1b252a4c8fb5056f44508242c09c63b89d685645a2c52c4e55",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__auto.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x20",
+      "sha256": "ec61bf2f0d148db7764c4278b310b7a0af091da928a2f6e9b4ae53a2fd8d3767",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__slp.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x20",
+      "sha256": "626cfecd627c3ffd7d0107328760a9a27db48a3db6171e7cee9cd1b519f28ba6",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__barrier.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x20",
+      "sha256": "b9c5882f20f0d1f988a7a85c59d7700f98179e68f06f3169fa3b352ec3b41604",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__m14.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x20",
+      "sha256": "2c32bfd08386d4524c75bc919a2c591d98b1a9c0294a57dff8738bac600c9436",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01e_20x20_random_spirals__slsqp_windowed.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x20",
+      "sha256": "ad400f8f42fdb50c94169e896b30b14dae93d332cfc5e0d47dd842d83a72ad02",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__isqp_none.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x20",
+      "sha256": "d5e61b318726f99d14cf50952e9066b416b4ea96a3b69f279c4bff3d35318351",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__isqp_l2.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x20",
+      "sha256": "6f734c2baa0e38f18f0ebdbf01ed72d9152fa36b1d256711e72858ed00c63fd2",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__auto.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x20",
+      "sha256": "acb471676c85e33bdcb91a047b780c515b55c3ed886eb1445c37b581a76bf84b",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__slp.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x20",
+      "sha256": "6d84b0f7667b276adc8e6e7ac0f21a1de7fc23a803cdb5199f8b326edef5cb43",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__barrier.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x20",
+      "sha256": "55d9edf49a155fe168f800def4dae737ee56a4dccbfe030669480590eb1922b1",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__m14.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x20",
+      "sha256": "54bbbdcb8430a8391f28391779725d09f162b9f85806e9707f8ac0e2209f59f1",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\01f_20x20_random_seed_42__slsqp_windowed.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x20",
+      "sha256": "427f199f9d22ba701fe275caab7a96834b903878294823789cd61d52ca560115",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__isqp_none.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x10x10",
+      "sha256": "59a99889efa29194bdfcfb523601ec277e56d078e9bd8691d9ff3b35027ecb1f",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__isqp_l2.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x10x10",
+      "sha256": "f572d3f92eeacf994447087c6abe55ab48643eedd0dc7d15b9d649983a47945c",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__auto.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x10x10",
+      "sha256": "f26c8a181113c92f8b9f38e02544b4dec4161687850b0b2e49d0b4077947d399",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__slp.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x10x10",
+      "sha256": "97db29d1b828be9d8749db0dce8aa09243a00605c9a598a5e82aff1230cf423a",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__barrier.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x10x10",
+      "sha256": "87fe57cd594414cbf6374f8595df4213814871b3f20e788d90d20c7e02367abc",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__m14.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x10x10",
+      "sha256": "014499e4accc2f3d9951cc9b67cd63ccc842edf7287fc204c04856b62e4a2adf",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03a_10x10_random_seed_42__slsqp_windowed.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x10x10",
+      "sha256": "7a978c5d63b4fefb0e07151534426418d7a75cebafda5b0c35660525de37fe1d",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__isqp_none.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x20x20",
+      "sha256": "d37b13aee3c5345f6f672f9209e3eb09ec99624ca5042bfd4c15a549bf6330ed",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__isqp_l2.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x20x20",
+      "sha256": "e5c5606d4ecd0d1b252a4c8fb5056f44508242c09c63b89d685645a2c52c4e55",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__auto.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x20x20",
+      "sha256": "ec61bf2f0d148db7764c4278b310b7a0af091da928a2f6e9b4ae53a2fd8d3767",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__slp.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x20x20",
+      "sha256": "626cfecd627c3ffd7d0107328760a9a27db48a3db6171e7cee9cd1b519f28ba6",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__barrier.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x20x20",
+      "sha256": "b9c5882f20f0d1f988a7a85c59d7700f98179e68f06f3169fa3b352ec3b41604",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__m14.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x20x20",
+      "sha256": "2c32bfd08386d4524c75bc919a2c591d98b1a9c0294a57dff8738bac600c9436",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\03c_20x20_random_seed_42__slsqp_windowed.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x20x20",
+      "sha256": "ad400f8f42fdb50c94169e896b30b14dae93d332cfc5e0d47dd842d83a72ad02",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__isqp_none.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "isqp_none",
+      "shape": "3x1x7x7",
+      "sha256": "0ff77e286a51897ad5a02cfb9b0ceff9cf8b9270183b490af3ab8effe196585f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__isqp_l2.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "isqp_l2",
+      "shape": "3x1x7x7",
+      "sha256": "d26d5fa4425037f8038b74301859446486a1db5e33da243d5b4ba5ba8c5038ce",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__auto.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "auto",
+      "shape": "3x1x7x7",
+      "sha256": "2801028e6dae5e09716f3eda4f588734340e275dee036c36e8a96361783ffc5c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__slp.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "slp",
+      "shape": "3x1x7x7",
+      "sha256": "2ba0d503816189522fbc015eef4d087b7021773d460b1d6572dad4d0b70d189a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__barrier.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "barrier",
+      "shape": "3x1x7x7",
+      "sha256": "f939881693e5db4eb9c211e79127d2a54118d2d7c2350c51f63c5f771963b1da",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__m14.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "m14",
+      "shape": "3x1x7x7",
+      "sha256": "a8923095ebd83c3b6ead0a62992494a9e03654b18d8a13c1123289182e91c622",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all\\synthetic\\bowtie_7x7_shoelace__slsqp_windowed.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "slsqp_windowed",
+      "shape": "3x1x7x7",
+      "sha256": "57ad96632fe704844b30cbb9ee02392ba0426558059c8d5a33b2a6145bd551ba",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01a_10x10_crossing__isqp_l1.npz",
+      "case": "01a_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "ac9aea55a19e38baf3e95e8c9d5bb1f5606ee36fb43cc8f5bd6cf3f2a05ed155",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01b_10x10_opposite__isqp_l1.npz",
+      "case": "01b_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "48f1ee8bff3082a74168be98a37a45d52480d2b23e6194ae94f475cdd764cd78",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01c_20x40_edges__isqp_l1.npz",
+      "case": "01c_20x40_edges",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x40",
+      "sha256": "1a52b24f3fb7d2ffc416846bf00136a59a49f07b9f86c3dad72eb39d2872bcd0",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01d_20x40_crossing__isqp_l1.npz",
+      "case": "01d_20x40_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x40",
+      "sha256": "12d4a7fc42d2f815270cc63a6e45115dcb2b5be70981c37d364f8438a962102e",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03a_10x10_opposite__isqp_l1.npz",
+      "case": "03a_10x10_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "2d65822e001770c4d9098283b6d8761e8172b1d9d9a01041d60ef87f581d95ee",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03b_10x10_crossing__isqp_l1.npz",
+      "case": "03b_10x10_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "6733b6b6398a17921a0c1aab96c3747d3a26b102320d582db652c7a8889ecc9f",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03c_20x20_opposite__isqp_l1.npz",
+      "case": "03c_20x20_opposite",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1fbb396e75e8dc438d2a6dffce2dbee670e8623187acac1277d7e95b6d032022",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03d_20x20_crossing__isqp_l1.npz",
+      "case": "03d_20x20_crossing",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "d34564521fd0746d6d58848bcf925b146b6a534fe55fefe7963cc741ce1d0025",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01e_20x20_random_spirals__isqp_l1.npz",
+      "case": "01e_20x20_random_spirals",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1c68c1044f5f12e200c9b034c33f467f39b53c5daa07401b73c0207235bde072",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\01f_20x20_random_seed_42__isqp_l1.npz",
+      "case": "01f_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "126a012aa53043a392f360f7ccf465077420114f4bc1e3df0dd5ca35ff5685ce",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03a_10x10_random_seed_42__isqp_l1.npz",
+      "case": "03a_10x10_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x10x10",
+      "sha256": "0feb3c3b6082b1481a0366db80800d2c25d1c7f84baa684ad2a98c50cd916703",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\03c_20x20_random_seed_42__isqp_l1.npz",
+      "case": "03c_20x20_random_seed_42",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x20x20",
+      "sha256": "1c68c1044f5f12e200c9b034c33f467f39b53c5daa07401b73c0207235bde072",
+      "input_path": "",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\synthetic_all_v2\\synthetic\\bowtie_7x7_shoelace__isqp_l1.npz",
+      "case": "bowtie_7x7_shoelace",
+      "source": "synthetic",
+      "config": "isqp_l1",
+      "shape": "3x1x7x7",
+      "sha256": "18ca7039959c4ff5719662296e73ec1ccbfb6c2cb63cb77915fbbdc94bfbba4c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\data\\dvfs\\canonical_2tri_2d\\bowtie_7x7_shoelace.npz",
+      "error": ""
+    }
+  ]
+}

@@ -1,0 +1,1206 @@
+{
+  "provenance": {
+    "git_commit": "c0f8af0",
+    "git_dirty": false,
+    "dvfopt_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\dvfopt",
+    "driver_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\benchmarks\\canonical_2d.py",
+    "watchdog_timeout_s": 21600.0,
+    "dvfopt_version": "0.5.0",
+    "generated": "2026-09-17T02:38:32",
+    "python": "3.12.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "n_workers": 4,
+    "timing_mode": "throughput",
+    "box_load_pct_at_start": 0.0,
+    "threshold": 0.01,
+    "err_tol": 1e-05,
+    "time_budget_s": null,
+    "cap_s": 7200.0,
+    "sample": "canonical",
+    "sources": [
+      "origins"
+    ],
+    "configs": {
+      "isqp_none": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "none"
+      },
+      "isqp_l2": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "l2"
+      },
+      "auto": {
+        "constraint": "bilinear",
+        "strategy": "auto",
+        "objective": "auto"
+      },
+      "slp": {
+        "constraint": "simplex_standard",
+        "strategy": "slp",
+        "objective": "l1"
+      },
+      "barrier": {
+        "constraint": "simplex_standard",
+        "strategy": "barrier",
+        "objective": "l2"
+      },
+      "m14": {
+        "constraint": "simplex_standard",
+        "strategy": "m14",
+        "objective": "l2"
+      },
+      "slsqp_windowed": {
+        "constraint": "jdet",
+        "strategy": "slsqp_windowed",
+        "objective": "l2"
+      },
+      "isqp_l1": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "l1"
+      }
+    },
+    "sdlogj_clip": 0.001,
+    "total_time_s": 16554.07058540001,
+    "pool_breaks": 0,
+    "worker_crashes": 1,
+    "isolated_configs": [
+      "slsqp_windowed"
+    ],
+    "resumed_from": "benchmarks/output/2d_canonical/origins_all_v3",
+    "n_reused": 188,
+    "n_rerun": 28,
+    "rerun_reasons": {
+      "missing": 27,
+      "BrokenProcessPool": 0,
+      "WorkerCrash": 1,
+      "dvf_missing_or_sha_mismatch": 0
+    }
+  },
+  "gauges": {
+    "simplex": {
+      "rows": "2 triangles per cell (fixed BL-TR diagonal)",
+      "scale": "triangle area = det/2",
+      "per": "cell (last row/col are +inf)"
+    },
+    "bilinear": {
+      "rows": "4 triangles per cell (both diagonals)",
+      "scale": "triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2",
+      "per": "cell (last row/col are +inf)",
+      "note": "the headline certificate: certified = bilinear_n_below_final == 0"
+    },
+    "finite": {
+      "rows": "forward-difference Jdet (1 triangle per cell)",
+      "scale": "determinant",
+      "per": "cell (last row/col are +inf)"
+    },
+    "jdet": {
+      "rows": "central-difference Jdet",
+      "scale": "determinant",
+      "per": "pixel"
+    },
+    "_gauges": {
+      "n_neg": "count of values <= 0",
+      "n_below": "count of values < threshold - err_tol (0.01 - 1e-05)",
+      "min": "minimum value, at the column's own scale"
+    }
+  },
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort and on cohort slices with no correspondences, and a run that never produced a result (load failure / dead worker / WatchdogTimeout, the last with hit_cap=True and kept by --resume) is a full -1 row with feasible=False and its error. Exception: mop_cleared is SIGNED (before minus after the mop), so -1 on a windowed row (damage >= 0) is a measurement. sqp_iters excludes the re-seed / re-anchor polish iterations (the engine history records those stages with n_iter=0). Rates and denominators count every row; the median/IQR aggregates skip sentinel rows."
+  ],
+  "n_runs": 216,
+  "n_certified": 117,
+  "groups": {
+    "origins/auto": {
+      "n": 27,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 21.00876789999893,
+        "q1": 2.092517950000911,
+        "q3": 132.68474080000033,
+        "iqr": 130.59222284999942,
+        "min": 0.00436259999696631,
+        "max": 5540.204432500001,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 1042.1032545332482,
+        "q1": 21.77413837835238,
+        "q3": 7359.13454669353,
+        "iqr": 7337.360408315178,
+        "min": 0.0,
+        "max": 535555.2397534165,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 17.92794771941789,
+        "q1": 1.843793198886074,
+        "q3": 186.17979182066512,
+        "iqr": 184.33599862177905,
+        "min": 0.0,
+        "max": 4061.9492762176365,
+        "n": 27
+      },
+      "max_move": {
+        "median": 2.080871873817469,
+        "q1": 0.40107519902742994,
+        "q3": 17.059063784648192,
+        "iqr": 16.65798858562076,
+        "min": 0.0,
+        "max": 103.19663760285854,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.1907806396484375,
+        "q1": 0.05372450086805555,
+        "q3": 0.6736860795454546,
+        "iqr": 0.619961578677399,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 175.0,
+        "q1": 28.0,
+        "q3": 377.5,
+        "iqr": 349.5,
+        "min": 0.0,
+        "max": 6715.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 8.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 16.0,
+        "q1": 4.0,
+        "q3": 34.5,
+        "iqr": 30.5,
+        "min": 0.0,
+        "max": 292.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8042072597289324,
+        "q1": 0.3430385855995508,
+        "q3": 1.21447242092554,
+        "iqr": 0.8714338353259892,
+        "min": 0.004048048594251088,
+        "max": 2.1523118452682035,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      }
+    },
+    "origins/barrier": {
+      "n": 27,
+      "feasible_rate": 0.5925925925925926,
+      "certified_rate": 0.1111111111111111,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": null,
+      "n_windowed_rows": 0,
+      "rate_simplex_zero_at_threshold": 0.5925925925925926,
+      "rate_simplex_zero_at_0": 0.5925925925925926,
+      "rate_bilinear_zero_at_threshold": 0.1111111111111111,
+      "rate_bilinear_zero_at_0": 0.1111111111111111,
+      "rate_finite_zero_at_threshold": 0.5925925925925926,
+      "rate_finite_zero_at_0": 0.5925925925925926,
+      "rate_jdet_zero_at_threshold": 0.37037037037037035,
+      "rate_jdet_zero_at_0": 0.4444444444444444,
+      "time_s": {
+        "median": 26.228350799999134,
+        "q1": 2.8524548999976105,
+        "q3": 42.292747099999815,
+        "iqr": 39.440292200002204,
+        "min": 0.02532210000208579,
+        "max": 203.2542682000003,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 263.92568252004344,
+        "q1": 31.511281366897602,
+        "q3": 2598.827994006303,
+        "iqr": 2567.3167126394055,
+        "min": 0.052505826212964735,
+        "max": 318953.38804652216,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 8.516600177715542,
+        "q1": 1.9748330388361384,
+        "q3": 70.25608428030222,
+        "iqr": 68.28125124146608,
+        "min": 0.0032304352264434714,
+        "max": 2431.560030354942,
+        "n": 27
+      },
+      "max_move": {
+        "median": 1.3087157429091398,
+        "q1": 0.2961999799007068,
+        "q3": 8.729224779555524,
+        "iqr": 8.433024799654818,
+        "min": 0.00021106394368075598,
+        "max": 152.1312000233353,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.044921875,
+        "q1": 0.022310892740885414,
+        "q3": 0.4753674439709596,
+        "iqr": 0.45305655123007416,
+        "min": 0.002197265625,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": null,
+      "rounds": null,
+      "n_windows": null,
+      "damage": null,
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8041986044194387,
+        "q1": 0.3860770746365522,
+        "q3": 1.4415595546389681,
+        "iqr": 1.0554824800024158,
+        "min": 0.004043791712448348,
+        "max": 3.338702569982319,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 8.138020833333333e-05,
+        "q1": 0.0,
+        "q3": 0.005900065104166667,
+        "iqr": 0.005900065104166667,
+        "min": 0.0,
+        "max": 0.24725378787878788,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 3.0,
+        "q1": 0.0,
+        "q3": 242.0,
+        "iqr": 242.0,
+        "min": 0.0,
+        "max": 11613.0,
+        "n": 27
+      }
+    },
+    "origins/isqp_l1": {
+      "n": 27,
+      "feasible_rate": 0.8888888888888888,
+      "certified_rate": 0.8888888888888888,
+      "errors": 0,
+      "hit_cap": 1,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 0.8888888888888888,
+      "rate_simplex_zero_at_0": 0.9629629629629629,
+      "rate_bilinear_zero_at_threshold": 0.8888888888888888,
+      "rate_bilinear_zero_at_0": 0.9629629629629629,
+      "rate_finite_zero_at_threshold": 0.8888888888888888,
+      "rate_finite_zero_at_0": 0.9629629629629629,
+      "rate_jdet_zero_at_threshold": 0.9629629629629629,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 45.657442299998365,
+        "q1": 5.882408749996102,
+        "q3": 272.6039547499968,
+        "iqr": 266.72154600000067,
+        "min": 0.0020425000111572444,
+        "max": 16483.145322700002,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 883.4607156557195,
+        "q1": 19.339024612880344,
+        "q3": 5199.359354415981,
+        "iqr": 5180.020329803101,
+        "min": 0.0,
+        "max": 479855.59410865465,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 22.346736395581235,
+        "q1": 2.2168588040572197,
+        "q3": 176.2298341990986,
+        "iqr": 174.0129753950414,
+        "min": 0.0,
+        "max": 3941.889227710102,
+        "n": 27
+      },
+      "max_move": {
+        "median": 2.573829693498845,
+        "q1": 0.5545688807407743,
+        "q3": 20.127594786748908,
+        "iqr": 19.573025906008134,
+        "min": 0.0,
+        "max": 103.78934594403972,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.107666015625,
+        "q1": 0.017374674479166668,
+        "q3": 0.4493408203125,
+        "iqr": 0.4319661458333333,
+        "min": 0.0,
+        "max": 0.9278971354166666,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 277.0,
+        "q1": 74.0,
+        "q3": 1088.5,
+        "iqr": 1014.5,
+        "min": 0.0,
+        "max": 17962.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 5.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 13.0,
+        "q1": 4.0,
+        "q3": 36.5,
+        "iqr": 32.5,
+        "min": 0.0,
+        "max": 933.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8041160518702402,
+        "q1": 0.3187081421592892,
+        "q3": 1.2109346423342384,
+        "iqr": 0.8922265001749492,
+        "min": 0.004048048594251088,
+        "max": 2.1612660411202427,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 2.0,
+        "n": 27
+      }
+    },
+    "origins/isqp_l2": {
+      "n": 27,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 32.12704979999944,
+        "q1": 1.0447196000004624,
+        "q3": 401.0278607000005,
+        "iqr": 399.9831411,
+        "min": 0.0021641999992425554,
+        "max": 6350.1712369000015,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 1033.7526871413436,
+        "q1": 21.27675365484852,
+        "q3": 5702.924310721617,
+        "iqr": 5681.647557066769,
+        "min": 0.0,
+        "max": 535555.2397534165,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 17.86880214397263,
+        "q1": 1.8325459536144484,
+        "q3": 161.49268489495614,
+        "iqr": 159.6601389413417,
+        "min": 0.0,
+        "max": 4061.9492762176365,
+        "n": 27
+      },
+      "max_move": {
+        "median": 1.8987440594643665,
+        "q1": 0.3738615128375107,
+        "q3": 17.080920765351713,
+        "iqr": 16.707059252514203,
+        "min": 0.0,
+        "max": 103.19663760285854,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.1810302734375,
+        "q1": 0.024003770616319444,
+        "q3": 0.6948042436079546,
+        "iqr": 0.6708004729916351,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 176.0,
+        "q1": 20.0,
+        "q3": 342.5,
+        "iqr": 322.5,
+        "min": 0.0,
+        "max": 6715.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 8.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 16.0,
+        "q1": 4.0,
+        "q3": 36.5,
+        "iqr": 32.5,
+        "min": 0.0,
+        "max": 292.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8041989152563622,
+        "q1": 0.34320451398699064,
+        "q3": 1.2961451040073766,
+        "iqr": 0.952940590020386,
+        "min": 0.004048048594251088,
+        "max": 2.1523118452682035,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      }
+    },
+    "origins/isqp_none": {
+      "n": 27,
+      "feasible_rate": 0.9629629629629629,
+      "certified_rate": 0.9629629629629629,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 27,
+      "rate_simplex_zero_at_threshold": 0.9629629629629629,
+      "rate_simplex_zero_at_0": 0.9629629629629629,
+      "rate_bilinear_zero_at_threshold": 0.9629629629629629,
+      "rate_bilinear_zero_at_0": 0.9629629629629629,
+      "rate_finite_zero_at_threshold": 0.9629629629629629,
+      "rate_finite_zero_at_0": 0.9629629629629629,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 7.764883600000758,
+        "q1": 0.7799884500000189,
+        "q3": 58.772678850000375,
+        "iqr": 57.992690400000356,
+        "min": 0.0043994000006932765,
+        "max": 2497.8267824000013,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 1075.0811624398564,
+        "q1": 23.75081557981104,
+        "q3": 8890.804294351095,
+        "iqr": 8867.053478771284,
+        "min": 0.0,
+        "max": 648472.0988764486,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 18.123940075601325,
+        "q1": 1.9705816618892686,
+        "q3": 193.99426591099,
+        "iqr": 192.02368424910074,
+        "min": 0.0,
+        "max": 4530.7334953778645,
+        "n": 27
+      },
+      "max_move": {
+        "median": 2.0855505672405252,
+        "q1": 0.43002646566818203,
+        "q3": 17.16970682552129,
+        "iqr": 16.739680359853107,
+        "min": 0.0,
+        "max": 103.19651762771423,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.1910552978515625,
+        "q1": 0.05372450086805555,
+        "q3": 0.6726616753472222,
+        "iqr": 0.6189371744791666,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": {
+        "median": 40.0,
+        "q1": 12.0,
+        "q3": 184.5,
+        "iqr": 172.5,
+        "min": 0.0,
+        "max": 2572.0,
+        "n": 27
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 5.0,
+        "n": 27
+      },
+      "n_windows": {
+        "median": 12.0,
+        "q1": 3.0,
+        "q3": 29.5,
+        "iqr": 26.5,
+        "min": 0.0,
+        "max": 152.0,
+        "n": 27
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.7980672922280645,
+        "q1": 0.329107986818201,
+        "q3": 1.2142468355305616,
+        "iqr": 0.8851388487123606,
+        "min": 0.004048048594251088,
+        "max": 1.981265602163187,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 27
+      }
+    },
+    "origins/m14": {
+      "n": 27,
+      "feasible_rate": 0.7777777777777778,
+      "certified_rate": 0.14814814814814814,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": null,
+      "n_windowed_rows": 0,
+      "rate_simplex_zero_at_threshold": 0.7777777777777778,
+      "rate_simplex_zero_at_0": 0.7777777777777778,
+      "rate_bilinear_zero_at_threshold": 0.14814814814814814,
+      "rate_bilinear_zero_at_0": 0.14814814814814814,
+      "rate_finite_zero_at_threshold": 0.7777777777777778,
+      "rate_finite_zero_at_0": 0.7777777777777778,
+      "rate_jdet_zero_at_threshold": 0.4444444444444444,
+      "rate_jdet_zero_at_0": 0.48148148148148145,
+      "time_s": {
+        "median": 17.18516510000063,
+        "q1": 6.710596200000509,
+        "q3": 121.09132164999983,
+        "iqr": 114.38072544999932,
+        "min": 0.054277300001558615,
+        "max": 188.42025090000243,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 280.7330329848286,
+        "q1": 10.764316446267816,
+        "q3": 4406.922028778543,
+        "iqr": 4396.157712332275,
+        "min": 0.0005248944343634321,
+        "max": 298933.55158092396,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 8.571422335965046,
+        "q1": 1.1334782060513495,
+        "q3": 151.04601310283348,
+        "iqr": 149.91253489678215,
+        "min": 3.230999902305906e-05,
+        "max": 2119.979518781069,
+        "n": 27
+      },
+      "max_move": {
+        "median": 1.2670848901242167,
+        "q1": 0.2965222739841722,
+        "q3": 20.798269600662255,
+        "iqr": 20.501747326678082,
+        "min": 2.1104259815274418e-06,
+        "max": 115.13113140911943,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.6621212121212121,
+        "q1": 0.1358913845486111,
+        "q3": 0.9917127821180556,
+        "iqr": 0.8558213975694444,
+        "min": 0.00244140625,
+        "max": 1.0,
+        "n": 27
+      },
+      "sqp_iters": null,
+      "rounds": null,
+      "n_windows": null,
+      "damage": null,
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.7629763317109876,
+        "q1": 0.24541919470212947,
+        "q3": 1.1849371663926649,
+        "iqr": 0.9395179716905354,
+        "min": 0.004048002289038325,
+        "max": 2.3770830564581655,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 2.712673611111111e-05,
+        "q1": 0.0,
+        "q3": 0.0006781684027777778,
+        "iqr": 0.0006781684027777778,
+        "min": 0.0,
+        "max": 0.072021484375,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 2.0,
+        "q1": 0.0,
+        "q3": 34.0,
+        "iqr": 34.0,
+        "min": 0.0,
+        "max": 4121.0,
+        "n": 27
+      }
+    },
+    "origins/slp": {
+      "n": 27,
+      "feasible_rate": 0.8888888888888888,
+      "certified_rate": 0.1111111111111111,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": null,
+      "n_windowed_rows": 0,
+      "rate_simplex_zero_at_threshold": 0.8888888888888888,
+      "rate_simplex_zero_at_0": 0.8888888888888888,
+      "rate_bilinear_zero_at_threshold": 0.1111111111111111,
+      "rate_bilinear_zero_at_0": 0.1111111111111111,
+      "rate_finite_zero_at_threshold": 0.8888888888888888,
+      "rate_finite_zero_at_0": 0.8888888888888888,
+      "rate_jdet_zero_at_threshold": 0.4074074074074074,
+      "rate_jdet_zero_at_0": 0.48148148148148145,
+      "time_s": {
+        "median": 20.12574500000119,
+        "q1": 2.9868252999986,
+        "q3": 194.9929420999997,
+        "iqr": 192.0061168000011,
+        "min": 0.00602219999927911,
+        "max": 5980.0031862000005,
+        "n": 27
+      },
+      "l1_move": {
+        "median": 232.64483144095817,
+        "q1": 8.935580771111962,
+        "q3": 3941.973453665658,
+        "iqr": 3933.037872894546,
+        "min": 0.0,
+        "max": 1223523.9938266533,
+        "n": 27
+      },
+      "l2_move": {
+        "median": 10.331662819225691,
+        "q1": 1.3526950291191204,
+        "q3": 156.20472165480533,
+        "iqr": 154.8520266256862,
+        "min": 0.0,
+        "max": 8159.705446534299,
+        "n": 27
+      },
+      "max_move": {
+        "median": 2.514694034987735,
+        "q1": 0.45279605062956185,
+        "q3": 24.343507198865417,
+        "iqr": 23.890711148235855,
+        "min": 0.0,
+        "max": 147.3346219957393,
+        "n": 27
+      },
+      "moved_frac": {
+        "median": 0.03204345703125,
+        "q1": 0.002292209201388889,
+        "q3": 0.36726888020833337,
+        "iqr": 0.3649766710069445,
+        "min": 0.0,
+        "max": 0.9823626893939394,
+        "n": 27
+      },
+      "sqp_iters": null,
+      "rounds": null,
+      "n_windows": null,
+      "damage": null,
+      "sdlogj_init": {
+        "median": 0.8696291145130913,
+        "q1": 0.4502681613381849,
+        "q3": 2.290789671139142,
+        "iqr": 1.8405215098009569,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 27
+      },
+      "sdlogj_final": {
+        "median": 0.8041337615008969,
+        "q1": 0.31478424843422503,
+        "q3": 1.2966532382179432,
+        "iqr": 0.9818689897837182,
+        "min": 0.004048048594251088,
+        "max": 1.7660807136263834,
+        "n": 27
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.006622314453125,
+        "q1": 0.0,
+        "q3": 0.07256401909722222,
+        "iqr": 0.07256401909722222,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 27
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 5.425347222222222e-05,
+        "q1": 0.0,
+        "q3": 0.004433741714015151,
+        "iqr": 0.004433741714015151,
+        "min": 0.0,
+        "max": 0.02392578125,
+        "n": 27
+      },
+      "n_neg_init": {
+        "median": 205.0,
+        "q1": 0.0,
+        "q3": 721.0,
+        "iqr": 721.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 27
+      },
+      "n_neg_final": {
+        "median": 3.0,
+        "q1": 0.0,
+        "q3": 62.0,
+        "iqr": 62.0,
+        "min": 0.0,
+        "max": 1053.0,
+        "n": 27
+      }
+    },
+    "origins/slsqp_windowed": {
+      "n": 27,
+      "feasible_rate": 0.7037037037037037,
+      "certified_rate": 0.1111111111111111,
+      "errors": 7,
+      "hit_cap": 5,
+      "max_damage": null,
+      "n_windowed_rows": 0,
+      "rate_simplex_zero_at_threshold": 0.1111111111111111,
+      "rate_simplex_zero_at_0": 0.1111111111111111,
+      "rate_bilinear_zero_at_threshold": 0.1111111111111111,
+      "rate_bilinear_zero_at_0": 0.1111111111111111,
+      "rate_finite_zero_at_threshold": 0.14814814814814814,
+      "rate_finite_zero_at_0": 0.18518518518518517,
+      "rate_jdet_zero_at_threshold": 0.7037037037037037,
+      "rate_jdet_zero_at_0": 0.7037037037037037,
+      "time_s": {
+        "median": 0.32159960000717547,
+        "q1": 0.004322699999647739,
+        "q3": 6.697539300000244,
+        "iqr": 6.693216600000596,
+        "min": 0.0021874000085517764,
+        "max": 5488.857968099997,
+        "n": 21
+      },
+      "l1_move": {
+        "median": 13.464777550577633,
+        "q1": 0.0,
+        "q3": 170.16301158799922,
+        "iqr": 170.16301158799922,
+        "min": 0.0,
+        "max": 2889.1088106713346,
+        "n": 21
+      },
+      "l2_move": {
+        "median": 1.5483714037231375,
+        "q1": 0.0,
+        "q3": 7.954837143186438,
+        "iqr": 7.954837143186438,
+        "min": 0.0,
+        "max": 94.90320543987349,
+        "n": 21
+      },
+      "max_move": {
+        "median": 0.24870627301312093,
+        "q1": 0.0,
+        "q3": 1.1674755502865573,
+        "iqr": 1.1674755502865573,
+        "min": 0.0,
+        "max": 26.628776497403848,
+        "n": 21
+      },
+      "moved_frac": {
+        "median": 0.0023057725694444445,
+        "q1": 0.0,
+        "q3": 0.022542317708333332,
+        "iqr": 0.022542317708333332,
+        "min": 0.0,
+        "max": 0.31884765625,
+        "n": 21
+      },
+      "sqp_iters": null,
+      "rounds": null,
+      "n_windows": null,
+      "damage": null,
+      "sdlogj_init": {
+        "median": 0.7426500462634352,
+        "q1": 0.3327044520712579,
+        "q3": 1.0265745883846398,
+        "iqr": 0.6938701363133819,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 21
+      },
+      "sdlogj_final": {
+        "median": 0.6460046717597349,
+        "q1": 0.31150238360596283,
+        "q3": 0.8968051102094012,
+        "iqr": 0.5853027266034384,
+        "min": 0.004048048594251088,
+        "max": 3.7465411281499748,
+        "n": 21
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.0020764802631578947,
+        "q1": 0.0,
+        "q3": 0.0087890625,
+        "iqr": 0.0087890625,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 21
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.3839962121212121,
+        "n": 21
+      },
+      "n_neg_init": {
+        "median": 101.0,
+        "q1": 0.0,
+        "q3": 306.0,
+        "iqr": 306.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 21
+      },
+      "n_neg_final": {
+        "median": 56.0,
+        "q1": 0.0,
+        "q3": 220.0,
+        "iqr": 220.0,
+        "min": 0.0,
+        "max": 16319.0,
+        "n": 21
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ants | isqp_none | 85 | 85/85 | 85/85 | 0.4254 [0.3573, 0.5056] | 0 [0, 0] | 0 [0, 0] | 0.1395 -> 0.1395 | 0 -> 0 | 0 |

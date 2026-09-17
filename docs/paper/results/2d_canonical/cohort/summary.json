@@ -1,0 +1,374 @@
+{
+  "provenance": {
+    "git_commit": "cdbf5f4",
+    "dvfopt_version": "0.5.0",
+    "generated": "2026-09-15T08:01:43",
+    "python": "3.12.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "n_workers": 4,
+    "timing_mode": "throughput",
+    "box_load_pct_at_start": 39.0,
+    "threshold": 0.01,
+    "err_tol": 1e-05,
+    "time_budget_s": null,
+    "cap_s": 7200.0,
+    "sample": "canonical",
+    "sources": [
+      "cohort"
+    ],
+    "configs": {
+      "isqp_none": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "none"
+      },
+      "isqp_l2": {
+        "constraint": "bilinear",
+        "strategy": "isqp_windowed",
+        "objective": "l2"
+      }
+    },
+    "sdlogj_clip": 0.001,
+    "total_time_s": 13386.3346327
+  },
+  "gauges": {
+    "simplex": {
+      "rows": "2 triangles per cell (fixed BL-TR diagonal)",
+      "scale": "triangle area = det/2",
+      "per": "cell (last row/col are +inf)"
+    },
+    "bilinear": {
+      "rows": "4 triangles per cell (both diagonals)",
+      "scale": "triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2",
+      "per": "cell (last row/col are +inf)",
+      "note": "the headline certificate: certified = bilinear_n_below_final == 0"
+    },
+    "finite": {
+      "rows": "forward-difference Jdet (1 triangle per cell)",
+      "scale": "determinant",
+      "per": "cell (last row/col are +inf)"
+    },
+    "jdet": {
+      "rows": "central-difference Jdet",
+      "scale": "determinant",
+      "per": "pixel"
+    },
+    "_gauges": {
+      "n_neg": "count of values <= 0",
+      "n_below": "count of values < threshold - err_tol (0.01 - 1e-05)",
+      "min": "minimum value, at the column's own scale"
+    }
+  },
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "n_runs": 170,
+  "n_certified": 170,
+  "groups": {
+    "cohort/isqp_l2": {
+      "n": 85,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 85,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 209.55547469999874,
+        "q1": 163.98339009999836,
+        "q3": 391.57360510000217,
+        "iqr": 227.5902150000038,
+        "min": 0.2024033000052441,
+        "max": 3985.2322700000004,
+        "n": 85
+      },
+      "l1_move": {
+        "median": 1037.2234331431725,
+        "q1": 751.9556122040431,
+        "q3": 2052.237934977662,
+        "iqr": 1300.282322773619,
+        "min": 0.0,
+        "max": 395725.95897716103,
+        "n": 85
+      },
+      "l2_move": {
+        "median": 36.420758379791685,
+        "q1": 29.873085873364456,
+        "q3": 59.39848561913314,
+        "iqr": 29.525399745768684,
+        "min": 0.0,
+        "max": 2038.1926989634505,
+        "n": 85
+      },
+      "max_move": {
+        "median": 6.6906283033083,
+        "q1": 5.704077810573386,
+        "q3": 9.2067801284076,
+        "iqr": 3.5027023178342134,
+        "min": 0.0,
+        "max": 144.16383379194116,
+        "n": 85
+      },
+      "moved_frac": {
+        "median": 0.23972724780701754,
+        "q1": 0.1452919407894737,
+        "q3": 0.29614857456140353,
+        "iqr": 0.15085663377192984,
+        "min": 0.0,
+        "max": 0.669969846491228,
+        "n": 85
+      },
+      "sqp_iters": {
+        "median": 329.0,
+        "q1": 226.0,
+        "q3": 501.0,
+        "iqr": 275.0,
+        "min": 0.0,
+        "max": 3169.0,
+        "n": 85
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 4.0,
+        "n": 85
+      },
+      "n_windows": {
+        "median": 50.0,
+        "q1": 31.0,
+        "q3": 61.0,
+        "iqr": 30.0,
+        "min": 0.0,
+        "max": 309.0,
+        "n": 85
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      },
+      "sdlogj_init": {
+        "median": 0.35703419150419524,
+        "q1": 0.30700581791496934,
+        "q3": 0.5141818030384844,
+        "iqr": 0.20717598512351504,
+        "min": 0.0,
+        "max": 2.870565447021695,
+        "n": 85
+      },
+      "sdlogj_final": {
+        "median": 0.18607948523340606,
+        "q1": 0.16336903960877872,
+        "q3": 0.33387946053111994,
+        "iqr": 0.17051042092234123,
+        "min": 0.0,
+        "max": 1.7686050783366223,
+        "n": 85
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.0021381578947368422,
+        "q1": 0.0016241776315789474,
+        "q3": 0.004351699561403508,
+        "iqr": 0.002727521929824561,
+        "min": 0.0,
+        "max": 0.1990953947368421,
+        "n": 85
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      },
+      "n_neg_init": {
+        "median": 348.0,
+        "q1": 247.0,
+        "q3": 647.0,
+        "iqr": 400.0,
+        "min": 0.0,
+        "max": 30466.0,
+        "n": 85
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      }
+    },
+    "cohort/isqp_none": {
+      "n": 85,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
+      "errors": 0,
+      "hit_cap": 0,
+      "max_damage": 0,
+      "n_windowed_rows": 85,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
+      "rate_jdet_zero_at_threshold": 1.0,
+      "rate_jdet_zero_at_0": 1.0,
+      "time_s": {
+        "median": 86.45078519999879,
+        "q1": 58.75547919999735,
+        "q3": 176.11312289999842,
+        "iqr": 117.35764370000106,
+        "min": 0.20360470000014175,
+        "max": 2398.209953700003,
+        "n": 85
+      },
+      "l1_move": {
+        "median": 1510.8061842543764,
+        "q1": 1093.6689451756997,
+        "q3": 3538.8463034476,
+        "iqr": 2445.1773582719,
+        "min": 0.0,
+        "max": 571569.8406737009,
+        "n": 85
+      },
+      "l2_move": {
+        "median": 44.32063588795608,
+        "q1": 36.48858337731162,
+        "q3": 75.61473527592265,
+        "iqr": 39.126151898611035,
+        "min": 0.0,
+        "max": 2416.944281400806,
+        "n": 85
+      },
+      "max_move": {
+        "median": 6.799752500390909,
+        "q1": 5.846007912063478,
+        "q3": 9.665468761389674,
+        "iqr": 3.8194608493261955,
+        "min": 0.0,
+        "max": 145.02870860970884,
+        "n": 85
+      },
+      "moved_frac": {
+        "median": 0.278125,
+        "q1": 0.17238212719298246,
+        "q3": 0.3271861293859649,
+        "iqr": 0.15480400219298246,
+        "min": 0.0,
+        "max": 0.6834429824561403,
+        "n": 85
+      },
+      "sqp_iters": {
+        "median": 187.0,
+        "q1": 129.0,
+        "q3": 275.0,
+        "iqr": 146.0,
+        "min": 0.0,
+        "max": 1933.0,
+        "n": 85
+      },
+      "rounds": {
+        "median": 1.0,
+        "q1": 1.0,
+        "q3": 1.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 4.0,
+        "n": 85
+      },
+      "n_windows": {
+        "median": 42.0,
+        "q1": 27.0,
+        "q3": 55.0,
+        "iqr": 28.0,
+        "min": 0.0,
+        "max": 243.0,
+        "n": 85
+      },
+      "damage": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      },
+      "sdlogj_init": {
+        "median": 0.35703419150419524,
+        "q1": 0.30700581791496934,
+        "q3": 0.5141818030384844,
+        "iqr": 0.20717598512351504,
+        "min": 0.0,
+        "max": 2.870565447021695,
+        "n": 85
+      },
+      "sdlogj_final": {
+        "median": 0.17064291296940076,
+        "q1": 0.15093442210859814,
+        "q3": 0.3140119983756556,
+        "iqr": 0.16307757626705743,
+        "min": 0.0,
+        "max": 1.7255807929135918,
+        "n": 85
+      },
+      "frac_nonpos_jdet_init": {
+        "median": 0.0021381578947368422,
+        "q1": 0.0016241776315789474,
+        "q3": 0.004351699561403508,
+        "iqr": 0.002727521929824561,
+        "min": 0.0,
+        "max": 0.1990953947368421,
+        "n": 85
+      },
+      "frac_nonpos_jdet_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      },
+      "n_neg_init": {
+        "median": 348.0,
+        "q1": 247.0,
+        "q3": 647.0,
+        "iqr": 400.0,
+        "min": 0.0,
+        "max": 30466.0,
+        "n": 85
+      },
+      "n_neg_final": {
+        "median": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "iqr": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 85
+      }
+    }
+  }
+}

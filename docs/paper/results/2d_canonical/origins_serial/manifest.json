@@ -1,0 +1,549 @@
+{
+  "run": "origins_serial",
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "fields": [
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_cohort_B0039_z264__isqp_none.npz",
+      "case": "m1_laplacian_cohort_B0039_z264",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "11a2d38abc9dd942bb3f718cad3d61fd0f08017ac075619feb724286374b0557",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_cohort_B0039_z264.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_cohort_B0039_z264__isqp_l2.npz",
+      "case": "m1_laplacian_cohort_B0039_z264",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "1470c79270f7ea40f5c1663654a0238ac4eb4829769ee231082cbd3fa9909726",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_cohort_B0039_z264.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_clean__isqp_none.npz",
+      "case": "m1_laplacian_synthetic_clean",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "ceb65566724b0f7d31e3dba309401572390202214d2d61caa567956e9b922809",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_clean.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_clean__isqp_l2.npz",
+      "case": "m1_laplacian_synthetic_clean",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "a1714d4e1e98f880f191dc6e8fa6739f7419348364046fdaccaecc9de5bddba6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_clean.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_collapse__isqp_none.npz",
+      "case": "m1_laplacian_synthetic_collapse",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "dbab0e857210e5454c6f2eee2ab92f574eb077757489ada5ab4995a38efb9512",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_collapse.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_collapse__isqp_l2.npz",
+      "case": "m1_laplacian_synthetic_collapse",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "0a3e66cc5b7f3c72d2243cb3efdc827255ef0b150044bdc5e06522a4199a4c8b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_collapse.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_mixed__isqp_none.npz",
+      "case": "m1_laplacian_synthetic_mixed",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "eab9d506565ed4adffbb6bbb40e0137de2a13434a11dc1876b7f1963c130829f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_mixed.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_mixed__isqp_l2.npz",
+      "case": "m1_laplacian_synthetic_mixed",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "ae83045b8d25aef7da3c5597b998e29bafdbd5f3c554fa2a1a4f3991245f319a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_mixed.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_outliers__isqp_none.npz",
+      "case": "m1_laplacian_synthetic_outliers",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "b702f3063151ba1ecc1ea617c5a7302ba5af3c6f1d531c21bdd207a8f77508fe",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_outliers.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m1_laplacian_synthetic_outliers__isqp_l2.npz",
+      "case": "m1_laplacian_synthetic_outliers",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "88f23b247732ff3b42ec08cf43e34e8ccb9550e5be7320d0beb3d6da7ebba7ba",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m1_interpolation\\m1_laplacian_synthetic_outliers.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_demons_brainpair_smooth__isqp_none.npz",
+      "case": "m2_demons_brainpair_smooth",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x160x264",
+      "sha256": "ba2db9df80cd1b7404bd7eb940e4a790bf6e657a451c2ee4a48c2c5854e59949",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_demons_brainpair_smooth.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_demons_brainpair_smooth__isqp_l2.npz",
+      "case": "m2_demons_brainpair_smooth",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x160x264",
+      "sha256": "ba2db9df80cd1b7404bd7eb940e4a790bf6e657a451c2ee4a48c2c5854e59949",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_demons_brainpair_smooth.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_demons_brainpair_weak__isqp_none.npz",
+      "case": "m2_demons_brainpair_weak",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x160x264",
+      "sha256": "bf3f89f876061515cd3ca99f8f6ed74cad0ebf27e671929f92f34dde18b0a6a8",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_demons_brainpair_weak.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_demons_brainpair_weak__isqp_l2.npz",
+      "case": "m2_demons_brainpair_weak",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x160x264",
+      "sha256": "0f4ca177bce705a6a0672d072147cfd9356055b2648a650789e576e19994ca58",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_demons_brainpair_weak.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ffd_brainpair_coarse__isqp_none.npz",
+      "case": "m2_ffd_brainpair_coarse",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x160x264",
+      "sha256": "214798e1d84c3734dca56eb835f7e3d0b20b58d7d5a575fcbbc932c4ae3a75ea",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ffd_brainpair_coarse.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ffd_brainpair_coarse__isqp_l2.npz",
+      "case": "m2_ffd_brainpair_coarse",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x160x264",
+      "sha256": "4d7e04ff0e2edd989ccd487dc1439cab2879ceeeb660561e8b7d0819dec5d2a3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ffd_brainpair_coarse.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ffd_brainpair_fine__isqp_none.npz",
+      "case": "m2_ffd_brainpair_fine",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x160x264",
+      "sha256": "4ac4f2474bd29285cb00208c6486e420368f4a5a20589a8d98c24cb5fad901ee",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ffd_brainpair_fine.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ffd_brainpair_fine__isqp_l2.npz",
+      "case": "m2_ffd_brainpair_fine",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x160x264",
+      "sha256": "930b94488e62796dc7adbeba6d7cc2fb682aae6bc828ae0668e9d3e720997a4a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ffd_brainpair_fine.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ilk_synthetic_r3__isqp_none.npz",
+      "case": "m2_ilk_synthetic_r3",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "f5fe3537e6f3c6a9317c435d538756cb18071eb80d1d445256215936d9770718",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ilk_synthetic_r3.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_ilk_synthetic_r3__isqp_l2.npz",
+      "case": "m2_ilk_synthetic_r3",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "8fbae23f485b2dbeb9777d2501d30cc31a58a8fbebb0407a547aa2023163d727",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_ilk_synthetic_r3.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_brainpair_a60__isqp_none.npz",
+      "case": "m2_tvl1_brainpair_a60",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x160x264",
+      "sha256": "c708c451eeefa424099d2379104f04b536fccbaf2cb67a106c2dda2470cef176",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_brainpair_a60.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_brainpair_a60__isqp_l2.npz",
+      "case": "m2_tvl1_brainpair_a60",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x160x264",
+      "sha256": "78708f580f1669494690610f6915d575ac9663128921e9361ea915c2545d8019",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_brainpair_a60.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_synthetic_strong__isqp_none.npz",
+      "case": "m2_tvl1_synthetic_strong",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "cbd5ce6725417d536bbb9c9a15702f3c68156dc33a4e3df2a143b9730d7a7678",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_synthetic_strong.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_synthetic_strong__isqp_l2.npz",
+      "case": "m2_tvl1_synthetic_strong",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "d9aef1320d98c9be5cce3f56f9ee1867fc2d12130e3932494318b0bf66046fd3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_synthetic_strong.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_synthetic_weak__isqp_none.npz",
+      "case": "m2_tvl1_synthetic_weak",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "55e0cb47a7fe237e1cec7a11944fd182f03710162610f8b97acf673fe4c4dcbf",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_synthetic_weak.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m2_tvl1_synthetic_weak__isqp_l2.npz",
+      "case": "m2_tvl1_synthetic_weak",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "b6b36f65f9e01dc7dc32e34c0ddd66ebeaa1aabd45bc70c1c43a867fe017c2e5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m2_dense_optimization\\m2_tvl1_synthetic_weak.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_proxy_synthetic_mild__isqp_none.npz",
+      "case": "m3_proxy_synthetic_mild",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "735767b6e57706ca53d9f4842ad29bbc645449a825030d70468bda8f7341592d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_proxy_synthetic_mild.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_proxy_synthetic_mild__isqp_l2.npz",
+      "case": "m3_proxy_synthetic_mild",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "a75062eb635ef597b98718a3b1b602d8e9407ea6dc7f0222d924e7d076694826",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_proxy_synthetic_mild.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_proxy_synthetic_strong__isqp_none.npz",
+      "case": "m3_proxy_synthetic_strong",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x192x192",
+      "sha256": "f8a34902a5f2839b46c0a07d1cc73a2c9655ad91a59f5864570d3cf30219b31d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_proxy_synthetic_strong.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_proxy_synthetic_strong__isqp_l2.npz",
+      "case": "m3_proxy_synthetic_strong",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x192x192",
+      "sha256": "3264cadba8017a3e3e032e8ffe54239d9b42928f35f809b68f92a5fe7d519dda",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_proxy_synthetic_strong.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_cohort_diffeo__isqp_none.npz",
+      "case": "m3_transmorph_cohort_diffeo",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x96x128",
+      "sha256": "7a2375949c93196e3f84f33ab502509a59558dc2be93df24a62d953df7b9f522",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_cohort_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_cohort_diffeo__isqp_l2.npz",
+      "case": "m3_transmorph_cohort_diffeo",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x96x128",
+      "sha256": "3a98ad2d68fb0dc839aedaca7485867414377fbaa1a5e3a104f29a6fdc8a4797",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_cohort_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_cohort_direct__isqp_none.npz",
+      "case": "m3_transmorph_cohort_direct",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x96x128",
+      "sha256": "6da3afe99aea4b0c9646c278d8e2b8be5670012372f663a13f438139d2a64985",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_cohort_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_cohort_direct__isqp_l2.npz",
+      "case": "m3_transmorph_cohort_direct",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x96x128",
+      "sha256": "916fc4b9f2673bfcba13eca4f463231f9b04387fefc07149d5ee7575b472be59",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_cohort_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_ellipses_diffeo__isqp_none.npz",
+      "case": "m3_transmorph_ellipses_diffeo",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x64x64",
+      "sha256": "cb860583bd70e75b3354ea85854c26cc4a8401370e1e48c50f345a9b46cd588c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_ellipses_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_ellipses_diffeo__isqp_l2.npz",
+      "case": "m3_transmorph_ellipses_diffeo",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x64x64",
+      "sha256": "cb860583bd70e75b3354ea85854c26cc4a8401370e1e48c50f345a9b46cd588c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_ellipses_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_ellipses_direct__isqp_none.npz",
+      "case": "m3_transmorph_ellipses_direct",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x64x64",
+      "sha256": "79e41b21c7a9ae3b8c31414ff41a66f39a8d229290ae5d45432d0b07e1c3649b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_ellipses_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_transmorph_ellipses_direct__isqp_l2.npz",
+      "case": "m3_transmorph_ellipses_direct",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x64x64",
+      "sha256": "bb64ca268715623bd6d7a75f788337167f9615e3ae398316d5995b468e246e15",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_transmorph_ellipses_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_cohort_diffeo__isqp_none.npz",
+      "case": "m3_voxelmorph_cohort_diffeo",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x96x128",
+      "sha256": "b467072e28e37c1894e2d91b53692f574ebb11aca1f6a9737490186b86831caa",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_cohort_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_cohort_diffeo__isqp_l2.npz",
+      "case": "m3_voxelmorph_cohort_diffeo",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x96x128",
+      "sha256": "7ebe642301d5fe578567206354774ba4c62da0ae83d99b7cdbf3fe0036b0e31f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_cohort_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_cohort_direct__isqp_none.npz",
+      "case": "m3_voxelmorph_cohort_direct",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x96x128",
+      "sha256": "7006772818d32057abe57797ef898c7a9769a233b4439dc14e018b34e83b3efd",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_cohort_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_cohort_direct__isqp_l2.npz",
+      "case": "m3_voxelmorph_cohort_direct",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x96x128",
+      "sha256": "748f71cde084085f339825392502b78a2d2d3b53d445c13a2d4c91d31e2e7443",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_cohort_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_ellipses_diffeo__isqp_none.npz",
+      "case": "m3_voxelmorph_ellipses_diffeo",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x64x64",
+      "sha256": "15015829a48ff7e49083959fe5846711e86534ff0957125c65197f2681deb286",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_ellipses_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_ellipses_diffeo__isqp_l2.npz",
+      "case": "m3_voxelmorph_ellipses_diffeo",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x64x64",
+      "sha256": "5d04fc4e76a2161edaff37d2010ab152a6245b73422fe4e63593cf85823b158d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_ellipses_diffeo.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_ellipses_direct__isqp_none.npz",
+      "case": "m3_voxelmorph_ellipses_direct",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x64x64",
+      "sha256": "8a58d3fcfd77d8b671f0aad8294622c466a0641b988014c8878b64732819d5b7",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_ellipses_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m3_voxelmorph_ellipses_direct__isqp_l2.npz",
+      "case": "m3_voxelmorph_ellipses_direct",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x64x64",
+      "sha256": "8172dfb0adfb15d711e451719ed219c447c353500055354c1bf648a9405e688e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m3_learned\\m3_voxelmorph_ellipses_direct.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_ants_cohort_B0039_z264__isqp_none.npz",
+      "case": "m4_ants_cohort_B0039_z264",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "652895ab628c1350c1d7a8a5962f47350e10d9dc81b8576c44f6b4648596078e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_ants_cohort_B0039_z264.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_ants_cohort_B0039_z264__isqp_l2.npz",
+      "case": "m4_ants_cohort_B0039_z264",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x320x456",
+      "sha256": "652895ab628c1350c1d7a8a5962f47350e10d9dc81b8576c44f6b4648596078e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_ants_cohort_B0039_z264.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_coarse_steps__isqp_none.npz",
+      "case": "m4_svf_synthetic_coarse_steps",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x256x256",
+      "sha256": "3c2b17996bc67c67b9506d376388a0760bb4f8a5edf9b9f705b76015e4e7b03f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_coarse_steps.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_coarse_steps__isqp_l2.npz",
+      "case": "m4_svf_synthetic_coarse_steps",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x256x256",
+      "sha256": "db17b323735cc0aea703f2a3c710f8bb0a3c6e3a4b357a98816442856fa85e71",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_coarse_steps.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_decimated__isqp_none.npz",
+      "case": "m4_svf_synthetic_decimated",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x128x128",
+      "sha256": "3ef860d157c1ceb799fec6fc9247bdb665e9a35a037f00aa8b32183088e3bf2d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_decimated.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_decimated__isqp_l2.npz",
+      "case": "m4_svf_synthetic_decimated",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x128x128",
+      "sha256": "ea67495d0b12f1d353110b3054e2872dbf12f764d00724b386bea1d0cd5cbf61",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_decimated.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_subpixel__isqp_none.npz",
+      "case": "m4_svf_synthetic_subpixel",
+      "source": "origins",
+      "config": "isqp_none",
+      "shape": "3x1x256x256",
+      "sha256": "7d7ee4125fc49fd83d32b6c999810f7de7a59ae3621c4c0434c0edc89db2940a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_subpixel.npy",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\origins_serial\\origins\\m4_svf_synthetic_subpixel__isqp_l2.npz",
+      "case": "m4_svf_synthetic_subpixel",
+      "source": "origins",
+      "config": "isqp_l2",
+      "shape": "3x1x256x256",
+      "sha256": "a9ccbadb4f16e0651a16104fd1317a0af9a677fbcd0f854030dfeb958c4cfb9f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\origins\\m4_diffeomorphic\\m4_svf_synthetic_subpixel.npy",
+      "error": ""
+    }
+  ]
+}

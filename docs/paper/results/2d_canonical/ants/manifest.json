@@ -1,0 +1,859 @@
+{
+  "run": "ants_isqp",
+  "notes": [
+    "ANTs warps are reoriented from their own NIfTI index frame to the cohort grid; the mapping is fixed only up to a per-axis REVERSAL, so an ants_<brain>_z<k> row may correspond to the cohort's z = 527 - k. A reversal negates the axis and its displacement component together, so every Jacobian sign (and hence every metric here) is invariant; do NOT pair cohort_* and ants_* rows by z.",
+    "-1 is a sentinel, never a measurement: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort, and a run that never produced a result (load failure / dead worker) is a full -1 row with feasible=False and its error. Rates and denominators count those rows; the median/IQR aggregates skip them."
+  ],
+  "fields": [
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z0__isqp_none.npz",
+      "case": "ants_B0032_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z96__isqp_none.npz",
+      "case": "ants_B0032_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e8370756f03b1cf0800a6284cdb9adb75e3699197c4c72dc22c199751d79a639",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z48__isqp_none.npz",
+      "case": "ants_B0032_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "59d5772f2420e890c2418d9b592b97e1eaf375053fd3cf1e1a89b8e5c84b4db6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z1__isqp_none.npz",
+      "case": "ants_B0032_z1",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "b233fc02915839baf6cb36ad204f8d23ad4a6adb2eb0eaf21787cdf3a1cf1b84",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z144__isqp_none.npz",
+      "case": "ants_B0032_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "12126fd88cc55217311362fda7f6b343d5f46caef2430dc0c35f9e7a01caf75c",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z192__isqp_none.npz",
+      "case": "ants_B0032_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e9da15a7ad71c797b9a4ddc7c720de7e03c2609e4bc52efd4b2b375d6da56d69",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z240__isqp_none.npz",
+      "case": "ants_B0032_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "23aeac321bede5af562a41d7362ef54c46feb043c4f161e6572b4cdee643f505",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z336__isqp_none.npz",
+      "case": "ants_B0032_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "fad171e1598d09b29611cd15a60ef624930b3f7c622a9b8fe4e03e3d0cf3fca9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z288__isqp_none.npz",
+      "case": "ants_B0032_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "441e673d6c930c9770423cd873b587478b05b1cb491e0d96ab34f394d13bf5d4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z384__isqp_none.npz",
+      "case": "ants_B0032_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "6e6efe06b4114410a2b53b5fa8644fe2d1d4f4bd8b30444035baffea67a98ff8",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z432__isqp_none.npz",
+      "case": "ants_B0032_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "89e47950372397a153c80f1dce1614d9110cd50be9fbfa7f92558c42e3ac07ff",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0032_z480__isqp_none.npz",
+      "case": "ants_B0032_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a4fed4cc28890d6ff04f571ad198c1ba039dfee89d55b3da0355a5567dc5070a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0032\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z0__isqp_none.npz",
+      "case": "ants_B0039_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z1__isqp_none.npz",
+      "case": "ants_B0039_z1",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "acf749242c427c6008930ba354edd9c4436678056052acb3ffeea1a03775e9f1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z16__isqp_none.npz",
+      "case": "ants_B0039_z16",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c28e0fc2dd247401f6acff226039201527dd1039e6001f64352b09f5706638b9",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z2__isqp_none.npz",
+      "case": "ants_B0039_z2",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "62f37688dbfdbd10cc3139320034db52eba23834d68e20ea361468a2632012c2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z11__isqp_none.npz",
+      "case": "ants_B0039_z11",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8a64b17da39d6cc8b95cfd040ffb58bb354c1b172d85371da0e31cb39fd8164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z48__isqp_none.npz",
+      "case": "ants_B0039_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "47425bfa5c4336975180f197a69cb4f4b5d892c7014e01f81caa511d89a82f29",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z96__isqp_none.npz",
+      "case": "ants_B0039_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c96743062fdfeb24208ff2459ff6ab81372b58e6c3c01d71618e1ab378734fbc",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z144__isqp_none.npz",
+      "case": "ants_B0039_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "eb9cbd4a464b1787df919faecbe4905d9a8ffc2ae8a17865abbd09090bf614dd",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z192__isqp_none.npz",
+      "case": "ants_B0039_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9eea65d4c6ad33ba467171e807e4563148913462e39e9f35de4203a31de27b3f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z240__isqp_none.npz",
+      "case": "ants_B0039_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "726d7dcc11bafd6f10f92983ecf30062478ac050de20984610787f384e3195c3",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z264__isqp_none.npz",
+      "case": "ants_B0039_z264",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "e228a168987944206ed667fbd5c816b4582da6107d809263844cd14290b6dbe1",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z288__isqp_none.npz",
+      "case": "ants_B0039_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "39b024abd7c7c39ff66709beb2c4a54df2ea7428a9ea3447cdcd4efec3936b6e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z336__isqp_none.npz",
+      "case": "ants_B0039_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "f3561fe2b41545fc2737b5f8f3f0358976c3309b02da65d02edd47d760682d3d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z384__isqp_none.npz",
+      "case": "ants_B0039_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "573f4199ba46d20a7180a2f4894b1c153d7c2fc4cdd78ad11d63018fba6d7a03",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z432__isqp_none.npz",
+      "case": "ants_B0039_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "27300bcdbf2c8885ecfd07edd381bb12ea5427d465511475fdabfb40c4451e2f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0039_z480__isqp_none.npz",
+      "case": "ants_B0039_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "ac4e44b6200a25d8031b583449ee782a18c4b80073761da7f03828a774443299",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0039\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z0__isqp_none.npz",
+      "case": "ants_B0049_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z48__isqp_none.npz",
+      "case": "ants_B0049_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "bc01c9e4c71d022b0857ba6ff0143fab5d2561181326b41f4d232599ffe3169e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z96__isqp_none.npz",
+      "case": "ants_B0049_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d455d96d1a1103bf840149c372cdb54a4ded59d244d11cfbe59fa84cd1b3442d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z192__isqp_none.npz",
+      "case": "ants_B0049_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7107146323ff80d220a9bd29586a5ac6abffb8c71c14238fb908a4b81aefa325",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z144__isqp_none.npz",
+      "case": "ants_B0049_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d924031b28803164ec7d881122f850c3f87c38a097893ed8040680985c30dd0b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z240__isqp_none.npz",
+      "case": "ants_B0049_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "65106552c492baf619ef2e0135c1ea99a660e6910f04f1c678cc01297774f995",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z288__isqp_none.npz",
+      "case": "ants_B0049_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "772e5b23937985d3fc8574a00f6dae89c61713be8b542b97c35619fec3943322",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z336__isqp_none.npz",
+      "case": "ants_B0049_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8f56f3f810e8f26035ab3fc87695f822e6352959b7375ec03ec6e7ac6988167b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z384__isqp_none.npz",
+      "case": "ants_B0049_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "3c041f8cb6b5579443c7ff295dd594eef39ac7805320d088e29076339505323a",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z432__isqp_none.npz",
+      "case": "ants_B0049_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "27502bbcb8a037cb0de876b2f7e44cabba1ac08e90b65ea1264b1f109f7f3252",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0049_z480__isqp_none.npz",
+      "case": "ants_B0049_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "759814b56ccf3ee49e074ce1755384c8d757c08c6f4d05eed9ecee85ff7b7327",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0049\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z0__isqp_none.npz",
+      "case": "ants_B0053_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z48__isqp_none.npz",
+      "case": "ants_B0053_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "655b2bfeff838fe512ef4580f9ef0c0e95ad25690a63527cc2148a7dfa8f0614",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z96__isqp_none.npz",
+      "case": "ants_B0053_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "3a861fadaf7c3e9d64db5a3c1f918d15aa9db314a2edd60fe717f9c4df6e7c50",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z144__isqp_none.npz",
+      "case": "ants_B0053_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "fa253ffccfeb764152df81820541d73d29db0b3936cba3ca71a2a9c582b73278",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z192__isqp_none.npz",
+      "case": "ants_B0053_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "1d67f9709ccc2f70e7c6deb24f0ce63805e3b4516ac9f07771fa55bf1bf93077",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z240__isqp_none.npz",
+      "case": "ants_B0053_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "97c851675199ce81f934cded0756413fef1955463cd83fa5529874669b675eee",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z288__isqp_none.npz",
+      "case": "ants_B0053_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "050cc91f01fe81a5134e13d6bae959b65c7d80e955e0c417e7b3810b7197dd60",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z384__isqp_none.npz",
+      "case": "ants_B0053_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "2069ee8f69a2c07b0786557161bd3c78643d56755f0fd9288cd391843153d90f",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z336__isqp_none.npz",
+      "case": "ants_B0053_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d724f0a5e7a3d53391d37cfbd6bce190bbfaa8b04da8abbfefa3a91f71b8a2df",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z432__isqp_none.npz",
+      "case": "ants_B0053_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9cef1260466b55d0c9cda823709756cc00e438ed2ee228e0413cc85a363c0a0b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0053_z480__isqp_none.npz",
+      "case": "ants_B0053_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "66cdd2a088d4d5d2b2f12fd29cbe03de71d55c25995f87b4f90aab0997cb6745",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0053\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z0__isqp_none.npz",
+      "case": "ants_B0200_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z48__isqp_none.npz",
+      "case": "ants_B0200_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "6d081b1c6dce7122fb07bdebace6fc6e6f3667b6e42260ab55cd1fd7ef91bfb7",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z96__isqp_none.npz",
+      "case": "ants_B0200_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4d34a4c14f347716268d8caabd74082dfa69c17c645b93dd9c1587d8524a3f51",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z144__isqp_none.npz",
+      "case": "ants_B0200_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "5d9d4ed6dab4b4ac63c3464b1af7cafc51352d79828b534e72b070786c57d11e",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z192__isqp_none.npz",
+      "case": "ants_B0200_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "0faaff479bca98eb87aca4b90e8c4c5f54d353e11f18a1091ea05024ebbaba08",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z240__isqp_none.npz",
+      "case": "ants_B0200_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4b21c3b577dede809d82a51f2e3ea93443dcb7a7f531dd16d87b9a174e8e41df",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z288__isqp_none.npz",
+      "case": "ants_B0200_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "b4e4b4ad6ed01001a380976748912e64f95fe0ef067911167234e2e4392587db",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z336__isqp_none.npz",
+      "case": "ants_B0200_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c0f5f8ae493bb1bfdad228e6953c11a1e83e30f5ba29a46926a71bd92f56f295",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z384__isqp_none.npz",
+      "case": "ants_B0200_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "6972d982f625b956880785217d3957b3c3c740ac6d1dbf6c7983fcf3bbebfbca",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z432__isqp_none.npz",
+      "case": "ants_B0200_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "d267b37ec8757ac961ea9b0ef31b2746d622c82ddcb5d92c15499a070ba545e2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0200_z480__isqp_none.npz",
+      "case": "ants_B0200_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "8bcc324ec2cdf2dabab594e757304474edee661e1e7d89c995618630b46cc145",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0200\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z0__isqp_none.npz",
+      "case": "ants_B0213_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z48__isqp_none.npz",
+      "case": "ants_B0213_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "cc725cbfdbbd042f4f1711289a9785e1dc679affd5b196d453cf2edb693c589b",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z96__isqp_none.npz",
+      "case": "ants_B0213_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "737b17f52e66c90e0b4d3d027fdb08d3c7984e241a3d582ebfb58eb3fa8136bf",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z144__isqp_none.npz",
+      "case": "ants_B0213_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "23db16a62720a8ef671c8134e2ab23ac4146c4f0adbc1d3b9b91220083696cf4",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z192__isqp_none.npz",
+      "case": "ants_B0213_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "2e8c39c450812e7271b24a5059a8cabf03dfc257f813fb94de2982f15b3a44c2",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z240__isqp_none.npz",
+      "case": "ants_B0213_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "194d3af583d8c484e573fe4e3099cebefe2f7fa41498ad9c30f234f9ed858904",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z288__isqp_none.npz",
+      "case": "ants_B0213_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "69fb657f13fe60655b9d8da3d4660ef68799a7cee4f9ee9ef8a6494fa2e2868d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z336__isqp_none.npz",
+      "case": "ants_B0213_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "eea1b933a3bd2c80339cdc21fd18f7e4f14605a4925f7466c7859dd511364583",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z384__isqp_none.npz",
+      "case": "ants_B0213_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "fcf0cb3d054a726013b1929823c1d30ece9410c5e95a7383783294e42f8e2eda",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z432__isqp_none.npz",
+      "case": "ants_B0213_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "220663669266e536036e3b9d8461225e27325a8c3d12dcd3d6d1a6ca03657efc",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0213_z480__isqp_none.npz",
+      "case": "ants_B0213_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "7d692a9be8d5e7f25ceb5552fe48cb9cf23cfb1d132b23a954fbf715333cf03d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0213\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z0__isqp_none.npz",
+      "case": "ants_B0304_z0",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "9c3c0577e35f46f1cd80a3523be65ee5036afd60a82ec7c24dbe6ae67364164d",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z48__isqp_none.npz",
+      "case": "ants_B0304_z48",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "4db5705a48e7513ace0a1518b55e6f06021f145792375514231d282b718050ca",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z96__isqp_none.npz",
+      "case": "ants_B0304_z96",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a2ddd69447d8c5c80dd367cbf02df95fb1b74c1fa4ab5313addf7eb456b89b46",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z144__isqp_none.npz",
+      "case": "ants_B0304_z144",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "6e00df9eaf159cc719f11b902d7d4664ba7230fe15ddb934570fa0c956a7b910",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z128__isqp_none.npz",
+      "case": "ants_B0304_z128",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a06e5967b9d5f3f609398a615cc6a079ba2460d5987ebb2501d2fcae26b51fb0",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z181__isqp_none.npz",
+      "case": "ants_B0304_z181",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "65fcd2cc4fe927b12218997b5740d5e6dcdbff6b45b60b1260148527c8befd69",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z192__isqp_none.npz",
+      "case": "ants_B0304_z192",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "a33e607f81b3b891faba34983cff8ee45f40a1787c636e4773de6f4d77dc6881",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z240__isqp_none.npz",
+      "case": "ants_B0304_z240",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "84b013941facdd172b4ebd28054b064eb174f7e478854130f4ef4624b91f1c77",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z288__isqp_none.npz",
+      "case": "ants_B0304_z288",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "c8284ae0d837af3db8e3e59802b145cde747097eb775517679c0877bcc633af8",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z336__isqp_none.npz",
+      "case": "ants_B0304_z336",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "98f59356516ed777e6288ad50e1ba7c5599a667613afa231e327ffd4dcab5ab5",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z384__isqp_none.npz",
+      "case": "ants_B0304_z384",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "df8a9719338e5027d823a6fe3bf083d04f73bcd93fbc63bb798f78081a622281",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z432__isqp_none.npz",
+      "case": "ants_B0304_z432",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "85093a5819a947568d2a8059b82391add65a5edc353112a61aad9ea579003fb6",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    },
+    {
+      "file": "data\\dvfs\\results\\ants_isqp\\ants\\ants_B0304_z480__isqp_none.npz",
+      "case": "ants_B0304_z480",
+      "source": "ants",
+      "config": "isqp_none",
+      "shape": "3x1x320x456",
+      "sha256": "459e5e79a0896a44b5b305138f4803256b536cb868a711c80a9988ce48350434",
+      "input_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-run\\data\\dvfs\\cohort\\B0304\\laplacian_exterior\\ants_warp_0.nii.gz",
+      "error": ""
+    }
+  ]
+}

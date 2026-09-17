@@ -1,0 +1,11 @@
+<!-- certificate gauges: simplex: 2 triangles per cell (fixed BL-TR diagonal), triangle area = det/2, per cell (last row/col are +inf); bilinear: 4 triangles per cell (both diagonals), triangle area = det/2, i.e. exactly cell_min_jdet_2d / 2, per cell (last row/col are +inf); finite: forward-difference Jdet (1 triangle per cell), determinant, per cell (last row/col are +inf); jdet: central-difference Jdet, determinant, per pixel. certified = bilinear has 0 values < 0.01 - 1e-5 after. -1 is a sentinel (see summary.json notes), skipped by every median. -->
+| source | config | n | certified | feasible | wall s (IQR) | L1 move (IQR) | L2 move (IQR) | SDlogJ before -> after | frac<=0 before -> after | max damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| synthetic | auto | 13 | 13/13 | 13/13 | 0.2246 [0.05676, 2.428] | 46.12 [8.411, 405.1] | 6.475 [3.054, 31.45] | 2.31 -> 1.283 | 0.14 -> 0 | 0 |
+| synthetic | barrier | 13 | 1/13 | 9/13 | 0.4013 [0.2098, 0.7546] | 75.02 [9.879, 272.1] | 7.386 [3.051, 20.39] | 2.31 -> 1.524 | 0.14 -> 0.0163 | n/a |
+| synthetic | isqp_l1 | 13 | 13/13 | 13/13 | 0.4713 [0.1684, 1.737] | 43.98 [8.028, 388] | 7.015 [3.273, 33.69] | 2.31 -> 1.049 | 0.14 -> 0 | 0 |
+| synthetic | isqp_l2 | 13 | 13/13 | 13/13 | 0.3028 [0.06111, 1.483] | 46.13 [8.23, 409.9] | 6.001 [3.053, 31] | 2.31 -> 1.332 | 0.14 -> 0 | 0 |
+| synthetic | isqp_none | 13 | 13/13 | 13/13 | 0.1276 [0.04434, 0.5276] | 47.42 [8.609, 681.1] | 6.537 [3.067, 41.36] | 2.31 -> 1.111 | 0.14 -> 0 | 0 |
+| synthetic | m14 | 13 | 1/13 | 12/13 | 0.5038 [0.3326, 1.536] | 64.42 [10.6, 295.5] | 6.712 [3.051, 20.93] | 2.31 -> 1.562 | 0.14 -> 0.0213 | n/a |
+| synthetic | slp | 13 | 4/13 | 13/13 | 0.7087 [0.4018, 1.778] | 34.42 [7.093, 240.5] | 6.605 [3.045, 25.39] | 2.31 -> 1.404 | 0.14 -> 0 | n/a |
+| synthetic | slsqp_windowed | 13 | 0/13 | 13/13 | 0.06125 [0.01266, 1.681] | 34.04 [8.872, 242.4] | 3.867 [2.271, 14.37] | 2.31 -> 1.604 | 0.14 -> 0 | n/a |
