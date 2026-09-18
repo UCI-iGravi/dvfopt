@@ -171,7 +171,10 @@ def test_reseed_clears_a_rotated_strip_the_fold_mask_cannot_see():
     from dvfopt.constraints import SimplexConstraint2DBilinear
     from dvfopt.core.windowed import min_field
 
-    p = Path("benchmarks/output/investigate_ffd_coarse/none_out.npy")
+    p = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/output/investigate_ffd_coarse/none_out.npy"
+    )
     if not p.exists():
         pytest.skip(f"{p} absent (gitignored artefact)")
     phi = np.load(p).astype(float)
