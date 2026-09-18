@@ -397,6 +397,27 @@ def _orientation_rows_3d(c, free_mask, delta):
     return a, np.full(a.shape[0], 1.0 - float(delta))
 
 
+def _orientation_violation_mask(phi, delta):
+    """Grid points adjacent to an axial edge whose deformed projection on its own axis
+    is below ``delta`` — the pixel-level violations of the edge rows of
+    :func:`_orientation_rows` / :func:`_orientation_rows_3d`, in any rank.
+
+    For axis ``a`` the edge projection is ``1 + diff(phi[a], axis=a)`` (channel ``a``
+    carries the displacement along axis ``a`` in every pack, so this reads the
+    ``(C, *shape)`` field and never the flat vector). Both endpoints of a violated edge
+    are marked, which is the role a fold cell's corners play in :func:`_reseed_stage`.
+    """
+    bad = np.zeros(phi.shape[1:], bool)
+    for ax in range(phi.ndim - 1):
+        e = (1.0 + np.diff(phi[ax], axis=ax)) < delta
+        lo = [slice(None)] * bad.ndim
+        hi = [slice(None)] * bad.ndim
+        lo[ax], hi[ax] = slice(0, -1), slice(1, None)
+        bad[tuple(lo)] |= e
+        bad[tuple(hi)] |= e
+    return bad
+
+
 def _box_slices(box):
     """``(a0, a1, b0, b1, ...)`` -> ``(slice(a0, a1), slice(b0, b1), ...)`` — one
     slice per axis, so ``arr[(slice(None), *_box_slices(box))]`` crops a
@@ -939,7 +960,10 @@ def windowed_correct(
     positive): locally fold-free, but not joinable to the surrounding field, and
     the seam between the branches is a merit MAXIMUM no local step crosses -- every
     rung, step rule and trust radius fails there identically. The stage resets the
-    branch: each residual cluster's neighbourhood (its cells' corner pixels
+    branch: each residual cluster's neighbourhood (its cells' corner pixels, plus the
+    endpoints of every edge violating the orientation rows when ``orientation_delta``
+    is on — a rotated strip has POSITIVE areas, so it is invisible to the fold mask
+    and re-seeding around the fold at its end would fill from a rotated ring —
     dilated by ``reseed_radius``) is replaced by the discrete-harmonic
     interpolation of its ring, and the engine polishes the re-seeded field
     (recursively, with this stage off). Up to ``reseed_rounds`` rounds. Measured
@@ -1696,10 +1720,17 @@ def _reseed_stage(
 ):
     """Harmonic re-seed of every residual fold cluster, then a recursive polish; in place.
 
-    A residual cell's corner pixels (the cell and its +1 shift along every axis)
+    A residual cell's corner pixels (the cell and its +1 shift along every axis),
+    plus — when the engine's orientation rows are on (``opts.orientation_delta``) —
+    every endpoint of an edge violating them (:func:`_orientation_violation_mask`),
     dilated by ``radius`` form the re-seed mask; its interior is replaced by the
     harmonic interpolation of the ring, which puts the cluster back on the ring's
-    orientation branch. The polish is :func:`windowed_correct` on the re-seeded
+    orientation branch. The orientation violations are load-bearing: a 180-degree
+    rotated cell has a POSITIVE determinant, so a rotated strip is area-feasible and
+    invisible to the fold mask, and re-seeding only around the fold at its end fills
+    from a ring that is itself rotated (measured on ``m2_ffd_brainpair_coarse``: the
+    stage stalled there at 6 folds; with the strip in the mask the field certifies).
+    The polish is :func:`windowed_correct` on the re-seeded
     field with this stage off (never recursive) and the coarse warm start off; its
     windows' patch boxes join ``touched`` so the outer damage accounting stays
     exact. Stops when the field is fold-free, the deadline passes, or a round makes
@@ -1720,6 +1751,8 @@ def _reseed_stage(
         corners = ndimage.binary_dilation(
             fold, structure=np.ones((2,) * fold.ndim, bool), origin=-1
         )
+        if opts.orientation_delta is not None:  # rotated cells are area-feasible: see above
+            corners |= _orientation_violation_mask(phi, float(opts.orientation_delta))
         mask = ndimage.binary_dilation(corners, iterations=radius)
         _harmonic_fill(phi, mask)
         rep.reseed_px += int(mask.sum())

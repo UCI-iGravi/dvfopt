@@ -134,3 +134,58 @@ def test_strategy_forwards_the_reseed_knobs(monkeypatch):
     )
     assert seen["reseed_rounds"] == 5 and seen["reseed_radius"] == 4
     assert ISQPWindowedStrategy().reseed_rounds == 3 and ISQPWindowedStrategy().reseed_radius == 2
+
+
+def _rotated_strip(H=16, W=16, rows=(4, 10), cols=(7, 9)):
+    """Identity field with one 180-degree-rotated column strip: both edge projections
+    inside the strip are negative, yet every cell there is area-POSITIVE (rotation)."""
+    phi = np.zeros((2, H, W))
+    r0, r1 = rows
+    c0, c1 = cols
+    yy, xx = np.mgrid[r0:r1, c0:c1]
+    my, mx = (r0 + r1 - 1) / 2.0, (c0 + c1 - 1) / 2.0
+    phi[0, r0:r1, c0:c1] = 2 * (my - yy)
+    phi[1, r0:r1, c0:c1] = 2 * (mx - xx)
+    strip = np.zeros((H, W), bool)
+    strip[r0:r1, c0:c1] = True
+    return phi, strip
+
+
+def test_orientation_violation_mask_covers_exactly_a_rotated_strip():
+    phi, strip = _rotated_strip()
+    mask = engine._orientation_violation_mask(phi, 0.01)
+    assert np.array_equal(mask, strip)
+    assert not engine._orientation_violation_mask(np.zeros_like(phi), 0.01).any()
+
+
+@needs_osqp
+def test_reseed_clears_a_rotated_strip_the_fold_mask_cannot_see():
+    """The engine's own stalled output on ``m2_ffd_brainpair_coarse`` (bilinear / isqp /
+    objective none): a rotated column strip the giant-tile sweep left, area-feasible and
+    invisible to the fold mask, with a 6-cell sliver fold at its end. Re-running the
+    engine on that state must certify it. Gated on the (gitignored) artefact — rebuild
+    with ``windowed_correct`` on
+    ``data/dvfs/origins/m2_dense_optimization/m2_ffd_brainpair_coarse.npy``."""
+    from pathlib import Path
+
+    from dvfopt.constraints import SimplexConstraint2DBilinear
+    from dvfopt.core.windowed import min_field
+
+    p = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/output/investigate_ffd_coarse/none_out.npy"
+    )
+    if not p.exists():
+        pytest.skip(f"{p} absent (gitignored artefact)")
+    phi = np.load(p).astype(float)
+    if phi.ndim == 4:  # stored as (3, 1, H, W) [dz, dy, dx]
+        phi = phi[1:, 0]
+    c = SimplexConstraint2DBilinear(shape=phi.shape[1:])
+    out, rep = windowed_correct(
+        phi, "isqp", constraint=c, objective=NoneObjective(), threshold=0.01, verbose=0
+    )
+    assert min_field(c, out).min() >= 0.01 - 1e-5
+    ex = 1 + np.diff(out[1], axis=1)  # x-edge projections, (H, W-1)
+    ey = 1 + np.diff(out[0], axis=0)  # y-edge projections, (H-1, W)
+    assert not ((ex[:-1] < 0) & (ey[:, :-1] < 0)).any()  # no 180-rotated cell left
+    assert rep.damage == 0
