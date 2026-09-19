@@ -176,7 +176,10 @@ class WindowedWrapperStrategy(Strategy):
         68-iteration coarse solve) vs 283 s / 1320 cold, at a slightly
         smaller L2 move (320.6 vs 325.1). Skipped — byte-identical to ``False`` — on a fold-free
         field or one with ``min(shape) < 4 * giant_tile`` (the
-        per-dimension-resolved tile).
+        per-dimension-resolved tile). **Off on 3D** (a ``DEFAULTS_BY_DIM``
+        row: spike 2 measured it introducing negative axial edge
+        projections there); ``dim_defaults=False`` takes this field
+        literally.
     coarse_factor : int
         Coarsening factor for that stage (box-average blocks).
     reanchor : str
