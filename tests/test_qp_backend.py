@@ -122,6 +122,29 @@ def test_ip_exception_falls_through_to_admm(monkeypatch):
     assert fake.admm_calls == [10]
 
 
+def test_clarabel_settings_pin_one_thread(monkeypatch):
+    """Clarabel spawns its own Rayon pool that OMP/OPENBLAS/MKL/NUMBA do not reach.
+
+    Spike 2, one 17^3 window: 7.49 -> 1.08 cores with ``max_threads = 1``, an identical
+    SQP trajectory (constraint minima agree to 1e-12) and -33 % wall on an idle box.
+    """
+    import clarabel
+
+    assert hasattr(clarabel.DefaultSettings(), "max_threads")  # not a vacuous assertion
+    seen = []
+    qp, _fake = _fitted(monkeypatch, [10], [])
+
+    def solver(p, q, a, b, cones, settings):
+        seen.append(settings)
+        return SimpleNamespace(
+            solve=lambda: SimpleNamespace(x=np.zeros(q.size), status="Solved", iterations=7)
+        )
+
+    monkeypatch.setattr(isqp_mod.clarabel, "DefaultSolver", solver)
+    qp.solve()  # cold -> IP
+    assert seen and seen[0].max_threads == 1
+
+
 def test_make_qp_backends(monkeypatch):
     import osqp
 
