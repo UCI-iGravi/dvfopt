@@ -138,6 +138,10 @@ class _HybridQP:
             st = clarabel.DefaultSettings()
             st.verbose = False
             st.tol_gap_abs = st.tol_gap_rel = st.tol_feas = 1e-3
+            # Clarabel spawns a Rayon pool the BLAS/OMP variables do not reach; measured
+            # on a 17^3 window 7.49 -> 1.08 cores, identical trajectory to 1e-12, -33 %
+            # wall on an idle box (spike 2)
+            st.max_threads = 1
             sol = clarabel.DefaultSolver(
                 self._p, self._q, a_ip, b_ip, [clarabel.NonnegativeConeT(b_ip.size)], st
             ).solve()

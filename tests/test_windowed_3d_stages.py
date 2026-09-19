@@ -69,6 +69,47 @@ def test_inner_opts_have_no_3d_twin():
     assert _InnerOpts().giant_tile == 64 and not hasattr(_InnerOpts(), "giant_tile_3d")
 
 
+def _x_compression_64():
+    """64^3 identity field with an x-compression steeper than 1 on a central block."""
+    phi = np.zeros((3, 64, 64, 64))
+    zz, yy, xx = np.ogrid[0:64, 0:64, 0:64]
+    block = (zz >= 28) & (zz < 36) & (yy >= 28) & (yy < 36) & (xx >= 28) & (xx < 36)
+    phi[2] = np.where(block, -1.3 * (xx - 32), 0.0)
+    return phi
+
+
+@needs_osqp
+def test_coarse_warm_start_is_off_by_default_on_3d(monkeypatch):
+    """Spike 2: on 3D the warm start INTRODUCES negative axial edge projections (12 at
+    factor 4, 568 at factor 2) and took the 2.5D residual's densest box 493 -> 23,277
+    folds, so the 3D column of ``DEFAULTS_BY_DIM`` is False. An explicit
+    ``coarse_to_fine=True`` reads as the 2D default and resolves to False;
+    ``dim_defaults=False`` is the escape.
+    """
+    calls = []
+
+    def spy(phi, *a, **k):
+        calls.append(True)
+        return np.zeros_like(phi), engine.SliceReport(), []
+
+    monkeypatch.setattr(engine, "_coarse_warm_start", spy)
+    phi = _x_compression_64()
+    kw = dict(
+        constraint=SimplexConstraint3D(shape=phi.shape[1:]),
+        objective=NoneObjective(),
+        threshold=THR,
+        verbose=0,
+        time_budget_s=1e-6,  # the coarse block runs before the budget bites; the rounds do not
+        giant_tile=16,
+    )
+    windowed_correct(phi.copy(), "isqp", **kw)
+    assert calls == []  # the 3D column is False
+    windowed_correct(phi.copy(), "isqp", coarse_to_fine=True, **kw)
+    assert calls == []  # an explicit True still reads as the 2D default
+    windowed_correct(phi.copy(), "isqp", dim_defaults=False, coarse_to_fine=True, **kw)
+    assert calls == [True]  # the escape takes the literal
+
+
 @needs_osqp
 def test_coarse_warm_start_runs_on_3d_and_keeps_healthy_area_byte_identical():
     # min(shape) >= 4 * giant_tile (= 64) -> the stage fires; coarse_factor 4 -> a 16^3 coarse
@@ -77,14 +118,23 @@ def test_coarse_warm_start_runs_on_3d_and_keeps_healthy_area_byte_identical():
     # really exercised — a random blob averages away at factor 4 (coarse fold-free -> zero delta).
     # Block [26, 38) also works (coarse_folds_before 9, 0 folds, damage 0) but takes 465 s; [28, 36)
     # is the same behaviour in 47 s.
-    phi = np.zeros((3, 64, 64, 64))
-    zz, yy, xx = np.ogrid[0:64, 0:64, 0:64]
-    block = (zz >= 28) & (zz < 36) & (yy >= 28) & (yy < 36) & (xx >= 28) & (xx < 36)
-    phi[2] = np.where(block, -1.3 * (xx - 32), 0.0)
+    # The stage is OFF in the 3D column of DEFAULTS_BY_DIM (spike 2), so this test takes the
+    # `dim_defaults=False` escape and restates the 3D column's other knobs literally.
+    phi = _x_compression_64()
     c = SimplexConstraint3D(shape=phi.shape[1:])
     assert (min_field(c, phi) < THR).any()
     out, rep = windowed_correct(
-        phi.copy(), "isqp", constraint=c, objective=NoneObjective(), threshold=THR, verbose=0
+        phi.copy(),
+        "isqp",
+        constraint=c,
+        objective=NoneObjective(),
+        threshold=THR,
+        verbose=0,
+        dim_defaults=False,
+        coarse_to_fine=True,
+        giant_tile=16,
+        mop_margin=6,
+        max_window_area=8000,
     )
     assert rep.coarse_folds_before > 0 and rep.coarse_iters > 0  # the coarse solve did real work
     assert rep.folds_after == 0 and rep.damage == 0

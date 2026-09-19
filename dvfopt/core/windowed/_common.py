@@ -157,6 +157,19 @@ DEFAULTS_BY_DIM: dict[str, dict[int, int | bool]] = {
     'qp_max_iter': {2: 1000, 3: 1000},
     'qp_max_iter_fallback': {2: 500, 3: 500},  # tracks qp_max_iter (half)
     'ip_after_admm_iters': {2: 800, 3: 800},  # ip400 / ip200: no gain on either case
+    # OFF on 3D (spike 2, benchmarks/output/spike_3d_2/REPORT.md). The stage needs 64
+    # voxels per axis (`min(shape) >= 4 * giant_tile`), so it had never run on the 24^3
+    # crops the 3D column was tuned on. Measured on a 64^3 cut: factor 4 is neutral
+    # (-1.3 % SQP iterations) but INTRODUCES 12 negative axial edge projections (4
+    # rotated cells) where the stage off introduces 0; factor 2 introduces 568 (95
+    # rotated cells) and ends with more folds at equal wall. On the 2.5D residual's
+    # densest box the default warm start took 493 -> 23,277 folds and the minimum
+    # -0.035 -> -13.1 (L2 move 625 vs 39.9 with it off), with `damage` 0 throughout —
+    # the damage counter cannot see it, because every new fold sits inside the set the
+    # solve was entitled to move. Sharp edge (the table's rule is value equality):
+    # `coarse_to_fine=True` on a 3D field reads as "the 2D default" and resolves to
+    # False; `dim_defaults=False` is the escape that takes every knob literally.
+    'coarse_to_fine': {2: True, 3: False},
 }
 
 
@@ -883,7 +896,10 @@ def windowed_correct(
     and never on a window that is merely short of the margin-shifted target.
     ``report.patience_fallbacks`` / ``WindowRec.patience_fallback`` count it.
 
-    ``coarse_to_fine=True`` (default) prepends a **coarse-grid warm start**: the
+    ``coarse_to_fine=True`` (the 2D default; **False on 3D** — it is a
+    :data:`DEFAULTS_BY_DIM` row, so an explicit ``True`` on a 3D field reads as the
+    2D default and resolves to ``False``, and ``dim_defaults=False`` is the escape)
+    prepends a **coarse-grid warm start**: the
     same problem is solved on a ``coarse_factor`` x coarsened field and the
     prolongated correction seeds the fine solve, so the fine windows start near a
     solution instead of cold (raw B0039 z16: 205 s / 909 SQP iterations — 841 fine
@@ -1035,12 +1051,14 @@ def windowed_correct(
         qp_max_iter_fallback=qp_max_iter_fallback,
         ip_cold=ip_cold,
         ip_after_admm_iters=ip_after_admm_iters,
+        coarse_to_fine=coarse_to_fine,
     )
     r = resolve_dim_defaults(dim, **knobs) if dim_defaults else knobs
     giant_tile, mop_margin, max_window_area = r['giant_tile'], r['mop_margin'], r['max_window_area']
     reanchor_tile, reanchor_overlap = r['reanchor_tile'], r['reanchor_overlap']
     qp_max_iter, ip_after_admm_iters = r['qp_max_iter'], r['ip_after_admm_iters']
     qp_max_iter_fallback, ip_cold = r['qp_max_iter_fallback'], r['ip_cold']
+    coarse_to_fine = r['coarse_to_fine']
     if step_rule == 'exact_ls' and is3d:
         # The exact line model needs rows that are BILINEAR in the displacements — true
         # of every 2D family here, false of a 6-tet volume (trilinear, hence cubic along

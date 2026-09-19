@@ -384,6 +384,11 @@ def test_defaults_table_resolves_only_knobs_left_at_their_2d_default():
     # value on 3D (2000/1000 was measured and REJECTED — see DEFAULTS_BY_DIM).
     assert three["ip_cold"] is True and three["qp_max_iter"] == 1000
     assert three["max_window_area"] == 8000
+    # the coarse warm start is OFF on 3D (spike 2: the measured source of the introduced
+    # negative axial edge projections) and unchanged on 2D
+    assert three["coarse_to_fine"] is False
+    assert resolve_dim_defaults(2, **two)["coarse_to_fine"] is True
+    assert resolve_dim_defaults(3, coarse_to_fine=True)["coarse_to_fine"] is False
     assert (
         resolve_dim_defaults(3, **three) == three
     )  # the recursive solves re-resolve the resolved values
