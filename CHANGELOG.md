@@ -6,6 +6,18 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs — canonical 2D origins re-measured to 27/27 under the re-seed fix (pass 5)
+
+`m2_ffd_brainpair_coarse` × `isqp_none`, the one uncertified row left in the canonical 2D origins
+taxonomy (`origins_all_v4`, 26/27), was re-measured under `main` `2edd8ff` after the terminal
+re-seed fix (PR #127, `a5a3a51`): certified, bilinear cells below gauge 6 -> 0, worst value
+−0.00052 -> +0.01099, damage 0, 5 rounds / 147 windows / 2,572 SQP iterations, 982.9 s wall. Origins
+`isqp_none` is now 27/27 (`isqp_l2` and `auto` stay 27/27, `isqp_l1` 24/27). The tracked run
+`docs/paper/results/2d_canonical/origins/` is now `origins_all_v5` (214 rows reused, 2 rerun — the
+re-measured pair plus an unplanned third `WorkerCrash` rerun of `m2_ffd_brainpair_fine` ×
+`slsqp_windowed`, unchanged under ruling R18). Findings note §12.11 and
+`docs/paper/results/2d_canonical/README.md` carry the full numbers and root cause.
+
 ### Docs — findings section 13: the 3D windowed engine at band scale
 
 Two spikes and a full-volume route attempt (2026-09-18 to 09-21) asked whether the 3D windowed
