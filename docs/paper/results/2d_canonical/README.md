@@ -242,7 +242,7 @@ paper's intended idle-box serial column for this source.
 ```
 docs/paper/results/2d_canonical/
 ├── README.md                  # this file
-├── origins/                   # FINAL — the full 8-config origins taxonomy (origins_all_v4)
+├── origins/                   # FINAL — the full 8-config origins taxonomy (origins_all_v5)
 │   ├── results.csv
 │   ├── summary.json
 │   ├── manifest.json
@@ -279,7 +279,7 @@ docs/paper/results/2d_canonical/
 
 One subdirectory per source, matching the run-dir names in
 `benchmarks/output/2d_canonical/<row>/` (gitignored) — `ants/` here holds `ants_isqp/`'s output,
-`origins/` holds `origins_all_v4`'s. `report/` (the `cohort_benchmark`-shared `report.html` + its
+`origins/` holds `origins_all_v5`'s. `report/` (the `cohort_benchmark`-shared `report.html` + its
 own filtered CSV/JSON copy) is **not** copied here — it duplicates `results.csv`/`summary.json` at
 a filtered column set and is meant to be regenerated locally, not tracked. Corrected DVFs are
 never tracked: they live under `data/dvfs/results/<run-name>/<source>/<case>__<config>.npz`
@@ -338,13 +338,22 @@ python benchmarks/canonical_2d.py --source origins \
     --isolate-config slsqp_windowed --figures --table \
     --run-dir benchmarks/output/2d_canonical/origins_all_v3
 
-# origins pass 4 (ruling R19 + R18, driver c0f8af0) — FINAL, this directory's origins/: adds the
-# isqp_l1 config and reruns its 27 pairs pooled, plus one isolated rerun of the WorkerCrash pair
+# origins pass 4 (ruling R19 + R18, driver c0f8af0) — adds the isqp_l1 config and reruns its 27
+# pairs pooled, plus one isolated rerun of the WorkerCrash pair; superseded by origins_all_v5 below
 python benchmarks/canonical_2d.py --source origins \
     --config isqp_none isqp_l2 auto slp barrier m14 slsqp_windowed isqp_l1 \
     --n-workers 4 --resume benchmarks/output/2d_canonical/origins_all_v3 \
     --isolate-config slsqp_windowed --figures --table \
     --run-dir benchmarks/output/2d_canonical/origins_all_v4
+
+# origins pass 5 (driver 2edd8ff, after the re-seed fix #127): resume origins_all_v4 with its one
+# m2_ffd_brainpair_coarse x isqp_none row removed (origins_all_v4_minus1), re-measuring only that
+# row — FINAL, this directory's origins/
+python benchmarks/canonical_2d.py --source origins \
+    --config isqp_none isqp_l2 auto slp barrier m14 slsqp_windowed isqp_l1 \
+    --n-workers 4 --resume benchmarks/output/2d_canonical/origins_all_v4_minus1 \
+    --isolate-config slsqp_windowed --figures --table \
+    --run-dir benchmarks/output/2d_canonical/origins_all_v5
 
 # ANTs controls, isqp_none only (expected 0 -> 0 at ~0 s) — FINAL, this directory's ants/
 python benchmarks/canonical_2d.py --source ants \
@@ -373,16 +382,24 @@ python benchmarks/canonical_2d.py --source cohort --config isqp_none isqp_l2 \
 the full 8-config taxonomy), `ants` and `cohort` are all tracked here in full (see the tables
 below).
 
-- **`origins` (full taxonomy, throughput) is FINAL as of `origins_all_v4`.** The original
+- **`origins` (full taxonomy, throughput) is FINAL as of `origins_all_v5`.** The original
   `origins_all` run lost 130 of its 189 pairs to a dead pool worker (`BrokenProcessPool`)
   mid-run; recovery reused the 59 rows it did measure and reran the losses, isolating
   `slsqp_windowed` pairs one at a time. That isolated tail did not finish in two more passes
   (a nested-pool shutdown hang, defect D1, then a final 20-pair tail); pass 3 (`origins_all_v3`,
   driver `e1d3a88`) reran those 20 pairs one at a time under a 6 h per-pair watchdog cap (ruling
   R17), and pass 4 (`origins_all_v4`, driver `c0f8af0`) added the `isqp_l1` amendment (ruling R19)
-  plus one more isolated rerun of a pair that crashed twice (ruling R18). `origins_all_v4` is the
-  final origins run directory; `origins_all`, `origins_all_recovered` and `origins_all_v3`'s own
-  aggregates must not be used — see Origins provenance below and findings note §12.5.
+  plus one more isolated rerun of a pair that crashed twice (ruling R18). Pass 4's `isqp_none`
+  column was 26/27: `m2_ffd_brainpair_coarse` plateaued a handful of bilinear cells a few 1e-4
+  short of the threshold. That miss was root-caused (PR #127, `a5a3a51`) to a 180°-rotated column
+  strip left by the giant-tile Schwarz sweep — area-feasible, hence invisible to the fold mask the
+  terminal re-seed stage keyed on — and fixed by folding orientation-row violations into the
+  re-seed mask. Pass 5 (`origins_all_v5`, driver `2edd8ff`) resumed pass 4 with that one row
+  removed and re-measured it alone under the fix: certified, 0 bilinear cells below gauge (was 6),
+  worst value +0.01099 (was −0.00052) — see the table and note below. `origins_all_v5` is the
+  final origins run directory; `origins_all`, `origins_all_recovered`, `origins_all_v3` and
+  `origins_all_v4`'s own aggregates must not be used — see Origins provenance below and findings
+  note §12.5.
 - **`isqp_l1` (ruling R19) is FINAL** on the three small sources (origins, crops, synthetic) —
   see the protocol section above and the per-source results tables below.
 - The findings-note section (§12, all placeholders filled) and the CHANGELOG entry are complete as
@@ -391,7 +408,7 @@ below).
 ## Origins provenance (recovery + the `isqp_l1` amendment)
 
 The origins taxonomy (27 fields × 8 configs, including the `isqp_l1` amendment = 216 pairs) did
-not finish in one pass. Its rows come from four driver commits:
+not finish in one pass. Its rows come from five driver commits:
 
 | rows | driver commit | run | notes |
 |---|---|---|---|
@@ -399,6 +416,7 @@ not finish in one pass. Its rows come from four driver commits:
 | 110 | `90fccab` | `origins_all_recovered` / `origins_all_final` | `--resume` + pool-break recovery + `--isolate-config` land; measures 110 of the 130 `BrokenProcessPool` losses, then hangs on defect D1 (nested pools blocking pool shutdown); the run-dir carrying these 169 rows forward into pass 3 is `origins_all_final` |
 | 20 | `e1d3a88` | `origins_all_v3` (pass 3, `--resume origins_all_final`) | the fix for D1 plus the no-progress watchdog (`37eecde`, `5904a0b`); reruns the last 20 pairs (all `slsqp_windowed`) one at a time, each under a 6 h cap (ruling R17) |
 | 27 + 1 | `c0f8af0` | `origins_all_v4` (pass 4) | adds the `isqp_l1` config (ruling R19) and reruns its 27 pairs pooled at `n_workers=4`, plus one more isolated rerun of the pair that had crashed under isolation (ruling R18) |
+| 1 + 1 | `2edd8ff` | `origins_all_v5` (pass 5, `--resume origins_all_v4_minus1`) | re-measures `m2_ffd_brainpair_coarse` × `isqp_none` alone under the re-seed fix (PR #127, `a5a3a51`): 214 rows reused, 1 rerun (that pair, now certified). `--resume` also reruns every `WorkerCrash` row unconditionally, so the isolated `m2_ffd_brainpair_fine` × `slsqp_windowed` pair ran a third time and crashed a third time with the identical error — ruling R18's "single rerun, no infrastructure loss" verdict is unchanged, and the CSV's `isqp_l1` rows also move position (config-table row ordering), not content |
 
 `cdbf5f4` and `90fccab` differ only in the runner (`--resume`, pool-break recovery,
 `--isolate-config`); `run_case` and every metric it calls are byte-identical between them. Pass 3
@@ -407,10 +425,12 @@ benchmarks/canonical_2d.py` touches the measurement path in exactly one hunk (`r
 `certified = feasible = False` when a solve raises, which affects only error rows — the reused
 `MemoryError` row already reads `False`/`False`); everything else in that diff is runner plumbing,
 resume guards, aggregation and provenance keys. `dvfopt/` is untouched on the branch throughout
-(pass 3 and pass 4 included), so every row in `origins_all_v4` is the shipped engine's own
-behavior. Pass 3's `slsqp_windowed` pairs ran in isolation, one at a time, with no other pair or
-pool sharing the box (uncontended); pass 4's 27 new `isqp_l1` pairs ran pooled at `n_workers=4`
-(a throughput pass, contended like the rest of the taxonomy).
+(pass 3, pass 4 and pass 5 included, apart from the re-seed fix itself, PR #127, merged to `main`
+before pass 5 ran), so every row in `origins_all_v5` is the shipped engine's own behavior. Pass 3's
+`slsqp_windowed` pairs ran in isolation, one at a time, with no other pair or pool sharing the box
+(uncontended); pass 4's 27 new `isqp_l1` pairs ran pooled at `n_workers=4` (a throughput pass,
+contended like the rest of the taxonomy); pass 5's single re-measured pair ran alone (982.9 s) —
+the pass-4 figure for it, 2,497.8 s, was a contended throughput wall, not a regression.
 
 **The `slsqp_windowed` baseline's full 27-pair outcome legend** (isolated, 6 h watchdog cap per
 pair): **3/27 certified** (`m1_laplacian_cohort_B0039_z264`, `m2_demons_brainpair_smooth`,
@@ -439,20 +459,27 @@ fold counts are each case's own `n_neg_init` (central-difference gauge) from `re
 | origins | barrier | 27 | 3/27 | 16/27 | 26.23 [2.852, 42.29] | 263.9 [31.51, 2599] | 8.517 [1.975, 70.26] | 0.8696 -> 0.8042 | 0.00662 -> 8.14e-05 | n/a |
 | origins | isqp_l1 | 27 | 24/27 | 24/27 | 45.66 [5.882, 272.6] | 883.5 [19.34, 5199] | 22.35 [2.217, 176.2] | 0.8696 -> 0.8041 | 0.00662 -> 0 | 0 |
 | origins | isqp_l2 | 27 | 27/27 | 27/27 | 32.13 [1.045, 401] | 1034 [21.28, 5703] | 17.87 [1.833, 161.5] | 0.8696 -> 0.8042 | 0.00662 -> 0 | 0 |
-| origins | isqp_none | 27 | 26/27 | 26/27 | 7.765 [0.78, 58.77] | 1075 [23.75, 8891] | 18.12 [1.971, 194] | 0.8696 -> 0.7981 | 0.00662 -> 0 | 0 |
+| origins | isqp_none | 27 | 27/27 | 27/27 | 7.765 [0.78, 58.77] | 1075 [23.75, 8891] | 18.12 [1.971, 194] | 0.8696 -> 0.7981 | 0.00662 -> 0 | 0 |
 | origins | m14 | 27 | 4/27 | 21/27 | 17.19 [6.711, 121.1] | 280.7 [10.76, 4407] | 8.571 [1.133, 151] | 0.8696 -> 0.763 | 0.00662 -> 2.71e-05 | n/a |
 | origins | slp | 27 | 3/27 | 24/27 | 20.13 [2.987, 195] | 232.6 [8.936, 3942] | 10.33 [1.353, 156.2] | 0.8696 -> 0.8041 | 0.00662 -> 5.43e-05 | n/a |
 | origins | slsqp_windowed | 27 | 3/27 | 19/27 | 0.3216 [0.004323, 6.698] | 13.46 [0, 170.2] | 1.548 [0, 7.955] | 0.7427 -> 0.646 | 0.00208 -> 0 | n/a |
 
-Run `origins_all_v4` (pooled/throughput, `n_workers=4`, except `slsqp_windowed`'s pairs which each
-ran isolated one at a time — see Walls). `isqp_l2` and `auto` certify 27/27; `isqp_none` misses one
-(`m2_ffd_brainpair_coarse`, cleared by `isqp_l2`); `isqp_l1` certifies 24/27, its three misses being
-the three heaviest brain-pair fields (`m2_demons_brainpair_weak`, `m2_ffd_brainpair_fine`,
-`m2_ffd_brainpair_coarse` — the last also the one `hit_cap=True` row in the whole engine column).
-`barrier`/`m14`/`slp` leave most inputs bilinear-uncertified despite each having its own feasible
-rate above its certified rate. `slsqp_windowed`'s outcome legend — 3/27 certified, 5
-`WatchdogTimeout`, 1 `MemoryError`, 1 `WorkerCrash`, 17 finished-but-uncertified — is in the
-Origins provenance section above and in findings note §12.4.
+Run `origins_all_v5` (pooled/throughput, `n_workers=4`, except `slsqp_windowed`'s pairs which each
+ran isolated one at a time, and the single re-measured `isqp_none` pair which ran alone — see
+Walls). `isqp_l2`, `auto` and, as of pass 5, `isqp_none` all certify 27/27 — `isqp_none`'s one miss
+under pass 4 (`m2_ffd_brainpair_coarse`, 6 bilinear cells below gauge, worst −5.22e-4) was
+root-caused to a 180°-rotated column strip left by the giant-tile Schwarz sweep (area-feasible, so
+invisible to the fold mask the terminal re-seed stage keyed on) and fixed by folding orientation-
+row violations into the re-seed mask (PR #127, `a5a3a51`); re-measured under the fix it certifies
+(0 bilinear cells below gauge, worst +0.01099, damage 0, 5 rounds / 147 windows / 2,572 SQP
+iterations, 982.9 s alone on the box, L2 move 4,751.4 vs the pre-fix 4,530.7). `isqp_l1` certifies
+24/27, its three misses being the three heaviest brain-pair fields (`m2_demons_brainpair_weak`,
+`m2_ffd_brainpair_fine`, `m2_ffd_brainpair_coarse` — the last also the one `hit_cap=True` row in
+the whole engine column; `isqp_l1` was not re-measured in pass 5). `barrier`/`m14`/`slp` leave most
+inputs bilinear-uncertified despite each having its own feasible rate above its certified rate.
+`slsqp_windowed`'s outcome legend — 3/27 certified, 5 `WatchdogTimeout`, 1 `MemoryError`, 1
+`WorkerCrash`, 17 finished-but-uncertified — is in the Origins provenance section above and in
+findings note §12.4.
 
 **`isqp_l1` versus `isqp_none` / `isqp_l2`.** Over the 24 origins cases where all three engine
 objectives certify, `isqp_l1`'s total L2 move (2,629) sits between `isqp_none` (2,968) and
@@ -525,6 +552,9 @@ non-certified, non-feasible row is `m2_ffd_brainpair_coarse` — a 39.5%-folded 
 feasibility plateaus a handful of bilinear cells a few 1e-4 short of the threshold (worst residual
 about -5.1e-4) while the in-solve L2 objective (`isqp_l2`) clears it; this is the paper's per-case
 wall column for `origins` (see Walls for the serial-vs-throughput inflation on this same pair).
+**This pass predates the re-seed fix** (PR #127, `a5a3a51`) — it was never rerun, so its
+`isqp_none` row still reads 26/27; the fix and its re-measurement (27/27, `isqp_none` certifies)
+are in the full-taxonomy table above and in findings note §12.10.
 
 ## Results — ANTs controls
 

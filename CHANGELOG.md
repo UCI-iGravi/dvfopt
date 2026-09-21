@@ -6,6 +6,31 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs — canonical 2D origins re-measured to 27/27 under the re-seed fix (pass 5)
+
+`m2_ffd_brainpair_coarse` × `isqp_none`, the one uncertified row left in the canonical 2D origins
+taxonomy (`origins_all_v4`, 26/27), was re-measured under `main` `2edd8ff` after the terminal
+re-seed fix (PR #127, `a5a3a51`): certified, bilinear cells below gauge 6 -> 0, worst value
+−0.00052 -> +0.01099, damage 0, 5 rounds / 147 windows / 2,572 SQP iterations, 982.9 s wall. Origins
+`isqp_none` is now 27/27 (`isqp_l2` and `auto` stay 27/27, `isqp_l1` 24/27). The tracked run
+`docs/paper/results/2d_canonical/origins/` is now `origins_all_v5` (214 rows reused, 2 rerun — the
+re-measured pair plus an unplanned third `WorkerCrash` rerun of `m2_ffd_brainpair_fine` ×
+`slsqp_windowed`, unchanged under ruling R18). Findings note §12.11 and
+`docs/paper/results/2d_canonical/README.md` carry the full numbers and root cause.
+
+### Docs — findings section 13: the 3D windowed engine at band scale
+
+Two spikes and a full-volume route attempt (2026-09-18 to 09-21) asked whether the 3D windowed
+engine, which certifies crops and sub-volumes up to 24 voxels per side (15/15 finished runs at 0
+folds, 0 best-diagonal floor, damage 0), can reach band or full-volume scale. It cannot yet: the
+QP backend, factorization reuse, tile size, `qp_max_iter=2000`, the 3D coarse warm start and
+crop-and-paste composition were all measured and refuted as levers; the one lever found is the
+`giant_workers` RAS tile pool (2.77x the serial clearing rate at damage 0, saturating at 4
+workers) plus pinning Clarabel to one thread (7.49 → 1.08 cores, −33% wall, no change to 2D
+numerics). The banded full-volume driver was cut at 35 h 48 m with band 0 — B0039's z[0, 24),
+holding 489 of the 2.5D residual's 517 folds — still unfinished. See
+`docs/superpowers/notes/zero-folds-campaign-findings.md`, section 13.
+
 ### Changed — 3D windowed-engine defaults from spike 2: the coarse warm start is off on 3D, and Clarabel is pinned to one thread
 
 Values and settings only; no engine logic changed. Evidence: `benchmarks/output/spike_3d_2/REPORT.md` (gitignored).
