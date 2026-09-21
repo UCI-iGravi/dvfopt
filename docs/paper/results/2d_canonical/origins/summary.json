@@ -1,17 +1,17 @@
 {
   "provenance": {
-    "git_commit": "c0f8af0",
+    "git_commit": "2edd8ff",
     "git_dirty": false,
-    "dvfopt_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\dvfopt",
-    "driver_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-canonical-2d-pass4\\benchmarks\\canonical_2d.py",
+    "dvfopt_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-origins-rerun\\dvfopt",
+    "driver_path": "C:\\Users\\Andy\\Documents\\GitHub\\UCI-iGravi\\dvfopt-origins-rerun\\benchmarks\\canonical_2d.py",
     "watchdog_timeout_s": 21600.0,
     "dvfopt_version": "0.5.0",
-    "generated": "2026-09-17T02:38:32",
+    "generated": "2026-09-21T02:53:28",
     "python": "3.12.13",
     "platform": "Windows-11-10.0.26200-SP0",
     "n_workers": 4,
     "timing_mode": "throughput",
-    "box_load_pct_at_start": 0.0,
+    "box_load_pct_at_start": 10.0,
     "threshold": 0.01,
     "err_tol": 1e-05,
     "time_budget_s": null,
@@ -63,17 +63,17 @@
       }
     },
     "sdlogj_clip": 0.001,
-    "total_time_s": 16554.07058540001,
+    "total_time_s": 999.6128883999772,
     "pool_breaks": 0,
     "worker_crashes": 1,
     "isolated_configs": [
       "slsqp_windowed"
     ],
-    "resumed_from": "benchmarks/output/2d_canonical/origins_all_v3",
-    "n_reused": 188,
-    "n_rerun": 28,
+    "resumed_from": "benchmarks/output/2d_canonical/origins_all_v4_minus1",
+    "n_reused": 214,
+    "n_rerun": 2,
     "rerun_reasons": {
-      "missing": 27,
+      "missing": 1,
       "BrokenProcessPool": 0,
       "WorkerCrash": 1,
       "dvf_missing_or_sha_mismatch": 0
@@ -112,7 +112,7 @@
     "-1 is a sentinel: engine columns (damage, n_windows, giant_regions, mop_cleared, rounds, sqp_iters) are -1 outside the windowed engine, corr_* is -1 outside the cohort and on cohort slices with no correspondences, and a run that never produced a result (load failure / dead worker / WatchdogTimeout, the last with hit_cap=True and kept by --resume) is a full -1 row with feasible=False and its error. Exception: mop_cleared is SIGNED (before minus after the mop), so -1 on a windowed row (damage >= 0) is a measurement. sqp_iters excludes the re-seed / re-anchor polish iterations (the engine history records those stages with n_iter=0). Rates and denominators count every row; the median/IQR aggregates skip sentinel rows."
   ],
   "n_runs": 216,
-  "n_certified": 117,
+  "n_certified": 118,
   "groups": {
     "origins/auto": {
       "n": 27,
@@ -692,18 +692,18 @@
     },
     "origins/isqp_none": {
       "n": 27,
-      "feasible_rate": 0.9629629629629629,
-      "certified_rate": 0.9629629629629629,
+      "feasible_rate": 1.0,
+      "certified_rate": 1.0,
       "errors": 0,
       "hit_cap": 0,
       "max_damage": 0,
       "n_windowed_rows": 27,
-      "rate_simplex_zero_at_threshold": 0.9629629629629629,
-      "rate_simplex_zero_at_0": 0.9629629629629629,
-      "rate_bilinear_zero_at_threshold": 0.9629629629629629,
-      "rate_bilinear_zero_at_0": 0.9629629629629629,
-      "rate_finite_zero_at_threshold": 0.9629629629629629,
-      "rate_finite_zero_at_0": 0.9629629629629629,
+      "rate_simplex_zero_at_threshold": 1.0,
+      "rate_simplex_zero_at_0": 1.0,
+      "rate_bilinear_zero_at_threshold": 1.0,
+      "rate_bilinear_zero_at_0": 1.0,
+      "rate_finite_zero_at_threshold": 1.0,
+      "rate_finite_zero_at_0": 1.0,
       "rate_jdet_zero_at_threshold": 1.0,
       "rate_jdet_zero_at_0": 1.0,
       "time_s": {
@@ -712,7 +712,7 @@
         "q3": 58.772678850000375,
         "iqr": 57.992690400000356,
         "min": 0.0043994000006932765,
-        "max": 2497.8267824000013,
+        "max": 982.9481746000238,
         "n": 27
       },
       "l1_move": {
@@ -721,7 +721,7 @@
         "q3": 8890.804294351095,
         "iqr": 8867.053478771284,
         "min": 0.0,
-        "max": 648472.0988764486,
+        "max": 684885.7048440177,
         "n": 27
       },
       "l2_move": {
@@ -730,7 +730,7 @@
         "q3": 193.99426591099,
         "iqr": 192.02368424910074,
         "min": 0.0,
-        "max": 4530.7334953778645,
+        "max": 4751.37785940835,
         "n": 27
       },
       "max_move": {
@@ -775,7 +775,7 @@
         "q3": 29.5,
         "iqr": 26.5,
         "min": 0.0,
-        "max": 152.0,
+        "max": 147.0,
         "n": 27
       },
       "damage": {
@@ -802,7 +802,7 @@
         "q3": 1.2142468355305616,
         "iqr": 0.8851388487123606,
         "min": 0.004048048594251088,
-        "max": 1.981265602163187,
+        "max": 1.9934054529375986,
         "n": 27
       },
       "frac_nonpos_jdet_init": {
