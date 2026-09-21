@@ -6,6 +6,19 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs — findings section 13: the 3D windowed engine at band scale
+
+Two spikes and a full-volume route attempt (2026-09-18 to 09-21) asked whether the 3D windowed
+engine, which certifies crops and sub-volumes up to 24 voxels per side (15/15 finished runs at 0
+folds, 0 best-diagonal floor, damage 0), can reach band or full-volume scale. It cannot yet: the
+QP backend, factorization reuse, tile size, `qp_max_iter=2000`, the 3D coarse warm start and
+crop-and-paste composition were all measured and refuted as levers; the one lever found is the
+`giant_workers` RAS tile pool (2.77x the serial clearing rate at damage 0, saturating at 4
+workers) plus pinning Clarabel to one thread (7.49 → 1.08 cores, −33% wall, no change to 2D
+numerics). The banded full-volume driver was cut at 35 h 48 m with band 0 — B0039's z[0, 24),
+holding 489 of the 2.5D residual's 517 folds — still unfinished. See
+`docs/superpowers/notes/zero-folds-campaign-findings.md`, section 13.
+
 ### Changed — 3D windowed-engine defaults from spike 2: the coarse warm start is off on 3D, and Clarabel is pinned to one thread
 
 Values and settings only; no engine logic changed. Evidence: `benchmarks/output/spike_3d_2/REPORT.md` (gitignored).

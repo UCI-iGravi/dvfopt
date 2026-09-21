@@ -924,3 +924,193 @@ move 2,968 / 2,629 / 2,420; total L1 move 239,194 / 157,690 / 151,646; total wal
 move (0/24), and loses the L1 total only because the heaviest cases dominate the sum. The real
 signature of the L1 anchor is **sparsity** — a smaller moved fraction (0.108 vs 0.181) — not a
 smaller total move, and it is not a faster route than `none` or `l2` either.
+
+## 13. The 3D windowed engine at band scale: what was measured and what was refuted
+
+Two spikes (2026-09-18, 2026-09-19) and one full-volume route attempt (2026-09-19 to 09-21)
+asked whether the 3D windowed engine (`dvfopt.core.windowed`, `SimplexConstraint3D`) that
+certifies crops and sub-volumes can be pushed to band or full-volume scale. Snapshots:
+`../dvfopt-3d-spike` @ `6412a51`, `../dvfopt-3d-spike2` @ `a5a3a51`, `../dvfopt-3d-route` @
+`2edd8ff`. No tracked file was changed by any spike; every artefact lives under
+`benchmarks/output/spike_3d/`, `benchmarks/output/spike_3d_2/` and `benchmarks/output/route_3d/`
+(all gitignored). Protocols pre-registered pass/fail rules before each run
+(`.superpowers/sdd/2026-09-18-3d-spike/progress.md`,
+`.superpowers/sdd/2026-09-18-3d-spike-2/progress.md`,
+`.superpowers/sdd/2026-09-19-3d-defaults/progress.md`,
+`.superpowers/sdd/2026-09-19-3d-route/progress.md`). A standing user rule, R1, held throughout:
+no new engine logic — every spike arm turns an existing knob, runs an existing stage, or
+composes existing pipelines.
+
+### 13.1 Scope: what the engine certifies today
+
+Every finished 3D `windowed_correct` / `ISQPWindowedStrategy` run reaches 0 fixed-diagonal
+folds, 0 best-diagonal floor and damage 0 (`benchmarks/output/windowed_3d/h2h.md`, `crops.md`,
+`gate.md`):
+
+| artefact | size | folds in | folds out | floor out | wall s | L2 move | damage |
+|---|---|---|---|---|---|---|---|
+| slice090 (testcases_3d) | 5x10x10 | 61 | 0 | 0 | 7.8 | 7.28 | 0 |
+| slice200 (testcases_3d) | 5x10x10 | 30 | 0 | 0 | 3.8 | 6.97 | 0 |
+| slice350 (testcases_3d) | 5x10x10 | 70 | 0 | 0 | 7.7 | 11.50 | 0 |
+| subvol16 | 16^3 cut | 721 | 0 | 0 | 660.7 | 55.81 | 0 |
+| sub20 | 20^3 cut | 686 | 0 | 0 | 611.1 | 19.12 | 0 |
+| twist (24^3 crop) | 24^3 | 403 | 0 | 0 | 719 | 27.03 | 0 |
+| sliver (24^3 crop) | 24^3 | 1094 | 0 | 0 | 703.5 | 23.28 | 0 |
+| moderate (24^3 crop) | 24^3 | 1217 | 0 | 0 | 1020 | 58.73 | 0 |
+| cluster (24^3 crop) | 24^3 | 3038 | 0 | 0 | 6449 | 90.44 | 0 |
+| B0032_moderate (cohort 24^3) | 24^3 | 1217 | 0 | 0 | 1042 | 64.22 | 0 |
+| B0049_moderate (cohort 24^3) | 24^3 | 1217 | 0 | 0 | 934.7 | 43.97 | 0 |
+| B0053_moderate (cohort 24^3) | 24^3 | 1217 | 0 | 0 | 931 | 50.34 | 0 |
+| B0200_moderate (cohort 24^3) | 24^3 | 1216 | 0 | 0 | 1901 | 55.85 | 0 |
+| B0213_moderate (cohort 24^3) | 24^3 | 1217 | 0 | 0 | 1791 | 40.38 | 0 |
+| B0304_moderate (cohort 24^3) | 24^3 | 1217 | 0 | 0 | 704 | 60.85 | 0 |
+
+That is 15 of 15 finished 3D windowed-engine runs at 0 folds, 0 best-diagonal floor and damage 0
+(gate.md's `l2_rows` / `isqp_windowed` rows, taking the single-window row where subvol16 was run
+both tiled and whole). None of the 15 exceeds 24 voxels on a side.
+
+**L2-move caveat (PR #128).** Clarabel's internal thread pool changes the SQP trajectory on 3D
+windows large enough to engage it (never on 2D windows). Pinning it to one thread (below) moved
+the certified L2 on the three 24^3 B0039 crops: twist 27.0306 -> 27.0550, sliver 23.2803 ->
+23.3012, moderate 58.7325 -> 58.7958 (+0.09 % / +0.09 % / +0.11 %), at 0 folds and damage 0 on
+both sides of the pin. The pinned numbers are the current baseline and are what this section and
+the table above report; any comparison against pre-PR-#128 figures must use the un-pinned column.
+
+### 13.2 Where it stops
+
+Nothing above 24^3 has certified. Three escalating attempts stopped short:
+
+- **Phase 4's pre-registered full-volume rows** (`.superpowers/sdd/2026-09-11-3d-windowed-engine-port-phase4/progress.md`):
+  two banded chains were stopped with no band finished — `slab_banded2` (2 workers) at 38 h wall
+  / 37 CPU-h per worker, and `ds2_b0039` (4 workers) at 33 h wall / 33 CPU-h per worker. A 30-min
+  instrumented probe on the ds2 band-0 slab (`(3, 40, 160, 228)`, 1.46 M voxels) measured 4 tile
+  windows solved in 1,881 s, median 493 s / max 854 s per window, 29-61 SQP iterations, roughly
+  17 s per SQP iteration on a contended box (11 s at 17^3 idle in phase 1); folds only 12,832 ->
+  12,759 in that window.
+- **Spike 1's sub-slab** (48x64x64 cut of `slab_240_288.npy`, 17,722 of 186,543 cubes below 0.01,
+  9.50 % density, best-diagonal floor 13,973 / 7,615, min tet volume -8.4258): three concurrent
+  3 h arms at `giant_tile` in {9, 12, 16}, all budget-cut. Folds cleared: 7,657 / 7,709 / 5,492
+  out of 17,722 (43 % / 43 % / 31 %); SQP iterations 27,371 / 7,934 / 1,598; L2 move 148.0 / 127.2
+  / 82.8; damage 0 in every arm; the worst cell (-8.4258) never moved in any arm.
+- **The full-volume route** (2.5D marching output -> `windowed_correct_banded`, band 24 /
+  overlap 8 / 4 workers, `benchmarks/windowed_3d_full.py --run`, unchanged driver): input 517
+  folds below 0.01, 33 below 0, best-diagonal floor 352 / 14, min -0.035020533. Fold distribution
+  over the 22 z-bands put 489 of the 517 folds and all 33 below-zero cells in band 0 (z in
+  [0, 24)). Band 0 did not finish. The controller cut the run at **35 h 48 m** (the watchdog was
+  meant to fire at 12 h but the run agent that would have enforced it had died; three of four
+  workers sat idle after about 6 h, having finished their own bands, while the fourth stayed on
+  band 0 for the full 35 h 48 m). Because the driver retrieves band results with `ex.map` in
+  submission order and band 0 was submitted first, none of the 21 finished bands was ever
+  committed, checkpointed or logged; all were lost with the kill (`ck/state.json` shows
+  `done: []`).
+
+### 13.3 Levers refuted
+
+| lever | pre-registered rule | measured | verdict |
+|---|---|---|---|
+| QP backend (17^3 window, 8 SQP iterations) | >=5x faster QP at equal-or-better SQP progress -> candidate; >=10x -> worth engineering | median QP solve s: OSQP 8.10 (fastest), hybrid 9.37 (1.16x), qpalm 14.95 (1.8x), PIQP 29.00 (3.6x); OSQP hits its 1000-iteration cap on nearly every solve and still ends at the worst constraint minimum (-13.18); PIQP converges properly (27 IP iterations, `PIQP_SOLVED` every time) and ends best (-11.06) at 3.6x the wall | REFUTED (no backend is faster; PIQP's quality note is kept as a candidate if window quality, not wall, ever becomes binding) |
+| Factorization reuse | setup+update >=50% of QP wall under OSQP -> the lever | 17^3: 10.9% (0.864 s setup + 5.76 s update against 54.3 s solve); 9^3: 4.7% | REFUTED |
+| Tile size (sub-slab, 3 h budget) | tile 9 certifies where 16 does not, or in <=1/2 the wall at <=+25% L2 move -> 9^3 is the lever | nothing certified at any tile size; tiles 9/12 clear ~40% more folds than 16 at equal wall (7,657/7,709 vs 5,492) but at 1.5-1.8x the L2 move; tile 12 reaches that in 3.4x fewer SQP iterations than tile 9 | REFUTED (a <1.5x rate gain against a ~100x requirement) |
+| `qp_max_iter=2000` at band scale (sub-slab, `giant_tile=16`) | cleared/hour >=1.5x baseline -> document as the band-scale setting | ratio **0.94** (1,154 cleared/h vs 1,225 baseline); more SQP iterations on fewer windows for slightly fewer folds cleared | REFUTED |
+| 3D coarse warm start (64^3 cut, `giant_tile=16`) | worse fold count at equal wall -> unsafe; introduced negative edges in a certified output -> the 2D seam mechanism exists in 3D; -20% or better SQP iterations at the same fold count -> lever | `coarse_factor=2`: 21,694 folds vs 20,457 off at 98% of the wall, half the 3 h budget (5,565 s) spent on the coarse solve, worst cell -8.4258 -> -9.5413 (the only arm to worsen it); `coarse_factor=4` (old 2D default): neutral on iterations (1,015 vs 1,028, -1.3%) but introduces 12 negative axial edge projections / 4 rotated cells where the stage off introduces 0; on the 2.5D residual's densest box (65x128x152, 493 folds) the default warm start drove it to **23,277 folds**, minimum -0.035 -> -13.1, `damage` still 0 because every new fold sits inside the set the solve was entitled to move | REFUTED at both factors; factor 2 unsafe, factor 4 neutral-to-harmful and the source of introduced rotated cells; now off by default on 3D (`DEFAULTS_BY_DIM`, PR #128) |
+| Crop-and-paste composition (2.5D residual, 11 boxes) | folds after <=14 (the true floor), damage 0 inside every box -> the route composes | full volume 33 -> **43** folds below zero after pasting (best-diagonal floor 14 -> 29); every box reported `damage 0` locally; 16 of the 31 new folded cells sit on a box boundary; boxes 4, 7, 9 and 10 moved their ENTIRE rim while reporting 0 folds and damage 0 | REFUTED. Cause: `windowed_correct` freezes each WINDOW's own ring, not the rim of the sub-volume it is handed, so a window reaching the box border moves border voxels whose remaining corners were never in that box's constraint set |
+| Banded full-volume route | folds after <=14 and every remaining cell a documented true-floor cell, damage 0 | band 0 (489/517 folds, all 33 below-zero cells) did not finish in 35 h 48 m; run cut, no band's result retrievable | REFUTED (not certified; the dense z[0,24) band is the wall) |
+
+### 13.4 The one lever found
+
+The RAS tile pool (`giant_workers`) is the one arm in either spike that changed the answer.
+On the sub-slab (`giant_tile=16`, 3 h budget): serial (`giant_workers=0`) cleared 3,781 folds
+(1,225 cleared/h); `giant_workers=4` cleared **14,883** folds (3,387-3,409 cleared/h), a
+**2.77x** rate improvement, and moved the worst cell from -8.4258 to -4.5949 — the only setting
+in either spike to improve it. `giant_workers=8` produced byte-identical output to `giant_workers=4`
+at the same wall (same 2,839/1,809 folds, 11,169 SQP iterations, L2 move 173.7339731911813 to
+every recorded digit, min -4.594925564585521): a sweep is bound by its slowest tile, so doubling
+the pool past 4 buys nothing on this region. Damage stayed 0 in all three arms, meeting the
+pre-registered "RAS must not raise damage above 0" rule. Both pool arms overran their 3 h budget
+by about 46% (15,817 / 15,718 s), because `time_budget_s` is checked only between stages, not
+inside a RAS sweep.
+
+Pinning Clarabel to one thread (`max_threads = 1` in `_HybridQP._solve_ip`, or
+`RAYON_NUM_THREADS=1` in the environment for spawned pool workers, which
+`dvfopt.core._pool` already sets) is the second lever, though it changes resource use rather
+than throughput. On a single 17^3 frozen-ring window: **7.49 -> 1.08 cores**, an identical SQP
+iteration count, constraint minima agreeing to 1e-12, and **-33%** wall on an idle box —
+Clarabel's own internal parallelism was a net loss at this window size. The pin is what let 8
+RAS workers fit on a 24-core box at all: unpinned, each worker would have demanded roughly 6-7
+cores, i.e. an 8-worker pool would need on the order of 50 cores. The pin does change 3D
+numerics on windows large enough for Clarabel's internal parallelism to engage (accepted by
+ruling, see 13.1's L2-move caveat); it does not change 2D numerics, and a serial 3D run and a
+pooled 3D run now agree bit for bit where they used to disagree.
+
+### 13.5 Engine facts recorded and deliberately not fixed
+
+Per the standing no-new-engine-logic rule, the following are documented as known behavior, not
+bugs to patch in this campaign:
+
+- **`time_budget_s` is not checked inside a RAS sweep.** A `giant_workers > 1` run finishes the
+  sweep it is in progress on regardless of the budget; both pool arms in 13.4 overran by ~46%.
+- **`damage` cannot see folds created inside the touched set by the warm start.** The 2.5D
+  residual's box 0 went from 493 to 23,277 folds under the default coarse warm start while the
+  engine reported `damage == 0` throughout, because every newly folded cell lies inside the set
+  of voxels the solve was entitled to move.
+- **`windowed_correct_banded` retrieves bands in submission order** (`ex.map`), so a slow first
+  band blocks the checkpointing, logging and recoverability of every band that finishes after
+  it, however quickly those finish. In the route attempt, 21 of 22 bands finished inside their
+  workers within about 6 h; none was ever committed, because band 0 (submitted first) had not
+  returned when the run was cut at 35 h 48 m.
+- **A band has no time budget of its own.** The banded driver's overall budget governs the whole
+  run, not any individual band, so one pathological band can consume the entire budget while
+  every other band sits finished and unretrievable.
+
+### 13.6 Reading
+
+Across both spikes the binding constraint is SQP iteration count on dense bands, not QP solve
+seconds. Q1's 17^3 window moves its constraint minimum by about 1.4 out of roughly 12.4 in 8
+iterations under every QP backend tested; the sub-slab's 3 h arms spent 1,598 to 27,371 SQP
+iterations and cleared 31% to 43% of 17,722 folds regardless of backend, tile size or iteration
+cap. Every full-volume attempt in this section stalls on the same region: the 2.5D marching
+pipeline itself stops at it, spike 2's box 0 could not clear it in a 2 h budget, and the banded
+route's band 0 did not finish it in 35 h 48 m. That region is B0039's z[0, 24) band (489 of the
+2.5D residual's 517 folds, all 33 of its below-zero cells).
+
+A read-only, solver-free look at that band (correspondences vs. the 517 residual fold cells)
+found it sparsely and inconsistently constrained: z-slices 1-10 carry 8-29 Laplacian
+correspondence pins each and z-slices 11-23 carry 96-348, against a volume median of 904 pins
+per slice; the prescribed displacement magnitude at z < 24 has median 8.1 px and p95 126.8 px,
+against 1.4 / 8.1 px over the whole volume; and among the 2,913 pins at z < 24 there are 6,335
+moving-point pairs within 1 px of each other (many-to-one collapse). Unlike the 2D cohort
+precedent, the residual folds are not concentrated at the pins themselves: only 18 of 489 (4%)
+lie within 4 px of a pin, against an 8% base rate in the same bounding box.
+
+Whether this is a solver problem or a data problem is an open question, not a conclusion. The
+2D cohort precedent (section 12.2, and the campaign's earlier correspondence-analysis findings)
+showed that filtering correspondences before the Laplacian solve — dropping >25 px local
+outliers, merging many-to-one groups — halved one hard slice's fold count before any solver ran.
+Whether the same filtering applied to B0039's z[0, 24) band would shrink or remove the 517-fold
+residual, as opposed to the windowed engine needing a cheaper or differently-formulated inner
+solve to clear it as-is, has not been tested.
+
+### 13.7 Artefacts
+
+All gitignored unless noted.
+
+- `benchmarks/output/spike_3d/REPORT.md`, `q1_cost.md`, `q1_cost.json`, `q2_tile{9,12,16}.json`,
+  `q3_census.json` and related throwaway scripts/logs — spike 1 (QP backends, factorization
+  share, tile size, seam census).
+- `benchmarks/output/spike_3d_2/REPORT.md` and its JSON records (`q4a_threads*.json`,
+  `q2_*.json`, `q3_c2f_*.json`, `census.json`, `q4b_gw{4,8}.json`, `q5_*.json`) — spike 2
+  (Clarabel thread pin, `qp_max_iter` at band scale, 3D coarse warm start, the tile pool, the
+  crop-and-paste pipeline route).
+- `benchmarks/output/route_3d/` (`census.py`, `input_census.json`, `input_mask.npy`,
+  `input_cells.json`, `mem.log`, `ck/state.json`) — the full-volume route attempt.
+- `.superpowers/sdd/2026-09-18-3d-spike/progress.md`,
+  `.superpowers/sdd/2026-09-18-3d-spike-2/progress.md`,
+  `.superpowers/sdd/2026-09-19-3d-defaults/progress.md`,
+  `.superpowers/sdd/2026-09-19-3d-route/progress.md`,
+  `.superpowers/sdd/2026-09-11-3d-windowed-engine-port-phase4/progress.md` — pre-registered
+  protocols, rulings and per-step logs (tracked in the repo, not gitignored).
+- `benchmarks/output/windowed_3d/h2h.md`, `crops.md`, `cost.md`, `gate.md` — the certified 3D
+  artefact table in section 13.1 (gitignored).
+- CHANGELOG.md, "Changed — 3D windowed-engine defaults from spike 2" (PR #128) and "Added — 3D
+  windowed engine, phase 4 (Scale)" (PR #124/#125) — the changes and measurements this section
+  draws on (tracked).
