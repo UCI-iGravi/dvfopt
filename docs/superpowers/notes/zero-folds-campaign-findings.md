@@ -902,9 +902,11 @@ This is the origins-final number, separate from the 399-output figure above, whi
 other tracked sources (`origins_serial`, `ants_isqp`, `cohort_isqp`) plus the pre-final origins
 rows measured before the taxonomy closed — the two figures are not summed, since the 399 already
 counts an earlier, superseded slice of the origins rows. The same proxy caveat applies to both.
-This census was not rerun for pass 5 (`origins_all_v5`, §12.11): the one newly-certified row,
-`m2_ffd_brainpair_coarse` × `isqp_none`, adds a 118th certified origins output to the count above,
-but a full re-census of that row's cells for introduced rotations past 90° was not performed.
+The census was rerun over pass 5 (`origins_all_v5`, §12.11), all configs: **118 certified origins
+outputs, 0 introduced rotated cells.** The newly certified row, `m2_ffd_brainpair_coarse` ×
+`isqp_none`, has 53 rotated cells in its input and 0 in its output (kept 0, introduced 0), the same
+as that field's `isqp_l2` and `auto` outputs; before the re-seed fix its uncertified output carried
+22 (§12.11's rotated strip).
 
 ### 12.8 Engine follow-up: `sqp_iters` misses the polish iterations
 
