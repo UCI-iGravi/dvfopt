@@ -1272,6 +1272,11 @@ def test_z_chunked_census_is_bit_identical(monkeypatch):
             assert ts.n_neg_best_diagonal(phi, thr, z_chunk=zc) == want
     real = ts._z_chunks
     monkeypatch.setattr(ts, '_z_chunks', lambda p, z_chunk=None: real(p, 2))
-    np.testing.assert_array_equal(
-        ts.six_tet_min_volume_3d(phi), ts._six_tet_volumes_3d_numpy(phi).min(axis=0)
+    # exact when both sides take the numpy path; to rounding when the public entry
+    # dispatches to the numba fastmath kernel
+    np.testing.assert_allclose(
+        ts.six_tet_min_volume_3d(phi),
+        ts._six_tet_volumes_3d_numpy(phi).min(axis=0),
+        rtol=0,
+        atol=1e-12,
     )
