@@ -57,3 +57,15 @@ def test_auto_tau_floor_and_scaling():
     noise = rng.normal(0, 1, (3, 6, 16, 16))
     assert auto_tau(1e-3 * noise) == 0.7
     assert auto_tau(10.0 * noise) > 0.7
+
+
+def test_pruned_pairs_rejects_nonpositive_c():
+    import pytest
+
+    from dvfopt.dvf.pins import violating_pairs_pruned
+
+    pts = np.zeros((3, 3))
+    pts[:, 2] = [0.0, 1.0, 2.0]
+    d = np.zeros((3, 2))
+    with pytest.raises(ValueError):
+        violating_pairs_pruned(pts, d, 0.0, 60.0)

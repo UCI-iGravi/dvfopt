@@ -155,6 +155,10 @@ def violating_pairs_pruned(pts: np.ndarray, d: np.ndarray, c: float, radius: flo
     ``c |p - q| < |d_p - d_q| <= |d_p| + |d_q| <= 2 max(|d_p|, |d_q|)``, so it is found from its
     larger-|d| end with radius ``min(radius, 2 max|d| / c)`` — tiny for the ~1 px pins that are
     most of a real volume. Exact, not approximate."""
+    if not c > 0:
+        raise ValueError(
+            f"c must be > 0 for the pruned search (got {c}); use violating_pairs for c <= 0"
+        )
     mag = np.linalg.norm(d, axis=1)
     order = np.argsort(-mag, kind="stable")  # larger |d| first
     pts_o, d_o, mag_o = pts[order], d[order], mag[order]

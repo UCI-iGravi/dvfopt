@@ -216,6 +216,11 @@ def correct_dvf_pins(
     n_neg_in, n_below_in, min_in = _census(phi, threshold)
     n_neg_out, n_below_out, min_out = _census(out, threshold)
     diff = out - phi
+    n_best = n_neg_best_diagonal(out, threshold)
+    bil = _bilinear_fold_slices(out, threshold)
+    l2 = float(np.linalg.norm(diff.ravel()))
+    moved = float((np.abs(diff).max(axis=0) > 1e-6).mean())
+    stages.append(('census', time.time() - t))
     report = PinChainReport(
         feasible=n_below_out == 0,
         **pin_row,
@@ -225,15 +230,13 @@ def correct_dvf_pins(
         n_neg_out=n_neg_out,
         n_below_out=n_below_out,
         min_T_out=min_out,
-        n_neg_best_diag_out=n_neg_best_diagonal(out, threshold),
-        bilinear_fold_slices=_bilinear_fold_slices(out, threshold),
-        l2_from_input=float(np.linalg.norm(diff.ravel())),
-        moved_frac=float((np.abs(diff).max(axis=0) > 1e-6).mean()),
-        wall_s=0.0,
-        stages=stages,
+        n_neg_best_diag_out=n_best,
+        bilinear_fold_slices=bil,
+        l2_from_input=l2,
+        moved_frac=moved,
+        wall_s=time.time() - t0,
+        stages=list(stages),
     )
-    stages.append(('census', time.time() - t))
-    report.wall_s = time.time() - t0
     vlog(
         verbose,
         1,

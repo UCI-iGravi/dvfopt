@@ -85,6 +85,10 @@ def harmonic_refill(
             )
         M = diags(1.0 / A.diagonal())
         maxiter = 20000
+    except Exception as exc:  # AMG setup itself failed: degrade, never abort the chain
+        log_info(f'[refill] pyamg setup failed ({type(exc).__name__}: {exc}); Jacobi-PCG fallback')
+        M = diags(1.0 / A.diagonal())
+        maxiter = 20000
 
     out = phi.copy()
     for ch in range(phi.shape[0] - 2, phi.shape[0]):
