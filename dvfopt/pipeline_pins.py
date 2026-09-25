@@ -24,8 +24,8 @@ pass after the 2.5D stage was measured to push tets back under the 3D margin
 
 Measured (2026-09-24, 7-brain cohort, ``laplacian_exterior`` fields
 ``(3, 528, 320, 456)``): 6 of 7 brains from 865k-988k folds to 0 folds / 0
-best-diagonal floor / min +0.0101, landmark residual ~1 px median, ~40 min per
-volume uncontended. B0304 does not certify — its sections carry per-slice
+best-diagonal floor / min +0.0101, landmark residual ~1 px median, 25-37 min per
+volume on a contended box. B0304 does not certify — its sections carry per-slice
 landmark offsets, a data defect the pairwise drop cannot fix (see
 :mod:`dvfopt.dvf.pins`). The library never reads correspondence files; a
 landmark-residual column is a benchmark-side diagnostic.
