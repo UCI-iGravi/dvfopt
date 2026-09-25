@@ -64,3 +64,18 @@ def test_chain_certifies_and_resumes(tmp_path):
     again, rep2 = correct_dvf_pins(phi, checkpoint_dir=tmp_path)
     np.testing.assert_array_equal(again, out)
     assert rep2.n_pins == rep.n_pins and rep2.feasible
+
+
+@needs_osqp
+def test_cli_pins_route(tmp_path):
+    import json
+
+    from dvfopt.cli import main
+
+    phi, _ = _field()
+    p, out, rep_dir = tmp_path / 'in.npy', tmp_path / 'out.npy', tmp_path / 'rep'
+    np.save(p, phi)
+    rc = main(['correct', str(p), str(out), '--pipeline', 'pins', '--report-dir', str(rep_dir)])
+    assert rc == 0 and out.is_file()
+    summary = json.loads((rep_dir / 'summary.json').read_text(encoding='utf-8'))
+    assert summary['pipeline'] == 'pins' and summary['feasible'] and summary['n_dropped'] >= 1
