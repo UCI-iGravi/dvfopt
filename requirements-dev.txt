@@ -31,6 +31,9 @@ tqdm
 # OSQP — the elastic-QP inner for the windowed engine (dvfopt[solvers])
 osqp
 
+# pyamg — AMG preconditioner for the pin-chain re-fill (dvfopt[solvers])
+pyamg
+
 # Clarabel — interior-point leg of the windowed engine's hybrid QP backend
 # (core dependency; keep in lockstep with pyproject [project.dependencies])
 clarabel>=0.9

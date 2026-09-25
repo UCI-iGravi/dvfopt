@@ -44,6 +44,7 @@ dev = [
     "nbformat>=5",
     "pandas",
     "osqp",                  # windowed isqp inner — CI's [dev,gui] legs run the no-damage suite
+    "pyamg",                 # pin-chain re-fill AMG path (dvfopt.dvf.refill)
 ]
 perf = [
     # Airspeed Velocity — solver performance regression tracking.
@@ -53,6 +54,9 @@ perf = [
 solvers = [
     # OSQP — the elastic-QP inner behind the windowed engine (ISQPWindowedStrategy).
     "osqp",
+    # AMG preconditioner for the pin chain's harmonic re-fill (dvfopt.dvf.refill):
+    # 7 vs 769 CG iterations on a full volume; Jacobi-PCG fallback without it.
+    "pyamg",
 ]
 gui = [
     # Live-visualisation app (``dvfopt_gui``). Standalone — only needed
