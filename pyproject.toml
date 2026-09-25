@@ -120,6 +120,7 @@ extend-exclude = [
     ".venv/**",
     "**/*.ipynb",                    # notebook cell scoping confuses static analysis
     "notebooks/**",                  # notebook-exported .py have the same cell-scoping issues (F821, E402)
+    "docs/superpowers/notes/pin-chain-scripts/**",  # frozen measurement scripts (the record, not code)
 ]
 
 [tool.ruff.lint]
