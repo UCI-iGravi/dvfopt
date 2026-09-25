@@ -203,6 +203,7 @@ from dvfopt.objectives import (
 )
 from dvfopt.pipeline_3d import Correct3DReport, correct_dvf_3d
 from dvfopt.pipeline_25d import Correct25DReport, correct_dvf_25d
+from dvfopt.pipeline_pins import PinChainReport, correct_dvf_pins
 from dvfopt.solver import (
     PhaseInfo,
     SolveInfo,
@@ -311,6 +312,7 @@ __all__ = [
     'Objective',
     'PhaseInfo',
     'PhiPack',
+    'PinChainReport',
     'Result',
     'SLPStrategy',
     'SLSQPFullGrid3DStrategy',
@@ -341,6 +343,7 @@ __all__ = [
     'correct_dvf',
     'correct_dvf_3d',
     'correct_dvf_25d',
+    'correct_dvf_pins',
     'enable_default_handler',
     'fold_stats',
     'generate_random_dvf',

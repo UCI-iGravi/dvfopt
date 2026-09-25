@@ -6,6 +6,46 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the pin chain: `correct_dvf_pins` / `dvfopt correct --pipeline pins`
+
+A DVF-only preprocessing chain in front of the per-slice 2D engine and the 2.5D marching, for
+Laplacian-interpolated `(3, D, H, W)` fields with `dz == 0`. The 3D folds of such a field are
+mostly pin CONTRADICTIONS (two nearby landmarks whose displacements differ by more than their
+separation must cross), and the pins are readable from the field itself (`A u` spikes at them):
+
+- `dvfopt.dvf.pins` — `detect_pins` / `source_strength`, the self-calibrating threshold
+  `auto_tau(phi) = max(0.7, 10 * p98(source_strength))` (0.7 on B0039 / B0213, 2.35 on B0304,
+  where a fixed 0.7 over-detects: 309,833 "pins" for 210,625 landmarks), the pairwise test
+  `|d_p - d_q| > c |p - q|` (`violating_pairs_pruned`, exact, 70 s vs 12 min on a full volume;
+  `inconsistent_pins` uses it) and a bucket-queue greedy vertex cover. `crossing_pairs` is kept
+  as the measured-and-rejected alternative (worse than the norm test on the B0039 slab).
+- `dvfopt.dvf.refill.harmonic_refill` — re-solve the in-plane channels from the kept pins; AMG-PCG
+  with the new optional `pyamg` dependency (in the `solvers` and `dev` extras; 7 vs 769 CG
+  iterations on the full B0039 volume), Jacobi-PCG fallback without it.
+- `dvfopt.pipeline_pins.correct_dvf_pins` / `PinChainReport` — read → drop → re-fill → per-slice
+  bilinear + `isqp_windowed` + L2 (the `DVFopt` facade, `n_workers`) → `correct_dvf_25d`, with a
+  simplex-3D census (cubes < threshold / < 0, min, best-diagonal floor), L2 move, moved fraction,
+  per-stage walls and the pin counts; `checkpoint_dir` makes it resumable. The count of slices
+  carrying a sub-pixel bilinear 2D fold is diagnostic only: a final bilinear pass after the 2.5D
+  stage was measured on B0039 to push 1,674 tets back under the 0.01 margin.
+- CLI: `dvfopt correct --pipeline pins` (`--n-workers`, `--checkpoint`, `--param tau=/c=/radius=`).
+
+Measured on the 7-brain cohort (`laplacian_exterior`, `(3, 528, 320, 456)`, 865k-988k raw folds):
+**6/7 brains reach 0 folds, 0 best-diagonal floor, min +0.0101**, landmark residual 0.83-1.20 px
+median / 98.2-98.9 % within 10 px, 25-37 min each on a contended box (B0039's previous best: 33
+folds / 14 floor after 16.5 h of 2.5D). **B0304 does not certify** — per-slice landmark offsets
+(adjacent-slice landmark medians jump 10-30 px), a data defect the drop cannot fix; best arm
+(tau 2, c 0.5): 8 cubes < 0.01, 0 < 0, floor 3. Record: findings note section 14 and the frozen
+scripts in `docs/superpowers/notes/pin-chain-scripts/`.
+
+### Fixed — `n_neg_best_diagonal` no longer needs several full-volume arrays
+
+`correct_dvf_25d`'s final census crashed (MemoryError class) on a 77M-voxel field with ~20 GB free,
+AFTER the sweep had finished, losing the result. `n_neg_best_diagonal` now counts in ~2M-voxel
+z-slabs (`z_chunk=`), and the no-numba path of `six_tet_min_volume_3d` fills its output slab by
+slab; a `z_offset` threaded through the corner-position and all-diagonals kernels keeps absolute
+coordinates, so results are bit-identical to the whole-volume computation.
+
 ### Docs — canonical 2D origins re-measured to 27/27 under the re-seed fix (pass 5)
 
 `m2_ffd_brainpair_coarse` × `isqp_none`, the one uncertified row left in the canonical 2D origins

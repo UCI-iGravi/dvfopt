@@ -3,7 +3,7 @@
 A thin argparse layer over the library: field I/O via :mod:`dvfopt.io`
 (``.npy``/``.npz`` + NIfTI/MetaImage/NRRD), metrics via
 :mod:`dvfopt.metrics`, correction via :func:`dvfopt.correct_dvf` and the
-2.5D / 3D pipelines. Solver progress streams through the ``dvfopt``
+2.5D / 3D / pin-chain pipelines. Solver progress streams through the ``dvfopt``
 logger (``-v``/``-vv``; ``--log-file`` tees records to a file).
 
 Exit codes: 0 success (``correct``: strictly feasible output; ``info``:
@@ -312,6 +312,19 @@ def _cmd_correct(args) -> int:
         )
         feasible, solve_info = rep.feasible, None
         summary = {'pipeline': '25d', **asdict(rep)}
+    elif args.pipeline == 'pins':
+        from dvfopt import correct_dvf_pins
+
+        out, rep = correct_dvf_pins(
+            phi,
+            verbose=args.verbose,
+            checkpoint_dir=args.checkpoint,
+            n_workers=args.n_workers or 1,
+            **common,
+            **params,
+        )
+        feasible, solve_info = rep.feasible, None
+        summary = {'pipeline': 'pins', **asdict(rep)}
     else:  # '3d'
         from dvfopt import correct_dvf_3d
 
@@ -412,13 +425,15 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument('output')
     pc.add_argument(
         '--pipeline',
-        choices=('solver', 'slices', '25d', '3d'),
+        choices=('solver', 'slices', '25d', '3d', 'pins'),
         default='solver',
         help='solver: one Solver run on a 2D slice, or on a whole (3,D,H,W) volume '
         'with --constraint simplex_3d (there --strategy auto picks the 3D default); '
         'slices: per-slice 2D sweep over a (3,D,H,W) volume; 25d: marching fold '
         'prevention (needs dz==0); 3d: the packaged correct_dvf_3d full-volume '
-        'fold-repair pipeline',
+        'fold-repair pipeline; pins: the pin chain for a Laplacian-interpolated '
+        '(3,D,H,W) field with dz==0 (pin read, pairwise drop, harmonic re-fill, '
+        'per-slice 2D engine, 2.5D; --param tau=/c=/radius=)',
     )
     pc.add_argument(
         '--constraint',
@@ -465,7 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
         '--n-workers',
         type=int,
         default=None,
-        help='--pipeline slices: solve this many z-slices at once in worker '
+        help='--pipeline slices / pins: solve this many z-slices at once in worker '
         'processes (default: serial; inner solves stay serial — no nested pools). '
         'Keep it SMALL (2-4): the solves are memory-bandwidth bound, so throughput '
         'peaks well below the core count',

@@ -39,7 +39,7 @@ Python 3.10 resolves to, and which lacks `_slsqplib`) the driver sets
 `requirements-dev.txt` carries the same scipy pin. Ruff's `target-version`
 deliberately trails at `py39` (see the comment in pyproject).
 
-The install exposes a `dvfopt` CLI (`dvfopt {info, correct, gui}`, also `python -m dvfopt`) over the library — see [dvfopt/cli.py](dvfopt/cli.py); `correct` drives the solver / per-slice sweep / 2.5D / 3D pipelines and writes `summary.json` + `convergence.png` reports (the per-slice sweep parallelizes over slices with `--n-workers N`; inner solves stay serial, no nested pools). Exit codes: 0 feasible / 1 folds remain / 2 usage errors.
+The install exposes a `dvfopt` CLI (`dvfopt {info, correct, gui}`, also `python -m dvfopt`) over the library — see [dvfopt/cli.py](dvfopt/cli.py); `correct` drives the solver / per-slice sweep / 2.5D / 3D / pin-chain (`--pipeline pins`) pipelines and writes `summary.json` + `convergence.png` reports (the per-slice sweep parallelizes over slices with `--n-workers N`; inner solves stay serial, no nested pools). Exit codes: 0 feasible / 1 folds remain / 2 usage errors.
 
 **Resumable runs** — `--checkpoint DIR` on `dvfopt correct` (library: `checkpoint_dir=` on `correct_dvf_25d`, `correct_dvf_3d` and `DVFoptConfig`) mirrors each finished unit (a sweep/z-slice, a 3D stage) to `DIR/field.npy` + `state.json` via `dvfopt/checkpoint.py`'s `RunCheckpoint`; re-running with the same input, options and DIR skips the finished work, a finished checkpoint just reloads, and a mismatched one is refused. The windowed engine has its own `checkpoint_dir=` on both `windowed_correct` (units: the coarse stage, each round, each giant-tiler sweep, the mop, the re-seed stage, the re-anchor stage — `<dir>/touched.npy` mirrors the no-damage mask alongside `field.npy`) and `windowed_correct_banded` (units: `band:<k>` per z-band, plus a non-resumable `'seam'` counters row via `RunCheckpoint.note`), phase 4 of the 3D port; not yet wired through `ISQPWindowedStrategy`, the CLI's windowed path, or the GUI.
 
@@ -250,6 +250,39 @@ with escalating freedom cannot move the true-floor cells.
 | `correct_dvf_25d()` / `Correct25DReport` | `dvfopt.pipeline_25d` | End-to-end 2.5D marching orchestrator |
 | `march_slice()` / `layer_min_v()` | `dvfopt.core.marching` | Per-slice sweep repair + inter-layer min-volume |
 | `mop_interior_3d()` | `dvfopt.core.marching` | Frozen-rim 3D-interior elastic-SLP residual mop (`n_workers` batches disjoint boxes on the pool; `max_box=90` tiles giant boxes so one plane-spanning cluster cannot pin a single worker for hours) |
+
+### Pin chain (Laplacian fields)
+
+`correct_dvf_pins()` ([dvfopt/pipeline_pins.py](dvfopt/pipeline_pins.py); CLI
+`dvfopt correct --pipeline pins`, knobs via `--param tau=/c=/radius=`) certifies a
+Laplacian-interpolated `(3, D, H, W)` field with `dz == 0` by removing the pin
+CONTRADICTIONS that make it fold, reading everything from the DVF (never the
+correspondence files): pin read (`detect_pins` on the raw field at
+`tau='auto'` = `max(0.7, 10 * p98(source_strength))` — 0.7 on clean brains,
+2.35 on B0304) → pairwise drop (`|d_p - d_q| > c |p - q|` within `radius`,
+exact radius-pruned search + greedy vertex cover) → harmonic re-fill from the
+kept pins (AMG-preconditioned CG with `pyamg` — 7 vs 769 CG iterations on a full
+volume — Jacobi-PCG fallback without it; never solve the two channels in
+parallel processes, the SpMV is memory-bandwidth bound) → per-slice 2D windowed
+engine (bilinear + `isqp_windowed` + L2 via the `DVFopt` facade, needs `osqp`) →
+`correct_dvf_25d`. `checkpoint_dir` mirrors the re-fill and hands `<dir>/2d` /
+`<dir>/25d` to those stages' own checkpoints. Measured on the 7-brain cohort
+(`laplacian_exterior`, 865k-988k raw folds each): **6/7 brains → 0 folds / 0
+best-diagonal floor / min +0.0101 at ~1 px median landmark residual, 25-37 min per
+volume (measured on a contended box)** (the previous best on B0039 was 33 folds / 14 floor after
+16.5 h of 2.5D). **B0304 does not certify**: its sections carry per-slice
+landmark offsets (adjacent-slice landmark medians jump 10-30 px), a data defect
+no in-plane edit reconciles (best arm: 8 cubes < 0.01, 0 < 0, floor 3). The
+report's `bilinear_fold_slices` is diagnostic only — a final bilinear pass after
+the 2.5D stage was measured to push tets back under the 3D margin; do not add
+one. Record: `docs/superpowers/notes/pin-chain-scripts/` (frozen measurement
+scripts) and the findings note, section 14.
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `correct_dvf_pins()` / `PinChainReport` | `dvfopt.pipeline_pins` | End-to-end pin chain (read → drop → re-fill → 2D → 2.5D) + simplex-3D census |
+| `detect_pins()` / `auto_tau()` / `inconsistent_pins()` / `violating_pairs_pruned()` / `greedy_cover()` | `dvfopt.dvf.pins` | Read a Laplacian field's pins from `A u`; pairwise Lipschitz test; cover (`crossing_pairs` = measured-and-rejected) |
+| `harmonic_refill()` | `dvfopt.dvf.refill` | Re-solve the in-plane channels from a Dirichlet subset (AMG with `pyamg`) |
 
 **Other primitives:**
 
