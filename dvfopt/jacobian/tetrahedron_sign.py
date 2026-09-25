@@ -80,7 +80,7 @@ _CORNER_OFFSETS = np.array(
 )
 
 
-def _voxel_corner_positions(dz, dy, dx):
+def _voxel_corner_positions(dz, dy, dx, z_offset=0):
     """Warped positions of the 8 corners of every voxel cell.
 
     Parameters
@@ -92,11 +92,12 @@ def _voxel_corner_positions(dz, dy, dx):
     pos : ndarray, shape ``(8, 3, D-1, H-1, W-1)``
         ``pos[i]`` = ``(z, y, x)`` warped positions of corner ``i`` of
         every ``(D-1, H-1, W-1)`` cell. Axis 1 indexes the spatial
-        coordinate ``[z, y, x]``.
+        coordinate ``[z, y, x]``. ``z_offset`` shifts the z grid so a z-slab of a
+        volume gets the same absolute coordinates (hence bit-identical volumes).
     """
     D, H, W = dz.shape
     zz, yy, xx = np.meshgrid(
-        np.arange(D, dtype=np.float64),
+        np.arange(z_offset, z_offset + D, dtype=np.float64),
         np.arange(H, dtype=np.float64),
         np.arange(W, dtype=np.float64),
         indexing='ij',
@@ -134,11 +135,11 @@ def _tet_volume_from_vertices(A, B, C, D):
     return det / 6.0
 
 
-def _six_tet_volumes_3d_numpy(phi: np.ndarray) -> np.ndarray:
+def _six_tet_volumes_3d_numpy(phi: np.ndarray, z_offset=0) -> np.ndarray:
     """Pure-numpy reference path; kept as a fallback when Numba is not
     installed."""
     dz, dy, dx = phi[0], phi[1], phi[2]
-    pos = _voxel_corner_positions(dz, dy, dx)
+    pos = _voxel_corner_positions(dz, dy, dx, z_offset)
     out = np.empty((6, *pos.shape[2:]), dtype=np.float64)
     for k, (i0, i1, i2, i3) in enumerate(_TET_VERTICES):
         A, B, C, Dv = pos[i0], pos[i1], pos[i2], pos[i3]
@@ -258,6 +259,15 @@ if _HAVE_NUMBA:
         return out
 
 
+def _z_chunks(phi: np.ndarray, z_chunk=None):
+    """``(z0, z1)`` cube ranges covering ``[0, D-1)``; a cube range needs voxel slices
+    ``z0 .. z1`` inclusive. Default: ~2M voxels per slab. Every per-cube quantity here
+    reads only its own 8 corners, so chunked results are bit-identical to whole-volume."""
+    D, H, W = phi.shape[1:]
+    step = z_chunk or max(1, 2_000_000 // (H * W))
+    return [(z0, min(z0 + step, D - 1)) for z0 in range(0, D - 1, step)]
+
+
 def six_tet_min_volume_3d(phi: np.ndarray) -> np.ndarray:
     """Per-cube minimum signed tet volume — the fold-test scalar field.
 
@@ -276,7 +286,12 @@ def six_tet_min_volume_3d(phi: np.ndarray) -> np.ndarray:
     ndarray, shape ``(D-1, H-1, W-1)`` — per-cube worst (minimum) tet vol.
     """
     if not _HAVE_NUMBA:
-        return _six_tet_volumes_3d_numpy(phi).min(axis=0)
+        # z-chunked: the numpy path materialises (8, 3) + (6,) cube-grid arrays per call
+        D, H, W = phi.shape[1:]
+        out = np.empty((D - 1, H - 1, W - 1))
+        for z0, z1 in _z_chunks(phi):
+            out[z0:z1] = _six_tet_volumes_3d_numpy(phi[:, z0 : z1 + 1], z0).min(axis=0)
+        return out
     D, H, W = phi.shape[1:]
     dz = np.ascontiguousarray(phi[0])
     dy = np.ascontiguousarray(phi[1])
@@ -405,7 +420,7 @@ _ALL_DIAG_TETS, _ALL_DIAG_SIGNS = _build_all_diagonal_tables()
 if _HAVE_NUMBA:
 
     @njit(cache=True, fastmath=True, boundscheck=False, parallel=True)
-    def _all_diag_min_kernel(dz, dy, dx, D, H, W, tets, signs):
+    def _all_diag_min_kernel(dz, dy, dx, D, H, W, tets, signs, z_offset):
         """Per-cube min-of-6-tets for each of the 4 diagonals (parallel).
 
         Returns ``(4, D-1, H-1, W-1)``. Race-free ``prange`` over cz.
@@ -421,7 +436,7 @@ if _HAVE_NUMBA:
                         oz = (i >> 2) & 1
                         oy = (i >> 1) & 1
                         ox = i & 1
-                        Pz[i] = (cz + oz) + dz[cz + oz, cy + oy, cx + ox]
+                        Pz[i] = (cz + oz + z_offset) + dz[cz + oz, cy + oy, cx + ox]
                         Py[i] = (cy + oy) + dy[cz + oz, cy + oy, cx + ox]
                         Px[i] = (cx + ox) + dx[cz + oz, cy + oy, cx + ox]
                     for d in range(4):
@@ -452,7 +467,7 @@ if _HAVE_NUMBA:
         return out
 
 
-def six_tet_volumes_all_diagonals(phi: np.ndarray) -> np.ndarray:
+def six_tet_volumes_all_diagonals(phi: np.ndarray, z_offset: int = 0) -> np.ndarray:
     """Per-cube min tet volume under each of the 4 main cube diagonals.
 
     Parameters
@@ -469,15 +484,16 @@ def six_tet_volumes_all_diagonals(phi: np.ndarray) -> np.ndarray:
     Each diagonal's tet signs are normalised against the identity field
     so a valid cube yields positive volumes for that diagonal. Computed
     in one fused parallel kernel (~600x faster than the old per-diagonal
-    numpy path).
+    numpy path). ``z_offset``: ``phi`` is a z-slab starting at that voxel
+    slice of a larger volume (same absolute coordinates, bit-identical values).
     """
     if not _HAVE_NUMBA:
         # Pure-numpy fallback (kept for the no-Numba path).
         dz, dy, dx = phi[0], phi[1], phi[2]
-        pos = _voxel_corner_positions(dz, dy, dx)
+        pos = _voxel_corner_positions(dz, dy, dx, z_offset)
         spatial = pos.shape[2:]
         out = np.empty((4, *spatial), dtype=np.float64)
-        out[0] = _six_tet_volumes_3d_numpy(phi).min(axis=0)
+        out[0] = _six_tet_volumes_3d_numpy(phi, z_offset).min(axis=0)
         id_pos = _voxel_corner_positions(np.zeros_like(dz), np.zeros_like(dz), np.zeros_like(dz))
         for d in range(1, 4):
             s, e = _MAIN_DIAGONALS[d]
@@ -497,10 +513,10 @@ def six_tet_volumes_all_diagonals(phi: np.ndarray) -> np.ndarray:
     dz = np.ascontiguousarray(phi[0])
     dy = np.ascontiguousarray(phi[1])
     dx = np.ascontiguousarray(phi[2])
-    return _all_diag_min_kernel(dz, dy, dx, D, H, W, _ALL_DIAG_TETS, _ALL_DIAG_SIGNS)
+    return _all_diag_min_kernel(dz, dy, dx, D, H, W, _ALL_DIAG_TETS, _ALL_DIAG_SIGNS, z_offset)
 
 
-def best_diagonal_min_volume(phi: np.ndarray):
+def best_diagonal_min_volume(phi: np.ndarray, z_offset: int = 0):
     """Per-cube best achievable min tet volume over the 4 diagonals.
 
     Returns
@@ -512,13 +528,13 @@ def best_diagonal_min_volume(phi: np.ndarray):
     best_diag : ndarray, shape ``(D-1, H-1, W-1)``, dtype int8
         Which diagonal (0..3) achieves it per cube.
     """
-    all_diag = six_tet_volumes_all_diagonals(phi)
+    all_diag = six_tet_volumes_all_diagonals(phi, z_offset)
     best_diag = np.argmax(all_diag, axis=0).astype(np.int8)
     best_min = np.max(all_diag, axis=0)
     return best_min, best_diag
 
 
-def n_neg_best_diagonal(phi: np.ndarray, threshold: float = 0.0) -> int:
+def n_neg_best_diagonal(phi: np.ndarray, threshold: float = 0.0, z_chunk=None) -> int:
     """Fold count under the per-cell best-diagonal (variable-triangulation)
     feasibility test.
 
@@ -526,9 +542,17 @@ def n_neg_best_diagonal(phi: np.ndarray, threshold: float = 0.0) -> int:
     exceed ``threshold``. Compare to the fixed-diagonal count
     ``int((six_tet_volumes_3d(phi).min(axis=0) <= threshold).sum())`` to
     quantify how many "folds" are artifacts of the arbitrary fixed split.
+
+    Counted in z-slabs of ``z_chunk`` cubes (default ~2M voxels per slab), so
+    the peak is a small multiple of one slab rather than several full-volume
+    arrays — the whole-volume census crashed a 77M-voxel run with ~20 GB free.
+    The count is identical to the unchunked one.
     """
-    best_min, _ = best_diagonal_min_volume(phi)
-    return int((best_min <= threshold).sum())
+    n = 0
+    for z0, z1 in _z_chunks(phi, z_chunk):
+        best_min, _ = best_diagonal_min_volume(phi[:, z0 : z1 + 1], z0)
+        n += int((best_min <= threshold).sum())
+    return n
 
 
 # ---------------------------------------------------------------------------

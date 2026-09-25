@@ -1249,3 +1249,24 @@ class TestHistorySchemaParity:
             f'polish=False should produce exactly one harmonic phase; got {phase_names}'
         )
         assert not np.isnan(info.phases[0].min_T)
+
+
+def test_z_chunked_census_is_bit_identical(monkeypatch):
+    """n_neg_best_diagonal / the numpy min-volume path count in z-slabs; the
+    result must equal the whole-volume computation exactly."""
+    from dvfopt.jacobian import tetrahedron_sign as ts
+
+    rng = np.random.default_rng(7)
+    phi = rng.normal(0, 0.6, (3, 7, 9, 8))
+    whole_best = ts.best_diagonal_min_volume(phi)[0]
+    np.testing.assert_array_equal(ts.best_diagonal_min_volume(phi[:, 2:6], 2)[0], whole_best[2:5])
+    for thr in (0.0, 0.01):
+        want = int((whole_best <= thr).sum())
+        assert want > 0
+        for zc in (1, 2, 4, None):
+            assert ts.n_neg_best_diagonal(phi, thr, z_chunk=zc) == want
+    real = ts._z_chunks
+    monkeypatch.setattr(ts, '_z_chunks', lambda p, z_chunk=None: real(p, 2))
+    np.testing.assert_array_equal(
+        ts.six_tet_min_volume_3d(phi), ts._six_tet_volumes_3d_numpy(phi).min(axis=0)
+    )
