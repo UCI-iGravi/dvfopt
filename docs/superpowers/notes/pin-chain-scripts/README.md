@@ -9,7 +9,12 @@ They read the gitignored cohort data and write under `benchmarks/output/probe_so
   2D engine → 2.5D → census + landmark residual), `python full_chain_v5.py <brain> [variant]`,
   env knobs `PIN_TAU` (`auto` = the tau rule), `PIN_C`, `PIN_DETREND`.
 - `cg_bench.py` — the re-fill CG benchmark (Jacobi-PCG vs pyamg AMG-PCG).
-- `table.md` — the cohort results table.
+- `cg_bench2.py` — the AMG setup benchmark (smoothed aggregation vs Ruge-Stuben default vs
+  Ruge-Stuben classical-strength vs cheap SA vs a matrix-free geometric multigrid); results in
+  `cg_bench2.md`.
+- `table.md` — the cohort results table, now including the `laplacian_all` (tau=auto) rows
+  alongside `laplacian_exterior`.
+- `cg_bench2.md` — results of `cg_bench2.py`.
 
 Superseded by the library: `dvfopt.pipeline_pins.correct_dvf_pins` (CLI
 `dvfopt correct --pipeline pins`), `dvfopt.dvf.pins`, `dvfopt.dvf.refill`. The landmark-residual

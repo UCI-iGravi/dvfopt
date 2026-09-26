@@ -35,8 +35,14 @@ Measured on the 7-brain cohort (`laplacian_exterior`, `(3, 528, 320, 456)`, 865k
 median / 98.2-98.9 % within 10 px, 25-37 min each on a contended box (B0039's previous best: 33
 folds / 14 floor after 16.5 h of 2.5D). **B0304 does not certify** — per-slice landmark offsets
 (adjacent-slice landmark medians jump 10-30 px), a data defect the drop cannot fix; best arm
-(tau 2, c 0.5): 8 cubes < 0.01, 0 < 0, floor 3. Record: findings note section 14 and the frozen
-scripts in `docs/superpowers/notes/pin-chain-scripts/`.
+(tau 2, c 0.5): 8 cubes < 0.01, 0 < 0, floor 3. The `laplacian_all` field variant was also
+measured: 5/7 brains certify identically (0/0/+0.0101, 0.79-1.03 px residual, 40-55 min alone on
+the box); B0032 ends with 2 cells at +0.0099 (a 1e-4 tolerance gap between the 2.5D solver's
+acceptance and the strict census); B0304 hits the same landmark-offset defect. An AMG setup bench
+(`cg_bench2.md`) confirmed smoothed aggregation over Ruge-Stuben (7% faster wall but 1.8x the
+memory) and over a matrix-free geometric multigrid (correct, but bound by an uncompiled numpy
+stencil at ~17 s/CG-iteration). Record: findings note section 14 and the frozen scripts in
+`docs/superpowers/notes/pin-chain-scripts/`.
 
 ### Fixed — `n_neg_best_diagonal` no longer needs several full-volume arrays
 
