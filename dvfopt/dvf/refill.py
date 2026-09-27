@@ -26,7 +26,13 @@ _warned_no_amg = False
 
 
 def harmonic_refill(
-    phi: np.ndarray, dirichlet: np.ndarray, *, rtol: float = 1e-4, verbose: int = 0
+    phi: np.ndarray,
+    dirichlet: np.ndarray,
+    *,
+    rtol: float = 1e-4,
+    keep_sources: bool = False,
+    zero_sources: np.ndarray | None = None,
+    verbose: int = 0,
 ) -> np.ndarray:
     """Re-solve the in-plane channels of ``phi`` as the harmonic interpolant of
     their values at ``dirichlet``.
@@ -39,6 +45,16 @@ def harmonic_refill(
         Voxels whose value is kept and imposed; must be non-empty.
     rtol : float
         Relative CG tolerance.
+    keep_sources : bool
+        ``False`` (default): the free voxels are made harmonic (the classic re-fill).
+        ``True``: the free voxels keep the field's OWN Laplacian source term
+        ``f = A_full u`` (zero only at ``zero_sources``), so with nothing dropped the
+        input is reproduced exactly. For a slice cut from a 3D solve, ``f`` carries
+        the through-plane coupling that a harmonic 2D re-fill would erase.
+    zero_sources : bool ndarray, optional
+        Where to zero the source term under ``keep_sources`` — the dropped pins.
+        Default: every free voxel that is not in ``dirichlet`` keeps its source,
+        which makes the call a no-op check; pass the dropped-pin mask.
 
     Returns
     -------
@@ -90,10 +106,21 @@ def harmonic_refill(
         M = diags(1.0 / A.diagonal())
         maxiter = 20000
 
+    if keep_sources:
+        from dvfopt.dvf.pins import source_map
+
+        zmask = None if zero_sources is None else np.asarray(zero_sources, dtype=bool).ravel()
     out = phi.copy()
     for ch in range(phi.shape[0] - 2, phi.shape[0]):
         u = phi[ch].astype(np.float64).ravel()
-        rhs = np.zeros(A.shape[0])
+        if keep_sources:
+            # A_dir u = f + (kept-pin contributions), with f the FULL-stencil Laplacian of u:
+            # keeping f off the dropped pins reproduces u exactly where nothing is dropped
+            rhs = source_map(u.reshape(shape3)).ravel()
+            if zmask is not None:
+                rhs[zmask] = 0.0
+        else:
+            rhs = np.zeros(A.shape[0])
         rhs[bidx] = u[bidx]
         propagate_dirichlet_rhs(shape3, bidx, rhs)
         n_it = [0]

@@ -192,7 +192,25 @@ CONFIGS = {
     "barrier": dict(constraint="simplex_standard", strategy="barrier", objective="l2"),
     "m14": dict(constraint="simplex_standard", strategy="m14", objective="l2"),
     "slsqp_windowed": dict(constraint="jdet", strategy="slsqp_windowed", objective="l2"),
+    #: Pin preprocessing (dvfopt.dvf.pins / dvfopt.dvf.refill) in front of the engine rows:
+    #: read the Laplacian pins from the field, drop the pairwise-contradictory ones, re-fill with
+    #: the field's own source term kept (zeroed only at the dropped pins), then solve as usual.
+    #: Metrics are against the ORIGINAL input. Fields with no pins pass through untouched.
+    "pins_isqp_l2": dict(
+        pins=True, constraint="bilinear", strategy="isqp_windowed", objective="l2"
+    ),
+    "pins_isqp_none": dict(
+        pins=True, constraint="bilinear", strategy="isqp_windowed", objective="none"
+    ),
 }
+#: Pin-preprocessing knobs (measured on the cohort: c=1, radius 60, tau rule with a 0.7 floor).
+PINS_C, PINS_RADIUS = 1.0, 60.0
+#: "3d" reads the pins with the 3D stencil from the parent volume when the case has one
+#: (cohort slices), else the 2D stencil; "2d" always uses the slice alone.
+PINS_READ = "3d"
+#: "srcpres" keeps the field's own Laplacian source term off the dropped pins; "harmonic" is
+#: the classic re-fill (measured to erase a 3D slice's through-plane structure).
+PINS_REFILL = "srcpres"
 #: The two engine rows run on every source; the rest of the taxonomy on the small ones.
 _EVERY_SOURCE_CONFIGS = ("isqp_none", "isqp_l2")
 _SMALL_SOURCES = ("origins", "crops", "synthetic")
@@ -684,7 +702,17 @@ def metrics(phi_in, phi_out, res=None, threshold: float = THRESHOLD, elapsed: fl
 # ---------------------------------------------------------------------------
 
 _IDENT_KEYS = ("label", "case", "source", "config", "mechanism", "tool", "shape")
-_TAIL_KEYS = ("error", "timing_mode", "hit_cap", "out_path", "sha256")
+_TAIL_KEYS = (
+    "pins_n",
+    "pins_dropped",
+    "pins_pairs",
+    "pins_pre_s",
+    "error",
+    "timing_mode",
+    "hit_cap",
+    "out_path",
+    "sha256",
+)
 
 
 def _identity(case: Case, cfg_name: str, shape: str = "") -> dict:
@@ -725,6 +753,61 @@ def sentinel_record(case: Case, cfg_name: str, error: str, timing_mode="throughp
     return rec
 
 
+def _pins_read_mask(case: Case, phi_in: np.ndarray) -> np.ndarray:
+    """Pin mask for a (3, 1, H, W) case: 3D stencil on the parent volume's 3 slices when the
+    case is a cohort slice and PINS_READ == '3d', else the 2D stencil on the slice."""
+    from dvfopt.dvf.pins import auto_tau, source_strength
+
+    sl2 = phi_in[1:, 0]
+    if PINS_READ == "3d" and case.source == "cohort":
+        brain, _, z = case.key.partition(":")
+        z = int(z)
+        vol = _cohort_volume(brain)
+        lo = max(z - 1, 0)
+        sub = np.asarray(vol[1:, lo : z + 2], dtype=np.float64)
+        s = source_strength(sub)[z - lo]
+        tau = max(0.7, 10.0 * float(np.percentile(s, 98)))
+        return s > tau
+    tau = auto_tau(sl2)
+    return source_strength(sl2) > tau
+
+
+def pins_preprocess(case: Case, phi_in: np.ndarray) -> tuple:
+    """Pin read -> pairwise drop -> re-fill on a (3, 1, H, W) field. Returns
+    ``(phi_pre, info)``; ``phi_pre is phi_in`` (same object) when nothing was dropped."""
+    from dvfopt.dvf.pins import greedy_cover, violating_pairs_pruned
+    from dvfopt.dvf.refill import harmonic_refill
+
+    t0 = time.perf_counter()
+    pins = _pins_read_mask(case, phi_in)
+    info = {"pins_n": int(pins.sum()), "pins_dropped": 0, "pins_pairs": 0, "pins_pre_s": 0.0}
+    if not pins.any():
+        info["pins_pre_s"] = time.perf_counter() - t0
+        return phi_in, info
+    sl2 = phi_in[1:, 0]
+    coords = np.argwhere(pins)
+    d = sl2[:, pins].T
+    bad = violating_pairs_pruned(coords.astype(np.float64), d, PINS_C, PINS_RADIUS)
+    drop = greedy_cover(len(coords), bad)
+    info["pins_pairs"] = len(bad)
+    info["pins_dropped"] = int(drop.sum())
+    if not drop.any() or drop.all():
+        info["pins_pre_s"] = time.perf_counter() - t0
+        return phi_in, info
+    keep = np.zeros(pins.shape, bool)
+    keep[tuple(coords[~drop].T)] = True
+    dropped = np.zeros(pins.shape, bool)
+    dropped[tuple(coords[drop].T)] = True
+    if PINS_REFILL == "srcpres":
+        ref = harmonic_refill(sl2, keep, rtol=1e-6, keep_sources=True, zero_sources=dropped)
+    else:
+        ref = harmonic_refill(sl2, keep, rtol=1e-6)
+    phi_pre = phi_in.copy()
+    phi_pre[1:, 0] = ref
+    info["pins_pre_s"] = time.perf_counter() - t0
+    return phi_pre, info
+
+
 def run_case(
     case: Case,
     cfg_name: str,
@@ -756,13 +839,23 @@ def run_case(
     phi_in = np.asarray(phi_in, dtype=np.float64)
     t0 = time.perf_counter()
     err = ""
+    cfg = dict(CONFIGS[cfg_name])
+    pins_info = {"pins_n": -1, "pins_dropped": -1, "pins_pairs": -1, "pins_pre_s": -1.0}
+    phi_solve = phi_in
+    if cfg.pop("pins", False):
+        try:
+            phi_solve, pins_info = pins_preprocess(case, phi_in)
+        except Exception as exc:  # the preprocessing is a row, never a crash
+            err = f"pins: {type(exc).__name__}: {exc}"
     try:
+        if err:
+            raise RuntimeError(err)
         res = correct_dvf(
-            phi_in.copy(),
+            phi_solve.copy(),
             threshold=threshold,
             record_history=True,
             verbose=verbose,
-            **CONFIGS[cfg_name],
+            **cfg,
         )
         phi_out = np.asarray(res.corrected, dtype=np.float64)
     except Exception as exc:  # nothing dropped — the failure is a row
@@ -772,6 +865,7 @@ def run_case(
     rec = _identity(case, cfg_name, "x".join(str(n) for n in phi_in.shape))
     rec.update(metrics(phi_in, phi_out, res, threshold, elapsed))
     rec.update(_corr_stats(phi_in, phi_out, corr_pts))
+    rec.update(pins_info)
     rec["error"] = err
     if err:  # a raised solve never certifies, even when its unchanged input was clean
         rec["certified"] = rec["feasible"] = False
