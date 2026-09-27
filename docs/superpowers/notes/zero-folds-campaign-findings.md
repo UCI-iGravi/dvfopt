@@ -1444,7 +1444,7 @@ Still open:
 - **Uncontended per-brain walls for the shipped CLI.** Every wall time in 14.4 was measured with
   the throwaway `full_chain_v5.py` scripts, mostly on a contended box, not the shipped `dvfopt
   correct --pipeline pins`. An uncontended timing pass over the six clean `laplacian_exterior`
-  brains on the shipped CLI is in progress; per-brain wall range: [B2 WALLS].
+  brains on the shipped CLI is still pending (the box was occupied by an unrelated job); the laplacian_exterior walls above (25-40 min) were contended, the laplacian_all walls (40-55 min, a denser variant) ran alone.
 - **The 2.5D acceptance tolerance vs. the strict census** (B0032 `laplacian_all`, 14.4):
   `correct_dvf_25d` accepts a cell at `threshold − 1e-5` as feasible, but the finalize census
   compares against `threshold` exactly, so a cell in that 1e-4 band can be solver-feasible and
