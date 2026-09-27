@@ -193,14 +193,28 @@ CONFIGS = {
     "m14": dict(constraint="simplex_standard", strategy="m14", objective="l2"),
     "slsqp_windowed": dict(constraint="jdet", strategy="slsqp_windowed", objective="l2"),
     #: Pin preprocessing (dvfopt.dvf.pins / dvfopt.dvf.refill) in front of the engine rows:
-    #: read the Laplacian pins from the field, drop the pairwise-contradictory ones, re-fill with
-    #: the field's own source term kept (zeroed only at the dropped pins), then solve as usual.
-    #: Metrics are against the ORIGINAL input. Fields with no pins pass through untouched.
-    "pins_isqp_l2": dict(
-        pins=True, constraint="bilinear", strategy="isqp_windowed", objective="l2"
-    ),
+    #: read the Laplacian pins from the field, drop the pairwise-contradictory ones, re-fill,
+    #: then solve as usual. ``pins`` names the re-fill: "harmonic" (the shipped chain's) or
+    #: "srcpres" (the field's own source term kept, zeroed only at the dropped pins — measured
+    #: WORSE on slices of 3D volumes, kept as the comparison row). Metrics are against the
+    #: ORIGINAL input. Fields with no pins pass through untouched. Opt-in labels only.
     "pins_isqp_none": dict(
-        pins=True, constraint="bilinear", strategy="isqp_windowed", objective="none"
+        pins="harmonic", constraint="bilinear", strategy="isqp_windowed", objective="none"
+    ),
+    "pins_isqp_l2": dict(
+        pins="harmonic", constraint="bilinear", strategy="isqp_windowed", objective="l2"
+    ),
+    "pins_isqp_l1": dict(
+        pins="harmonic", constraint="bilinear", strategy="isqp_windowed", objective="l1"
+    ),
+    "pinss_isqp_none": dict(
+        pins="srcpres", constraint="bilinear", strategy="isqp_windowed", objective="none"
+    ),
+    "pinss_isqp_l2": dict(
+        pins="srcpres", constraint="bilinear", strategy="isqp_windowed", objective="l2"
+    ),
+    "pinss_isqp_l1": dict(
+        pins="srcpres", constraint="bilinear", strategy="isqp_windowed", objective="l1"
     ),
 }
 #: Pin-preprocessing knobs (measured on the cohort: c=1, radius 60, tau rule with a 0.7 floor).
@@ -208,9 +222,7 @@ PINS_C, PINS_RADIUS = 1.0, 60.0
 #: "3d" reads the pins with the 3D stencil from the parent volume when the case has one
 #: (cohort slices), else the 2D stencil; "2d" always uses the slice alone.
 PINS_READ = "3d"
-#: "srcpres" keeps the field's own Laplacian source term off the dropped pins; "harmonic" is
-#: the classic re-fill (measured to erase a 3D slice's through-plane structure).
-PINS_REFILL = "srcpres"
+
 #: The two engine rows run on every source; the rest of the taxonomy on the small ones.
 _EVERY_SOURCE_CONFIGS = ("isqp_none", "isqp_l2")
 _SMALL_SOURCES = ("origins", "crops", "synthetic")
@@ -772,7 +784,7 @@ def _pins_read_mask(case: Case, phi_in: np.ndarray) -> np.ndarray:
     return source_strength(sl2) > tau
 
 
-def pins_preprocess(case: Case, phi_in: np.ndarray) -> tuple:
+def pins_preprocess(case: Case, phi_in: np.ndarray, refill: str = "harmonic") -> tuple:
     """Pin read -> pairwise drop -> re-fill on a (3, 1, H, W) field. Returns
     ``(phi_pre, info)``; ``phi_pre is phi_in`` (same object) when nothing was dropped."""
     from dvfopt.dvf.pins import greedy_cover, violating_pairs_pruned
@@ -798,7 +810,7 @@ def pins_preprocess(case: Case, phi_in: np.ndarray) -> tuple:
     keep[tuple(coords[~drop].T)] = True
     dropped = np.zeros(pins.shape, bool)
     dropped[tuple(coords[drop].T)] = True
-    if PINS_REFILL == "srcpres":
+    if refill == "srcpres":
         ref = harmonic_refill(sl2, keep, rtol=1e-6, keep_sources=True, zero_sources=dropped)
     else:
         ref = harmonic_refill(sl2, keep, rtol=1e-6)
@@ -842,9 +854,10 @@ def run_case(
     cfg = dict(CONFIGS[cfg_name])
     pins_info = {"pins_n": -1, "pins_dropped": -1, "pins_pairs": -1, "pins_pre_s": -1.0}
     phi_solve = phi_in
-    if cfg.pop("pins", False):
+    refill = cfg.pop("pins", None)
+    if refill:
         try:
-            phi_solve, pins_info = pins_preprocess(case, phi_in)
+            phi_solve, pins_info = pins_preprocess(case, phi_in, refill)
         except Exception as exc:  # the preprocessing is a row, never a crash
             err = f"pins: {type(exc).__name__}: {exc}"
     try:
