@@ -275,8 +275,15 @@ landmark offsets (adjacent-slice landmark medians jump 10-30 px), a data defect
 no in-plane edit reconciles (best arm: 8 cubes < 0.01, 0 < 0, floor 3). The
 report's `bilinear_fold_slices` is diagnostic only — a final bilinear pass after
 the 2.5D stage was measured to push tets back under the 3D margin; do not add
-one. Record: `docs/superpowers/notes/pin-chain-scripts/` (frozen measurement
-scripts) and the findings note, section 14.
+one. The `laplacian_all` field variant certifies identically on 5/7 brains (0
+folds / 0 floor / +0.0101); B0032 ends with 2 cells at +0.0099 (a 1e-4 tolerance
+near-miss between the 2.5D solver's acceptance and the strict census, not a
+fold); B0304 hits the same per-slice landmark-offset defect. Uncontended
+per-volume wall: 25-55 min measured (contended for laplacian_exterior; uncontended re-timing of the shipped CLI pending). AMG setup (`cg_bench2.md`):
+smoothed aggregation is kept over Ruge-Stuben (which is 7% faster but at 1.8x
+the memory) and over a matrix-free geometric multigrid (correct but CG-iteration-bound
+on its uncompiled stencil). Record: `docs/superpowers/notes/pin-chain-scripts/`
+(frozen measurement scripts) and the findings note, section 14.
 
 | Function | Module | Purpose |
 |----------|--------|---------|

@@ -1296,22 +1296,47 @@ Full B0039 (Laplacian-exterior, `(3, 528, 320, 456)`): raw 967,234 folds (floor 
 near-identical residual and move each time — the differences are re-fill/solve-order noise, not
 regressions).
 
-Cohort (`cohort/table.md`, 7 brains, `laplacian_exterior`):
+Cohort (`cohort/table.md`, 7 brains x 2 field variants — `laplacian_exterior` and
+`laplacian_all`, both `tau=auto`):
 
-| brain | pins | viol. pairs | dropped | raw folds | raw min | final folds | final <0 | floor | final min | resid px | ≤10px % | L2 move |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| B0032 | 400,398 | 13,161,879 | 254,169 | 988,339 | −352 | 0 | 0 | 0 | +0.0101 | 1.20 | 98.2 | 14,911 |
-| B0039 | 424,682 | 10,927,126 | 275,315 | 967,234 | −312 | 0 | 0 | 0 | +0.0101 | 1.01 | 98.8 | 17,904 |
-| B0049 | 427,868 | 8,109,768 | 273,593 | 917,298 | −42 | 0 | 0 | 0 | +0.0101 | 0.98 | 98.9 | 6,604 |
-| B0053 | 411,476 | 7,783,920 | 260,846 | 864,550 | −23 | 0 | 0 | 0 | +0.0101 | 0.96 | 98.7 | 7,651 |
-| B0200 | 410,957 | 8,339,279 | 266,556 | 895,706 | −17 | 0 | 0 | 0 | +0.0101 | 1.02 | 98.6 | 8,420 |
-| B0213 | 410,002 | 7,904,681 | 228,597 | 896,404 | −36 | 0 | 0 | 0 | +0.0101 | 0.83 | 98.5 | 10,599 |
-| B0304 (see 14.6) | 205,424–309,833 | up to 650.9M | up to 287,265 | 3,738,194 | −399 | 8–25 | 0–1 | 3–15 | ≈0 | 9.4–9.7 | 51–52 | 110,842–125,656 |
+| arm | pins | viol pairs | dropped | raw folds | raw min | final folds | <0 | floor | final min | resid px | ≤10px % | L2 move | min |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B0032_laplacian_all | 734,772 | 17,230,775 | 457,998 | 1,785,745 | −21 | 2 | 0 | 2 | +0.0099 | 1.15 | 98.2 | 9,193 | 54 |
+| B0032_laplacian_exterior | 400,398 | 13,161,879 | 254,169 | 988,339 | −352 | 0 | 0 | 0 | +0.0101 | 1.20 | 98.2 | 14,911 | 35 |
+| B0039_laplacian_all | 820,167 | 34,109,919 | 530,603 | 1,868,747 | −154 | 0 | 0 | 0 | +0.0101 | 1.02 | 98.9 | 20,036 | 47 |
+| B0039_laplacian_exterior | 424,682 | 10,927,126 | 275,315 | 967,234 | −312 | 0 | 0 | 0 | +0.0101 | 1.01 | 98.8 | 17,904 | 0 |
+| B0049_laplacian_all | 827,187 | 16,888,340 | 476,778 | 1,793,834 | −33 | 0 | 0 | 0 | +0.0101 | 0.87 | 99.0 | 8,778 | 43 |
+| B0049_laplacian_exterior | 427,868 | 8,109,768 | 273,593 | 917,298 | −42 | 0 | 0 | 0 | +0.0101 | 0.98 | 98.9 | 6,604 | 25 |
+| B0053_laplacian_all | 762,062 | 16,266,468 | 419,788 | 1,736,898 | −19 | 0 | 0 | 0 | +0.0101 | 0.79 | 98.5 | 9,282 | 55 |
+| B0053_laplacian_exterior | 411,476 | 7,783,920 | 260,846 | 864,550 | −23 | 0 | 0 | 0 | +0.0101 | 0.96 | 98.7 | 7,651 | 26 |
+| B0200_laplacian_all | 770,814 | 16,798,714 | 459,367 | 1,769,104 | −19 | 0 | 0 | 0 | +0.0101 | 1.02 | 98.6 | 8,241 | 46 |
+| B0200_laplacian_exterior | 410,957 | 8,339,279 | 266,556 | 895,706 | −17 | 0 | 0 | 0 | +0.0101 | 1.02 | 98.6 | 8,420 | 27 |
+| B0213_laplacian_all | 751,062 | 15,805,350 | 486,304 | 1,686,027 | −15 | 0 | 0 | 0 | +0.0101 | 1.03 | 98.6 | 10,823 | 40 |
+| B0213_laplacian_exterior | 410,002 | 7,904,681 | 228,597 | 896,404 | −36 | 0 | 0 | 0 | +0.0101 | 0.83 | 98.5 | 10,599 | 37 |
+| B0304_laplacian_exterior_c0.5 | 309,833 | 650,897,023 | 287,265 | 3,738,194 | −399 | 25 | 1 | 15 | −0.0004 | 9.43 | 51.6 | 110,842 | 271 |
+| B0304_laplacian_exterior_c0.5_tau2.0 | 205,424 | 253,987,118 | 193,721 | 3,738,194 | −399 | 8 | 0 | 3 | +0.0028 | 9.65 | 51.0 | 125,656 | 151 |
 
-Six of seven brains certify identically (0 folds / 0 floor / +0.0101), 25–37 min each (contended by
-an unrelated job on the box); pins 400k–428k, violating pairs 7.8–13.2M, dropped 229k–275k (kept
+B0304 exterior arms: `_c0.5` = tau 0.7 / c 0.5; `_c0.5_tau2.0` = tau 2 / c 0.5 (best: 8
+sub-margin cells, none negative). Tau 0.7/c 1 and tau 2/c 1 never finished 2.5D (6 h caps).
+`laplacian_all` rows ran with `tau=auto` (0.70 on every clean brain). Walls were contended by
+an unrelated job for the `laplacian_exterior` rows; `laplacian_all` rows ran alone except B0304
+(an unrelated job from 16:31).
+
+Six of seven `laplacian_exterior` brains certify identically (0 folds / 0 floor / +0.0101),
+25–37 min each (contended); pins 400k–428k, violating pairs 7.8–13.2M, dropped 229k–275k (kept
 ≈35–38%); 285–455 slices per volume carry sub-pixel bilinear folds (v5 stage F, diagnostic only).
 B0304 is the outlier — see 14.6.
+
+**`laplacian_all` variant, run 2026-09-25**: 5 of 7 brains (B0039/B0049/B0053/B0200/B0213)
+certify identically to their `laplacian_exterior` counterparts — 1.69–1.87M raw folds → 0 folds
+/ 0 floor / +0.0101, residual 0.79–1.03 px median / 98.5–99.0% within 10 px, 40–55 min alone on
+the box, auto tau 0.70, ≈750k–830k pins. **B0032 ends with 2 cells at +0.0099** (none negative,
+floor 2) — a tolerance near-miss, not a fold: `correct_dvf_25d` accepts `threshold − 1e-5` while
+the finalize census is strict at `threshold`, so a cell landing in that 1e-4 band is feasible to
+the solver but counted against the census (open item, 14.9). **B0304 hit the 4 h cap in 2.5D**
+under `laplacian_all` (auto tau 2.38, 302,846 pins, 113,439,594 violating pairs, 59,558 kept
+(20%), 2D stage 1 h 42 min with one 974 s slice) — the same per-slice landmark-offset defect as
+its `laplacian_exterior` variant (14.6).
 
 ### 14.5 The 2D slice test and ruling
 
@@ -1408,22 +1433,59 @@ reason.
 
 ### 14.9 Open items
 
-- **Promotion into `dvfopt`.** `dvfopt/dvf/pins.py` exists and has its own self-check
-  (`python -m dvfopt.dvf.pins`), but the chain scripts that call it
-  (`engine2d.py`, `march25d.py`, `full_chain_v5.py`, `chain2d.py`) are still one-off scripts under
-  `benchmarks/output/probe_source_space/` and `notebooks/experiments/`, not a library entry point.
-- **A `laplacian_all` cohort variant.** Only `laplacian_exterior` fields were run through the
-  chain; whether `laplacian_all` fields show the same pin structure and certify the same way is
-  untested.
-- **Uncontended wall times.** Every reported wall above ~20 min in this section (all of 14.4, most
-  of 14.6) ran while an unrelated job shared the box; only v4 has an explicit uncontended estimate
-  (≈40 min vs its contended 115 min 2.5D stage). The other numbers should be treated as upper
-  bounds on wall time, not lower bounds.
-- **A memory-safe 2.5D finalize.** `correct_dvf_25d`'s all-diagonals finalize census materializes
-  full 77M-voxel arrays; it crashed one B0304 run when two chain arms and their pools were live at
-  once. It needs either a lower-memory census path or a documented ≥10 GB headroom requirement,
-  and chains should not be run two-at-once on the same box until then.
+**Done** since this section was first written: promotion into `dvfopt` — `correct_dvf_pins`,
+`dvfopt correct --pipeline pins`, `dvfopt.dvf.pins` (`auto_tau`, `harmonic_refill`), tests, docs
+and CHANGELOG all merged (PR #130, c5afda6); the memory-safe z-chunked 2.5D finalize census
+(`n_neg_best_diagonal(z_chunk=)`) shipped in the same PR; the `laplacian_all` cohort variant was
+measured (14.4) and its findings written.
+
+Still open:
+
+- **Uncontended per-brain walls for the shipped CLI.** Every wall time in 14.4 was measured with
+  the throwaway `full_chain_v5.py` scripts, mostly on a contended box, not the shipped `dvfopt
+  correct --pipeline pins`. An uncontended timing pass over the six clean `laplacian_exterior`
+  brains on the shipped CLI is still pending (the box was occupied by an unrelated job); the laplacian_exterior walls above (25-40 min) were contended, the laplacian_all walls (40-55 min, a denser variant) ran alone.
+- **The 2.5D acceptance tolerance vs. the strict census** (B0032 `laplacian_all`, 14.4):
+  `correct_dvf_25d` accepts a cell at `threshold − 1e-5` as feasible, but the finalize census
+  compares against `threshold` exactly, so a cell in that 1e-4 band can be solver-feasible and
+  census-positive at once. Needs either a shared tolerance constant or a documented gap.
 - **The B0304 correspondence defect** (14.6, layer 3: ±10–30 px per-slice rigid landmark offsets
-  at z 135–147, integer-valued, absent from the field's own per-slice mean) is a data defect in
-  that brain's correspondence file, not a solver limitation — it should be reported upstream to
-  whoever produced the B0304 correspondences rather than chased further in this chain.
+  at z 135–147, integer-valued, absent from the field's own per-slice mean, present under both
+  field variants) is a data defect in that brain's correspondence file, not a solver limitation —
+  it should be reported upstream to whoever produced the B0304 correspondences rather than chased
+  further in this chain.
+- **The compiled-stencil GMG lever** (14.10) — the matrix-free geometric multigrid solve is
+  correct but its numpy stencil costs ≈17 s per CG iteration; a numba (or similar) compiled
+  stencil kernel is the only untried lever left for the re-fill's CG cost, unstarted.
+- **The greedy cover is an upper bound on pins kept**, not a minimum. It drops ≈55–65% of
+  detected pins on the clean brains (14.4, 14.8) to reach a violation-free set; a weighted cover
+  (prefer keeping higher-confidence pins) or an exact minimum cover might keep more pins at the
+  same certificate, untested.
+- **`tau`, `c` and `radius` were tuned on this cohort** (`c=1`, `radius=60`, the `auto_tau`
+  histogram rule) — a different DVF source (e.g. the `dvf_origins` fields, or a non-brain
+  Laplacian field) needs its own `|Δu|` histogram check before assuming these defaults transfer.
+
+### 14.10 AMG setup: smoothed aggregation vs Ruge-Stuben vs matrix-free GMG
+
+`cg_bench2.md` (`cg_bench2.py`, one B0039 channel, `rtol=1e-4`) compares the AMG setup used by
+the re-fill CG (14.3's v4/v5 lever) against two alternatives, to check whether a faster or
+lighter setup exists before promoting `pyamg` further:
+
+| arm | setup s | iters | solve s | total s | rel. resid | peak RSS |
+|---|---|---|---|---|---|---|
+| `sa` (shipped) | 454 | 7 | 139 | 593 | 2.70e-05 | 30.2 GB |
+| `rs_default` (Ruge-Stuben) | 369 | 9 | 181 | 550 | 6.61e-05 | 54.3 GB |
+| `rs_classical` | — | — | — | — | — | subprocess exit 1 (crash) |
+| `sa_cheap` (no prolongator smoothing) | 310 | 67 | 645 | 956 | 9.96e-05 | 41.6 GB |
+| `gmg` (matrix-free geometric multigrid) | 19 | 41 | 906 | 924 | 8.58e-02 | 11.6 GB |
+
+**Verdict: keep smoothed aggregation (`sa`).** Ruge-Stuben default is 7% faster in total wall
+(550 s vs 593 s) but peaks at 54 GB against SA's 30 GB — not worth the memory for a 7% win.
+Classical-strength Ruge-Stuben crashes outright (a ~2.7 GB single allocation from ~720M strong
+entries in the strength-of-connection matrix). Cheap SA (skipping prolongator smoothing) is
+worse on both axes: 67 iterations / 956 s total. A matrix-free geometric multigrid was built and
+verified correct (its matvec matches `laplacianA3D` to 7e-15) and has by far the lowest setup
+cost and memory (19 s, 11.6 GB), but its numpy `source_map` stencil costs ≈17 s per CG
+iteration — 41 iterations only reached residual 0.086 inside a 900 s solve budget, not
+converged. GMG is the only remaining lever for the re-fill's CG cost, gated on a compiled
+(numba or similar) stencil kernel to replace the numpy one; unstarted (14.9).
