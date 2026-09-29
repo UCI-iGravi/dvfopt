@@ -251,7 +251,7 @@ with escalating freedom cannot move the true-floor cells.
 | `march_slice()` / `layer_min_v()` | `dvfopt.core.marching` | Per-slice sweep repair + inter-layer min-volume |
 | `mop_interior_3d()` | `dvfopt.core.marching` | Frozen-rim 3D-interior elastic-SLP residual mop (`n_workers` batches disjoint boxes on the pool; `max_box=90` tiles giant boxes so one plane-spanning cluster cannot pin a single worker for hours) |
 
-### Pin chain (Laplacian fields)
+### Pin chain (Laplacian fields) In the canonical 2D benchmark the per-slice pin chain (`pins_isqp_*` rows, opt-in) is 20-37x faster than the engine alone at unchanged certification, at ~10x the L2 move and a landmark residual of 0.56 vs 0.16 px; the source-preserving re-fill (`harmonic_refill(keep_sources=True)`) measured worse everywhere and is not used (findings 14.11).
 
 `correct_dvf_pins()` ([dvfopt/pipeline_pins.py](dvfopt/pipeline_pins.py); CLI
 `dvfopt correct --pipeline pins`, knobs via `--param tau=/c=/radius=`) certifies a

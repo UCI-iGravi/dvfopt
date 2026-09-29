@@ -92,6 +92,7 @@ def correct_dvf_pins(
     threshold: float = 0.01,
     n_workers: int = 1,
     refill_rtol: float = 1e-4,
+    min_pins: int = 50,
     run_2d: bool = True,
     run_25d: bool = True,
     checkpoint_dir=None,
@@ -111,6 +112,9 @@ def correct_dvf_pins(
         stage. Keep it small (2-4); on spawn platforms guard the calling
         script under ``if __name__ == '__main__':``.
     refill_rtol : CG tolerance of the re-fill.
+    min_pins : int
+        Fewer detected pins than this raises: the pin read is only meaningful on a
+        Laplacian-interpolated field (it fires on sharp features of any field).
     run_2d, run_25d : stop the chain early (the report still censuses the output).
     checkpoint_dir : resumable run. The re-fill is mirrored to
         ``<dir>/field.npy`` (with its pin counts in ``state.json``), the 2D
@@ -150,9 +154,12 @@ def correct_dvf_pins(
     else:
         tau_used = auto_tau(phi) if tau == 'auto' else float(tau)
         pins = detect_pins(phi, tau_used)
-        if not pins.any():
+        if int(pins.sum()) < max(1, min_pins):
             raise ValueError(
-                f'no pins at tau={tau_used:.3g}: is this a Laplacian-interpolated field?'
+                f'{int(pins.sum())} pins at tau={tau_used:.3g} (< min_pins={min_pins}): is this a '
+                'Laplacian-interpolated field? The pin read fires on sharp features of any field '
+                '(measured: 9 "pins" on a fold-free ANTs slice, 2 on synthetic crossings); pass '
+                'min_pins=1 to override on a field known to be Laplacian-interpolated.'
             )
         coords, drop, bad = inconsistent_pins(phi, pins, c, radius)
         kept = np.zeros(pins.shape, bool)

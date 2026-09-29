@@ -6,6 +6,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- **Canonical 2D benchmark: pin-preprocessing rows** (`pins_isqp_{none,l2,l1}` harmonic re-fill, `pinss_*`
+  source-preserving; opt-in labels) with `pins_n / pins_dropped / pins_pairs / pins_pre_s` row keys and two
+  guards (fold-free inputs and 2D reads with < 50 pins pass through); `harmonic_refill(keep_sources=,
+  zero_sources=)`; `correct_dvf_pins(min_pins=50)`. Measured (`docs/paper/results/2d_canonical/pins/`): on
+  the 85 cohort slices the harmonic pin chain is 20-37x faster at unchanged certification, L2 move ~10x,
+  landmark residual 0.16 -> 0.56 px; source-preserving loses on every column; on the m1 synthetic origins the
+  pins output is 6-8x closer to the clean field. Findings 14.11.
+
 ### Added — the pin chain: `correct_dvf_pins` / `dvfopt correct --pipeline pins`
 
 A DVF-only preprocessing chain in front of the per-slice 2D engine and the 2.5D marching, for

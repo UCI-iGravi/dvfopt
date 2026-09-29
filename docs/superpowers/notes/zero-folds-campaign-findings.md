@@ -1489,3 +1489,40 @@ cost and memory (19 s, 11.6 GB), but its numpy `source_map` stencil costs ≈17 
 iteration — 41 iterations only reached residual 0.086 inside a 900 s solve budget, not
 converged. GMG is the only remaining lever for the re-fill's CG cost, gated on a compiled
 (numba or similar) stencil kernel to replace the numpy one; unstarted (14.9).
+
+### 14.11 Pins in the canonical 2D benchmark (run 2026-09-27/28)
+
+`docs/paper/results/2d_canonical/pins/`: every 2D source x {`isqp_none`, `isqp_l2`, `isqp_l1`} and their
+pin-preprocessed twins `pins_*` (harmonic re-fill) and `pinss_*` (source-preserving), 1,917 rows, metrics against
+the ORIGINAL input. Cohort slices read pins with the 3D stencil from the parent volume; other sources with the 2D
+stencil.
+
+| twin vs baseline (cohort, 85 slices, paired) | wall x | L2 move x | certified | landmark residual px |
+|---|---|---|---|---|
+| pins_isqp_none vs isqp_none | 0.053 | 8.9 | 85 -> 85 | 0.21 -> 0.56 |
+| pins_isqp_l2 vs isqp_l2 | 0.027 | 11.2 | 85 -> 85 | 0.16 -> 0.56 |
+| pins_isqp_l1 vs isqp_l1 | 0.030 | 9.8 | 83 -> 85 | 0.15 -> 0.59 |
+| pinss_isqp_l2 vs isqp_l2 | 0.283 | 10.6 | 85 -> 85 | 0.16 -> 0.90 |
+| pinss_isqp_l1 vs isqp_l1 | 0.319 | 9.3 | 83 -> 80 | 0.15 -> 1.02 |
+
+Per slice, the harmonic pin chain is 20-37x faster at unchanged certification (it makes the two `isqp_l1`
+misses certify) and costs fidelity: L2 move ~10x and the landmark residual 0.16 -> 0.56 px (still sub-pixel).
+That is the per-slice harmonic re-fill moving the whole slice (14.5); on volumes the 3D chain does not pay it.
+The largest wins are the B0304 slices (8-169 s vs 200-8,900 s). The source-preserving re-fill loses on every
+column, as on the four test slices and in 3D (+26 % L2 at the same certificate), and is closed.
+
+**L2-move-from-input is the wrong fidelity metric for a corrupted input.** On the m1 synthetic origins, whose
+clean field (same seed, uncorrupted correspondences) is known, the pins output is 6-8x CLOSER to the truth on
+`outliers` (RMS 3.02 -> 0.38; the baseline 2.94) and `mixed` (2.46 -> 0.53; baseline 2.41) while its L2 move
+from the corrupted input is 6x the baseline's; on `collapse` it is worse (0.57 -> 0.95, max error 9.4 -> 3.9).
+
+**Guards.** The first pass fired the pin read on non-Laplacian fields and damaged them: a fold-free ANTs slice
+(9 "pins", L2 0 -> 1,355), synthetic crossings (2 "pins", L2 x14-18). Two guards were added and the 54 affected
+rows re-measured: a fold-free input is never touched, and a 2D-stencil read with fewer than 50 pins passes
+through (cohort slices keep their 3D read at any count; B0039 z0 has 20 genuine pins and certifies in 2.3 s;
+`correct_dvf_pins(min_pins=50)` raises below it). No single harmonicity statistic separated Laplacian from
+non-Laplacian fields cleanly (a few exactly-zero non-Laplacian fields overlap); one false positive remains
+documented, `m2_tvl1_synthetic_weak` (191 "pins", L2 x2.5, still certified). Every other non-cohort source
+passes through unchanged.
+
+Defaults are unchanged: `correct_dvf` / `auto` never run the pin chain; `pins_*` are opt-in benchmark labels.

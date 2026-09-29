@@ -45,7 +45,7 @@ def test_rejects_bad_input():
 
 def test_preprocessing_only_drops_the_contradictory_pin():
     phi, bad = _field()
-    out, rep = correct_dvf_pins(phi, run_2d=False, run_25d=False)
+    out, rep = correct_dvf_pins(phi, run_2d=False, run_25d=False, min_pins=1)
     assert rep.n_below_in > rep.n_below_out > 0  # the steep pair's folds are left
     assert 1 <= rep.n_dropped <= 2 and rep.n_kept == rep.n_pins - rep.n_dropped
     assert abs(out[1][bad] - phi[1][bad]) > 5  # the 12 px spike was re-filled away
@@ -56,12 +56,12 @@ def test_preprocessing_only_drops_the_contradictory_pin():
 def test_chain_certifies_and_resumes(tmp_path):
     phi, _ = _field()
     before = phi.copy()
-    out, rep = correct_dvf_pins(phi, checkpoint_dir=tmp_path)
+    out, rep = correct_dvf_pins(phi, checkpoint_dir=tmp_path, min_pins=1)
     np.testing.assert_array_equal(phi, before)  # input never mutated
     assert rep.feasible and rep.n_below_out == 0 and rep.n_neg_best_diag_out == 0
     assert rep.min_T_out >= 0.01 and rep.n_dropped >= 1
     assert np.all(out[0] == 0)
-    again, rep2 = correct_dvf_pins(phi, checkpoint_dir=tmp_path)
+    again, rep2 = correct_dvf_pins(phi, checkpoint_dir=tmp_path, min_pins=1)
     np.testing.assert_array_equal(again, out)
     assert rep2.n_pins == rep.n_pins and rep2.feasible
 
@@ -75,7 +75,19 @@ def test_cli_pins_route(tmp_path):
     phi, _ = _field()
     p, out, rep_dir = tmp_path / 'in.npy', tmp_path / 'out.npy', tmp_path / 'rep'
     np.save(p, phi)
-    rc = main(['correct', str(p), str(out), '--pipeline', 'pins', '--report-dir', str(rep_dir)])
+    rc = main(
+        [
+            'correct',
+            str(p),
+            str(out),
+            '--pipeline',
+            'pins',
+            '--param',
+            'min_pins=1',
+            '--report-dir',
+            str(rep_dir),
+        ]
+    )
     assert rc == 0 and out.is_file()
     summary = json.loads((rep_dir / 'summary.json').read_text(encoding='utf-8'))
     assert summary['pipeline'] == 'pins' and summary['feasible'] and summary['n_dropped'] >= 1
