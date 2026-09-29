@@ -191,6 +191,7 @@ from dvfopt.metrics import (
     FoldStats,
     InjectivityStats,
     constraint_fold_stats,
+    field_change_stats,
     fold_stats,
     injectivity_stats,
 )
@@ -345,6 +346,7 @@ __all__ = [
     'correct_dvf_25d',
     'correct_dvf_pins',
     'enable_default_handler',
+    'field_change_stats',
     'fold_stats',
     'generate_random_dvf',
     'generate_random_dvf_3d',

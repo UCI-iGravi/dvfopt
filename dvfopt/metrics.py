@@ -132,3 +132,66 @@ def injectivity_stats(phi, max_window: int = 8) -> InjectivityStats:
         n_cells_nonpos=None if cell_min is None else int((cell_min <= 0).sum()),
         max_window=int(max_window),
     )
+
+
+def _change_jdet(phi: np.ndarray) -> np.ndarray:
+    """Central-difference Jdet of ``phi``, picking the 2D/3D/per-slice path by shape."""
+    from dvfopt.jacobian.numpy_jdet import jacobian_det2D, jacobian_det3D
+
+    if phi.ndim == 4 and phi.shape[0] == 3 and phi.shape[1] > 1:
+        return np.asarray(jacobian_det3D(phi))
+    if phi.ndim == 4:  # (3, 1, H, W) or (2, 1, H, W): per-slice 2D
+        return np.stack(
+            [
+                np.asarray(jacobian_det2D(np.stack([phi[-2, z], phi[-1, z]])))
+                for z in range(phi.shape[1])
+            ]
+        )
+    return np.asarray(jacobian_det2D(np.stack([phi[-2], phi[-1]])))
+
+
+def field_change_stats(phi_in, phi_out, *, moved_eps: float = 1e-6, moved_px: float = 0.5) -> dict:
+    """Grid-size-independent measures of how much a correction changed a field.
+
+    Raw L1/L2 move sums scale with voxel count and have no physical reading;
+    these are in px (or dimensionless for the Jdet change) and answer "how
+    much did the correction touch the field, typically and at worst" —
+    independent of grid resolution.
+
+    Keys
+    ----
+    move_med_px, move_p95_px, move_max_px
+        Per-voxel displacement change ``||phi_out - phi_in||``, over ALL voxels.
+    move_med_moved_px, move_p95_moved_px
+        The same, restricted to voxels with change ``> moved_eps`` (``0.0``
+        when none moved).
+    moved_frac, moved_frac_0p5px
+        Fraction of voxels with change ``> moved_eps`` / ``> moved_px``.
+    jdet_change_med, jdet_change_p95, jdet_change_max
+        ``|J_out - J_in|`` per cell, central-difference Jdet
+        (:func:`dvfopt.jacobian.numpy_jdet.jacobian_det2D`/``jacobian_det3D``,
+        picked by shape: true-3D ``(3, D>1, H, W)`` uses ``jacobian_det3D``;
+        ``(3|2, 1, H, W)`` runs ``jacobian_det2D`` per slice on the last two
+        channels; ``(2, H, W)`` runs it directly).
+
+    ``phi_in``/``phi_out`` must have the same shape; channels are the leading
+    axis (``dz``/``dy``/``dx`` or ``dy``/``dx``).
+    """
+    a = np.asarray(phi_in, dtype=np.float64)
+    b = np.asarray(phi_out, dtype=np.float64)
+    d = np.sqrt(((b - a) ** 2).sum(axis=0))
+    moved = d > moved_eps
+    dm = d[moved]
+    dj = np.abs(_change_jdet(b) - _change_jdet(a))
+    return dict(
+        move_med_px=float(np.median(d)),
+        move_p95_px=float(np.percentile(d, 95)),
+        move_max_px=float(d.max()),
+        move_med_moved_px=float(np.median(dm)) if dm.size else 0.0,
+        move_p95_moved_px=float(np.percentile(dm, 95)) if dm.size else 0.0,
+        moved_frac=float(moved.mean()),
+        moved_frac_0p5px=float((d > moved_px).mean()),
+        jdet_change_med=float(np.median(dj)),
+        jdet_change_p95=float(np.percentile(dj, 95)),
+        jdet_change_max=float(dj.max()),
+    )

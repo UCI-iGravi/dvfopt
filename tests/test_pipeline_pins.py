@@ -50,6 +50,12 @@ def test_preprocessing_only_drops_the_contradictory_pin():
     assert 1 <= rep.n_dropped <= 2 and rep.n_kept == rep.n_pins - rep.n_dropped
     assert abs(out[1][bad] - phi[1][bad]) > 5  # the 12 px spike was re-filled away
     assert [s for s, _ in rep.stages] == ['refill', 'census']
+    # grid-size-independent change measures (dvfopt.metrics.field_change_stats)
+    assert rep.move_max_px >= rep.move_med_px >= 0.0
+    assert rep.move_p95_px >= 0.0 and rep.move_med_moved_px >= 0.0
+    assert rep.move_p95_moved_px >= 0.0 and 0.0 <= rep.moved_frac_0p5px <= 1.0
+    assert rep.jdet_change_max >= rep.jdet_change_p95 >= rep.jdet_change_med >= 0.0
+    assert rep.moved_frac > 0.0  # the re-fill moved the field
 
 
 @needs_osqp
