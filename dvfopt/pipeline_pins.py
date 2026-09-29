@@ -65,6 +65,16 @@ class PinChainReport:
     moved_frac: float
     wall_s: float
     stages: list = field(default_factory=list)  # [(name, wall_s), ...]
+    # grid-size-independent change measures (dvfopt.metrics.field_change_stats)
+    move_med_px: float = 0.0
+    move_p95_px: float = 0.0
+    move_max_px: float = 0.0
+    move_med_moved_px: float = 0.0
+    move_p95_moved_px: float = 0.0
+    moved_frac_0p5px: float = 0.0
+    jdet_change_med: float = -1.0
+    jdet_change_p95: float = -1.0
+    jdet_change_max: float = -1.0
 
 
 def _census(phi, threshold):
@@ -218,6 +228,7 @@ def correct_dvf_pins(
         ck.finish()
 
     from dvfopt.jacobian.tetrahedron_sign import n_neg_best_diagonal
+    from dvfopt.metrics import field_change_stats
 
     t = time.time()
     n_neg_in, n_below_in, min_in = _census(phi, threshold)
@@ -226,7 +237,7 @@ def correct_dvf_pins(
     n_best = n_neg_best_diagonal(out, threshold)
     bil = _bilinear_fold_slices(out, threshold)
     l2 = float(np.linalg.norm(diff.ravel()))
-    moved = float((np.abs(diff).max(axis=0) > 1e-6).mean())
+    change = field_change_stats(phi, out)
     stages.append(('census', time.time() - t))
     report = PinChainReport(
         feasible=n_below_out == 0,
@@ -240,9 +251,18 @@ def correct_dvf_pins(
         n_neg_best_diag_out=n_best,
         bilinear_fold_slices=bil,
         l2_from_input=l2,
-        moved_frac=moved,
+        moved_frac=change['moved_frac'],
         wall_s=time.time() - t0,
         stages=list(stages),
+        move_med_px=change['move_med_px'],
+        move_p95_px=change['move_p95_px'],
+        move_max_px=change['move_max_px'],
+        move_med_moved_px=change['move_med_moved_px'],
+        move_p95_moved_px=change['move_p95_moved_px'],
+        moved_frac_0p5px=change['moved_frac_0p5px'],
+        jdet_change_med=change['jdet_change_med'],
+        jdet_change_p95=change['jdet_change_p95'],
+        jdet_change_max=change['jdet_change_max'],
     )
     vlog(
         verbose,

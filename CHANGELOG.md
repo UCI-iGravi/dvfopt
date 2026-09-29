@@ -6,6 +6,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- **`dvfopt.metrics.field_change_stats`**: grid-size-independent measures of how much a correction
+  changed a field — per-voxel displacement change in px (`move_med_px` / `move_p95_px` /
+  `move_max_px`, plus the `_moved_px` variants restricted to voxels that actually moved),
+  `moved_frac` / `moved_frac_0p5px`, and per-cell central-difference Jdet change
+  (`jdet_change_med` / `_p95` / `_max`); exported next to `fold_stats`. Wired into
+  `PinChainReport` (`correct_dvf_pins`'s `moved_frac` now comes from this helper, so pipeline and
+  benchmark agree) and `benchmarks/canonical_2d.py`'s per-row `metrics()`.
+
 - **Canonical 2D benchmark: pin-preprocessing rows** (`pins_isqp_{none,l2,l1}` harmonic re-fill, `pinss_*`
   source-preserving; opt-in labels) with `pins_n / pins_dropped / pins_pairs / pins_pre_s` row keys and two
   guards (fold-free inputs and 2D reads with < 50 pins pass through); `harmonic_refill(keep_sources=,

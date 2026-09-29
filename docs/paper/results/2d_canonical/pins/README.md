@@ -24,3 +24,11 @@ synthetic origins the pins output is 6-8x closer to the clean field on outliers 
 2.46 -> 0.53; the baseline moves 0.02-0.09) and worse on collapse (0.57 -> 0.95). Every other source passes
 through unchanged (pins_n 0 or below the guard). One documented false positive remains:
 m2_tvl1_synthetic_weak (191 "pins" on a non-Laplacian field, L2 x2.5, still certified).
+
+Fidelity columns (added 2026-09-29 by re-cutting the saved outputs, no re-solve): per-voxel displacement change
+`||phi_out - phi_in||` in px (`move_med_px` / `move_p95_px` / `move_max_px` over all voxels, `move_med_moved_px` /
+`move_p95_moved_px` over the moved voxels, `moved_frac_0p5px` = fraction moved by more than 0.5 px) and the per-cell
+Jacobian-determinant change `|J_out - J_in|` (`jdet_change_med` / `_p95` / `_max`). These are grid-size independent
+and readable; the raw `l1_move` / `l2_move` sums stay as legacy columns. Cohort medians: the engine alone touches
+0.3-0.5 % of voxels beyond 0.5 px (max ~7.5 px, dJdet p95 ~0); the harmonic pin chain moves 67 % of voxels beyond
+0.5 px (median 0.75 px over moved voxels, p95 2.3 px, max 12.6 px, dJdet p95 0.12).

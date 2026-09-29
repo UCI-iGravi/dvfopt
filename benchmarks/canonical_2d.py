@@ -43,7 +43,12 @@ Metrics per (input, output, result) — :func:`metrics`:
   whole-slice, and non-positive Jacobians (where the log is undefined) are
   clipped up to 1e-3 rather than dropped;
 * move and locality (``moved_frac``, ``l1_move``, ``l2_move``, ``max_move``,
-  ``mean_move_moved``);
+  ``mean_move_moved``, plus the grid-size-independent
+  :func:`dvfopt.metrics.field_change_stats` block — ``move_med_px``,
+  ``move_p95_px``, ``move_max_px``, ``move_med_moved_px``,
+  ``move_p95_moved_px``, ``moved_frac_0p5px``, ``jdet_change_med``,
+  ``jdet_change_p95``, ``jdet_change_max``; ``moved_frac`` itself now comes
+  from that helper);
 * the IFT injectivity-radius diagnostics before and after (``ift_min_radius``,
   ``ift_frac_subpixel``) — an estimate, never a certificate;
 * engine accounting from ``res.info`` on windowed rows (``damage`` — must be 0 —
@@ -169,7 +174,7 @@ from dvfopt.core._pool import pin_worker_threads, pinned_thread_env
 from dvfopt.core.windowed import min_field
 from dvfopt.io.fields import load_dvf
 from dvfopt.jacobian.numpy_jdet import jacobian_det2D
-from dvfopt.metrics import fold_stats
+from dvfopt.metrics import field_change_stats, fold_stats
 
 REPO = Path(__file__).resolve().parents[1]
 DVF_ROOT = REPO / "data" / "dvfs"
@@ -680,6 +685,7 @@ def metrics(phi_in, phi_out, res=None, threshold: float = THRESHOLD, elapsed: fl
     frac_i, sd_i = _reg_stats(ji)
     frac_f, sd_f = _reg_stats(jf)
     l2 = float(np.linalg.norm(diff.ravel()))
+    change = field_change_stats(phi_in, phi_out)
     row = {
         # --- cohort_benchmark's schema, same names, central-difference Jdet ---
         "n_neg_init": int((ji < threshold).sum()),
@@ -698,13 +704,23 @@ def metrics(phi_in, phi_out, res=None, threshold: float = THRESHOLD, elapsed: fl
         "sdlogj_init": sd_i,
         "sdlogj_final": sd_f,
         # --- move and locality ---
-        "moved_frac": float(moved.mean()),
+        "moved_frac": change["moved_frac"],
         "l1_move": float(np.abs(diff).sum()),
         "l2_move": l2,
         "max_move": float(np.abs(diff).max()),
         "mean_move_moved": float(np.abs(diff).sum() / max(int(moved.sum()), 1)),
         # --- solver verdict ---
         "feasible": bool(getattr(res, "feasible", False)),
+        # --- grid-size-independent change measures (dvfopt.metrics.field_change_stats) ---
+        "move_med_px": change["move_med_px"],
+        "move_p95_px": change["move_p95_px"],
+        "move_max_px": change["move_max_px"],
+        "move_med_moved_px": change["move_med_moved_px"],
+        "move_p95_moved_px": change["move_p95_moved_px"],
+        "moved_frac_0p5px": change["moved_frac_0p5px"],
+        "jdet_change_med": change["jdet_change_med"],
+        "jdet_change_p95": change["jdet_change_p95"],
+        "jdet_change_max": change["jdet_change_max"],
     }
     row.update(_certificates(phi_in, threshold, "init"))
     row.update(_certificates(phi_out, threshold, "final"))

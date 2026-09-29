@@ -205,6 +205,7 @@ The legacy `iterative_*` functions are no longer part of the public API but rema
 | `isqp_solve()` / `colored_jacobian()` | `dvfopt.core.primitives.isqp` / `.coloring` | Elastic-QP SQP inner (OSQP; `HAS_OSQP` gate) + CPR-coloring sparse Jacobians |
 | `minimize_slsqp_traced()` / `ineq_dict()` | `dvfopt.core.primitives.slsqp` | Traced C-SLSQP driver (scipy's own core) + its old-style ineq-constraint dict helper — the single driver behind all 10 SLSQP call sites |
 | `fold_stats()` / `constraint_fold_stats()` / `FoldStats` | `dvfopt.metrics` | Canonical fold statistics (n_neg / n_below / min / severity) shared by pipelines, CLI, reports |
+| `field_change_stats()` | `dvfopt.metrics` | Grid-size-independent input→output change measures (move px percentiles, moved fraction, per-cell Jdet change); backs `PinChainReport` and `benchmarks/canonical_2d.py`'s `moved_frac` et al. |
 | `load_dvf()` / `save_dvf()` | `dvfopt.io.fields` | Field I/O — `.npy`/`.npz` + NIfTI/MetaImage/NRRD (moved from `dvfopt_gui.io_formats`) |
 
 ### 2.5D marching (3D fold *prevention*)
