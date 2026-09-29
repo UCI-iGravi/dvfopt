@@ -219,6 +219,12 @@ CONFIGS = {
 }
 #: Pin-preprocessing knobs (measured on the cohort: c=1, radius 60, tau rule with a 0.7 floor).
 PINS_C, PINS_RADIUS = 1.0, 60.0
+#: Guards (2026-09-28 run): the pin read is only meaningful on a Laplacian-interpolated field.
+#: A fold-free input is never touched (it fired on a clean ANTs slice: 9 "pins", L2 0 -> 1,355), and
+#: under the 2D read (unknown provenance) fewer than this many pins is not a Laplacian pin set
+#: (synthetic crossings: 2 "pins", L2 x14-18). Cohort slices are Laplacian by construction and keep
+#: their 3D-stencil read whatever the count (B0039 z0 has 20 pins and certifies in 2.7 s).
+PINS_MIN = 50
 #: "3d" reads the pins with the 3D stencil from the parent volume when the case has one
 #: (cohort slices), else the 2D stencil; "2d" always uses the slice alone.
 PINS_READ = "3d"
@@ -765,6 +771,12 @@ def sentinel_record(case: Case, cfg_name: str, error: str, timing_mode="throughp
     return rec
 
 
+def _bilinear_min(phi) -> np.ndarray:
+    from dvfopt.jacobian.injectivity_radius import cell_min_jdet_2d
+
+    return np.asarray(cell_min_jdet_2d(np.asarray(phi[1:, 0], dtype=np.float64))) / 2
+
+
 def _pins_read_mask(case: Case, phi_in: np.ndarray) -> np.ndarray:
     """Pin mask for a (3, 1, H, W) case: 3D stencil on the parent volume's 3 slices when the
     case is a cohort slice and PINS_READ == '3d', else the 2D stencil on the slice."""
@@ -791,9 +803,14 @@ def pins_preprocess(case: Case, phi_in: np.ndarray, refill: str = "harmonic") ->
     from dvfopt.dvf.refill import harmonic_refill
 
     t0 = time.perf_counter()
+    info = {"pins_n": 0, "pins_dropped": 0, "pins_pairs": 0, "pins_pre_s": 0.0}
+    if not (_bilinear_min(phi_in) < THRESHOLD).any():  # fold-free input: never touched
+        info["pins_pre_s"] = time.perf_counter() - t0
+        return phi_in, info
     pins = _pins_read_mask(case, phi_in)
-    info = {"pins_n": int(pins.sum()), "pins_dropped": 0, "pins_pairs": 0, "pins_pre_s": 0.0}
-    if not pins.any():
+    info["pins_n"] = int(pins.sum())
+    known_laplacian = PINS_READ == "3d" and case.source == "cohort"
+    if info["pins_n"] < PINS_MIN and not known_laplacian:
         info["pins_pre_s"] = time.perf_counter() - t0
         return phi_in, info
     sl2 = phi_in[1:, 0]
